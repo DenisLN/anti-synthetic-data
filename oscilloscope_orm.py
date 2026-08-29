@@ -1,291 +1,387 @@
-"""
-Driver ORM Python para Osciloscópio Keysight InfiniiVision DSO-X 4043A (4 Canais).
+"""Driver PyMeasure para Keysight DSO-X 4034A via USB/VISA."""
 
-Refatorado e auditado estritamente com base no Keysight InfiniiVision 4000 X-Series
-Oscilloscopes Programmer's Guide (Edição de 31 de Outubro de 2025, Software v07.66.0000).
-"""
+from __future__ import annotations
 
 import logging
+import re
 import time
-import numpy as np
-from pymeasure.instruments.keysight.keysightDSOX1102G import KeysightDSOX1102G
-from pymeasure.instruments import Channel
+from typing import List, Tuple
 
-logger = logging.getLogger(__name__)
+import numpy as np
+from pymeasure.instruments import Channel, Instrument, SCPIMixin
+from pymeasure.instruments.validators import strict_discrete_set
+
+
+logger = logging.getLogger("KeysightDSOX4034A")
+
+
+def _normalized_identity(value: str) -> str:
+    return re.sub(r"[^A-Z0-9]", "", value.upper())
+
+
+class OscilloscopeError(RuntimeError):
+    pass
 
 
 class OscChannel(Channel):
-    """Representação de um canal analógico individual (CH1 a CH4)."""
-
     bwlimit = Channel.control(
         ":CHANnel{ch}:BWLimit?",
         ":CHANnel{ch}:BWLimit %s",
-        """Controla o filtro de limite de banda (BWLimit) de 20 MHz. (Manual pág. 360)""",
-        validator=lambda v, ms: v in [0, 1, True, False, "ON", "OFF", "on", "off"],
-        values={True: "1", False: "0", "ON": "1", "OFF": "0", "on": "1", "off": "0"},
+        "Limite de banda do canal.",
+        validator=strict_discrete_set,
+        values={True: "1", False: "0"},
+        map_values=True,
     )
-
     coupling = Channel.control(
         ":CHANnel{ch}:COUPling?",
         ":CHANnel{ch}:COUPling %s",
-        """Controla o acoplamento do canal: 'AC' ou 'DC'. (Manual pág. 361)""",
-        validator=lambda v, ms: str(v).upper() in ["AC", "DC"],
+        "Acoplamento AC/DC do canal.",
+        validator=strict_discrete_set,
         values={"AC": "AC", "DC": "DC"},
+        map_values=True,
     )
-
     display = Channel.control(
         ":CHANnel{ch}:DISPlay?",
         ":CHANnel{ch}:DISPlay %s",
-        """Habilita ou desabilita a exibição do canal na tela: True/False ou 1/0. (Manual pág. 362)""",
-        validator=lambda v, ms: v in [0, 1, True, False],
+        "Exibição do canal.",
+        validator=strict_discrete_set,
         values={True: "1", False: "0"},
+        map_values=True,
     )
-
     offset = Channel.control(
-        ":CHANnel{ch}:OFFSet?",
-        ":CHANnel{ch}:OFFSet %e",
-        """Define o offset vertical em Volts. (Manual pág. 366)""",
+        ":CHANnel{ch}:OFFSet?", ":CHANnel{ch}:OFFSet %e", "Offset vertical."
     )
-
     probe = Channel.control(
-        ":CHANnel{ch}:PROBe?",
-        ":CHANnel{ch}:PROBe %e",
-        """Define a atenuação da ponta de prova (ex: 1.0, 10.0, 100.0). (Manual pág. 367)""",
+        ":CHANnel{ch}:PROBe?", ":CHANnel{ch}:PROBe %e", "Atenuação da probe."
     )
-
     scale = Channel.control(
-        ":CHANnel{ch}:SCALE?",
-        ":CHANnel{ch}:SCALE %e",
-        """Define a escala vertical em Volts por divisão. (Manual pág. 384)""",
+        ":CHANnel{ch}:SCALe?", ":CHANnel{ch}:SCALe %e", "Escala vertical."
+    )
+    units = Channel.control(
+        ":CHANnel{ch}:UNITs?",
+        ":CHANnel{ch}:UNITs %s",
+        "Unidade vertical do canal.",
+        validator=strict_discrete_set,
+        values={"VOLT": "VOLT", "AMP": "AMP"},
+        map_values=True,
     )
 
-    range = Channel.control(
-        ":CHANnel{ch}:RANGe?",
-        ":CHANnel{ch}:RANGe %e",
-        """Define a faixa vertical total em Volts (8 * escala). (Manual pág. 383)""",
-    )
 
+class KeysightDSOX4034A(SCPIMixin, Instrument):
+    """Controle mínimo e determinístico do DSO-X 4034A."""
 
-class KeysightDSOX4043A(KeysightDSOX1102G):
-    """Driver PyMeasure para a série Keysight InfiniiVision DSO-X 4043A (4 Canais Analógicos)."""
-
-    def __init__(self, adapter, name="Keysight InfiniiVision DSO-X 4043A", **kwargs):
+    def __init__(self, adapter, name: str = "Keysight DSO-X 4034A", **kwargs):
         super().__init__(adapter, name, **kwargs)
-        # Suporte aos 4 canais analógicos do DSO-X 4043A
-        self.ch1 = OscChannel(self, 1)
-        self.ch2 = OscChannel(self, 2)
-        self.ch3 = OscChannel(self, 3)
-        self.ch4 = OscChannel(self, 4)
-        self.channels = {1: self.ch1, 2: self.ch2, 3: self.ch3, 4: self.ch4}
-        self._is_armed_flag = False
+        self.channels = {index: OscChannel(self, index) for index in range(1, 5)}
+        self.idn = ""
 
-    @property
-    def sample_rate(self) -> float:
-        """Retorna a taxa de amostragem analógica atual em Hz.
+    def verify_identity(self, expected_model: str = "DSOX4034A") -> str:
+        self.idn = self.ask("*IDN?").strip()
+        if _normalized_identity(expected_model) not in _normalized_identity(self.idn):
+            raise OscilloscopeError(
+                f"Osciloscópio inesperado: {self.idn!r}; esperado {expected_model!r}"
+            )
+        return self.idn
 
-        Comando SCPI: :ACQuire:SRATe[:ANALog]? (Manual pág. 328).
-        """
-        try:
-            return float(self.ask(":ACQuire:SRATe?"))
-        except Exception as e:
-            logger.error("Falha ao consultar a taxa de amostragem (:ACQuire:SRATe?): %s", e)
-            raise
+    def check_errors(self, max_errors: int = 20) -> List[Tuple[int, str]]:
+        errors: List[Tuple[int, str]] = []
+        for _ in range(max_errors):
+            raw = self.ask(":SYSTem:ERRor?").strip()
+            try:
+                code_text, message = raw.split(",", 1)
+                code = int(code_text)
+            except (ValueError, TypeError) as exc:
+                raise OscilloscopeError(f"Resposta inválida de :SYST:ERR?: {raw!r}") from exc
+            if code == 0:
+                return errors
+            errors.append((code, message.strip().strip('"')))
+        raise OscilloscopeError(f"Fila de erros Keysight não esvaziou: {errors}")
+
+    def assert_no_errors(self, context: str) -> None:
+        errors = self.check_errors()
+        if errors:
+            raise OscilloscopeError(f"Keysight reportou erros após {context}: {errors}")
+
+    def initialize_safe(self) -> None:
+        self.write(":STOP")
+        self.write("*CLS")
+        self.write(":ACQuire:TYPE NORMal")
+        self.write(":WAVeform:FORMat BYTE")
+        self.write(":WAVeform:UNSigned ON")
+        self.write(":WAVeform:POINts:MODE RAW")
+        self.assert_no_errors("inicialização")
 
     def configure_channel(
         self,
         channel: int,
-        scale: float = None,
-        offset: float = None,
-        coupling: str = None,
-        probe_attenuation: float = None,
+        *,
+        scale: float,
+        probe_attenuation: float,
+        offset: float = 0.0,
+        coupling: str = "DC",
+        units: str = "VOLT",
         display: bool = True,
-    ):
-        """Configura os parâmetros de um canal analógico (1 a 4).
-
-        Comandos SCPI empregados:
-        - :CHANnel<n>:DISPlay (Manual pág. 362)
-        - :CHANnel<n>:SCALE   (Manual pág. 384)
-        - :CHANnel<n>:OFFSet  (Manual pág. 366)
-        - :CHANnel<n>:COUPling(Manual pág. 361)
-        - :CHANnel<n>:PROBe   (Manual pág. 367)
-        """
+    ) -> None:
         if channel not in self.channels:
-            raise ValueError(f"Canal inválido: {channel}. O modelo DSO-X 4043A possui canais 1 a 4.")
-
+            raise ValueError(f"Canal inválido: {channel}")
+        if scale <= 0 or probe_attenuation <= 0:
+            raise ValueError("Scale e atenuação de probe devem ser positivas")
         ch = self.channels[channel]
+        ch.display = display
+        ch.probe = probe_attenuation
+        ch.coupling = coupling.upper()
+        ch.units = units.upper()
+        ch.offset = offset
+        ch.scale = scale
+        ch.bwlimit = False
+        self.assert_no_errors(f"configuração do CH{channel}")
 
-        if display is not None:
-            ch.display = display
-        if scale is not None:
-            ch.scale = scale
-        if offset is not None:
-            ch.offset = offset
-        if coupling is not None:
-            ch.coupling = coupling
-        if probe_attenuation is not None:
-            ch.probe = probe_attenuation
+    def disable_channel(self, channel: int) -> None:
+        if channel not in self.channels:
+            raise ValueError(f"Canal inválido: {channel}")
+        self.channels[channel].display = False
+        self.assert_no_errors(f"desativação do CH{channel}")
 
-    def configure_timebase(
-        self,
-        scale: float = None,
-        offset: float = None,
-        time_range: float = None,
-    ):
-        """Configura a base de tempo horizontal.
+    def set_vertical_scale(self, channel: int, required_peak: float) -> float:
+        """Ajusta V/div (ou A/div) e confirma margem para o pico esperado.
 
-        Comandos SCPI empregados:
-        - :TIMebase:MODE MAIN  (Manual pág. 1333)
-        - :TIMebase:SCALE      (Manual pág. 1339)
-        - :TIMebase:POSition   (Manual pág. 1334)
-        - :TIMebase:RANGe      (Manual pág. 1335)
-        """
-        self.write(":TIMebase:MODE MAIN")
-
-        if time_range is not None:
-            self.write(f":TIMebase:RANGe {time_range:e}")
-        elif scale is not None:
-            self.write(f":TIMebase:SCALE {scale:e}")
-
-        if offset is not None:
-            self.write(f":TIMebase:POSition {offset:e}")
-
-    def setup_single_trigger(
-        self,
-        source: str = "CHANnel1",
-        level: float = 0.0,
-        slope: str = "POSitive",
-    ):
-        """Configura o sistema de disparo em modo de varredura normal e borda única.
-
-        Comandos SCPI empregados:
-        - :TRIGger:MODE EDGE        (Manual pág. 1358)
-        - :TRIGger:SWEep NORMal     (Manual pág. 1360)
-        - :TRIGger:EDGE:SOURce      (Manual pág. 1379)
-        - :TRIGger:EDGE:LEVel       (Manual pág. 1376)
-        - :TRIGger:EDGE:SLOPe       (Manual pág. 1378)
-        """
-        self.write(":TRIGger:MODE EDGE")
-        self.write(":TRIGger:SWEep NORMal")
-        self.write(f":TRIGger:EDGE:SOURce {source}")
-        self.write(f":TRIGger:EDGE:LEVel {level:e}")
-        self.write(f":TRIGger:EDGE:SLOPe {slope}")
-
-    def arm(self):
-        """Prepara e arma o osciloscópio para uma captura única.
-
-        Comandos SCPI empregados:
-        - :AER? (Arm Event Register query, Manual pág. 272 / 1624): limpa o evento anterior.
-        - :TER? (Trigger Event Register query, Manual pág. 309 / 1615): limpa o evento anterior.
-        - :SINGle (Manual pág. 306): coloca o hardware em modo de disparo único.
-        """
-        try:
-            # Limpa os registradores de evento gravados anteriormente (clear-on-read)
-            _ = self.ask(":AER?")
-            _ = self.ask(":TER?")
-            self._is_armed_flag = False
-
-            # Envia comando de aquisição única
-            self.write(":SINGle")
-        except Exception as e:
-            logger.error("Erro de comunicação ao armar o osciloscópio via :SINGle: %s", e)
-            raise
-
-    def is_armed(self) -> bool:
-        """Verifica se o osciloscópio está armado e aguardando um evento de disparo.
-
-        Comando SCPI de condição de operação (Manual pág. 292):
-        - :OPERegister:CONDition? (Bit 5 = 32 'Wait for Trigger')
-        """
-        try:
-            oper_cond = int(self.ask(":OPERegister:CONDition?"))
-            return (oper_cond & 32) != 0
-        except ValueError as ve:
-            logger.error("Resposta SCPI inválida ou não numérica em is_armed(): %s", ve)
-            raise
-        except Exception as e:
-            logger.error("Falha I/O de comunicação VISA/SCPI em is_armed(): %s", e)
-            raise
-
-    def wait_for_armed(self, timeout: float = 5.0, poll_interval: float = 0.05) -> bool:
-        """Aguarda até que o osciloscópio confirme o estado armado (Arm Event)."""
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            if self.is_armed():
-                return True
-            time.sleep(poll_interval)
-        return False
-
-    def wait_for_trigger_complete(self, timeout: float = 10.0, poll_interval: float = 0.05) -> bool:
-        """Aguarda até que o evento de disparo ocorra e a aquisição seja concluída.
-
-        Comandos SCPI empregados:
-        - :TER? (Trigger Event Register query, Manual pág. 309 / 1615)
-        - *OPC? (Operation Complete query, Manual pág. 252 / 1636)
-        """
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            try:
-                ter_val = int(self.ask(":TER?"))
-                if ter_val == 1:
-                    self._is_armed_flag = False
-                    # Garante a conclusão da rotina interna de digitalização do hardware
-                    _ = self.ask("*OPC?")
-                    return True
-            except Exception as e:
-                logger.error("Erro durante polling de disparo (:TER?): %s", e)
-                raise
-            time.sleep(poll_interval)
-
-        raise TimeoutError(f"Timeout de {timeout}s atingido aguardando pelo disparo do osciloscópio.")
-
-    def get_waveform(self, channel: int = 1):
-        """Lê os dados da forma de onda do canal especificado e retorna os vetores de tempo e tensão.
-
-        Comandos SCPI empregados:
-        - :WAVeform:SOURce CHANnel<n> (Manual pág. 1467)
-        - :WAVeform:FORMat BYTE       (Manual pág. 1455)
-        - :WAVeform:BYTeorder MSBF    (Manual pág. 1451)
-        - :WAVeform:POINts:MODE RAW   (Manual pág. 1458)
-        - :WAVeform:PREamble?         (Manual pág. 1460)
-        - :WAVeform:DATA?             (Manual pág. 1453)
-
-        Campos da Preamble Documentados (Manual pág. 1460):
-        [0] format     [1] type        [2] points      [3] count
-        [4] xincrement [5] xorigin     [6] xreference
-        [7] yincrement [8] yorigin     [9] yreference
-
-        Fórmula Oficial da Keysight (Manual pág. 1460):
-        Voltage = ((Data_Point - Y_reference) * Y_increment) + Y_origin
-        Time    = ((Point_Index - X_reference) * X_increment) + X_origin
+        O display tem oito divisões verticais. Com offset zero, quatro divisões
+        ficam disponíveis em cada polaridade. O alvo usa apenas três delas para
+        absorver arredondamento de escala e pequena sobremodulação.
         """
         if channel not in self.channels:
             raise ValueError(f"Canal inválido: {channel}")
+        if not np.isfinite(required_peak) or required_peak <= 0:
+            raise ValueError("Pico esperado deve ser positivo e finito")
+        channel_object = self.channels[channel]
+        channel_object.offset = 0.0
+        channel_object.scale = max(required_peak / 3.0, 1e-3)
+        self.assert_no_errors(f"ajuste de escala do CH{channel}")
+        actual_scale = float(channel_object.scale)
+        if actual_scale * 4.0 < required_peak * 1.05:
+            channel_object.scale = max(required_peak / 2.0, 1e-3)
+            self.assert_no_errors(f"reajuste de escala do CH{channel}")
+            actual_scale = float(channel_object.scale)
+        if actual_scale * 4.0 < required_peak * 1.05:
+            raise OscilloscopeError(
+                f"CH{channel} cobre apenas +/-{actual_scale * 4.0:.3f}; "
+                f"pico requerido {required_peak:.3f}"
+            )
+        return actual_scale
 
-        self.write(f":WAVeform:SOURce CHANnel{channel}")
-        self.write(":WAVeform:FORMat BYTE")
-        self.write(":WAVeform:POINts:MODE RAW")
+    def configure_acquisition(
+        self,
+        *,
+        sample_rate_hz: float = 30_000.0,
+        points: int = 6_000,
+        duration_s: float = 0.2,
+        pre_trigger_s: float = 0.0,
+    ) -> None:
+        if abs(sample_rate_hz * duration_s - points) > 1e-9:
+            raise ValueError("sample_rate * duration deve ser igual ao número de pontos")
+        if not 0.0 <= pre_trigger_s < duration_s:
+            raise ValueError(f"pre_trigger_s deve estar entre 0 e {duration_s} s")
+        # O firmware 07.30 entra em Digitizer quando POINts/SRATe recebem um
+        # número. Digitizer não aceita referência horizontal diferente de
+        # CENTer e 30 kSa/s pode estar abaixo da taxa física disponível. Para
+        # manter o trigger no início dos 200 ms, usamos modo automático com
+        # referência LEFT e reamostramos os dados adquiridos no download.
+        # Com REFerence LEFT, :TIMebase:POSition é o intervalo entre a borda
+        # esquerda da janela e o instante do trigger: pre_trigger_s > 0 faz a
+        # captura sobrar dados de ANTES do trigger (ex.: baseline "normal"
+        # antes de um SAG/SWELL disparado nesse mesmo instante).
+        for command in (
+            ":STOP",
+            ":ACQuire:TYPE NORMal",
+            ":ACQuire:MODE RTIMe",
+            ":ACQuire:DIGitizer OFF",
+            ":TIMebase:MODE MAIN",
+            f":TIMebase:RANGe {duration_s:.12g}",
+            ":TIMebase:REFerence LEFT",
+            f":TIMebase:POSition {pre_trigger_s:.12g}",
+            ":ACQuire:POINts:ANALog:AUTO ON",
+            ":ACQuire:SRATe:ANALog:AUTO ON",
+            ":WAVeform:POINts:MODE NORMal",
+            ":WAVeform:POINts 60000",
+            ":WAVeform:FORMat BYTE",
+            ":WAVeform:UNSigned ON",
+        ):
+            self.write(command)
+            errors = self.check_errors()
+            if errors:
+                raise OscilloscopeError(
+                    f"Keysight rejeitou {command!r} durante configuração da aquisição: {errors}"
+                )
+        actual_points = int(float(self.ask(":ACQuire:POINts:ANALog?")))
+        actual_rate = float(self.ask(":ACQuire:SRATe:ANALog?"))
+        actual_range = float(self.ask(":TIMebase:RANGe?"))
+        # Em modo automático, estando parado, o firmware 07.30 informou 3000
+        # pontos; uma aquisição SINGLE usa outra profundidade. A suficiência
+        # real é validada pela preamble imediatamente após a captura.
+        if actual_points <= 0 or actual_rate < sample_rate_hz * 0.995:
+            raise OscilloscopeError(
+                f"Aquisição insuficiente: {actual_points} pontos a {actual_rate} Sa/s; "
+                f"taxa mínima {sample_rate_hz * 0.995} Sa/s"
+            )
+        if not np.isclose(actual_range, duration_s, rtol=0, atol=duration_s * 0.01):
+            raise OscilloscopeError(
+                f"Keysight aceitou janela {actual_range} s; esperado {duration_s} s"
+            )
 
-        # Consulta o preâmbulo contendo as constantes de calibração e escala
-        preamble_raw = self.ask(":WAVeform:PREamble?")
-        preamble = [float(val) for val in preamble_raw.split(",")]
+    def setup_external_trigger(
+        self,
+        *,
+        level_v: float,
+        probe_attenuation: float,
+        range_v: float,
+        slope: str = "POSitive",
+    ) -> None:
+        slope = slope.upper()
+        if slope not in {"POSITIVE", "NEGATIVE", "EITHER", "ALTERNATE"}:
+            raise ValueError(f"Slope inválido: {slope}")
+        for command in (
+            f":EXTernal:PROBe {probe_attenuation:.12g}",
+            ":EXTernal:UNITs VOLT",
+            f":EXTernal:RANGe {range_v:.12g}",
+            ":TRIGger:HFReject OFF",
+            ":TRIGger:MODE EDGE",
+            ":TRIGger:SWEep NORMal",
+            ":TRIGger:EDGE:SOURce EXTernal",
+            f":TRIGger:EDGE:LEVel {level_v:.12g}",
+            f":TRIGger:EDGE:SLOPe {slope}",
+        ):
+            self.write(command)
+        self.assert_no_errors("trigger externo")
+        actual_range = float(self.ask(":EXTernal:RANGe?"))
+        if abs(level_v) >= actual_range:
+            raise OscilloscopeError(
+                f"Nível de trigger {level_v} V fora da faixa externa {actual_range} V"
+            )
 
-        points = int(preamble[2])
-        x_increment = preamble[4]
-        x_origin = preamble[5]
-        x_reference = preamble[6]
-        y_increment = preamble[7]
-        y_origin = preamble[8]
-        y_reference = preamble[9]
+    def arm(self) -> None:
+        self.ask(":AER?")
+        self.ask(":TER?")
+        self.write(":SINGle")
 
-        # Transferência dos dados binários dos pontos de forma de onda
-        raw_bytes = self.adapter.connection.query_binary_values(
-            ":WAVeform:DATA?", datatype="B", container=np.ndarray
+    def force_trigger(self) -> None:
+        """Força uma aquisição no scope; não testa o caminho BNC externo."""
+        self.write(":TRIGger:FORCe")
+
+    def is_armed(self) -> bool:
+        condition = int(float(self.ask(":OPERegister:CONDition?")))
+        return bool(condition & 32)
+
+    def wait_for_armed(self, timeout_s: float = 5.0, poll_s: float = 0.05) -> None:
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            if self.is_armed():
+                return
+            time.sleep(poll_s)
+        raise TimeoutError("Keysight não entrou em WAIT FOR TRIGGER")
+
+    def wait_for_trigger_complete(self, timeout_s: float = 5.0, poll_s: float = 0.05) -> None:
+        deadline = time.monotonic() + timeout_s
+        trigger_seen = False
+        while time.monotonic() < deadline:
+            # TER confirma que houve evento de trigger; o bit RUN (peso 8)
+            # somente cai quando a aquisição SINGLE terminou. O guia Keysight
+            # recomenda exatamente esse polling para um DUT de disparo único.
+            trigger_seen = trigger_seen or int(float(self.ask(":TER?"))) == 1
+            operation_condition = int(float(self.ask(":OPERegister:CONDition?")))
+            if trigger_seen and not (operation_condition & 8):
+                self.assert_no_errors("conclusão da aquisição")
+                return
+            time.sleep(poll_s)
+        raise TimeoutError("Keysight não recebeu/concluiu o trigger externo")
+
+    @property
+    def sample_rate(self) -> float:
+        return float(self.ask(":ACQuire:SRATe:ANALog?"))
+
+    def get_waveform(self, channel: int, *, expected_points: int = 6000) -> Tuple[np.ndarray, np.ndarray]:
+        if channel not in self.channels:
+            raise ValueError(f"Canal inválido: {channel}")
+        for command in (
+            f":WAVeform:SOURce CHANnel{channel}",
+            ":WAVeform:FORMat BYTE",
+            ":WAVeform:UNSigned ON",
+            ":WAVeform:POINts:MODE NORMal",
+            ":WAVeform:POINts 60000",
+        ):
+            self.write(command)
+        preamble_text = self.ask(":WAVeform:PREamble?").strip()
+        fields = preamble_text.split(",")
+        if len(fields) != 10:
+            raise OscilloscopeError(f"Preamble inválida ({len(fields)} campos): {preamble_text!r}")
+        preamble = [float(value) for value in fields]
+        format_code, points = int(preamble[0]), int(preamble[2])
+        if format_code != 0:
+            raise OscilloscopeError(f"Formato da preamble é {format_code}; esperado BYTE=0")
+        if points < expected_points:
+            raise OscilloscopeError(
+                f"Preamble declara somente {points} pontos; mínimo {expected_points}"
+            )
+        # PyMeasure 0.16 CommonBase.binary_values() usa o parser genérico do
+        # Adapter e não a assinatura query_binary_values() do PyVISA. Para um
+        # bloco IEEE 488.2 do Keysight, a conexão VISA deve remover o header.
+        connection = getattr(self.adapter, "connection", None)
+        query_binary_values = getattr(connection, "query_binary_values", None)
+        if not callable(query_binary_values):
+            raise OscilloscopeError("Adapter não expõe uma conexão PyVISA binária")
+        raw = query_binary_values(
+            ":WAVeform:DATA?",
+            datatype="B",
+            is_big_endian=False,
+            container=np.array,
+            header_fmt="ieee",
+            expect_termination=True,
+            data_points=points,
         )
+        raw = np.asarray(raw, dtype=np.float64)
+        if raw.shape != (points,):
+            raise OscilloscopeError(
+                f"Waveform CH{channel} contém {raw.size} pontos; preamble declarou {points}"
+            )
+        # O guia 4000 X-Series reserva esses códigos em BYTE: 0=hole,
+        # 1=clipped low e 255=clipped high. Não salvar dados corrompidos.
+        if np.any(raw == 0):
+            raise OscilloscopeError(f"Waveform CH{channel} contém amostra ausente (código 0)")
+        if np.any((raw == 1) | (raw == 255)):
+            raise OscilloscopeError(f"Waveform CH{channel} sofreu clipping vertical")
+        x_increment, x_origin, x_reference = preamble[4:7]
+        y_increment, y_origin, y_reference = preamble[7:10]
+        if not all(np.isfinite(value) for value in preamble):
+            raise OscilloscopeError("Preamble contém NaN/Inf")
+        time_axis = (
+            (np.arange(points, dtype=np.float64) - x_reference) * x_increment
+            + x_origin
+        )
+        values = ((raw - y_reference) * y_increment) + y_origin
+        if not np.all(np.isfinite(values)) or np.ptp(time_axis) <= 0:
+            raise OscilloscopeError("Waveform convertida contém valores inválidos")
+        actual_rate = 1.0 / x_increment
+        if actual_rate < 30_000.0:
+            raise OscilloscopeError(
+                f"Preamble indica somente {actual_rate} Sa/s; mínimo 30000 Sa/s"
+            )
+        time_axis -= time_axis[0]
+        target_time = np.arange(expected_points, dtype=np.float64) / 30_000.0
+        if time_axis[-1] + x_increment < 0.2 - (0.5 / 30_000.0):
+            raise OscilloscopeError(
+                f"Waveform cobre apenas {time_axis[-1] + x_increment:.9f} s; esperado 0.2 s"
+            )
+        target_values = np.interp(target_time, time_axis, values)
+        return target_time, target_values
 
-        # Cálculo exato do vetor de tensão segundo a documentação Keysight
-        voltage = ((raw_bytes.astype(np.float32) - y_reference) * y_increment) + y_origin
+    def safe_stop(self) -> None:
+        try:
+            self.write(":STOP")
+        except Exception:
+            logger.exception("Não foi possível parar o Keysight")
 
-        # Cálculo do eixo horizontal temporal
-        time_axis = ((np.arange(len(raw_bytes), dtype=np.float32) - x_reference) * x_increment) + x_origin
-
-        return time_axis, voltage
+    def close(self) -> None:
+        self.safe_stop()
+        # VISAAdapter.close() fecha o recurso. Não feche aqui o ResourceManager:
+        # no backend Windows usado na bancada isso invalidou a sessão ASRL da
+        # AMETEK, que ainda precisava receber OUTPUT OFF.
+        self.adapter.close()

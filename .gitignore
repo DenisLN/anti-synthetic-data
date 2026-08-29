@@ -1,2 +1,10 @@
 .venv/
-resultados/*
+env/
+__pycache__/
+*.py[cod]
+resultados/
+logs/
+backups/
+*.zip
+.DS_Store
+.pytest_cache/

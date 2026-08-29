@@ -1,0 +1,3 @@
+numpy==2.0.2
+PyMeasure==0.16.0
+PyVISA==1.14.1
