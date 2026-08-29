@@ -55,6 +55,9 @@ class AmetekMX30:
     TRACE_POINTS = 1024
     CAPTURE_POINTS = 6000
     MAX_SOURCE_PEAK_V = 425.0
+    # Teto documentado do CSINe nativo (cap. 6.4 do manual SCPI). Acima disso,
+    # a classe 05 (HARMONICS) desvia para TRACe (gerar() + program_capture()).
+    MAX_CSINE_THD_PCT = 20.0
 
     def __init__(
         self,
@@ -407,6 +410,94 @@ class AmetekMX30:
             )
         self.write(f"SOURce:CURRent:LEVel:IMMediate:AMPLitude {value:.8g}")
         self._sim["current"] = value
+
+    def trigger_step(self, voltage_rms: float) -> None:
+        """Programa um STEP para ``voltage_rms`` no próximo *TRG.
+
+        Usado tanto para gerar o pulso de trigger (BOT) de uma captura sem
+        distúrbio (STEP para o mesmo valor já em regime) quanto para retomar
+        o nível base depois de um efeito imediato (ex.: DC_OFFSET).
+        """
+        voltage_rms = float(voltage_rms)
+        if not 0 <= voltage_rms <= self.max_voltage_rms:
+            raise ParameterOutOfBoundsError(
+                f"Tensão {voltage_rms} Vrms fora do limite de software 0..{self.max_voltage_rms}"
+            )
+        self.write("VOLTage:MODE STEP")
+        self.write(f"VOLTage:TRIGgered {voltage_rms:.8g}")
+
+    def trigger_pulse(self, voltage_rms: float, *, width_s: float) -> None:
+        """Programa um PULSe nativo: cai/sobe para ``voltage_rms`` por ``width_s``
+        a partir do *TRG, e retorna ao nível imediato em seguida. Usado por
+        SAG/SWELL/INTERRUPTION (cap. 6.4.3 do manual)."""
+        voltage_rms = float(voltage_rms)
+        width_s = float(width_s)
+        if not 0 <= voltage_rms <= self.max_voltage_rms:
+            raise ParameterOutOfBoundsError(
+                f"Tensão {voltage_rms} Vrms fora do limite de software 0..{self.max_voltage_rms}"
+            )
+        if not width_s > 0:
+            raise ParameterOutOfBoundsError(f"Duração do pulso deve ser positiva; recebido {width_s}")
+        self.write("VOLTage:MODE PULSe")
+        self.write(f"VOLTage:TRIGgered {voltage_rms:.8g}")
+        self.write(f"PULSe:WIDTh {width_s:.8g}")
+
+    def configure_harmonics_csine(self, thd_pct: float) -> None:
+        """Programa o gerador nativo de senoide clipada (CSINe) para o THD
+        pedido, em percentual. Recusa acima de ``MAX_CSINE_THD_PCT`` — nesse
+        caso o experimento deve sintetizar a forma em Python e subir por
+        ``program_capture`` (ver classe 05, ``usar_trace``)."""
+        thd_pct = float(thd_pct)
+        if not 0 < thd_pct <= self.MAX_CSINE_THD_PCT:
+            raise ParameterOutOfBoundsError(
+                f"THD {thd_pct}% fora do teto do CSINe nativo (0..{self.MAX_CSINE_THD_PCT}%)"
+            )
+        self.write(f"SOURce:FUNCtion:SHAPe:CSINusoid {thd_pct:.8g}")
+        self.write("SOURce:FUNCtion:SHAPe CSINe")
+
+    def frequency_drift_list(
+        self, start_hz: float, end_hz: float, *, voltage_rms: float, dwell_s: float,
+    ) -> None:
+        """Programa uma rampa de frequência aproximada por 2 pontos de
+        ``LIST:FREQuency`` (início/fim), cada um com duração ``dwell_s``.
+        Usado pela classe 18 (FREQUENCY_DRIFT)."""
+        start_hz, end_hz, voltage_rms, dwell_s = (
+            float(start_hz), float(end_hz), float(voltage_rms), float(dwell_s)
+        )
+        for label, value in (("start_hz", start_hz), ("end_hz", end_hz)):
+            if not 45.0 <= value <= 500.0:
+                raise ParameterOutOfBoundsError(f"{label} {value} Hz fora de 45..500 Hz")
+        if not 0 <= voltage_rms <= self.max_voltage_rms:
+            raise ParameterOutOfBoundsError(
+                f"Tensão {voltage_rms} Vrms fora do limite de software 0..{self.max_voltage_rms}"
+            )
+        if not dwell_s > 0:
+            raise ParameterOutOfBoundsError(f"Dwell deve ser positivo; recebido {dwell_s}")
+        self.write("FREQuency:MODE LIST")
+        self.write(f"LIST:FREQuency {start_hz:.8g},{end_hz:.8g}")
+        self.write(f"LIST:VOLTage {voltage_rms:.8g},{voltage_rms:.8g}")
+        self.write(f"LIST:DWELl {dwell_s:.8g},{dwell_s:.8g}")
+        self.write("LIST:REPeat:COUNt 1,1")
+        self.write("LIST:COUNt 1")
+        self.write("LIST:STEP AUTO")
+        self.write("VOLTage:MODE LIST")
+
+    def enable_dc_offset(self, offset_v: float, *, ac_peak_v: float) -> None:
+        """Liga o modo ACDC e programa um offset contínuo permanente de
+        ``offset_v``. ``ac_peak_v`` é o pico AC que vai conviver com o offset
+        (a base senoidal); a soma dos dois nunca pode exceder ``max_peak_v`` —
+        diferente do AC puro, aqui o pico físico real é offset + amplitude AC,
+        não só a amplitude AC."""
+        offset_v = float(offset_v)
+        ac_peak_v = float(ac_peak_v)
+        combined_peak_v = abs(offset_v) + ac_peak_v
+        if combined_peak_v > self.max_peak_v:
+            raise ParameterOutOfBoundsError(
+                f"Offset {offset_v:.3f} V + pico AC {ac_peak_v:.3f} V = {combined_peak_v:.3f} V "
+                f"excede o limite de pico {self.max_peak_v:.3f} V"
+            )
+        self.write("SOURce:MODE ACDC")
+        self.write(f"SOURce:VOLTage:OFFSet {offset_v:.8g}")
 
     def wait_ready(self, settle_s: float = 0.25) -> None:
         """Aguarda comandos imediatos sem depender de ``*OPC?``.

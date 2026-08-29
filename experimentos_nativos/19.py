@@ -8,25 +8,23 @@ import math
 
 import numpy as np
 
-from comum import executar_classe_nativa
+from mestre import ExperimentoNativo
 
 
-def gerar(t, f0, capture_index, rng):
-    dc_offset = float(rng.uniform(0.02, 0.10))
-    voltage = np.sin(2.0 * np.pi * f0 * t) + dc_offset
-    return voltage, {"dc_offset_pu": dc_offset}
+class Experimento(ExperimentoNativo):
+    id = "19"
+    nome = "DC_OFFSET"
 
+    def gerar(self, t, f0, capture_index, rng):
+        dc_offset = float(rng.uniform(0.02, 0.10))
+        voltage = np.sin(2.0 * np.pi * f0 * t) + dc_offset
+        return voltage, {"dc_offset_pu": dc_offset}
 
-def _configurar(fonte, config, capture_index):
-    seed = config.base_seed + 19_000_000 + capture_index
-    dc_offset = float(np.random.default_rng(seed).uniform(0.02, 0.10))
-    offset_v = dc_offset * config.base_voltage_rms * math.sqrt(2.0)
-    fonte.write("SOURce:MODE ACDC")
-    fonte.write(f"SOURce:VOLTage:OFFSet {offset_v:.8g}")
-    fonte.write("VOLTage:MODE STEP")
-    fonte.write(f"VOLTage:TRIGgered {config.base_voltage_rms:.8g}")
-    return {"dc_offset_pu": dc_offset}
-
-
-def run(fonte, osc, config):
-    executar_classe_nativa(config, fonte, osc, "19", "DC_OFFSET", gerar, _configurar)
+    def configurar(self, capture_index):
+        seed = self.config.base_seed + 19_000_000 + capture_index
+        dc_offset = float(np.random.default_rng(seed).uniform(0.02, 0.10))
+        ac_peak_v = self.config.base_voltage_rms * math.sqrt(2.0)
+        offset_v = dc_offset * ac_peak_v
+        self.fonte.enable_dc_offset(offset_v, ac_peak_v=ac_peak_v)
+        self.fonte.trigger_step(self.config.base_voltage_rms)
+        return {"dc_offset_pu": dc_offset}

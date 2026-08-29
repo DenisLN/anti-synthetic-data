@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 from pymeasure.adapters import Adapter
 
-from ametek_orm import AmetekMX30
+from ametek_orm import AmetekMX30, ParameterOutOfBoundsError
 from oscilloscope_orm import KeysightDSOX4034A
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -15,12 +15,24 @@ EXPERIMENT_DIRS = (PROJECT_ROOT / "experimentos_nativos", PROJECT_ROOT / "experi
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from experimentos_waveform.comum import ruido_awgn, snr_medida  # noqa: E402
+from sinais import ruido_awgn, snr_medida  # noqa: E402
 
 
-def _load_gerar(experiment_id: str):
-    """Carrega gerar() de um experimentos_nativos/NN.py ou experimentos_waveform/NN.py,
-    do mesmo jeito que mestre.executar_experimento() faz em produção."""
+class _BancadaFake:
+    """Suficiente para instanciar um Experimento sem abrir instrumento nenhum:
+    gerar() só usa self.config/self.fonte/self.osc se explicitamente
+    sobrescrito, e nenhuma classe hoje faz isso."""
+
+    config = None
+    fonte = None
+    osc = None
+
+
+def _load_experimento(experiment_id: str):
+    """Carrega a classe Experimento de um experimentos_nativos/NN.py ou
+    experimentos_waveform/NN.py, do mesmo jeito que
+    Bancada.executar_experimento() faz em produção, e instancia com uma
+    bancada fake (só para poder chamar gerar())."""
     name = f"{experiment_id}.py"
     candidates = [directory / name for directory in EXPERIMENT_DIRS if (directory / name).is_file()]
     assert len(candidates) == 1, f"{name}: encontrado em {candidates}"
@@ -28,15 +40,12 @@ def _load_gerar(experiment_id: str):
     module_name = f"teste_{script_path.parent.name}_{script_path.stem}"
     spec = importlib.util.spec_from_file_location(module_name, script_path)
     module = importlib.util.module_from_spec(spec)
-    directory = str(script_path.parent)
-    sys.modules.pop("comum", None)
-    sys.path.insert(0, directory)
-    try:
-        spec.loader.exec_module(module)
-    finally:
-        sys.path.remove(directory)
-        sys.modules.pop("comum", None)
-    return module.gerar
+    spec.loader.exec_module(module)
+    return module.Experimento(_BancadaFake())
+
+
+def _load_gerar(experiment_id: str):
+    return _load_experimento(experiment_id).gerar
 
 
 class ScriptedVisaConnection:
@@ -152,6 +161,34 @@ class AmetekTests(unittest.TestCase):
         source = AmetekMX30(simulated=True)
         with self.assertRaises(PermissionError):
             source.output_enabled = True
+
+    def test_trigger_pulse_rejects_voltage_above_limit(self):
+        source = AmetekMX30(simulated=True, max_voltage_rms=10.0, max_peak_v=100.0, max_current_a=0.5)
+        with self.assertRaises(ParameterOutOfBoundsError):
+            source.trigger_pulse(11.0, width_s=0.060)
+
+    def test_trigger_pulse_and_trigger_step_compile_expected_commands(self):
+        source = AmetekMX30(simulated=True, max_voltage_rms=10.0, max_peak_v=100.0, max_current_a=0.5)
+        source.trigger_step(5.0)
+        source.trigger_pulse(1.5, width_s=0.060)
+        commands = "\n".join(source.command_log).upper()
+        self.assertIn("VOLTAGE:MODE STEP", commands)
+        self.assertIn("VOLTAGE:TRIGGERED 5", commands)
+        self.assertIn("VOLTAGE:MODE PULSE", commands)
+        self.assertIn("PULSE:WIDTH 0.06", commands)
+
+    def test_configure_harmonics_csine_rejects_above_documented_ceiling(self):
+        source = AmetekMX30(simulated=True, max_voltage_rms=10.0, max_peak_v=100.0, max_current_a=0.5)
+        with self.assertRaises(ParameterOutOfBoundsError):
+            source.configure_harmonics_csine(30.0)
+        source.configure_harmonics_csine(20.0)
+        self.assertIn("SOURCE:FUNCTION:SHAPE CSINE", "\n".join(source.command_log).upper())
+
+    def test_enable_dc_offset_rejects_combined_peak_above_limit(self):
+        source = AmetekMX30(simulated=True, max_voltage_rms=10.0, max_peak_v=15.0, max_current_a=0.5)
+        with self.assertRaises(ParameterOutOfBoundsError):
+            source.enable_dc_offset(10.0, ac_peak_v=10.0)
+        source.enable_dc_offset(1.0, ac_peak_v=10.0)
 
     def test_capture_compiles_to_documented_trace_and_list_commands(self):
         source = AmetekMX30(

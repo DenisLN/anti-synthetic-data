@@ -14,7 +14,7 @@ from mestre import (
     GRID_FREQUENCY_HZ,
     OUTPUT_ARMED,
     POINTS,
-    inicializar_instrumentos,
+    Bancada,
 )
 
 
@@ -24,10 +24,10 @@ def normal_waveform() -> np.ndarray:
 
 
 def run(trigger_test: bool, low_voltage: bool) -> int:
-    source = None
-    scope = None
+    bancada = None
     try:
-        source, scope, _config = inicializar_instrumentos(require_output=low_voltage)
+        bancada = Bancada.from_env(require_output=low_voltage)
+        source, scope = bancada.fonte, bancada.osc
         if scope is None:
             raise RuntimeError("Preflight físico requer BENCH_MODE=1")
         print(f"AMETEK OK: {source.idn}")
@@ -38,7 +38,7 @@ def run(trigger_test: bool, low_voltage: bool) -> int:
         )
         print(f"KEYSIGHT VISA: {scope.adapter}")
         if low_voltage:
-            # inicializar_instrumentos já energizou o baseline quando
+            # Bancada.from_env já energizou o baseline quando
             # require_output=True e ARM_OUTPUT=YES (saída fica ligada durante
             # toda a bateria, não só durante este teste).
             if not OUTPUT_ARMED:
@@ -92,10 +92,8 @@ def run(trigger_test: bool, low_voltage: bool) -> int:
                 print("Aquisição/download do Keysight confirmados; BNC ainda NÃO testado")
         return 0
     finally:
-        if source is not None:
-            source.disconnect()
-        if scope is not None:
-            scope.close()
+        if bancada is not None:
+            bancada.shutdown()
 
 
 def main() -> int:
