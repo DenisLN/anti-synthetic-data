@@ -76,7 +76,7 @@ def env_float_tuple(name: str, default: Iterable[float]) -> Tuple[float, ...]:
 # Configuração central da bancada (única fonte de verdade)
 # ---------------------------------------------------------------------------
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RESULTS_DIR = PROJECT_ROOT / "resultados"
 EXPERIMENT_DIRS = (PROJECT_ROOT / "experimentos_nativos", PROJECT_ROOT / "experimentos_waveform")
 

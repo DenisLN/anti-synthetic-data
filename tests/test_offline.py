@@ -7,14 +7,14 @@ from pathlib import Path
 import numpy as np
 from pymeasure.adapters import Adapter
 
-from ametek_orm import AmetekMX30, ParameterOutOfBoundsError
-from oscilloscope_orm import KeysightDSOX4034A
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+LOGICA_DIR = PROJECT_ROOT / "logica"
 EXPERIMENT_DIRS = (PROJECT_ROOT / "experimentos_nativos", PROJECT_ROOT / "experimentos_waveform")
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+if str(LOGICA_DIR) not in sys.path:
+    sys.path.insert(0, str(LOGICA_DIR))
 
+from ametek_orm import AmetekMX30, ParameterOutOfBoundsError  # noqa: E402
+from oscilloscope_orm import KeysightDSOX4034A  # noqa: E402
 from sinais import ruido_awgn, snr_medida  # noqa: E402
 
 

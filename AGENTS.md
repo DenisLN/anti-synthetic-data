@@ -18,7 +18,7 @@ separados. A fonte e o osciloscópio já devem estar conectados assim:
 Abra um terminal como usuário normal:
 
     cd C:\Users\denis\TCC\code
-    START_BENCH.cmd
+    scripts\START_BENCH.cmd
 
 O script cria o ambiente Python automaticamente se ele ainda não existir.
 Depois faz internamente identificação, confirmação de OUTPUT OFF, trigger BNC,

@@ -4,7 +4,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-Set-Location $PSScriptRoot
+$ProjectRoot = Split-Path $PSScriptRoot -Parent
+Set-Location $ProjectRoot
 $utf8 = New-Object System.Text.UTF8Encoding($false)
 [Console]::InputEncoding = $utf8
 [Console]::OutputEncoding = $utf8
@@ -12,10 +13,11 @@ $OutputEncoding = $utf8
 $env:PYTHONUTF8 = "1"
 
 Write-Host "Preparando/atualizando o ambiente Python..."
-.\setup_windows.ps1
-$python = Join-Path $PSScriptRoot "env\Scripts\python.exe"
+& (Join-Path $PSScriptRoot "setup_windows.ps1")
+$python = Join-Path $ProjectRoot "env\Scripts\python.exe"
+$logica = Join-Path $ProjectRoot "logica"
 
-. .\bench_config.ps1
+. (Join-Path $PSScriptRoot "bench_config.ps1")
 
 if ([string]::IsNullOrWhiteSpace($env:VOLTAGE_PROBE_ATTENUATION)) {
     $probe = Read-Host "Digite o fator EXATO da probe de tensão instalada (ex.: 10, 100)"
@@ -101,14 +103,17 @@ function Invoke-CheckedPython {
     }
 }
 
+$preflightPy = Join-Path $logica "preflight.py"
+$mestrePy = Join-Path $logica "mestre.py"
+
 switch ($Stage) {
     "Communication" {
         Write-Host "Comunicação e identificação, OUTPUT OFF"
-        Invoke-CheckedPython -Arguments @("preflight.py")
+        Invoke-CheckedPython -Arguments @($preflightPy)
     }
     "Trigger" {
         Write-Host "Aquisição forçada do Keysight, OUTPUT OFF (BNC ainda não testado)"
-        Invoke-CheckedPython -Arguments @("preflight.py", "--trigger-test")
+        Invoke-CheckedPython -Arguments @($preflightPy, "--trigger-test")
     }
     "LowVoltage" {
         $confirmation = Read-Host "Confirme probe, cabos, E-stop e EUT. Digite ENERGIZAR-5V"
@@ -117,7 +122,7 @@ switch ($Stage) {
         }
         $env:ARM_OUTPUT = "YES"
         Write-Host "Validação automática em baixa tensão (5 Vrms)"
-        Invoke-CheckedPython -Arguments @("preflight.py", "--low-voltage")
+        Invoke-CheckedPython -Arguments @($preflightPy, "--low-voltage")
     }
     "Run" {
         $confirmation = Read-Host "Todos os preflights passaram? Digite EXECUTAR-20-CLASSES"
@@ -127,14 +132,14 @@ switch ($Stage) {
         $env:ARM_OUTPUT = "YES"
         $env:REAL_CAPTURES_PER_CLASS = "1"
         Write-Host "Uma captura de cada uma das 20 classes"
-        Invoke-CheckedPython -Arguments @("mestre.py")
+        Invoke-CheckedPython -Arguments @($mestrePy)
     }
     "Full" {
         Write-Host "Etapa 1/4: comunicação e identificação, OUTPUT OFF"
-        Invoke-CheckedPython -Arguments @("preflight.py")
+        Invoke-CheckedPython -Arguments @($preflightPy)
 
         Write-Host "Etapa 2/4: aquisição forçada do Keysight, OUTPUT OFF (BNC ainda não testado)"
-        Invoke-CheckedPython -Arguments @("preflight.py", "--trigger-test")
+        Invoke-CheckedPython -Arguments @($preflightPy, "--trigger-test")
 
         $confirmation = Read-Host "Confirme probe, cabos, E-stop e EUT. Digite ENERGIZAR"
         if ($confirmation -cne "ENERGIZAR") {
@@ -142,11 +147,11 @@ switch ($Stage) {
         }
         $env:ARM_OUTPUT = "YES"
         Write-Host "Etapa 3/4: validação automática em baixa tensão (5 Vrms)"
-        Invoke-CheckedPython -Arguments @("preflight.py", "--low-voltage")
+        Invoke-CheckedPython -Arguments @($preflightPy, "--low-voltage")
 
         Write-Host "Etapa 4/4: uma captura de cada uma das 20 classes"
         $env:REAL_CAPTURES_PER_CLASS = "1"
-        Invoke-CheckedPython -Arguments @("mestre.py")
+        Invoke-CheckedPython -Arguments @($mestrePy)
     }
 }
 
