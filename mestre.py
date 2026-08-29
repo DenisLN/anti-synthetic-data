@@ -462,12 +462,20 @@ class ExperimentoBase(ABC):
         self,
         *,
         tempo_ms: np.ndarray,
+        tensao_limpa: np.ndarray,
         tensao_por_snr: Dict[float, np.ndarray],
         ids: List[str],
         corrente: Optional[np.ndarray],
         metadados: List[dict],
     ) -> None:
-        """Grava a classe completa em .npz (um arquivo por nível de SNR) + metadata.jsonl.
+        """Grava a classe completa: dados puros (sem ruído) direto em
+        ``resultados/``, uma cópia com AWGN aplicado por nível de SNR em
+        ``resultados/snr_XXdb/`` (mesmo nome de arquivo, pasta diferente), e
+        um metadata.jsonl comum às duas.
+
+        Os dados puros são o que efetivamente saiu do gerador/instrumento —
+        gravá-los sempre significa que aplicar (ou reaplicar) ruído no futuro,
+        com outro SNR ou outra técnica, não exige regerar nem recapturar nada.
 
         Escrita atômica: grava em ``.part`` e só promove para o nome final
         (via ``os.replace``) depois que tudo terminou sem erro.
@@ -475,6 +483,13 @@ class ExperimentoBase(ABC):
         config = self.config
         ids_array = np.array(ids, dtype=object)
         final_paths = []
+
+        config.results_dir.mkdir(parents=True, exist_ok=True)
+        final_path = config.results_dir / f"{self.id}_{self.nome.lower()}.npz"
+        partial_path = final_path.with_suffix(".npz.part")
+        with partial_path.open("wb") as handle:
+            np.savez(handle, tempo_ms=tempo_ms, tensao_pu=tensao_limpa, classe=self.nome, id_captura=ids_array)
+        final_paths.append((partial_path, final_path))
 
         for snr_db, tensao in tensao_por_snr.items():
             rotulo = str(int(snr_db)) if float(snr_db).is_integer() else str(snr_db).replace(".", "_")
@@ -525,6 +540,7 @@ class ExperimentoBase(ABC):
             )
             self._preparar_acquisicao_real()
 
+        tensao_limpa = np.empty((total, self.config.points), dtype=np.float64)
         tensao_por_snr: Dict[float, np.ndarray] = {
             snr_db: np.empty((total, self.config.points), dtype=np.float64)
             for snr_db in self.config.snr_levels_db
@@ -560,6 +576,7 @@ class ExperimentoBase(ABC):
             tempo_ms_eixo = time_s * 1000.0
             capture_id = f"{self.id}-{capture_index + 1:04d}"
             ids.append(capture_id)
+            tensao_limpa[capture_index] = measured_voltage_pu
 
             medidas_snr = {}
             for snr_db in self.config.snr_levels_db:
@@ -585,8 +602,8 @@ class ExperimentoBase(ABC):
                 logger.info("[%s] captura %d/%d concluída", self.id, capture_index + 1, total)
 
         self._salvar_classe(
-            tempo_ms=tempo_ms_eixo, tensao_por_snr=tensao_por_snr, ids=ids,
-            corrente=corrente, metadados=metadados,
+            tempo_ms=tempo_ms_eixo, tensao_limpa=tensao_limpa, tensao_por_snr=tensao_por_snr,
+            ids=ids, corrente=corrente, metadados=metadados,
         )
         logger.info("[%s] classe concluída: %s", self.id, self.nome)
 
