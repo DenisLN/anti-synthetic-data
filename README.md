@@ -13,7 +13,7 @@ de energizar qualquer coisa. Se você só vai apertar o botão, vá direto para 
 [seção 5](#5-operação-na-bancada-física-o-que-o-operador-precisa-saber).
 
 O histórico detalhado de decisões e mudanças de cada versão está em
-[`CHANGELOG/`](CHANGELOG/) (`v1.0.md` a `v1.3.md`) — este README é um resumo
+[`CHANGELOG/`](CHANGELOG/) (`v1.0.md` a `v1.4.md`) — este README é um resumo
 operacional, não substitui esses documentos.
 
 ---
@@ -62,6 +62,7 @@ logica/                     Todo o código Python "de motor" do projeto
     sinais.py                  Matemática de sinal pura (janela, ruído AWGN, SNR medida, formas de onda)
     mestre.py                  Config + classes Bancada/ExperimentoBase + orquestração dos 20 experimentos
     preflight.py                Validação progressiva em bancada real, sem energizar por padrão
+    visualizador.py             CLI: gera um PNG de inspeção de um .npz de resultados/ e abre no visualizador do SO
 
 scripts/                    Todo o PowerShell/CMD que o operador roda no Windows
     bench_config.ps1           ÚNICA fonte de variáveis de ambiente da bancada física
@@ -70,6 +71,7 @@ scripts/                    Todo o PowerShell/CMD que o operador roda no Windows
     run_simulation_windows.ps1 Gera o dataset simulado (sem hardware)
     setup_windows.ps1          Cria/atualiza o venv (env/) e instala requirements.txt
     package_windows.ps1        Empacota o repositório em .zip para transporte
+    visualizar_npz.ps1         Wrapper de logica/visualizador.py
 
 experimentos_nativos/       Classes cujo distúrbio é um recurso NATIVO da AMETEK (PULSe/LIST/CSINe)
     01.py .. 19.py           NORMAL, SAG, SWELL, INTERRUPTION, HARMONICS, FREQUENCY_DRIFT, DC_OFFSET
@@ -221,8 +223,8 @@ antes de conectar qualquer cabo.
 
 Cria/atualiza o virtualenv em `env/` (Python 3.9–3.12, 3.11 recomendado) e
 instala [`requirements.txt`](requirements.txt) (`numpy`, `PyMeasure`,
-`PyVISA`). `start_bench_windows.ps1` já chama isso sozinho — normalmente você
-não precisa rodar à parte.
+`PyVISA`, `matplotlib`). `start_bench_windows.ps1` já chama isso sozinho —
+normalmente você não precisa rodar à parte.
 
 ### 5.3 O único comando do operador
 
@@ -380,6 +382,28 @@ Roda os dois ORMs em modo simulado (`simulated=True`, sem porta serial) contra
 todas as 20 classes, incluindo a regressão do bug de ciclo/frequência
 descrito em `CHANGELOG/v1.0.md` (seção 6.2).
 
+### Visualizando os dados capturados
+
+Cada `.npz` em `resultados/` guarda **várias capturas empilhadas**, não um
+waveform só — `tensao_pu` tem shape `(N, 6000)`, uma linha por captura (no
+modo simulado, `N = SIM_CAPTURES_PER_CLASS`, 2000 por padrão; na bancada
+real, `N = REAL_CAPTURES_PER_CLASS`, 1 por padrão). É por isso que os 20
+arquivos de `resultados/` têm praticamente o mesmo tamanho (~91,6 MB): o
+`.npz` não é comprimido, então o tamanho em disco só depende da forma do
+array, igual para todas as classes — não do conteúdo.
+
+Para inspecionar visualmente um arquivo:
+
+```powershell
+.\scripts\visualizar_npz.ps1 -Npz resultados\02_sag.npz
+# ou direto:
+.\env\Scripts\python.exe logica\visualizador.py resultados\02_sag.npz --captura 12
+```
+
+Gera um PNG (amostra de capturas sobrepostas, uma captura individual,
+envelope média±desvio-padrão, resumo textual) e abre no visualizador de
+imagens padrão do sistema. Veja `--help` para todas as opções.
+
 ---
 
 ## 7. Empacotamento
@@ -407,6 +431,8 @@ resultado de execuções anteriores.
   dos dados com ruído.
 - [`CHANGELOG/v1.3.md`](CHANGELOG/v1.3.md) — reorganização em `logica/` e
   `scripts/`.
+- [`CHANGELOG/v1.4.md`](CHANGELOG/v1.4.md) — visualizador de capturas `.npz`
+  (`logica/visualizador.py`).
 - `docs/AMETEK_MX_SCPI_Programming_Manual.pdf` e
   `docs/Keysight_4000X_Programmers_Guide.pdf` — manuais SCPI originais dos
   dois instrumentos.
