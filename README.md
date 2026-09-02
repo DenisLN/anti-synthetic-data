@@ -62,11 +62,13 @@ logica/                     Todo o código Python "de motor" do projeto
     sinais.py                  Matemática de sinal pura (janela, ruído AWGN, SNR medida, formas de onda)
     mestre.py                  Config + classes Bancada/ExperimentoBase + orquestração dos 20 experimentos
     preflight.py                Validação progressiva em bancada real, sem energizar por padrão
+    preflight_new.py            Validação estendida: comandos nativos dos dois ORMs (STEP/PULSe/CSINe/
+                                 LIST:FREQuency/ACDC/MEASure* da AMETEK, canal 2 do Keysight), log por etapa
     visualizador.py             CLI: gera um PNG de inspeção de um .npz de resultados/ e abre no visualizador do SO
 
 scripts/                    Todo o PowerShell/CMD que o operador roda no Windows
     bench_config.ps1           ÚNICA fonte de variáveis de ambiente da bancada física
-    start_bench_windows.ps1    Fluxo guiado (-Stage Full/Communication/Trigger/LowVoltage/Run)
+    start_bench_windows.ps1    Fluxo guiado (-Stage Full/Communication/Trigger/LowVoltage/NativeCommands/Run)
     START_BENCH.cmd            Ponto de entrada único do operador (chama -Stage Full)
     run_simulation_windows.ps1 Gera o dataset simulado (sem hardware)
     setup_windows.ps1          Cria/atualiza o venv (env/) e instala requirements.txt
@@ -233,7 +235,7 @@ cd C:\Users\denis\TCC\code
 scripts\START_BENCH.cmd
 ```
 
-Isso roda `start_bench_windows.ps1 -Stage Full`, que executa **4 etapas em
+Isso roda `start_bench_windows.ps1 -Stage Full`, que executa **5 etapas em
 sequência**, cada uma abortando a bateria inteira se falhar:
 
 | Etapa | O que faz | Saída física durante o teste |
@@ -241,7 +243,8 @@ sequência**, cada uma abortando a bateria inteira se falhar:
 | 1. Comunicação | Identifica AMETEK e Keysight (`*IDN?`), confirma protocolo/porta | **OFF** |
 | 2. Trigger | Força aquisição do Keysight para validar download/decodificação da waveform (BNC ainda **não** testado aqui — a MX30 não arma transiente com saída OFF) | **OFF** |
 | 3. Baixa tensão | Pede confirmação `ENERGIZAR`, energiza o baseline e valida BNC + trigger real + RMS medido em 5 Vrms (tolerância 0,25 V ou 10%) | **ON, 5 Vrms** |
-| 4. Bateria completa | Uma captura de cada uma das 20 classes | **ON** |
+| 4. Comandos nativos | `preflight_new.py --native-commands`: exercita STEP, PULSe (SAG), CSINe, LIST:FREQuency e ACDC/offset da AMETEK, as medições `MEASure:*` e o canal 2 (disable/configure) do Keysight, cada etapa validada e logada individualmente (OK/FALHOU) | **ON**, na tensão escolhida na etapa 3 |
+| 5. Bateria completa | Uma captura de cada uma das 20 classes | **ON** |
 
 Também é possível rodar uma etapa isolada:
 
@@ -249,6 +252,7 @@ Também é possível rodar uma etapa isolada:
 .\scripts\start_bench_windows.ps1 -Stage Communication
 .\scripts\start_bench_windows.ps1 -Stage Trigger
 .\scripts\start_bench_windows.ps1 -Stage LowVoltage
+.\scripts\start_bench_windows.ps1 -Stage NativeCommands
 .\scripts\start_bench_windows.ps1 -Stage Run
 ```
 
@@ -262,15 +266,17 @@ contornado ou escriptado:
    gravado na probe diferencial instalada (ex.: `10`, `100`). Nunca
    invente esse valor — ele é usado para escalar a tensão medida pelo
    osciloscópio de volta ao valor real no EUT.
-2. **Tensão RMS e frequência do teste** (etapas `Full`/`LowVoltage`/`Run`):
+2. **Tensão RMS e frequência do teste** (etapas `Full`/`LowVoltage`/
+   `NativeCommands`/`Run`):
    digitadas em V e Hz (ex.: `127`, `60`). O script recalcula
    automaticamente, a partir da tensão escolhida, o range da fonte (fixo em
    300 Vrms se `vrms ≤ 270`) e o pico máximo permitido (98% do teto físico do
    range, ~415 Vp) — não edite esses dois manualmente.
-3. **`ENERGIZAR`** (etapa `Full`) ou **`ENERGIZAR-5V`** (etapa
-   `LowVoltage` isolada): antes de digitar, confirme fisicamente **probe,
-   cabos, botão de emergência (E-stop) e o EUT** conectado. Só depois disso
-   a saída é autorizada (`ARM_OUTPUT=YES`).
+3. **`ENERGIZAR`** (etapa `Full`), **`ENERGIZAR-5V`** (etapa `LowVoltage`
+   isolada) ou **`ENERGIZAR-COMANDOS`** (etapa `NativeCommands` isolada):
+   antes de digitar, confirme fisicamente **probe, cabos, botão de
+   emergência (E-stop) e o EUT** conectado. Só depois disso a saída é
+   autorizada (`ARM_OUTPUT=YES`).
 4. **`EXECUTAR-20-CLASSES`** (etapa `Run` isolada): confirma que todos os
    preflights já passaram antes de rodar a bateria completa.
 
@@ -287,7 +293,11 @@ O procedimento é sempre o mesmo, e não deve ser pulado:
 2. **Não execute novamente de forma automática.** Investigue a causa antes
    de tentar de novo.
 3. **Recupere o log mais recente** em `logs\startup-bench-*.log` — cada
-   execução gera um arquivo timestampado com toda a saída do Python.
+   execução gera um arquivo timestampado com toda a saída do Python. A etapa
+   `NativeCommands` também grava seu próprio log por etapa em
+   `logs\preflight_new-<etapa>-<timestamp>.log`, com uma linha `OK:`/`FALHOU:`
+   para cada comando exercitado (STEP, PULSe, CSINe, LIST:FREQuency, ACDC,
+   `MEASure:*`, canal 2).
 4. **Não remova validações** de IDN, timeout, tamanho de waveform (6000
    pontos) ou SCPI só para "fazer passar" — elas existem porque já
    pegaram problemas reais (ver `CHANGELOG/v1.0.md`, seção 6.2, para o
@@ -331,7 +341,7 @@ fluxo PowerShell). Campos que o operador tipicamente revisa:
 | `AMETEK_CLEAR_USER_WAVEFORMS` | `1` apaga formas `TRACe` do usuário na conexão, mantém SIN/SQU/CSIN internas | |
 | `KEYSIGHT_RESOURCE` | Endereço VISA do osciloscópio | Específico desta unidade (`MY59240844`) |
 | `VOLTAGE_PROBE_ATTENUATION` | Fator da probe diferencial de tensão | **Obrigatório em `BENCH_MODE=1`**; sem valor, o script pergunta interativamente |
-| `BASE_VOLTAGE_RMS` / `GRID_FREQUENCY_HZ` | Tensão/frequência base do teste | Perguntadas interativamente nas etapas `Full`/`LowVoltage`/`Run` |
+| `BASE_VOLTAGE_RMS` / `GRID_FREQUENCY_HZ` | Tensão/frequência base do teste | Perguntadas interativamente nas etapas `Full`/`LowVoltage`/`NativeCommands`/`Run` |
 | `SOURCE_VOLTAGE_RANGE_RMS` / `EUT_MAX_VOLTAGE_RMS` / `EUT_MAX_PEAK_V` | Limites físicos derivados da tensão escolhida | Calculados pelo script — não sobrescrever manualmente |
 | `CURRENT_LIMIT_A` / `CURRENT_PROTECTION_DELAY_S` | Proteção de corrente da fonte | |
 | `CAPTURE_CURRENT` | Liga captura de corrente | Ver 5.6 — requer `CURRENT_PROBE_ATTENUATION` e `CURRENT_BASE_A` |

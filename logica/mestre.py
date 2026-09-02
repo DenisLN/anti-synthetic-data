@@ -650,9 +650,13 @@ class ExperimentoNativo(ExperimentoBase):
                 base_voltage_rms=self.config.base_voltage_rms,
                 frequency_hz=self.config.grid_frequency_hz,
             )
+            self.osc.arm()
+            self.osc.wait_for_armed()
             self.fonte.arm_transient()
         else:
             parametros = self.configurar(capture_index)
+            self.osc.arm()
+            self.osc.wait_for_armed()
             self.fonte.arm()
         self.fonte.trigger()
         self.osc.wait_for_trigger_complete(timeout_s=5.0)

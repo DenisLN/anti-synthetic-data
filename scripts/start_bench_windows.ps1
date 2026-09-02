@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("Full", "Communication", "Trigger", "LowVoltage", "Run")]
+    [ValidateSet("Full", "Communication", "Trigger", "LowVoltage", "NativeCommands", "Run")]
     [string]$Stage = "Full"
 )
 
@@ -33,7 +33,7 @@ if ([string]::IsNullOrWhiteSpace($env:VOLTAGE_PROBE_ATTENUATION)) {
     $env:VOLTAGE_PROBE_ATTENUATION = $probe
 }
 
-if ($Stage -in @("Full", "LowVoltage", "Run")) {
+if ($Stage -in @("Full", "LowVoltage", "NativeCommands", "Run")) {
     # Pergunta interativa sobre a Tensão RMS e Frequência para o teste
     $vrmsInput = Read-Host "Digite a TENSÃO RMS desejada para o teste em V (ex.: 127, 220, 380)"
     $vrms = 0.0
@@ -104,6 +104,7 @@ function Invoke-CheckedPython {
 }
 
 $preflightPy = Join-Path $logica "preflight.py"
+$preflightNewPy = Join-Path $logica "preflight_new.py"
 $mestrePy = Join-Path $logica "mestre.py"
 
 switch ($Stage) {
@@ -124,6 +125,15 @@ switch ($Stage) {
         Write-Host "Validação automática em baixa tensão (5 Vrms)"
         Invoke-CheckedPython -Arguments @($preflightPy, "--low-voltage")
     }
+    "NativeCommands" {
+        $confirmation = Read-Host "Confirme probe, cabos, E-stop e EUT. Digite ENERGIZAR-COMANDOS"
+        if ($confirmation -cne "ENERGIZAR-COMANDOS") {
+            throw "Execução cancelada sem energização."
+        }
+        $env:ARM_OUTPUT = "YES"
+        Write-Host "Validação dos comandos nativos da AMETEK e do canal 2 do Keysight (5 Vrms)"
+        Invoke-CheckedPython -Arguments @($preflightNewPy, "--native-commands")
+    }
     "Run" {
         $confirmation = Read-Host "Todos os preflights passaram? Digite EXECUTAR-20-CLASSES"
         if ($confirmation -cne "EXECUTAR-20-CLASSES") {
@@ -135,10 +145,10 @@ switch ($Stage) {
         Invoke-CheckedPython -Arguments @($mestrePy)
     }
     "Full" {
-        Write-Host "Etapa 1/4: comunicação e identificação, OUTPUT OFF"
+        Write-Host "Etapa 1/5: comunicação e identificação, OUTPUT OFF"
         Invoke-CheckedPython -Arguments @($preflightPy)
 
-        Write-Host "Etapa 2/4: aquisição forçada do Keysight, OUTPUT OFF (BNC ainda não testado)"
+        Write-Host "Etapa 2/5: aquisição forçada do Keysight, OUTPUT OFF (BNC ainda não testado)"
         Invoke-CheckedPython -Arguments @($preflightPy, "--trigger-test")
 
         $confirmation = Read-Host "Confirme probe, cabos, E-stop e EUT. Digite ENERGIZAR"
@@ -146,10 +156,13 @@ switch ($Stage) {
             throw "Execução cancelada sem energização."
         }
         $env:ARM_OUTPUT = "YES"
-        Write-Host "Etapa 3/4: validação automática em baixa tensão (5 Vrms)"
+        Write-Host "Etapa 3/5: validação automática em baixa tensão (5 Vrms)"
         Invoke-CheckedPython -Arguments @($preflightPy, "--low-voltage")
 
-        Write-Host "Etapa 4/4: uma captura de cada uma das 20 classes"
+        Write-Host "Etapa 4/5: comandos nativos da AMETEK e canal 2 do Keysight (5 Vrms)"
+        Invoke-CheckedPython -Arguments @($preflightNewPy, "--native-commands")
+
+        Write-Host "Etapa 5/5: uma captura de cada uma das 20 classes"
         $env:REAL_CAPTURES_PER_CLASS = "1"
         Invoke-CheckedPython -Arguments @($mestrePy)
     }

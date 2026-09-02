@@ -22,10 +22,13 @@ Abra um terminal como usuário normal:
 
 O script cria o ambiente Python automaticamente se ele ainda não existir.
 Depois faz internamente identificação, confirmação de OUTPUT OFF, trigger BNC,
-aquisição de 6000 pontos, teste em 5 Vrms e uma captura de cada classe.
+aquisição de 6000 pontos, teste em 5 Vrms, validação dos comandos nativos da
+AMETEK (STEP/PULSe/CSINe/LIST:FREQuency/ACDC) e do canal 2 do Keysight
+(preflight_new.py --native-commands) e, por fim, uma captura de cada classe.
 
 O operador terá de informar o fator exato da probe de tensão e digitar
-ENERGIZAR-5V. Não invente o fator e não automatize essa confirmação.
+ENERGIZAR/ENERGIZAR-5V/ENERGIZAR-COMANDOS conforme a etapa. Não invente o
+fator e não automatize essas confirmações.
 
 Se o script terminar com erro:
 

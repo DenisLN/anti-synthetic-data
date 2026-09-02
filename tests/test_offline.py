@@ -16,6 +16,7 @@ if str(LOGICA_DIR) not in sys.path:
 from ametek_orm import AmetekMX30, ParameterOutOfBoundsError  # noqa: E402
 from oscilloscope_orm import KeysightDSOX4034A  # noqa: E402
 from sinais import ruido_awgn, snr_medida  # noqa: E402
+import preflight_new  # noqa: E402
 
 
 class _BancadaFake:
@@ -177,6 +178,35 @@ class AmetekTests(unittest.TestCase):
         self.assertIn("VOLTAGE:MODE PULSE", commands)
         self.assertIn("PULSE:WIDTH 0.06", commands)
 
+    def test_trigger_step_resets_residual_frequency_list_from_previous_class(self):
+        """Regressão: classe 18 (FREQUENCY_DRIFT) deixa FREQuency:MODE em LIST;
+        a bateria roda a classe 19 (DC_OFFSET) logo em seguida na mesma sessão,
+        sem desligar a saída entre elas. FREQuency:MODE e VOLTage:MODE são
+        eixos independentes (cap. 4.13/4.17 do manual SCPI) — sem um reset
+        explícito, o *TRG da classe 19 aplicaria a rampa residual 57↔63 Hz da
+        classe 18 em vez de manter a frequência fixa."""
+        source = AmetekMX30(simulated=True, max_voltage_rms=10.0, max_peak_v=100.0, max_current_a=0.5)
+        source.frequency_drift_list(57.0, 63.0, voltage_rms=5.0, dwell_s=0.1)
+        self.assertIn("FREQuency:MODE LIST", source.command_log)
+        source.command_log.clear()
+        source.trigger_step(5.0)
+        self.assertIn("SOURce:FREQuency:MODE FIXed", source.command_log)
+        self.assertLess(
+            source.command_log.index("SOURce:FREQuency:MODE FIXed"),
+            source.command_log.index("VOLTage:MODE STEP"),
+        )
+
+    def test_trigger_pulse_resets_residual_frequency_list_from_previous_class(self):
+        source = AmetekMX30(simulated=True, max_voltage_rms=10.0, max_peak_v=100.0, max_current_a=0.5)
+        source.frequency_drift_list(57.0, 63.0, voltage_rms=5.0, dwell_s=0.1)
+        source.command_log.clear()
+        source.trigger_pulse(3.0, width_s=0.060)
+        self.assertIn("SOURce:FREQuency:MODE FIXed", source.command_log)
+        self.assertLess(
+            source.command_log.index("SOURce:FREQuency:MODE FIXed"),
+            source.command_log.index("VOLTage:MODE PULSe"),
+        )
+
     def test_configure_harmonics_csine_rejects_above_documented_ceiling(self):
         source = AmetekMX30(simulated=True, max_voltage_rms=10.0, max_peak_v=100.0, max_current_a=0.5)
         with self.assertRaises(ParameterOutOfBoundsError):
@@ -291,6 +321,80 @@ class KeysightTests(unittest.TestCase):
         scope.configure_acquisition(pre_trigger_s=0.060)
         joined = "\n".join(adapter.commands)
         self.assertIn(":TIMebase:POSition 0.06", joined)
+
+
+class PreflightNewTests(unittest.TestCase):
+    """Não exercita o ciclo arm/trigger real (depende de hardware físico
+    respondendo TER?/OPERegister em tempo real); confirma que as chamadas aos
+    dois ORMs feitas por preflight_new usam assinaturas/kwargs válidos e que
+    os utilitários puramente numéricos calculam o esperado."""
+
+    def test_native_ametek_commands_compile_without_error(self):
+        source = AmetekMX30(simulated=True, max_voltage_rms=10.0, max_peak_v=100.0, max_current_a=0.5)
+        source.configure_safe_baseline(
+            voltage_range_rms=150.0, voltage_high_vp=100.0, current_limit_a=0.5,
+            protection_delay_s=0.1, frequency_hz=50.0,
+        )
+        source.authorize_output(True)
+        source.energize_baseline()
+        source.trigger_step(5.0)
+        source.trigger_pulse(preflight_new.SAG_LEVEL_PU * 5.0, width_s=preflight_new.SAG_DURATION_S)
+        source.configure_harmonics_csine(preflight_new.CSINE_THD_PCT)
+        source.trigger_step(5.0)
+        source.frequency_drift_list(
+            preflight_new.FREQ_DRIFT_START_HZ, preflight_new.FREQ_DRIFT_END_HZ,
+            voltage_rms=5.0, dwell_s=0.1,
+        )
+        ac_peak_v = 5.0 * math.sqrt(2.0)
+        source.enable_dc_offset(preflight_new.DC_OFFSET_PU * ac_peak_v, ac_peak_v=ac_peak_v)
+        self.assertTrue(np.isfinite(source.measure_voltage()))
+        self.assertTrue(np.isfinite(source.measure_current()))
+        self.assertTrue(np.isfinite(source.measure_power_w()))
+        self.assertTrue(np.isfinite(source.measure_power_factor()))
+
+    def test_scope_error_queue_and_channel2_helpers(self):
+        adapter = ScriptedAdapter()
+        scope = KeysightDSOX4034A(adapter)
+        scope.initialize_safe()
+        self.assertEqual(preflight_new._test_scope_error_queue(scope), "fila de erros vazia")
+        detail = preflight_new._test_channel2_toggle(scope)
+        self.assertIn("CAPTURE_CURRENT=0", detail)
+
+    def test_rms_and_assert_close_helpers(self):
+        t = np.arange(6000, dtype=np.float64) / 30000.0
+        voltage = 5.0 * math.sqrt(2.0) * np.sin(2.0 * np.pi * 60.0 * t)
+        self.assertAlmostEqual(preflight_new._rms(voltage), 5.0, delta=0.01)
+        preflight_new._assert_close("teste", 5.0, 5.05, 0.1)
+        with self.assertRaises(RuntimeError):
+            preflight_new._assert_close("teste", 5.0, 6.0, 0.1)
+
+    def test_write_and_confirm_returns_response_and_elapsed_time(self):
+        source = AmetekMX30(simulated=True, max_voltage_rms=10.0, max_peak_v=100.0, max_current_a=0.5)
+        response, elapsed_s = preflight_new._write_and_confirm(source, "VOLTage 5.0", "VOLTage?")
+        self.assertEqual(response, "5.0")
+        self.assertGreaterEqual(elapsed_s, 0.0)
+
+    def test_list_voltage_identical_values_diagnostic_runs_offline(self):
+        # O modo simulado conta ingenuamente len(csv.split(",")) — não
+        # reproduz o bug de firmware (colapso de valores idênticos para o
+        # caso especial de lista de 1 item), então em modo simulado as duas
+        # listas devem registrar 12 pontos. O objetivo deste teste é só
+        # confirmar que a função roda sem erro e que o formato do detalhe
+        # bate com o esperado, não replicar o bug real de hardware.
+        source = AmetekMX30(simulated=True, max_voltage_rms=10.0, max_peak_v=100.0, max_current_a=0.5)
+        detail = preflight_new._test_list_voltage_identical_values(source)
+        self.assertIn("distintos: 12 pontos", detail)
+        self.assertIn("idênticos: 12 pontos", detail)
+
+    def test_list_sequence_matches_production_runs_offline(self):
+        # _simulate_write/_simulate_query contam cada eixo LIST (FUNCTION/
+        # VOLTAGE/DWELL/REPEAT) separadamente — confirma que a sequência real
+        # de program_capture() roda sem erro e que os três eixos batem 12/12/12.
+        source = AmetekMX30(simulated=True, max_voltage_rms=10.0, max_peak_v=100.0, max_current_a=0.5)
+        detail = preflight_new._test_list_sequence_matches_production(source)
+        self.assertIn("FUNCtion:SHAPe=12 pontos", detail)
+        self.assertIn("VOLTage=12 pontos", detail)
+        self.assertIn("DWELl=12 pontos", detail)
 
 
 if __name__ == "__main__":

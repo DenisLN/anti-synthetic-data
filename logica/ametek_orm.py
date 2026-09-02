@@ -103,7 +103,10 @@ class AmetekMX30:
             "current": max_current_a,
             "trigger_state": "IDLE",
             "trace_names": set(),
-            "list_points": 0,
+            # Um contador por eixo (FUNCTION/VOLTAGE/DWELL/REPEAT) — cada
+            # SOURce:LIST:* tem sua própria consulta :POINts?, independente
+            # das outras (ver _simulate_write/_simulate_query).
+            "list_points": {},
         }
         if not self.simulated and self._resource is None:
             self.connect()
@@ -250,8 +253,45 @@ class AmetekMX30:
                 )
             return str(response).strip()
 
+    # Comandos SOURce:LIST:* usados neste driver, mapeados para um eixo
+    # próprio — cada eixo tem sua PRÓPRIA consulta :POINts? no instrumento
+    # real (ver program_capture()), então o simulador precisa contar cada um
+    # separadamente em vez de um único contador compartilhado.
+    _LIST_WRITE_AXES = {
+        "LIST:FUNCTION:SHAPE ": "FUNCTION",
+        "LIST:VOLTAGE ": "VOLTAGE",
+        "LIST:FREQUENCY ": "FREQUENCY",
+        "LIST:DWELL ": "DWELL",
+        "LIST:REPEAT:COUNT ": "REPEAT",
+    }
+    _LIST_QUERY_AXES = {
+        "LIST:FUNCTION:POINTS?": "FUNCTION",
+        "LIST:VOLTAGE:POINTS?": "VOLTAGE",
+        "LIST:FREQUENCY:POINTS?": "FREQUENCY",
+        "LIST:DWELL:POINTS?": "DWELL",
+        "LIST:REPEAT:POINTS?": "REPEAT",
+    }
+
+    @staticmethod
+    def _strip_source_prefix(upper_command: str) -> str:
+        prefix = "SOURCE:"
+        return upper_command[len(prefix):] if upper_command.startswith(prefix) else upper_command
+
+    @classmethod
+    def _list_axis_for_write(cls, upper_command: str) -> Optional[str]:
+        stripped = cls._strip_source_prefix(upper_command)
+        for command_prefix, axis in cls._LIST_WRITE_AXES.items():
+            if stripped.startswith(command_prefix):
+                return axis
+        return None
+
+    @classmethod
+    def _list_axis_for_points_query(cls, upper_command: str) -> Optional[str]:
+        return cls._LIST_QUERY_AXES.get(cls._strip_source_prefix(upper_command))
+
     def _simulate_write(self, command: str) -> None:
         upper = command.upper()
+        list_axis = self._list_axis_for_write(upper)
         if upper.startswith("OUTPUT:STATE "):
             self._sim["output"] = upper.endswith((" ON", " 1"))
         elif upper.startswith("VOLTAGE ") or upper.startswith("VOLT "):
@@ -271,8 +311,8 @@ class AmetekMX30:
                 pass
         elif upper.startswith("TRACE:DEFINE ") or upper.startswith("TRAC:DEF "):
             self._sim["trace_names"].add(command.split()[-1].upper())
-        elif ":LIST:VOLTAGE " in upper or upper.startswith("LIST:VOLTAGE "):
-            self._sim["list_points"] = len(command.split(None, 1)[1].split(","))
+        elif list_axis is not None:
+            self._sim["list_points"][list_axis] = len(command.split(None, 1)[1].split(","))
         elif upper.startswith("INIT"):
             self._sim["trigger_state"] = "ARM"
         elif upper == "*TRG":
@@ -294,8 +334,11 @@ class AmetekMX30:
             return str(self._sim["trigger_state"])
         if upper == "TRACE:CATALOG?":
             return ",".join(sorted(self._sim["trace_names"]))
+        list_axis = self._list_axis_for_points_query(upper)
+        if list_axis is not None:
+            return str(self._sim["list_points"].get(list_axis, 0))
         if upper.endswith(":POINTS?") or upper.endswith(":POIN?"):
-            return str(self._sim["list_points"])
+            return "0"
         if "VOLTAGE" in upper or upper.startswith("VOLT"):
             return str(self._sim["voltage"])
         if "FREQUENCY" in upper or upper.startswith("FREQ"):
@@ -423,6 +466,12 @@ class AmetekMX30:
             raise ParameterOutOfBoundsError(
                 f"Tensão {voltage_rms} Vrms fora do limite de software 0..{self.max_voltage_rms}"
             )
+        # FREQuency:MODE é um eixo independente de VOLTage:MODE (cap. 4.13/4.17
+        # do manual SCPI): um LIST de frequência residual de uma captura
+        # anterior (ex.: classe 18/FREQUENCY_DRIFT) continua sendo aplicado a
+        # cada *TRG mesmo com VOLTage:MODE em STEP. Força FIXed aqui, único
+        # ponto por onde toda captura nativa sem TRACe passa antes de armar.
+        self.write("SOURce:FREQuency:MODE FIXed")
         self.write("VOLTage:MODE STEP")
         self.write(f"VOLTage:TRIGgered {voltage_rms:.8g}")
 
@@ -438,6 +487,9 @@ class AmetekMX30:
             )
         if not width_s > 0:
             raise ParameterOutOfBoundsError(f"Duração do pulso deve ser positiva; recebido {width_s}")
+        # Ver comentário equivalente em trigger_step(): neutraliza um LIST de
+        # frequência residual antes de armar este PULSe.
+        self.write("SOURce:FREQuency:MODE FIXed")
         self.write("VOLTage:MODE PULSe")
         self.write(f"VOLTage:TRIGgered {voltage_rms:.8g}")
         self.write(f"PULSe:WIDTh {width_s:.8g}")
@@ -734,10 +786,28 @@ class AmetekMX30:
         voltages = ",".join(f"{value:.8g}" for value in list_voltages)
         dwells = ",".join(f"{dwell_s:.10g}" for _ in trace_names)
         repeats = ",".join("1" for _ in trace_names)
+        # Cada comando de dados de LISTA é confirmado IMEDIATAMENTE pela sua
+        # própria consulta ":POINts?" (write seguido de query, sem delay
+        # adivinhado) — se um comando não "pegar" (ex.: o firmware ainda
+        # processando o anterior), o erro aponta exatamente qual comando
+        # falhou, em vez de só descobrir no fim que algo deu errado.
+        # Diferente de TRACe:DATA (gravação em Flash, sem query dedicada no
+        # manual — ver o time.sleep(1.0) acima), estes comandos SOURce:LIST:*
+        # são apenas configuração em RAM e têm consulta ":POINts?" própria.
+        expected = len(trace_names)
+        list_data_commands = (
+            (f"SOURce:LIST:FUNCtion:SHAPe {names}", "SOURce:LIST:FUNCtion:POINts?"),
+            (f"SOURce:LIST:VOLTage {voltages}", "SOURce:LIST:VOLTage:POINts?"),
+            (f"SOURce:LIST:DWELl {dwells}", "SOURce:LIST:DWELl:POINts?"),
+        )
+        for command, points_query in list_data_commands:
+            self.write(command)
+            actual = int(float(self.query(points_query)))
+            if actual != expected:
+                raise InstrumentHardwareError(
+                    f"{points_query} retornou {actual} logo após {command!r}; esperado {expected}"
+                )
         for command in (
-            f"SOURce:LIST:FUNCtion:SHAPe {names}",
-            f"SOURce:LIST:VOLTage {voltages}",
-            f"SOURce:LIST:DWELl {dwells}",
             f"SOURce:LIST:REPeat:COUNt {repeats}",
             "SOURce:LIST:COUNt 1",
             "SOURce:LIST:STEP AUTO",
@@ -751,18 +821,11 @@ class AmetekMX30:
             "OUTPut:TTLTrg ON",
         ):
             self.write(command)
-        self.assert_no_errors("programação da lista de captura")
-        expected = len(trace_names)
-        for query in (
-            # No manual MX, SHAPe e' a palavra-chave opcional do comando de
-            # dados. A consulta de quantidade termina em FUNCtion:POINts?.
-            "SOURce:LIST:FUNCtion:POINts?",
-            "SOURce:LIST:VOLTage:POINts?",
-            "SOURce:LIST:DWELl:POINts?",
-        ):
-            actual = int(float(self.query(query)))
-            if actual != expected:
-                raise InstrumentHardwareError(f"{query} retornou {actual}; esperado {expected}")
+            errors = self.check_errors()
+            if errors:
+                raise InstrumentHardwareError(
+                    f"AMETEK rejeitou {command!r} durante programação da lista: {errors}"
+                )
         self.last_programmed_peak_v = reconstructed_peak_v
         self._last_cycles = ciclos
         # A saída fica ligada durante toda a bateria (energize_baseline() é
