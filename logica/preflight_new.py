@@ -374,6 +374,93 @@ def _test_list_sequence_matches_production(source) -> str:
     return "; ".join(details)
 
 
+def _test_list_repeat_count(source) -> str:
+    """Isola SOURce:LIST:REPeat:COUNt — o comando que ``--low-voltage`` mais
+    recentemente reportou como rejeitado pela AMETEK real: 'AMETEK rejeitou
+    "SOURce:LIST:REPeat:COUNt 1,1,1,1,1,1,1,1,1,1,1,1" durante programação
+    da lista: [(-113, "Undefined header")]'.
+
+    -113 é especificamente erro de CABEÇALHO (mnemônico não reconhecido),
+    não de parâmetro/valor — a hipótese testada aqui é de sintaxe do
+    comando, não do dado enviado. O manual documenta
+    '[SOURce:]LIST:REPeat[:COUNt] <NRf+>,<NRf+>' (seção 4.17.5) como
+    sintaxe válida, mas o tutorial oficial de "List Transients" (seção
+    6.4.3) programa uma lista completa (VOLTage/FREQuency/DWELl/COUNt) sem
+    NUNCA usar LIST:REPeat:COUNt. Como ``program_capture()`` sempre manda
+    todos os valores "1" (nunca um repeat por ponto de verdade), a hipótese
+    adicional é que o comando é dispensável: o estado padrão do eixo REPEAT
+    já cobre "1 repetição por ponto" sem precisar setá-lo.
+
+    Testa nesta ordem, cada write seguido de SYSTem:ERRor? (mesmo padrão de
+    program_capture(), sem delay adivinhado): (1) o estado padrão de
+    LIST:REPeat:POINts? sem escrever nada; (2) reproduz o comando exato que
+    falhou na produção; (3) variações de cabeçalho (com/sem 'SOURce:',
+    com/sem ':COUNt'); (4) um único valor '1' em vez de 12 (caso especial de
+    lista de 1 item, seção 4.17: um único ponto vale para todos)."""
+    source.write("ABORt")
+    source.write("*CLS")
+
+    trace_names = tuple(f"TCC{index:02d}" for index in range(12))
+    source._ensure_trace_slots(trace_names)
+    names = ",".join(trace_names)
+    voltages = ",".join(["5.0"] * 12)
+    dwells = ",".join(["0.01666667"] * 12)
+    for command, points_query in (
+        (f"SOURce:LIST:FUNCtion:SHAPe {names}", "SOURce:LIST:FUNCtion:POINts?"),
+        (f"SOURce:LIST:VOLTage {voltages}", "SOURce:LIST:VOLTage:POINts?"),
+        (f"SOURce:LIST:DWELl {dwells}", "SOURce:LIST:DWELl:POINts?"),
+    ):
+        response, _elapsed_s = _write_and_confirm(source, command, points_query)
+        if int(float(response)) != 12:
+            raise RuntimeError(
+                f"{points_query} retornou {response!r} na pré-condição de REPeat; esperado 12"
+            )
+
+    default_repeat_points = source.query("SOURce:LIST:REPeat:POINts?")
+    logger.info(
+        "SOURce:LIST:REPeat:POINts? sem nenhuma escrita prévia (estado padrão): %r",
+        default_repeat_points,
+    )
+    results = [f"padrão sem escrever={default_repeat_points!r}"]
+    accepted: Optional[str] = None
+
+    def _try(label: str, command: str) -> None:
+        nonlocal accepted
+        start = time.monotonic()
+        source.write(command)
+        errors = source.check_errors()
+        elapsed_ms = (time.monotonic() - start) * 1000.0
+        status = "OK" if not errors else f"REJEITADO {errors}"
+        logger.info("LIST:REPeat variante %s: write=%r -> %s (%.0f ms)", label, command, status, elapsed_ms)
+        results.append(f"{label}={status}")
+        if not errors and accepted is None:
+            accepted = label
+
+    repeats_12 = ",".join(["1"] * 12)
+    _try("SOURce:LIST:REPeat:COUNt (12 valores, igual à produção)", f"SOURce:LIST:REPeat:COUNt {repeats_12}")
+    _try("SOURce:LIST:REPeat sem ':COUNt' (12 valores)", f"SOURce:LIST:REPeat {repeats_12}")
+    _try("LIST:REPeat:COUNt sem 'SOURce:' (12 valores)", f"LIST:REPeat:COUNt {repeats_12}")
+    _try("LIST:REPeat sem 'SOURce:' nem ':COUNt' (12 valores)", f"LIST:REPeat {repeats_12}")
+    _try("SOURce:LIST:REPeat:COUNt (1 valor único)", "SOURce:LIST:REPeat:COUNt 1")
+
+    source.write("ABORt")
+    source.write("*CLS")
+
+    if accepted is None:
+        raise RuntimeError(
+            "Nenhuma variante de LIST:REPeat:COUNt foi aceita pela AMETEK: " + "; ".join(results)
+        )
+    logger.warning(
+        "Variante aceita pela AMETEK: %r. Se for diferente do comando atual em "
+        "ametek_orm.AmetekMX30.program_capture() (linha com 'SOURce:LIST:REPeat:COUNt {repeats}'), "
+        "atualize-o com esta sintaxe — ou remova o comando por completo, já que o "
+        "padrão sem escrever (%r) sugere que já cobre o caso 'sem repeat' que a "
+        "produção sempre usa (todos os valores são '1').",
+        accepted, default_repeat_points,
+    )
+    return "; ".join(results)
+
+
 def run_list_diagnostics() -> int:
     """Não precisa de ARM_OUTPUT=YES: só programa e lê de volta listas
     SCPI, nunca energiza a saída (nenhum arm()/trigger() é chamado aqui)."""
@@ -389,6 +476,11 @@ def run_list_diagnostics() -> int:
         _step(
             "Sequência LIST real (FUNCtion:SHAPe -> VOLTage -> DWELl), sem pausa",
             lambda: _test_list_sequence_matches_production(source),
+        )
+        _step(
+            "SOURce:LIST:REPeat:COUNt — variantes de cabeçalho "
+            "(reproduz a falha de --low-voltage: -113 Undefined header)",
+            lambda: _test_list_repeat_count(source),
         )
         return 0
     finally:
@@ -449,9 +541,10 @@ def main() -> int:
     parser.add_argument(
         "--list-diagnostics", action="store_true",
         help=(
-            "isola SOURce:LIST:VOLTage (write+confirmação+cronometragem, sem delay "
-            "adivinhado) comparando 12 valores distintos com 12 idênticos; não "
-            "energiza a saída, não exige ARM_OUTPUT=YES"
+            "isola os comandos SOURce:LIST:* de program_capture() (VOLTage, "
+            "sequência FUNCtion:SHAPe->VOLTage->DWELl, e variantes de "
+            "REPeat:COUNt) com write+confirmação+cronometragem, sem delay "
+            "adivinhado; não energiza a saída, não exige ARM_OUTPUT=YES"
         ),
     )
     args = parser.parse_args()

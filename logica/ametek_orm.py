@@ -529,7 +529,10 @@ class AmetekMX30:
         self.write(f"LIST:FREQuency {start_hz:.8g},{end_hz:.8g}")
         self.write(f"LIST:VOLTage {voltage_rms:.8g},{voltage_rms:.8g}")
         self.write(f"LIST:DWELl {dwell_s:.8g},{dwell_s:.8g}")
-        self.write("LIST:REPeat:COUNt 1,1")
+        # Rev. 5.53 rejeita ':COUNt' (-113 Undefined header) e também rejeita
+        # sem o prefixo 'SOURce:' — confirmado em preflight_new.py
+        # --list-diagnostics: só 'SOURce:LIST:REPeat' (sem ':COUNt') é aceito.
+        self.write("SOURce:LIST:REPeat 1,1")
         self.write("LIST:COUNt 1")
         self.write("LIST:STEP AUTO")
         self.write("VOLTage:MODE LIST")
@@ -659,6 +662,12 @@ class AmetekMX30:
         }
         for name in trace_names:
             if name not in catalog:
+                # Gravação em Flash: com N nomes ausentes, isso sozinho leva
+                # N*3s SEM nenhuma resposta do instrumento no meio — sem este
+                # log, esse intervalo parece uma trava em vez de trabalho
+                # esperado (só ocorre a definição de cada TRACE uma vez; nas
+                # próximas chamadas já está no catálogo).
+                logger.info("Definindo TRACE %s (grava na Flash; ~3 s)...", name)
                 self.write(f"TRACe:DEFine {name}")
                 # O manual cita ~500 ms, mas a Rev. 5.53 permaneceu ocupada por
                 # mais tempo ao gravar Flash; use margem conservadora.
@@ -808,7 +817,11 @@ class AmetekMX30:
                     f"{points_query} retornou {actual} logo após {command!r}; esperado {expected}"
                 )
         for command in (
-            f"SOURce:LIST:REPeat:COUNt {repeats}",
+            # Rev. 5.53 rejeita ':COUNt' (-113 Undefined header); confirmado
+            # em preflight_new.py --list-diagnostics testando as 4 variantes
+            # de cabeçalho — só esta (com 'SOURce:', sem ':COUNt') é aceita,
+            # mesmo o manual documentando ':COUNt' como sufixo válido.
+            f"SOURce:LIST:REPeat {repeats}",
             "SOURce:LIST:COUNt 1",
             "SOURce:LIST:STEP AUTO",
             "FUNCtion:MODE LIST",
