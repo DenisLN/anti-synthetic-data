@@ -159,20 +159,37 @@ def _test_step(source, scope) -> str:
 
 
 def _test_pulse_sag(source, scope) -> str:
-    time_s, voltage_v = _capture_native(
-        source,
-        scope,
-        configure=lambda: source.trigger_pulse(SAG_LEVEL_PU * BASE_VOLTAGE_RMS, width_s=SAG_DURATION_S),
-        expected_peak_v=BASE_VOLTAGE_RMS * math.sqrt(2.0),
+    # O PULSe da AMETEK cai imediatamente no *TRG (sem parâmetro de delay —
+    # ver trigger_pulse() em ametek_orm.py); é o pre_trigger_s do osciloscópio
+    # que empurra o instante do trigger para DISTURBANCE_START_S dentro do
+    # buffer capturado, deixando um trecho de baseline ANTES do SAG. Mesma
+    # configuração que experimentos_nativos/02.py (classe SAG real) usa —
+    # sem isso, o *TRG cai em t=0 e a janela abaixo corta a própria queda de
+    # tensão como se fosse baseline "de fora" (foi o que aconteceu antes
+    # desse ajuste: RMS "fora" media a mistura entre queda e patamar).
+    scope.configure_acquisition(
+        sample_rate_hz=FS_HZ, points=POINTS, duration_s=DURATION_S,
+        pre_trigger_s=DISTURBANCE_START_S,
     )
-    dentro = janela(time_s, DISTURBANCE_START_S, SAG_DURATION_S)
-    if not np.any(dentro) or not np.any(~dentro):
-        raise RuntimeError("Janela do pulso SAG não recortou nenhuma amostra dentro/fora")
-    rms_fora = _rms(voltage_v[~dentro])
-    rms_dentro = _rms(voltage_v[dentro])
-    _assert_close("PULSe fora da janela", rms_fora, BASE_VOLTAGE_RMS, RMS_TOLERANCE_V)
-    _assert_close("PULSe dentro da janela (SAG)", rms_dentro, SAG_LEVEL_PU * BASE_VOLTAGE_RMS, RMS_TOLERANCE_V)
-    return f"RMS fora={rms_fora:.3f} V, dentro={rms_dentro:.3f} V"
+    try:
+        time_s, voltage_v = _capture_native(
+            source,
+            scope,
+            configure=lambda: source.trigger_pulse(SAG_LEVEL_PU * BASE_VOLTAGE_RMS, width_s=SAG_DURATION_S),
+            expected_peak_v=BASE_VOLTAGE_RMS * math.sqrt(2.0),
+        )
+        dentro = janela(time_s, DISTURBANCE_START_S, SAG_DURATION_S)
+        if not np.any(dentro) or not np.any(~dentro):
+            raise RuntimeError("Janela do pulso SAG não recortou nenhuma amostra dentro/fora")
+        rms_fora = _rms(voltage_v[~dentro])
+        rms_dentro = _rms(voltage_v[dentro])
+        _assert_close("PULSe fora da janela", rms_fora, BASE_VOLTAGE_RMS, RMS_TOLERANCE_V)
+        _assert_close("PULSe dentro da janela (SAG)", rms_dentro, SAG_LEVEL_PU * BASE_VOLTAGE_RMS, RMS_TOLERANCE_V)
+        return f"RMS fora={rms_fora:.3f} V, dentro={rms_dentro:.3f} V"
+    finally:
+        # Restaura pre_trigger_s=0.0 (mesma config das outras etapas nativas
+        # deste preflight — CSINe/LIST:FREQuency/ACDC não usam pre-trigger).
+        scope.configure_acquisition(sample_rate_hz=FS_HZ, points=POINTS, duration_s=DURATION_S)
 
 
 def _test_csine(source, scope) -> str:
