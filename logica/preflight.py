@@ -52,12 +52,19 @@ def run(trigger_test: bool, low_voltage: bool) -> int:
             print("OUTPUT OFF confirmado")
 
         if trigger_test or low_voltage:
-            source.program_capture(
-                normal_waveform(),
-                base_voltage_rms=BASE_VOLTAGE_RMS,
-                frequency_hz=GRID_FREQUENCY_HZ,
-            )
             if low_voltage:
+                # Só programa/grava as TRACEs TCCnn na Flash aqui: é a única
+                # etapa que de fato arma e dispara a AMETEK (arm_transient()
+                # + trigger() abaixo). A etapa --trigger-test só força o
+                # scope (force_trigger(), OUTPUT ainda OFF) para validar
+                # aquisição/download — nunca arma nem lê o conteúdo da
+                # AMETEK, então programar aqui só duplicava ~50s de escrita
+                # em Flash (TRACe:DELete:ALL + 12x TRACe:DEFine) sem uso.
+                source.program_capture(
+                    normal_waveform(),
+                    base_voltage_rms=BASE_VOLTAGE_RMS,
+                    frequency_hz=GRID_FREQUENCY_HZ,
+                )
                 scope.set_vertical_scale(1, BASE_VOLTAGE_RMS * math.sqrt(2.0))
             scope.arm()
             scope.wait_for_armed()

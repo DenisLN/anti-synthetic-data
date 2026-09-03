@@ -13,7 +13,7 @@ de energizar qualquer coisa. Se você só vai apertar o botão, vá direto para 
 [seção 5](#5-operação-na-bancada-física-o-que-o-operador-precisa-saber).
 
 O histórico detalhado de decisões e mudanças de cada versão está em
-[`CHANGELOG/`](CHANGELOG/) (`v1.0.md` a `v1.4.md`) — este README é um resumo
+[`CHANGELOG/`](CHANGELOG/) (`v1.0.md` a `v1.6.md`) — este README é um resumo
 operacional, não substitui esses documentos.
 
 ---
@@ -443,6 +443,10 @@ resultado de execuções anteriores.
   `scripts/`.
 - [`CHANGELOG/v1.4.md`](CHANGELOG/v1.4.md) — visualizador de capturas `.npz`
   (`logica/visualizador.py`).
+- [`CHANGELOG/v1.5.md`](CHANGELOG/v1.5.md) — rearmamento do Keysight nas
+  classes nativas e `preflight_new.py`.
+- [`CHANGELOG/v1.6.md`](CHANGELOG/v1.6.md) — comissionamento na bancada:
+  timing do SAG, CSINe e resiliência da serial.
 - `docs/AMETEK_MX_SCPI_Programming_Manual.pdf` e
   `docs/Keysight_4000X_Programmers_Guide.pdf` — manuais SCPI originais dos
   dois instrumentos.

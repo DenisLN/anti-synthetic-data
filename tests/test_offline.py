@@ -13,7 +13,9 @@ EXPERIMENT_DIRS = (PROJECT_ROOT / "experimentos_nativos", PROJECT_ROOT / "experi
 if str(LOGICA_DIR) not in sys.path:
     sys.path.insert(0, str(LOGICA_DIR))
 
-from ametek_orm import AmetekMX30, ParameterOutOfBoundsError  # noqa: E402
+from ametek_orm import (  # noqa: E402
+    AmetekMX30, CommunicationError, InstrumentHardwareError, ParameterOutOfBoundsError,
+)
 from oscilloscope_orm import KeysightDSOX4034A  # noqa: E402
 from sinais import ruido_awgn, snr_medida  # noqa: E402
 import preflight_new  # noqa: E402
@@ -207,12 +209,70 @@ class AmetekTests(unittest.TestCase):
             source.command_log.index("VOLTage:MODE PULSe"),
         )
 
+    def test_espera_de_prontidao_nunca_usa_query_nao_suportada(self):
+        """Regressão: ``SOURce:FUNCtion:SHAPe?`` e ``SOURce:MODE?`` existem
+        como COMANDO mas não como QUERY na Rev. 5.53 — devolvem -113
+        'Undefined header', não respondem nada (queimando o timeout inteiro do
+        VISA) e deixam o erro na fila para estourar no próximo comando que a
+        consultar. A espera de prontidão só precisa saber SE a fonte voltou a
+        falar, então tem que usar o ``*IDN?`` padrão."""
+        source = AmetekMX30(simulated=True, max_voltage_rms=10.0, max_peak_v=100.0, max_current_a=0.5)
+        chamadas = []
+        source.aguardar_resposta = lambda *args, **kwargs: chamadas.append((args, kwargs))
+
+        source.configure_harmonics_csine(10.0)
+        source.select_sine_shape()
+        source.enable_dc_offset(1.0, ac_peak_v=7.0)
+        source.disable_dc_offset()
+
+        self.assertEqual(len(chamadas), 4)
+        for args, kwargs in chamadas:
+            self.assertEqual(args, (), "espera de prontidão passou uma query própria")
+            self.assertNotIn("command", kwargs)
+
+    def test_arm_tolera_fonte_muda_por_alguns_segundos(self):
+        """Regressão da falha que abortou a bateria na classe 05/HARMONICS:
+        ``FUNCtion:SHAPe CSINusoid`` deixa a Rev. 5.53 muda por segundos, a
+        consulta seguinte estourava o timeout do VISA e ``arm()`` morria na
+        PRIMEIRA tentativa, derrubando as 20 classes."""
+        source = AmetekMX30(simulated=True, max_voltage_rms=10.0, max_peak_v=100.0, max_current_a=0.5)
+        original_query = source.query
+        mudez = {"restantes": 3}
+
+        def query_com_fonte_muda(command):
+            if command.strip().upper().startswith("TRIG") and mudez["restantes"] > 0:
+                mudez["restantes"] -= 1
+                raise CommunicationError("VI_ERROR_TMO simulado")
+            return original_query(command)
+
+        source.query = query_com_fonte_muda
+        source.arm(timeout_s=5.0)
+        self.assertEqual(mudez["restantes"], 0)
+
+    def test_arm_ainda_falha_quando_a_fonte_nunca_responde(self):
+        """A tolerância acima não pode virar espera infinita: um cabo solto
+        continua reprovando, com mensagem própria em vez de traceback de VISA."""
+        source = AmetekMX30(simulated=True, max_voltage_rms=10.0, max_peak_v=100.0, max_current_a=0.5)
+
+        def query_sempre_muda(command):
+            raise CommunicationError("VI_ERROR_TMO simulado")
+
+        source.query = query_sempre_muda
+        with self.assertRaises(TimeoutError):
+            source.arm(timeout_s=0.5)
+
     def test_configure_harmonics_csine_rejects_above_documented_ceiling(self):
         source = AmetekMX30(simulated=True, max_voltage_rms=10.0, max_peak_v=100.0, max_current_a=0.5)
         with self.assertRaises(ParameterOutOfBoundsError):
             source.configure_harmonics_csine(30.0)
         source.configure_harmonics_csine(20.0)
-        self.assertIn("SOURCE:FUNCTION:SHAPE CSINE", "\n".join(source.command_log).upper())
+        # Nome completo 'CSINusoid', não a forma curta 'CSINe' documentada no
+        # manual — a Rev. 5.53 resolve FUNCtion:SHAPe como lookup no
+        # catálogo de waveforms (TRACe:CATalog?) e rejeita a forma curta com
+        # -256 "File name not found".
+        joined = "\n".join(source.command_log).upper()
+        self.assertIn("SOURCE:FUNCTION:SHAPE CSINUSOID", joined)
+        self.assertIn("SOURCE:FUNCTION:SHAPE:CSINUSOID 20", joined)
 
     def test_enable_dc_offset_rejects_combined_peak_above_limit(self):
         source = AmetekMX30(simulated=True, max_voltage_rms=10.0, max_peak_v=15.0, max_current_a=0.5)
@@ -315,12 +375,25 @@ class KeysightTests(unittest.TestCase):
         self.assertAlmostEqual(time_s[1] - time_s[0], 1.0 / 30000.0, places=12)
 
     def test_pre_trigger_shifts_timebase_position(self):
+        # Manual Keysight (cap. 35): :TIMebase:POSition = t_referencia -
+        # t_trigger. Com REFerence LEFT a referência é a borda esquerda da
+        # janela; para sobrar baseline ANTES do trigger essa borda precisa
+        # ficar cronologicamente ANTES dele, ou seja pos NEGATIVO.
         adapter = ScriptedAdapter()
         scope = KeysightDSOX4034A(adapter)
         scope.initialize_safe()
         scope.configure_acquisition(pre_trigger_s=0.060)
         joined = "\n".join(adapter.commands)
-        self.assertIn(":TIMebase:POSition 0.06", joined)
+        self.assertIn(":TIMebase:POSition -0.06", joined)
+
+    def test_pre_trigger_zero_does_not_send_negative_zero(self):
+        adapter = ScriptedAdapter()
+        scope = KeysightDSOX4034A(adapter)
+        scope.initialize_safe()
+        scope.configure_acquisition(pre_trigger_s=0.0)
+        joined = "\n".join(adapter.commands)
+        self.assertIn(":TIMebase:POSition 0", joined)
+        self.assertNotIn(":TIMebase:POSition -0", joined)
 
 
 class PreflightNewTests(unittest.TestCase):
@@ -359,6 +432,69 @@ class PreflightNewTests(unittest.TestCase):
         self.assertEqual(preflight_new._test_scope_error_queue(scope), "fila de erros vazia")
         detail = preflight_new._test_channel2_toggle(scope)
         self.assertIn("CAPTURE_CURRENT=0", detail)
+
+    def test_step_segue_apos_desvio_de_medida_mas_aborta_em_falha_estrutural(self):
+        """Uma medida fora da tolerância vira AVISO e NÃO aborta o preflight
+        (para que uma única execução na bancada mostre todos os desvios);
+        qualquer outra exceção continua abortando."""
+        preflight_new._AVISOS_DE_MEDIDA.clear()
+        executadas = []
+
+        def desvio_de_medida():
+            executadas.append("desvio")
+            preflight_new._assert_close("medida X", 13.334, 8.980, 1.796)
+
+        preflight_new._step("etapa com desvio", desvio_de_medida)
+        preflight_new._step("etapa seguinte", lambda: executadas.append("seguinte"))
+
+        self.assertEqual(executadas, ["desvio", "seguinte"])
+        self.assertEqual(len(preflight_new._AVISOS_DE_MEDIDA), 1)
+        self.assertIn("medida X", preflight_new._AVISOS_DE_MEDIDA[0])
+
+        def falha_estrutural():
+            raise InstrumentHardwareError("AMETEK rejeitou comando")
+
+        with self.assertRaises(InstrumentHardwareError):
+            preflight_new._step("etapa estrutural", falha_estrutural)
+        preflight_new._AVISOS_DE_MEDIDA.clear()
+
+    def test_measurements_isola_falha_de_uma_query_como_aviso(self):
+        source = AmetekMX30(simulated=True, max_voltage_rms=10.0, max_peak_v=100.0, max_current_a=0.5)
+        self.assertIn("VOLTage", preflight_new._test_measurements(source))
+
+        def query_quebrada():
+            raise ValueError("resposta serial malformada")
+
+        source.measure_current = query_quebrada
+        with self.assertRaises(preflight_new.ToleranciaExcedida) as capturado:
+            preflight_new._test_measurements(source)
+        self.assertIn("MEASure:CURRent", str(capturado.exception))
+
+    def test_restaurar_forma_e_modo_padrao_desfaz_csine_e_offset(self):
+        """Regressão: a classe 05 deixava a senoide clipada e a 19 o offset/
+        ACDC ligados para a classe seguinte (estado permanente, não
+        transiente)."""
+        source = AmetekMX30(simulated=True, max_voltage_rms=10.0, max_peak_v=100.0, max_current_a=0.5)
+        source.configure_harmonics_csine(10.0)
+        source.enable_dc_offset(1.0, ac_peak_v=7.0)
+        source.command_log.clear()
+        source.restaurar_forma_e_modo_padrao()
+        joined = "\n".join(source.command_log).upper()
+        self.assertIn("SOURCE:FUNCTION:SHAPE SINUSOID", joined)
+        self.assertIn("SOURCE:VOLTAGE:OFFSET 0", joined)
+        self.assertIn("SOURCE:MODE AC", joined)
+
+    def test_select_sine_shape_e_disable_dc_offset_desfazem_estado_permanente(self):
+        source = AmetekMX30(simulated=True, max_voltage_rms=10.0, max_peak_v=100.0, max_current_a=0.5)
+        source.configure_harmonics_csine(10.0)
+        source.enable_dc_offset(1.0, ac_peak_v=7.0)
+        source.command_log.clear()
+        source.select_sine_shape()
+        source.disable_dc_offset()
+        joined = "\n".join(source.command_log).upper()
+        self.assertIn("SOURCE:FUNCTION:SHAPE SINUSOID", joined)
+        self.assertIn("SOURCE:VOLTAGE:OFFSET 0", joined)
+        self.assertIn("SOURCE:MODE AC", joined)
 
     def test_rms_and_assert_close_helpers(self):
         t = np.arange(6000, dtype=np.float64) / 30000.0

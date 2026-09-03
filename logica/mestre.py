@@ -601,6 +601,16 @@ class ExperimentoBase(ABC):
             if not simulated:
                 logger.info("[%s] captura %d/%d concluída", self.id, capture_index + 1, total)
 
+        if not simulated:
+            # Forma de onda, modo AC/ACDC e offset são estado PERMANENTE, não
+            # transiente: sem desfazer aqui, a classe SEGUINTE capturaria com
+            # a senoide clipada que a 05 (HARMONICS) ligou, ou com o offset e
+            # o modo ACDC que a 19 (DC_OFFSET) ligou. As classes waveform se
+            # salvam por acaso (program_capture() reprograma forma e modo);
+            # as nativas, não. Não precisa de try/finally: se uma captura
+            # falhar, a bateria aborta e o shutdown fail-safe assume.
+            self.fonte.restaurar_forma_e_modo_padrao()
+
         self._salvar_classe(
             tempo_ms=tempo_ms_eixo, tensao_limpa=tensao_limpa, tensao_por_snr=tensao_por_snr,
             ids=ids, corrente=corrente, metadados=metadados,

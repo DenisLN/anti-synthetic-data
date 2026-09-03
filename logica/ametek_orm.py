@@ -262,7 +262,7 @@ class AmetekMX30:
         "LIST:VOLTAGE ": "VOLTAGE",
         "LIST:FREQUENCY ": "FREQUENCY",
         "LIST:DWELL ": "DWELL",
-        "LIST:REPEAT:COUNT ": "REPEAT",
+        "LIST:REPEAT ": "REPEAT",
     }
     _LIST_QUERY_AXES = {
         "LIST:FUNCTION:POINTS?": "FUNCTION",
@@ -504,8 +504,56 @@ class AmetekMX30:
             raise ParameterOutOfBoundsError(
                 f"THD {thd_pct}% fora do teto do CSINe nativo (0..{self.MAX_CSINE_THD_PCT}%)"
             )
+        # A forma abreviada 'CSINe' (a documentada em cap. 4.14/6.2.7 do
+        # manual para o parâmetro de FUNCtion:SHAPe) é rejeitada pela Rev.
+        # 5.53 com -256 "File name not found" — a mesma forma curta que o
+        # cap. 4.25/Trace Subsystem usa para descrever a entrada pré-definida
+        # do catálogo (TRACe:CATalog?) é 'CSINusoid' (nome completo); a Rev.
+        # 5.53 resolve FUNCtion:SHAPe como lookup no catálogo de waveforms e
+        # só reconhece o nome completo. Ordem também alinhada ao exemplo
+        # funcional do cap. 6.2.7: seleciona a forma primeiro, só depois
+        # ajusta o nível de clipping.
+        self.write("SOURce:FUNCtion:SHAPe CSINusoid")
+        # Trocar a forma de onda recarrega a tabela e deixa a Rev. 5.53 MUDA
+        # por alguns segundos. Enquanto o comando falhava com -256 isso não
+        # aparecia (a fonte rejeitava na hora, sem trabalho nenhum); com ele
+        # funcionando, a consulta seguinte estourava o timeout do VISA e
+        # derrubava a bateria na classe 05/HARMONICS. Espera determinística:
+        # segue assim que a fonte responder de novo. Com *IDN? (padrão), NÃO
+        # com SOURce:FUNCtion:SHAPe? — ver aguardar_resposta().
+        self.aguardar_resposta()
         self.write(f"SOURce:FUNCtion:SHAPe:CSINusoid {thd_pct:.8g}")
-        self.write("SOURce:FUNCtion:SHAPe CSINe")
+
+    def select_sine_shape(self) -> None:
+        """Volta a forma de onda para a senoide pré-definida. Contrapartida de
+        ``configure_harmonics_csine()``: ``FUNCtion:SHAPe`` é estado
+        PERMANENTE, não um transiente — a senoide clipada continua valendo
+        para todas as capturas seguintes até alguém trocar de volta."""
+        self.write("SOURce:FUNCtion:SHAPe SINusoid")
+        self.aguardar_resposta()
+
+    def disable_dc_offset(self) -> None:
+        """Contrapartida de ``enable_dc_offset()``: zera o offset e volta ao
+        modo AC puro. Como a forma de onda, o offset e o ``SOURce:MODE ACDC``
+        são estado permanente e continuariam aplicados nas capturas
+        seguintes."""
+        self.write("SOURce:VOLTage:OFFSet 0")
+        self.write("SOURce:MODE AC")
+        self.aguardar_resposta()
+
+    def restaurar_forma_e_modo_padrao(self) -> None:
+        """Desfaz todo o estado PERMANENTE que uma classe possa ter deixado
+        ligado: forma de onda (``FUNCtion:SHAPe``) e modo/offset da saída
+        (``SOURce:MODE``/``VOLTage:OFFSet``).
+
+        Nada disso é transiente — continua valendo para as capturas seguintes
+        até alguém trocar de volta. Sem isto, a classe 05 (HARMONICS) deixa a
+        senoide CLIPADA ligada e a 19 (DC_OFFSET) deixa o offset e o modo
+        ACDC ligados para quem vier depois. As classes waveform se salvam por
+        acaso (``program_capture()`` reprograma forma e modo antes de cada
+        captura); as nativas, não."""
+        self.select_sine_shape()
+        self.disable_dc_offset()
 
     def frequency_drift_list(
         self, start_hz: float, end_hz: float, *, voltage_rms: float, dwell_s: float,
@@ -552,7 +600,59 @@ class AmetekMX30:
                 f"excede o limite de pico {self.max_peak_v:.3f} V"
             )
         self.write("SOURce:MODE ACDC")
+        # Trocar SOURce:MODE também deixa a fonte ocupada — mesma razão do
+        # aguardar_resposta() em configure_harmonics_csine(). Com *IDN?: a
+        # Rev. 5.53 não implementa SOURce:MODE? como query (-113).
+        self.aguardar_resposta()
         self.write(f"SOURce:VOLTage:OFFSet {offset_v:.8g}")
+
+    def _query_tolerante(self, command: str) -> Optional[str]:
+        """Consulta que devolve ``None`` em vez de levantar quando a fonte não
+        respondeu dentro do timeout do VISA.
+
+        A Rev. 5.53 fica MUDA por vários segundos depois de comandos que
+        recarregam a tabela de forma de onda (``FUNCtion:SHAPe``) ou trocam o
+        modo da saída (``SOURce:MODE AC/ACDC``) — o mesmo motivo pelo qual
+        ``TRACe:DEFine`` precisa de ~3 s e ``TRACe:DELete:ALL`` de ~15 s. Nos
+        laços de espera isso é transitório e esperado: quem chama continua
+        tentando até o SEU próprio deadline, em vez de abortar a bateria
+        inteira de 20 classes na primeira consulta que estourou. O deadline
+        de quem chama continua finito, então um cabo realmente solto ainda
+        falha — só que com mensagem própria, não com um traceback de VISA."""
+        try:
+            return self.query(command).strip().upper()
+        except CommunicationError as exc:
+            logger.debug("Consulta %r sem resposta (tentando de novo): %s", command, exc)
+            return None
+
+    def aguardar_resposta(self, command: str = "*IDN?", timeout_s: float = 20.0) -> None:
+        """Bloqueia até a fonte voltar a responder ``command``.
+
+        Espera determinística (não um sleep adivinhado) para usar depois de um
+        comando que deixa a Rev. 5.53 ocupada: retorna assim que a fonte
+        responde de novo. Sem isso, quem chama a seguir paga o timeout cheio
+        do VISA em cada consulta.
+
+        Use SEMPRE o ``*IDN?`` padrão, a menos que a query escolhida seja
+        comprovadamente suportada por esta revisão. Só interessa saber SE a
+        fonte voltou a falar, não o valor — e uma query com header não
+        implementado é pior que inútil: a Rev. 5.53 não responde nada (o
+        timeout inteiro é desperdiçado) e ainda deixa ``-113 "Undefined
+        header"`` na fila, que estoura depois, atribuído ao próximo comando
+        que consultar a fila. Foi o que aconteceu na bancada com
+        ``SOURce:FUNCtion:SHAPe?`` e ``SOURce:MODE?``: os dois aceitam a
+        forma de COMANDO, mas não existem como QUERY."""
+        if self.simulated:
+            return
+        deadline = time.monotonic() + float(timeout_s)
+        while time.monotonic() < deadline:
+            if self._query_tolerante(command) is not None:
+                return
+            time.sleep(0.05)
+        raise CommunicationError(
+            f"AMETEK não voltou a responder {command!r} em {timeout_s:.1f} s; "
+            f"confirme {self.port}, cabo USB e alimentação da fonte"
+        )
 
     def wait_ready(self, settle_s: float = 0.25) -> None:
         """Aguarda comandos imediatos sem depender de ``*OPC?``.
@@ -811,6 +911,11 @@ class AmetekMX30:
         )
         for command, points_query in list_data_commands:
             self.write(command)
+            errors = self.check_errors()
+            if errors:
+                raise InstrumentHardwareError(
+                    f"AMETEK rejeitou {command!r} durante programação da lista: {errors}"
+                )
             actual = int(float(self.query(points_query)))
             if actual != expected:
                 raise InstrumentHardwareError(
@@ -851,42 +956,67 @@ class AmetekMX30:
             self.output_enabled = True
             self.assert_no_errors("religar OUTPUT após reprogramação da lista")
 
-    def arm(self, timeout_s: float = 5.0) -> None:
+    def arm(self, timeout_s: float = 20.0) -> None:
         """Arma o sistema de trigger para um transiente já configurado (PULSe/STEP/CSINe
         aplicado a nível imediato, ou LIST). Genérico — sem diagnóstico específico de LIST;
-        use arm_transient() para uma captura TRACe/LIST completa com esse diagnóstico."""
+        use arm_transient() para uma captura TRACe/LIST completa com esse diagnóstico.
+
+        Usa ``_query_tolerante``: o comando que configurou o transiente pode
+        ter deixado a fonte muda por alguns segundos (ver a docstring de
+        ``_query_tolerante``), e o timeout do VISA é menor que este deadline —
+        sem tolerar a consulta que estoura, a PRIMEIRA tentativa derrubava a
+        bateria inteira (visto na bancada na classe 05/HARMONICS, logo depois
+        de ``FUNCtion:SHAPe CSINusoid``)."""
         idle_deadline = time.monotonic() + timeout_s
         last_state = ""
         while time.monotonic() < idle_deadline:
-            last_state = self.query("TRIGger:STATe?").strip().upper()
+            state = self._query_tolerante("TRIGger:STATe?")
+            if state is None:
+                continue
+            last_state = state
             if last_state.startswith("IDLE"):
                 break
             time.sleep(0.05)
         else:
-            raise TimeoutError(f"AMETEK não estava IDLE antes do INIT; estado={last_state!r}")
+            raise TimeoutError(
+                f"AMETEK não estava IDLE antes do INIT em {timeout_s:.1f} s; "
+                f"último estado={last_state!r}"
+            )
         self.write("INITiate:IMMediate")
         self.assert_no_errors("comando INITiate:IMMediate")
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
-            last_state = self.query("TRIGger:STATe?").strip().upper()
+            state = self._query_tolerante("TRIGger:STATe?")
+            if state is None:
+                continue
+            last_state = state
             if last_state.startswith(("ARM", "WTRIG")):
                 return
             time.sleep(0.05)
         raise TimeoutError(f"AMETEK não entrou em ARM/WTRIG; último estado={last_state!r}")
 
-    def arm_transient(self, timeout_s: float = 5.0) -> None:
+    def arm_transient(self, timeout_s: float = 20.0) -> None:
         # program_capture() já envia ABORt antes de configurar a lista. Não
         # repita aqui: na MX30-3Pi Rev. 5.53, um novo ABORt também restaurou
         # FUNC/VOLT:MODE FIX e OUTPUT OFF, destruindo a configuração preparada.
         idle_deadline = time.monotonic() + timeout_s
         last_state = ""
         while time.monotonic() < idle_deadline:
-            last_state = self.query("TRIGger:STATe?").strip().upper()
+            # Tolera consulta sem resposta (ver arm()/_query_tolerante): a
+            # lista recém-programada por program_capture() envia 12 TRACe:DATA
+            # de 1024 pontos pela serial e pode deixar a fonte ocupada.
+            state = self._query_tolerante("TRIGger:STATe?")
+            if state is None:
+                continue
+            last_state = state
             if last_state.startswith("IDLE"):
                 break
             time.sleep(0.05)
         else:
-            raise TimeoutError(f"AMETEK não estava IDLE antes do INIT; estado={last_state!r}")
+            raise TimeoutError(
+                f"AMETEK não estava IDLE antes do INIT em {timeout_s:.1f} s; "
+                f"último estado={last_state!r}"
+            )
         diagnostics = {
             "output": self.query("OUTPut:STATe?"),
             "function_mode": self.query("FUNCtion:MODE?"),
@@ -936,7 +1066,10 @@ class AmetekMX30:
         deadline = time.monotonic() + timeout_s
         last_state = ""
         while time.monotonic() < deadline:
-            last_state = self.query("TRIGger:STATe?").strip().upper()
+            state = self._query_tolerante("TRIGger:STATe?")
+            if state is None:
+                continue
+            last_state = state
             if last_state.startswith(("ARM", "WTRIG")):
                 return
             time.sleep(0.05)
@@ -953,7 +1086,10 @@ class AmetekMX30:
     def wait_transient_complete(self, timeout_s: float = 5.0) -> None:
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
-            if self.query("TRIGger:STATe?").strip().upper().startswith("IDLE"):
+            state = self._query_tolerante("TRIGger:STATe?")
+            if state is None:
+                continue
+            if state.startswith("IDLE"):
                 self.assert_no_errors("execução do transiente")
                 return
             time.sleep(0.05)
