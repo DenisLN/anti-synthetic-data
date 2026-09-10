@@ -44,6 +44,16 @@ class InstrumentHardwareError(AmetekORMError):
     pass
 
 
+class FalhaFatalDeInstrumento(AmetekORMError):
+    """Infraestrutura real comprometida (serial caiu, impossível confirmar
+    OUTPUT, instrumento não voltou a um estado seguro conhecido) — quem
+    orquestra a bateria de 20 classes (``Bancada.executar_bateria`` em
+    mestre.py) NUNCA deve engolir esta exceção: ela precisa abortar o resto
+    da bateria e acionar o shutdown fail-safe, diferente de uma falha de
+    UM experimento (RMS fora de tolerância, timeout de trigger, exceção em
+    ``gerar()``), que é isolada e não impede as classes seguintes."""
+
+
 def _normalized_identity(value: str) -> str:
     return re.sub(r"[^A-Z0-9]", "", value.upper())
 
@@ -55,6 +65,9 @@ class AmetekMX30:
     TRACE_POINTS = 1024
     CAPTURE_POINTS = 6000
     MAX_SOURCE_PEAK_V = 425.0
+    # Teto documentado do CSINe nativo (cap. 6.4 do manual SCPI). Acima disso,
+    # a classe 05 (HARMONICS) desvia para TRACe (gerar() + program_capture()).
+    MAX_CSINE_THD_PCT = 20.0
 
     def __init__(
         self,
@@ -93,6 +106,28 @@ class AmetekMX30:
         self.command_log: List[str] = []
         self.last_programmed_peak_v = 0.0
         self._last_cycles = 0
+        # Modo/forma atuais rastreados em Python — coincidem com o que
+        # configure_safe_baseline() sempre programa numa conexão nova (AC,
+        # SINusoid). Usado por select_sine_shape()/disable_dc_offset() para
+        # virar no-op quando não há nada a desfazer: o Apêndice C do manual
+        # documenta -300 "Device specific error" para "Attempt to program
+        # voltage offset while in DC or AC mode only" — SOURce:VOLTage:OFFSet
+        # só é aceito em modo ACDC. disable_dc_offset() mandava esse comando
+        # incondicionalmente no fim de TODA classe (mesmo quando o modo já
+        # era AC puro, nunca tendo passado por ACDC) e era rejeitado sempre —
+        # confirmado na bancada: falhava já na primeira classe da bateria
+        # (01/NORMAL), que nunca tocou offset nenhum.
+        self._modo_saida = "AC"
+        self._forma_atual = "SINusoid"
+        # Assinatura (bytes da forma + nomes de TRACE + tensão base + frequência
+        # + offset DC) do último program_capture() bem-sucedido NESTA conexão —
+        # ver program_capture(). Atributo de instância: uma nova conexão (novo
+        # AmetekMX30, ex. depois de reconectar) sempre começa com cache vazio,
+        # o que já invalida automaticamente o cache quando
+        # AMETEK_CLEAR_USER_WAVEFORMS=1 apagou as TRACEs da conexão anterior.
+        self._last_capture_signature: Optional[tuple] = None
+        self._last_capture_list_voltages: List[float] = []
+        self._last_capture_peak_v = 0.0
         self._sim: Dict[str, object] = {
             "output": False,
             "voltage": 0.0,
@@ -100,7 +135,10 @@ class AmetekMX30:
             "current": max_current_a,
             "trigger_state": "IDLE",
             "trace_names": set(),
-            "list_points": 0,
+            # Um contador por eixo (FUNCTION/VOLTAGE/DWELL/REPEAT) — cada
+            # SOURce:LIST:* tem sua própria consulta :POINts?, independente
+            # das outras (ver _simulate_write/_simulate_query).
+            "list_points": {},
         }
         if not self.simulated and self._resource is None:
             self.connect()
@@ -247,8 +285,45 @@ class AmetekMX30:
                 )
             return str(response).strip()
 
+    # Comandos SOURce:LIST:* usados neste driver, mapeados para um eixo
+    # próprio — cada eixo tem sua PRÓPRIA consulta :POINts? no instrumento
+    # real (ver program_capture()), então o simulador precisa contar cada um
+    # separadamente em vez de um único contador compartilhado.
+    _LIST_WRITE_AXES = {
+        "LIST:FUNCTION:SHAPE ": "FUNCTION",
+        "LIST:VOLTAGE ": "VOLTAGE",
+        "LIST:FREQUENCY ": "FREQUENCY",
+        "LIST:DWELL ": "DWELL",
+        "LIST:REPEAT ": "REPEAT",
+    }
+    _LIST_QUERY_AXES = {
+        "LIST:FUNCTION:POINTS?": "FUNCTION",
+        "LIST:VOLTAGE:POINTS?": "VOLTAGE",
+        "LIST:FREQUENCY:POINTS?": "FREQUENCY",
+        "LIST:DWELL:POINTS?": "DWELL",
+        "LIST:REPEAT:POINTS?": "REPEAT",
+    }
+
+    @staticmethod
+    def _strip_source_prefix(upper_command: str) -> str:
+        prefix = "SOURCE:"
+        return upper_command[len(prefix):] if upper_command.startswith(prefix) else upper_command
+
+    @classmethod
+    def _list_axis_for_write(cls, upper_command: str) -> Optional[str]:
+        stripped = cls._strip_source_prefix(upper_command)
+        for command_prefix, axis in cls._LIST_WRITE_AXES.items():
+            if stripped.startswith(command_prefix):
+                return axis
+        return None
+
+    @classmethod
+    def _list_axis_for_points_query(cls, upper_command: str) -> Optional[str]:
+        return cls._LIST_QUERY_AXES.get(cls._strip_source_prefix(upper_command))
+
     def _simulate_write(self, command: str) -> None:
         upper = command.upper()
+        list_axis = self._list_axis_for_write(upper)
         if upper.startswith("OUTPUT:STATE "):
             self._sim["output"] = upper.endswith((" ON", " 1"))
         elif upper.startswith("VOLTAGE ") or upper.startswith("VOLT "):
@@ -268,8 +343,8 @@ class AmetekMX30:
                 pass
         elif upper.startswith("TRACE:DEFINE ") or upper.startswith("TRAC:DEF "):
             self._sim["trace_names"].add(command.split()[-1].upper())
-        elif ":LIST:VOLTAGE " in upper or upper.startswith("LIST:VOLTAGE "):
-            self._sim["list_points"] = len(command.split(None, 1)[1].split(","))
+        elif list_axis is not None:
+            self._sim["list_points"][list_axis] = len(command.split(None, 1)[1].split(","))
         elif upper.startswith("INIT"):
             self._sim["trigger_state"] = "ARM"
         elif upper == "*TRG":
@@ -291,8 +366,11 @@ class AmetekMX30:
             return str(self._sim["trigger_state"])
         if upper == "TRACE:CATALOG?":
             return ",".join(sorted(self._sim["trace_names"]))
+        list_axis = self._list_axis_for_points_query(upper)
+        if list_axis is not None:
+            return str(self._sim["list_points"].get(list_axis, 0))
         if upper.endswith(":POINTS?") or upper.endswith(":POIN?"):
-            return str(self._sim["list_points"])
+            return "0"
         if "VOLTAGE" in upper or upper.startswith("VOLT"):
             return str(self._sim["voltage"])
         if "FREQUENCY" in upper or upper.startswith("FREQ"):
@@ -327,6 +405,10 @@ class AmetekMX30:
 
     def authorize_output(self, authorized: bool) -> None:
         self._output_authorized = bool(authorized)
+
+    @property
+    def output_authorized(self) -> bool:
+        return self._output_authorized
 
     @property
     def output_enabled(self) -> bool:
@@ -407,6 +489,267 @@ class AmetekMX30:
             )
         self.write(f"SOURce:CURRent:LEVel:IMMediate:AMPLitude {value:.8g}")
         self._sim["current"] = value
+
+    def trigger_step(self, voltage_rms: float) -> None:
+        """Programa um STEP para ``voltage_rms`` no próximo *TRG.
+
+        Usado tanto para gerar o pulso de trigger (BOT) de uma captura sem
+        distúrbio (STEP para o mesmo valor já em regime) quanto para retomar
+        o nível base depois de um efeito imediato (ex.: DC_OFFSET).
+        """
+        voltage_rms = float(voltage_rms)
+        if not 0 <= voltage_rms <= self.max_voltage_rms:
+            raise ParameterOutOfBoundsError(
+                f"Tensão {voltage_rms} Vrms fora do limite de software 0..{self.max_voltage_rms}"
+            )
+        # FREQuency:MODE é um eixo independente de VOLTage:MODE (cap. 4.13/4.17
+        # do manual SCPI): um LIST de frequência residual de uma captura
+        # anterior (ex.: classe 18/FREQUENCY_DRIFT) continua sendo aplicado a
+        # cada *TRG mesmo com VOLTage:MODE em STEP. Força FIXed aqui, único
+        # ponto por onde toda captura nativa sem TRACe passa antes de armar.
+        self.write("SOURce:FREQuency:MODE FIXed")
+        self.write("VOLTage:MODE STEP")
+        self.write(f"VOLTage:TRIGgered {voltage_rms:.8g}")
+
+    def trigger_pulse(self, voltage_rms: float, *, width_s: float) -> None:
+        """Programa um PULSe nativo: cai/sobe para ``voltage_rms`` por ``width_s``
+        a partir do *TRG, e retorna ao nível imediato em seguida. Usado por
+        SAG/SWELL/INTERRUPTION (cap. 6.4.3 do manual)."""
+        voltage_rms = float(voltage_rms)
+        width_s = float(width_s)
+        if not 0 <= voltage_rms <= self.max_voltage_rms:
+            raise ParameterOutOfBoundsError(
+                f"Tensão {voltage_rms} Vrms fora do limite de software 0..{self.max_voltage_rms}"
+            )
+        if not width_s > 0:
+            raise ParameterOutOfBoundsError(f"Duração do pulso deve ser positiva; recebido {width_s}")
+        # Ver comentário equivalente em trigger_step(): neutraliza um LIST de
+        # frequência residual antes de armar este PULSe.
+        self.write("SOURce:FREQuency:MODE FIXed")
+        self.write("VOLTage:MODE PULSe")
+        self.write(f"VOLTage:TRIGgered {voltage_rms:.8g}")
+        self.write(f"PULSe:WIDTh {width_s:.8g}")
+
+    def configure_harmonics_csine(self, thd_pct: float) -> None:
+        """Programa o gerador nativo de senoide clipada (CSINe) para o THD
+        pedido, em percentual. Recusa acima de ``MAX_CSINE_THD_PCT`` — nesse
+        caso o experimento deve sintetizar a forma em Python e subir por
+        ``program_capture`` (ver classe 05, ``usar_trace``)."""
+        thd_pct = float(thd_pct)
+        if not 0 < thd_pct <= self.MAX_CSINE_THD_PCT:
+            raise ParameterOutOfBoundsError(
+                f"THD {thd_pct}% fora do teto do CSINe nativo (0..{self.MAX_CSINE_THD_PCT}%)"
+            )
+        # A forma abreviada 'CSINe' (a documentada em cap. 4.14/6.2.7 do
+        # manual para o parâmetro de FUNCtion:SHAPe) é rejeitada pela Rev.
+        # 5.53 com -256 "File name not found" — a mesma forma curta que o
+        # cap. 4.25/Trace Subsystem usa para descrever a entrada pré-definida
+        # do catálogo (TRACe:CATalog?) é 'CSINusoid' (nome completo); a Rev.
+        # 5.53 resolve FUNCtion:SHAPe como lookup no catálogo de waveforms e
+        # só reconhece o nome completo. Ordem também alinhada ao exemplo
+        # funcional do cap. 6.2.7: seleciona a forma primeiro, só depois
+        # ajusta o nível de clipping.
+        self.write("SOURce:FUNCtion:SHAPe CSINusoid")
+        # Trocar a forma de onda recarrega a tabela e deixa a Rev. 5.53 MUDA
+        # por alguns segundos (cap. 7.7 do manual: comandos que afetam "list
+        # and trigger actions" são processados EM PARALELO). Enquanto o
+        # comando falhava com -256 isso não aparecia (a fonte rejeitava na
+        # hora, sem trabalho nenhum); com ele funcionando, a consulta seguinte
+        # estourava o timeout do VISA e derrubava a bateria na classe
+        # 05/HARMONICS. *WAI (validado na bancada real: 3/3, ~15-47ms, mais
+        # rápido e confiável que o polling por *IDN? de aguardar_resposta())
+        # bloqueia o processamento do PRÓXIMO comando até essa troca assentar.
+        self.write("*WAI")
+        self.write(f"SOURce:FUNCtion:SHAPe:CSINusoid {thd_pct:.8g}")
+        # Mesmo motivo do write acima: programar o nível de clipping também
+        # recarrega a tabela. Sem este segundo *WAI, trigger_step()/arm()
+        # (chamados logo depois por quem usa este método) rodavam com a fonte
+        # ainda processando — um erro gerado por ESTE write só aparecia na
+        # fila quando arm() a checava depois do INITiate:IMMediate, atribuído
+        # erroneamente a esse comando (visto na bancada: -113 "Undefined
+        # header" preso à classe CSINe). assert_no_errors() logo abaixo aponta
+        # o comando certo.
+        self.write("*WAI")
+        self.assert_no_errors("configuração CSINe (SOURce:FUNCtion:SHAPe:CSINusoid)")
+        self._forma_atual = "CSINusoid"
+
+    def select_sine_shape(self) -> None:
+        """Volta a forma de onda para a senoide pré-definida. Contrapartida de
+        ``configure_harmonics_csine()``: ``FUNCtion:SHAPe`` é estado
+        PERMANENTE, não um transiente — a senoide clipada continua valendo
+        para todas as capturas seguintes até alguém trocar de volta.
+
+        Chamada ao fim de TODA classe não-simulada (via
+        ``restaurar_forma_e_modo_padrao()``, mesmo quando a classe nunca
+        mudou a forma) — por isso é no-op se ``_forma_atual`` já é
+        ``SINusoid`` (rastreado em Python, coincide com o que
+        ``configure_safe_baseline()`` sempre programa numa conexão nova):
+        sem isso, todas as 18 classes que nunca usam CSINe pagariam o mesmo
+        write/espera à toa. Se a forma REALMENTE precisar mudar e um erro
+        real for gerado por ``FUNCtion:SHAPe SINusoid`` (mesma classe de bug
+        do CSINe, cap. 7.7 do manual), o ``assert_no_errors()`` abaixo aponta
+        o comando certo em vez de deixá-lo pendente até o ``arm()`` da
+        PRÓXIMA classe."""
+        if self._forma_atual == "SINusoid":
+            return
+        self.write("SOURce:FUNCtion:SHAPe SINusoid")
+        self.write("*WAI")
+        self.assert_no_errors("restaurar SOURce:FUNCtion:SHAPe SINusoid")
+        self._forma_atual = "SINusoid"
+
+    def disable_dc_offset(self) -> None:
+        """Contrapartida de ``enable_dc_offset()``: zera o offset e volta ao
+        modo AC puro. Como a forma de onda, o offset e o ``SOURce:MODE ACDC``
+        são estado permanente e continuariam aplicados nas capturas
+        seguintes.
+
+        No-op se ``_modo_saida`` já é ``AC`` — e não só por economia: o
+        Apêndice C do manual documenta ``-300`` "Device specific error" para
+        "Attempt to program voltage offset while in DC or AC mode only" —
+        ``SOURce:VOLTage:OFFSet`` só é aceito em modo ``ACDC``. Chamando isto
+        incondicionalmente no fim de TODA classe (mesmo as 18 que nunca
+        tocam offset, ainda em AC puro desde ``configure_safe_baseline()``),
+        o comando era rejeitado sempre — confirmado na bancada: falhava já
+        na primeira classe da bateria (01/NORMAL)."""
+        if self._modo_saida != "ACDC":
+            return
+        self.write("SOURce:VOLTage:OFFSet 0")
+        self.write("SOURce:MODE AC")
+        self.write("*WAI")
+        self.assert_no_errors("restaurar SOURce:VOLTage:OFFSet 0 / SOURce:MODE AC")
+        self._modo_saida = "AC"
+
+    def restaurar_forma_e_modo_padrao(self) -> None:
+        """Desfaz todo o estado PERMANENTE que uma classe possa ter deixado
+        ligado: forma de onda (``FUNCtion:SHAPe``) e modo/offset da saída
+        (``SOURce:MODE``/``VOLTage:OFFSet``).
+
+        Nada disso é transiente — continua valendo para as capturas seguintes
+        até alguém trocar de volta. Sem isto, a classe 05 (HARMONICS) deixa a
+        senoide CLIPADA ligada e a 19 (DC_OFFSET) deixa o offset e o modo
+        ACDC ligados para quem vier depois. As classes waveform se salvam por
+        acaso (``program_capture()`` reprograma forma e modo antes de cada
+        captura); as nativas, não."""
+        self.select_sine_shape()
+        self.disable_dc_offset()
+
+    def frequency_drift_list(
+        self, start_hz: float, end_hz: float, *, voltage_rms: float, dwell_s: float,
+    ) -> None:
+        """Programa uma rampa de frequência aproximada por 2 pontos de
+        ``LIST:FREQuency`` (início/fim), cada um com duração ``dwell_s``.
+        Usado pela classe 18 (FREQUENCY_DRIFT)."""
+        start_hz, end_hz, voltage_rms, dwell_s = (
+            float(start_hz), float(end_hz), float(voltage_rms), float(dwell_s)
+        )
+        for label, value in (("start_hz", start_hz), ("end_hz", end_hz)):
+            if not 45.0 <= value <= 500.0:
+                raise ParameterOutOfBoundsError(f"{label} {value} Hz fora de 45..500 Hz")
+        if not 0 <= voltage_rms <= self.max_voltage_rms:
+            raise ParameterOutOfBoundsError(
+                f"Tensão {voltage_rms} Vrms fora do limite de software 0..{self.max_voltage_rms}"
+            )
+        if not dwell_s > 0:
+            raise ParameterOutOfBoundsError(f"Dwell deve ser positivo; recebido {dwell_s}")
+        self.write("FREQuency:MODE LIST")
+        self.write(f"LIST:FREQuency {start_hz:.8g},{end_hz:.8g}")
+        self.write(f"LIST:VOLTage {voltage_rms:.8g},{voltage_rms:.8g}")
+        self.write(f"LIST:DWELl {dwell_s:.8g},{dwell_s:.8g}")
+        # Rev. 5.53 rejeita ':COUNt' (-113 Undefined header) e também rejeita
+        # sem o prefixo 'SOURce:' — confirmado em preflight_new.py
+        # --list-diagnostics: só 'SOURce:LIST:REPeat' (sem ':COUNt') é aceito.
+        self.write("SOURce:LIST:REPeat 1,1")
+        self.write("LIST:COUNt 1")
+        self.write("LIST:STEP AUTO")
+        self.write("VOLTage:MODE LIST")
+
+    def enable_dc_offset(self, offset_v: float, *, ac_peak_v: float) -> None:
+        """Liga o modo ACDC e programa um offset contínuo permanente de
+        ``offset_v``. ``ac_peak_v`` é o pico AC que vai conviver com o offset
+        (a base senoidal); a soma dos dois nunca pode exceder ``max_peak_v`` —
+        diferente do AC puro, aqui o pico físico real é offset + amplitude AC,
+        não só a amplitude AC."""
+        offset_v = float(offset_v)
+        ac_peak_v = float(ac_peak_v)
+        combined_peak_v = abs(offset_v) + ac_peak_v
+        if combined_peak_v > self.max_peak_v:
+            raise ParameterOutOfBoundsError(
+                f"Offset {offset_v:.3f} V + pico AC {ac_peak_v:.3f} V = {combined_peak_v:.3f} V "
+                f"excede o limite de pico {self.max_peak_v:.3f} V"
+            )
+        self.write("SOURce:MODE ACDC")
+        # Trocar SOURce:MODE também deixa a fonte ocupada — mesma razão do
+        # *WAI em configure_harmonics_csine()/select_sine_shape(). Sem o
+        # assert_no_errors() logo abaixo, um erro real aqui ficaria pendente
+        # até o arm() da PRÓXIMA classe (mesmo bug confirmado na bancada para
+        # select_sine_shape()/disable_dc_offset(), nunca observado aqui só
+        # porque nenhuma classe rodou DC_OFFSET logo depois de outra na mesma
+        # conexão até agora).
+        self.write("*WAI")
+        self.assert_no_errors("configuração ACDC (SOURce:MODE ACDC)")
+        self._modo_saida = "ACDC"
+        # SOURce:VOLTage:OFFSet só é aceito em modo ACDC (ver
+        # disable_dc_offset()) — agora que _modo_saida já reflete ACDC, este
+        # write é válido.
+        self.write(f"SOURce:VOLTage:OFFSet {offset_v:.8g}")
+
+    def _query_tolerante(self, command: str) -> Optional[str]:
+        """Consulta que devolve ``None`` em vez de levantar quando a fonte não
+        respondeu dentro do timeout do VISA.
+
+        A Rev. 5.53 fica MUDA por vários segundos depois de comandos que
+        recarregam a tabela de forma de onda (``FUNCtion:SHAPe``) ou trocam o
+        modo da saída (``SOURce:MODE AC/ACDC``) — o mesmo motivo pelo qual
+        ``TRACe:DEFine`` precisa de ~3 s e ``TRACe:DELete:ALL`` de ~15 s. Nos
+        laços de espera isso é transitório e esperado: quem chama continua
+        tentando até o SEU próprio deadline, em vez de abortar a bateria
+        inteira de 20 classes na primeira consulta que estourou. O deadline
+        de quem chama continua finito, então um cabo realmente solto ainda
+        falha — só que com mensagem própria, não com um traceback de VISA."""
+        try:
+            return self.query(command).strip().upper()
+        except CommunicationError as exc:
+            logger.debug("Consulta %r sem resposta (tentando de novo): %s", command, exc)
+            return None
+
+    def aguardar_resposta(self, command: str = "*IDN?", timeout_s: float = 20.0) -> None:
+        """Bloqueia até a fonte voltar a responder ``command``.
+
+        FALLBACK documentado, não usado por padrão: os quatro pontos que
+        motivaram sua criação (``configure_harmonics_csine()``,
+        ``select_sine_shape()``, ``disable_dc_offset()``,
+        ``enable_dc_offset()``) foram migrados para ``*WAI`` depois de
+        validado na bancada real como mais rápido (~15-47ms contra vários
+        segundos de polling) e igualmente confiável (3/3) — ver comentários
+        nesses métodos e em ``arm()``/``arm_transient()``. Mantido aqui caso
+        ``*WAI`` alguma hora se mostre insuficiente para um comando novo:
+        troque de volta para este polling por ``*IDN?`` nesse ponto específico.
+
+        Espera determinística (não um sleep adivinhado) para usar depois de um
+        comando que deixa a Rev. 5.53 ocupada: retorna assim que a fonte
+        responde de novo. Sem isso, quem chama a seguir paga o timeout cheio
+        do VISA em cada consulta.
+
+        Use SEMPRE o ``*IDN?`` padrão, a menos que a query escolhida seja
+        comprovadamente suportada por esta revisão. Só interessa saber SE a
+        fonte voltou a falar, não o valor — e uma query com header não
+        implementado é pior que inútil: a Rev. 5.53 não responde nada (o
+        timeout inteiro é desperdiçado) e ainda deixa ``-113 "Undefined
+        header"`` na fila, que estoura depois, atribuído ao próximo comando
+        que consultar a fila. Foi o que aconteceu na bancada com
+        ``SOURce:FUNCtion:SHAPe?`` e ``SOURce:MODE?``: os dois aceitam a
+        forma de COMANDO, mas não existem como QUERY."""
+        if self.simulated:
+            return
+        deadline = time.monotonic() + float(timeout_s)
+        while time.monotonic() < deadline:
+            if self._query_tolerante(command) is not None:
+                return
+            time.sleep(0.05)
+        raise CommunicationError(
+            f"AMETEK não voltou a responder {command!r} em {timeout_s:.1f} s; "
+            f"confirme {self.port}, cabo USB e alimentação da fonte"
+        )
 
     def wait_ready(self, settle_s: float = 0.25) -> None:
         """Aguarda comandos imediatos sem depender de ``*OPC?``.
@@ -492,6 +835,12 @@ class AmetekMX30:
         self.wait_ready()
         if self.output_enabled:
             raise InstrumentHardwareError("AMETEK continuou com saída ligada após baseline")
+        # commands acima já inclui "SOURce:MODE AC" e "SOURce:FUNCtion:SHAPe
+        # SINusoid" — mantém _modo_saida/_forma_atual coerentes com o que a
+        # fonte de fato tem programado nesta conexão nova (ver
+        # select_sine_shape()/disable_dc_offset()).
+        self._modo_saida = "AC"
+        self._forma_atual = "SINusoid"
 
     def clear_all_traces(self) -> None:
         """Apaga todas as TRACEs de usuário. Só pode ser chamada com OUTPUT OFF,
@@ -508,14 +857,32 @@ class AmetekMX30:
         # durante a gravação da Flash; aguarde e valide pelo catálogo.
         time.sleep(15.0)
 
-    def _ensure_trace_slots(self, trace_names: Sequence[str]) -> None:
-        catalog = {
+    def _trace_catalog(self) -> set:
+        return {
             token.strip().strip('"').upper()
             for token in self.query("TRACe:CATalog?").split(",")
             if token.strip()
         }
+
+    def _trace_catalog_contains(self, trace_names: Sequence[str]) -> bool:
+        """Confirma CONTRA O INSTRUMENTO (não só o cache local) que as TRACEs
+        que pretendemos reaproveitar (ver program_capture()) ainda existem —
+        nunca confia cegamente no cache: se algo apagou o catálogo fora deste
+        objeto (ex. TRACe:DELete:ALL rodado por outro processo/sessão), isto
+        pega e força reprogramar em vez de arriscar um transiente errado."""
+        catalog = self._trace_catalog()
+        return all(name.upper() in catalog for name in trace_names)
+
+    def _ensure_trace_slots(self, trace_names: Sequence[str]) -> None:
+        catalog = self._trace_catalog()
         for name in trace_names:
             if name not in catalog:
+                # Gravação em Flash: com N nomes ausentes, isso sozinho leva
+                # N*3s SEM nenhuma resposta do instrumento no meio — sem este
+                # log, esse intervalo parece uma trava em vez de trabalho
+                # esperado (só ocorre a definição de cada TRACE uma vez; nas
+                # próximas chamadas já está no catálogo).
+                logger.info("Definindo TRACE %s (grava na Flash; ~3 s)...", name)
                 self.write(f"TRACe:DEFine {name}")
                 # O manual cita ~500 ms, mas a Rev. 5.53 permaneceu ocupada por
                 # mais tempo ao gravar Flash; use margem conservadora.
@@ -581,59 +948,93 @@ class AmetekMX30:
         self.write("VOLTage:MODE FIXed")
         self.assert_no_errors("reset para modo FIXed")
         self.write(f"SOURce:MODE {'ACDC' if dc_offset_pu else 'AC'}")
+        self._modo_saida = "ACDC" if dc_offset_pu else "AC"
         self.write(f"SOURce:FREQuency {frequency_hz:.8g}")
         self.write("SOURce:FREQuency:MODE FIXed")
         self.write("SOURce:FUNCtion:SHAPe SINusoid")
+        self._forma_atual = "SINusoid"
         self.write(f"SOURce:VOLTage {base_voltage_rms:.8g}")
         if dc_offset_pu:
+            # Válido porque _modo_saida já é ACDC (linha acima) — ver
+            # disable_dc_offset() sobre por que a ordem importa.
             offset_v = dc_offset_pu * base_voltage_rms * math.sqrt(2.0)
             self.write(f"SOURce:VOLTage:OFFSet {offset_v:.8g}")
-        self._ensure_trace_slots(trace_names)
 
-        dc_component = float(dc_offset_pu)
-        list_voltages: List[float] = []
-        reconstructed_peak_v = abs(dc_component) * base_voltage_rms * math.sqrt(2.0)
-        for index, name in enumerate(trace_names):
-            start = index * pontos_por_ciclo
-            cycle = waveform[start : start + pontos_por_ciclo] - dc_component
-            cycle_rms_pu = float(np.sqrt(np.mean(np.square(cycle))))
-            voltage_rms = base_voltage_rms * math.sqrt(2.0) * cycle_rms_pu
-            if voltage_rms > self.max_voltage_rms:
-                logger.warning(
-                    "Ciclo %d: %.3f Vrms acima do limite configurado %.3f Vrms; aceito.",
-                    index, voltage_rms, self.max_voltage_rms,
-                )
-            list_voltages.append(voltage_rms)
-            trace = self._resample_cycle(cycle)
-            trace -= np.mean(trace)
-            scale = float(np.max(np.abs(trace)))
-            if scale < 1e-12:
-                trace = np.zeros(self.TRACE_POINTS, dtype=np.float64)
-            else:
-                trace /= scale
-                # O pico físico real do ciclo reconstruído é o pico em pu
-                # (scale, antes da normalização) multiplicado pela tensão base
-                # de pico. A abordagem anterior (voltage_rms / trace_rms)
-                # infla incorretamente o resultado porque voltage_rms já
-                # incorpora o fator sqrt(2), levando a uma superestimativa de
-                # ~17% para senoide de 60 Hz reamostrada a 1024 pontos.
-                cycle_peak_v = scale * base_voltage_rms * math.sqrt(2.0)
-                reconstructed_peak_v = max(
-                    reconstructed_peak_v,
-                    cycle_peak_v + abs(dc_component) * base_voltage_rms * math.sqrt(2.0),
-                )
-                if reconstructed_peak_v > self.max_peak_v:
+        # Assinatura exata (bytes da forma + nomes de TRACE + tensão/frequência/
+        # offset) do que estamos prestes a programar. Se bater com a última
+        # programação bem-sucedida NESTA conexão e o catálogo do instrumento
+        # ainda contiver essas TRACEs (confirmado ao vivo, não só o cache
+        # local — ver _trace_catalog_contains), pula a reescrita na Flash:
+        # ~1s por TRACE (~12-15s para 12 ciclos a 60 Hz), o custo recorrente
+        # que se repetia mesmo sem nenhuma mudança de forma/tensão/frequência
+        # (ex.: repetir o preflight de 5V várias vezes na mesma sessão da CLI).
+        signature = (
+            waveform.tobytes(), trace_names,
+            float(base_voltage_rms), float(frequency_hz), float(dc_offset_pu),
+        )
+        reaproveitar = (
+            not self.simulated
+            and self._last_capture_signature == signature
+            and self._trace_catalog_contains(trace_names)
+        )
+        if reaproveitar:
+            logger.info(
+                "TRACe idêntica à última programada nesta conexão (%d ciclos, "
+                "%.3f Vrms, %.3f Hz); reaproveitando (~%ds de escrita em Flash evitados).",
+                len(trace_names), base_voltage_rms, frequency_hz, len(trace_names),
+            )
+            list_voltages = list(self._last_capture_list_voltages)
+            reconstructed_peak_v = self._last_capture_peak_v
+        else:
+            self._ensure_trace_slots(trace_names)
+
+            dc_component = float(dc_offset_pu)
+            list_voltages = []
+            reconstructed_peak_v = abs(dc_component) * base_voltage_rms * math.sqrt(2.0)
+            for index, name in enumerate(trace_names):
+                start = index * pontos_por_ciclo
+                cycle = waveform[start : start + pontos_por_ciclo] - dc_component
+                cycle_rms_pu = float(np.sqrt(np.mean(np.square(cycle))))
+                voltage_rms = base_voltage_rms * math.sqrt(2.0) * cycle_rms_pu
+                if voltage_rms > self.max_voltage_rms:
                     logger.warning(
-                        "TRACE reconstruída atingiria %.3f Vp, acima do limite %.3f Vp; prosseguindo.",
-                        reconstructed_peak_v, self.max_peak_v,
+                        "Ciclo %d: %.3f Vrms acima do limite configurado %.3f Vrms; aceito.",
+                        index, voltage_rms, self.max_voltage_rms,
                     )
-            values = ",".join(f"{value:.8g}" for value in trace)
-            self.write(f"TRACe:DATA {name},{values}")
-            # A transferência serial em 115200 baud na Rev. 5.53 pode deixar o buffer ocupado
-            # se checado imediatamente via SYST:ERR?. Limpamos com *CLS e aguardamos o processamento.
-            if not self.simulated:
-                time.sleep(1.0)
-                self.write("*CLS")
+                list_voltages.append(voltage_rms)
+                trace = self._resample_cycle(cycle)
+                trace -= np.mean(trace)
+                scale = float(np.max(np.abs(trace)))
+                if scale < 1e-12:
+                    trace = np.zeros(self.TRACE_POINTS, dtype=np.float64)
+                else:
+                    trace /= scale
+                    # O pico físico real do ciclo reconstruído é o pico em pu
+                    # (scale, antes da normalização) multiplicado pela tensão base
+                    # de pico. A abordagem anterior (voltage_rms / trace_rms)
+                    # infla incorretamente o resultado porque voltage_rms já
+                    # incorpora o fator sqrt(2), levando a uma superestimativa de
+                    # ~17% para senoide de 60 Hz reamostrada a 1024 pontos.
+                    cycle_peak_v = scale * base_voltage_rms * math.sqrt(2.0)
+                    reconstructed_peak_v = max(
+                        reconstructed_peak_v,
+                        cycle_peak_v + abs(dc_component) * base_voltage_rms * math.sqrt(2.0),
+                    )
+                    if reconstructed_peak_v > self.max_peak_v:
+                        logger.warning(
+                            "TRACE reconstruída atingiria %.3f Vp, acima do limite %.3f Vp; prosseguindo.",
+                            reconstructed_peak_v, self.max_peak_v,
+                        )
+                values = ",".join(f"{value:.8g}" for value in trace)
+                self.write(f"TRACe:DATA {name},{values}")
+                # A transferência serial em 115200 baud na Rev. 5.53 pode deixar o buffer ocupado
+                # se checado imediatamente via SYST:ERR?. Limpamos com *CLS e aguardamos o processamento.
+                if not self.simulated:
+                    time.sleep(1.0)
+                    self.write("*CLS")
+            self._last_capture_signature = signature
+            self._last_capture_list_voltages = list(list_voltages)
+            self._last_capture_peak_v = reconstructed_peak_v
 
         # DWELl = 1 período exato (1/frequency_hz), não um valor fixo: cada
         # TRACE precisa terminar exatamente quando o ciclo real dela termina,
@@ -643,11 +1044,38 @@ class AmetekMX30:
         voltages = ",".join(f"{value:.8g}" for value in list_voltages)
         dwells = ",".join(f"{dwell_s:.10g}" for _ in trace_names)
         repeats = ",".join("1" for _ in trace_names)
+        # Cada comando de dados de LISTA é confirmado IMEDIATAMENTE pela sua
+        # própria consulta ":POINts?" (write seguido de query, sem delay
+        # adivinhado) — se um comando não "pegar" (ex.: o firmware ainda
+        # processando o anterior), o erro aponta exatamente qual comando
+        # falhou, em vez de só descobrir no fim que algo deu errado.
+        # Diferente de TRACe:DATA (gravação em Flash, sem query dedicada no
+        # manual — ver o time.sleep(1.0) acima), estes comandos SOURce:LIST:*
+        # são apenas configuração em RAM e têm consulta ":POINts?" própria.
+        expected = len(trace_names)
+        list_data_commands = (
+            (f"SOURce:LIST:FUNCtion:SHAPe {names}", "SOURce:LIST:FUNCtion:POINts?"),
+            (f"SOURce:LIST:VOLTage {voltages}", "SOURce:LIST:VOLTage:POINts?"),
+            (f"SOURce:LIST:DWELl {dwells}", "SOURce:LIST:DWELl:POINts?"),
+        )
+        for command, points_query in list_data_commands:
+            self.write(command)
+            errors = self.check_errors()
+            if errors:
+                raise InstrumentHardwareError(
+                    f"AMETEK rejeitou {command!r} durante programação da lista: {errors}"
+                )
+            actual = int(float(self.query(points_query)))
+            if actual != expected:
+                raise InstrumentHardwareError(
+                    f"{points_query} retornou {actual} logo após {command!r}; esperado {expected}"
+                )
         for command in (
-            f"SOURce:LIST:FUNCtion:SHAPe {names}",
-            f"SOURce:LIST:VOLTage {voltages}",
-            f"SOURce:LIST:DWELl {dwells}",
-            f"SOURce:LIST:REPeat:COUNt {repeats}",
+            # Rev. 5.53 rejeita ':COUNt' (-113 Undefined header); confirmado
+            # em preflight_new.py --list-diagnostics testando as 4 variantes
+            # de cabeçalho — só esta (com 'SOURce:', sem ':COUNt') é aceita,
+            # mesmo o manual documentando ':COUNt' como sufixo válido.
+            f"SOURce:LIST:REPeat {repeats}",
             "SOURce:LIST:COUNt 1",
             "SOURce:LIST:STEP AUTO",
             "FUNCtion:MODE LIST",
@@ -660,18 +1088,11 @@ class AmetekMX30:
             "OUTPut:TTLTrg ON",
         ):
             self.write(command)
-        self.assert_no_errors("programação da lista de captura")
-        expected = len(trace_names)
-        for query in (
-            # No manual MX, SHAPe e' a palavra-chave opcional do comando de
-            # dados. A consulta de quantidade termina em FUNCtion:POINts?.
-            "SOURce:LIST:FUNCtion:POINts?",
-            "SOURce:LIST:VOLTage:POINts?",
-            "SOURce:LIST:DWELl:POINts?",
-        ):
-            actual = int(float(self.query(query)))
-            if actual != expected:
-                raise InstrumentHardwareError(f"{query} retornou {actual}; esperado {expected}")
+            errors = self.check_errors()
+            if errors:
+                raise InstrumentHardwareError(
+                    f"AMETEK rejeitou {command!r} durante programação da lista: {errors}"
+                )
         self.last_programmed_peak_v = reconstructed_peak_v
         self._last_cycles = ciclos
         # A saída fica ligada durante toda a bateria (energize_baseline() é
@@ -684,42 +1105,83 @@ class AmetekMX30:
             self.output_enabled = True
             self.assert_no_errors("religar OUTPUT após reprogramação da lista")
 
-    def arm(self, timeout_s: float = 5.0) -> None:
+    def arm(self, timeout_s: float = 20.0) -> None:
         """Arma o sistema de trigger para um transiente já configurado (PULSe/STEP/CSINe
         aplicado a nível imediato, ou LIST). Genérico — sem diagnóstico específico de LIST;
-        use arm_transient() para uma captura TRACe/LIST completa com esse diagnóstico."""
+        use arm_transient() para uma captura TRACe/LIST completa com esse diagnóstico.
+
+        Usa ``_query_tolerante``: o comando que configurou o transiente pode
+        ter deixado a fonte muda por alguns segundos (ver a docstring de
+        ``_query_tolerante``), e o timeout do VISA é menor que este deadline —
+        sem tolerar a consulta que estoura, a PRIMEIRA tentativa derrubava a
+        bateria inteira (visto na bancada na classe 05/HARMONICS, logo depois
+        de ``FUNCtion:SHAPe CSINusoid``)."""
         idle_deadline = time.monotonic() + timeout_s
         last_state = ""
         while time.monotonic() < idle_deadline:
-            last_state = self.query("TRIGger:STATe?").strip().upper()
+            state = self._query_tolerante("TRIGger:STATe?")
+            if state is None:
+                continue
+            last_state = state
             if last_state.startswith("IDLE"):
                 break
             time.sleep(0.05)
         else:
-            raise TimeoutError(f"AMETEK não estava IDLE antes do INIT; estado={last_state!r}")
+            raise TimeoutError(
+                f"AMETEK não estava IDLE antes do INIT em {timeout_s:.1f} s; "
+                f"último estado={last_state!r}"
+            )
+        # *WAI (cap. 5.14/7.7 do manual): comandos que afetam "list and
+        # trigger actions" são processados EM PARALELO pela Rev. 5.53 — o
+        # mesmo motivo documentado em configure_harmonics_csine() para
+        # FUNCtion:SHAPe, mas aqui para VOLTage:MODE (STEP/PULSe, programado
+        # por trigger_step()/trigger_pulse() logo antes de arm()). *TRIGger:
+        # STATe? já reportar IDLE não é garantia de que a troca de modo
+        # terminou de assentar internamente — confirmado na bancada: 01/NORMAL
+        # (STEP) seguido de 02/SAG (PULSe) SEM reconectar entre as duas
+        # reproduzia (-300, 'Device specific error') no INITiate:IMMediate de
+        # forma determinística; cada classe rodada isolada (nova conexão,
+        # portanto novo VOLTage:MODE FIXed via configure_safe_baseline) nunca
+        # falhava. *WAI bloqueia o processamento do PRÓXIMO comando da fonte
+        # até essas operações pendentes terminarem (exceto o transiente em si)
+        # — validado na bancada como mais rápido e mais confiável que o
+        # polling por *IDN? de aguardar_resposta() (ver docstring dela).
+        self.write("*WAI")
         self.write("INITiate:IMMediate")
         self.assert_no_errors("comando INITiate:IMMediate")
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
-            last_state = self.query("TRIGger:STATe?").strip().upper()
+            state = self._query_tolerante("TRIGger:STATe?")
+            if state is None:
+                continue
+            last_state = state
             if last_state.startswith(("ARM", "WTRIG")):
                 return
             time.sleep(0.05)
         raise TimeoutError(f"AMETEK não entrou em ARM/WTRIG; último estado={last_state!r}")
 
-    def arm_transient(self, timeout_s: float = 5.0) -> None:
+    def arm_transient(self, timeout_s: float = 20.0) -> None:
         # program_capture() já envia ABORt antes de configurar a lista. Não
         # repita aqui: na MX30-3Pi Rev. 5.53, um novo ABORt também restaurou
         # FUNC/VOLT:MODE FIX e OUTPUT OFF, destruindo a configuração preparada.
         idle_deadline = time.monotonic() + timeout_s
         last_state = ""
         while time.monotonic() < idle_deadline:
-            last_state = self.query("TRIGger:STATe?").strip().upper()
+            # Tolera consulta sem resposta (ver arm()/_query_tolerante): a
+            # lista recém-programada por program_capture() envia 12 TRACe:DATA
+            # de 1024 pontos pela serial e pode deixar a fonte ocupada.
+            state = self._query_tolerante("TRIGger:STATe?")
+            if state is None:
+                continue
+            last_state = state
             if last_state.startswith("IDLE"):
                 break
             time.sleep(0.05)
         else:
-            raise TimeoutError(f"AMETEK não estava IDLE antes do INIT; estado={last_state!r}")
+            raise TimeoutError(
+                f"AMETEK não estava IDLE antes do INIT em {timeout_s:.1f} s; "
+                f"último estado={last_state!r}"
+            )
         diagnostics = {
             "output": self.query("OUTPut:STATe?"),
             "function_mode": self.query("FUNCtion:MODE?"),
@@ -756,6 +1218,9 @@ class AmetekMX30:
                 f"Configuração transient lida da MX30 é inválida: {invalid}; "
                 f"diagnóstico completo={diagnostics}"
             )
+        # *WAI antes do INIT — mesma razão de arm() (ver comentário lá):
+        # comandos de list/trigger são processados em paralelo pela Rev. 5.53.
+        self.write("*WAI")
         # A seção 6.5.2 do manual prescreve INITiate:IMMediate para iniciar uma
         # única ação. Com TRIGger:SOURce BUS, isso arma; o evento continua sendo
         # fornecido posteriormente por *TRG.
@@ -769,7 +1234,10 @@ class AmetekMX30:
         deadline = time.monotonic() + timeout_s
         last_state = ""
         while time.monotonic() < deadline:
-            last_state = self.query("TRIGger:STATe?").strip().upper()
+            state = self._query_tolerante("TRIGger:STATe?")
+            if state is None:
+                continue
+            last_state = state
             if last_state.startswith(("ARM", "WTRIG")):
                 return
             time.sleep(0.05)
@@ -786,7 +1254,10 @@ class AmetekMX30:
     def wait_transient_complete(self, timeout_s: float = 5.0) -> None:
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
-            if self.query("TRIGger:STATe?").strip().upper().startswith("IDLE"):
+            state = self._query_tolerante("TRIGger:STATe?")
+            if state is None:
+                continue
+            if state.startswith("IDLE"):
                 self.assert_no_errors("execução do transiente")
                 return
             time.sleep(0.05)

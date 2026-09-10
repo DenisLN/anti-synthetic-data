@@ -1,7 +1,8 @@
 $ErrorActionPreference = "Stop"
-Set-Location $PSScriptRoot
+$ProjectRoot = Split-Path $PSScriptRoot -Parent
+Set-Location $ProjectRoot
 
-$venvPython = Join-Path $PSScriptRoot "env\Scripts\python.exe"
+$venvPython = Join-Path $ProjectRoot "env\Scripts\python.exe"
 if (-not (Test-Path $venvPython)) {
     if (Get-Command py -ErrorAction SilentlyContinue) {
         py -3.11 -m venv env
@@ -25,7 +26,7 @@ if ($LASTEXITCODE -ne 0) { throw "Falha ao atualizar pip." }
 if ($LASTEXITCODE -ne 0) { throw "Falha ao instalar requirements.txt." }
 
 Write-Host ""
-Write-Host "Ambiente criado em $PSScriptRoot\env"
+Write-Host "Ambiente criado em $ProjectRoot\env"
 Write-Host "Antes do preflight:"
 Write-Host "1. Instale Keysight IO Libraries Suite ou NI-VISA x64."
 Write-Host "2. Conecte a USB da AMETEK e confirme a porta COM10 no Windows."

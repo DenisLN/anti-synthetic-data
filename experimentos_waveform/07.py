@@ -2,14 +2,15 @@
 
 import numpy as np
 
-from comum import aplicar_entalhes, executar_classe_waveform
+from mestre import ExperimentoWaveform
+from sinais import aplicar_entalhes
 
 
-def gerar(t, f0, capture_index, rng):
-    voltage = np.sin(2.0 * np.pi * f0 * t)
-    pulsos = aplicar_entalhes(voltage, t, rng, frequencia_hz=f0)
-    return voltage, {"notch_pulses": float(pulsos)}
+class Experimento(ExperimentoWaveform):
+    id = "07"
+    nome = "NOTCH"
 
-
-def run(fonte, osc, config):
-    executar_classe_waveform(config, fonte, osc, "07", "NOTCH", gerar)
+    def gerar(self, t, f0, capture_index, rng):
+        voltage = np.sin(2.0 * np.pi * f0 * t)
+        pulsos = aplicar_entalhes(voltage, t, rng, frequencia_hz=f0)
+        return voltage, {"notch_pulses": float(pulsos)}

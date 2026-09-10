@@ -186,10 +186,17 @@ class KeysightDSOX4034A(SCPIMixin, Instrument):
         # CENTer e 30 kSa/s pode estar abaixo da taxa física disponível. Para
         # manter o trigger no início dos 200 ms, usamos modo automático com
         # referência LEFT e reamostramos os dados adquiridos no download.
-        # Com REFerence LEFT, :TIMebase:POSition é o intervalo entre a borda
-        # esquerda da janela e o instante do trigger: pre_trigger_s > 0 faz a
-        # captura sobrar dados de ANTES do trigger (ex.: baseline "normal"
-        # antes de um SAG/SWELL disparado nesse mesmo instante).
+        # :TIMebase:POSition é "tempo do trigger até a referência de exibição"
+        # (manual Keysight, cap. 35): pos = t_referencia - t_trigger. Com
+        # REFerence LEFT, a referência é a borda esquerda da janela (nossa
+        # amostra t=0 após o download). Para sobrar baseline ANTES do trigger
+        # (ex.: antes de um SAG/SWELL disparado no próprio instante do
+        # trigger), a borda esquerda precisa ficar CRONOLOGICAMENTE ANTES do
+        # trigger, ou seja pos < 0 — por isso o sinal invertido abaixo. Um
+        # pos positivo faz o oposto: a janela só começa a ser capturada
+        # pre_trigger_s DEPOIS do trigger, pulando o próprio distúrbio (bug
+        # que fazia o preflight nativo medir só o patamar recuperado, tanto
+        # "dentro" quanto "fora" da janela do PULSe).
         for command in (
             ":STOP",
             ":ACQuire:TYPE NORMal",
@@ -198,7 +205,7 @@ class KeysightDSOX4034A(SCPIMixin, Instrument):
             ":TIMebase:MODE MAIN",
             f":TIMebase:RANGe {duration_s:.12g}",
             ":TIMebase:REFerence LEFT",
-            f":TIMebase:POSition {pre_trigger_s:.12g}",
+            f":TIMebase:POSition {(-pre_trigger_s) or 0.0:.12g}",
             ":ACQuire:POINts:ANALog:AUTO ON",
             ":ACQuire:SRATe:ANALog:AUTO ON",
             ":WAVeform:POINts:MODE NORMal",

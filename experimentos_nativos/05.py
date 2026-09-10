@@ -12,47 +12,43 @@ import math
 
 import numpy as np
 
-from comum import executar_classe_nativa
+from ametek_orm import AmetekMX30
+from mestre import ExperimentoNativo
 
 NIVEIS_THD = (0.05, 0.10, 0.15, 0.20, 0.30)
-TETO_CSINE = 0.20
+TETO_CSINE = AmetekMX30.MAX_CSINE_THD_PCT / 100.0
 
 
-def gerar(t, f0, capture_index, rng):
-    thd = NIVEIS_THD[capture_index % len(NIVEIS_THD)]
-    # A soma quadrática dos coeficientes é exatamente o THD solicitado.
-    ratios = np.array([0.60, 0.30, 0.10], dtype=np.float64)
-    coeficientes = thd * ratios / np.linalg.norm(ratios)
-    w = 2.0 * np.pi * f0
-    voltage = (
-        np.sin(w * t)
-        + coeficientes[0] * np.sin(3.0 * w * t)
-        + coeficientes[1] * np.sin(5.0 * w * t)
-        + coeficientes[2] * np.sin(7.0 * w * t)
-    )
-    return voltage, {"thd": thd}
+class Experimento(ExperimentoNativo):
+    id = "05"
+    nome = "HARMONICS"
 
+    def gerar(self, t, f0, capture_index, rng):
+        thd = NIVEIS_THD[capture_index % len(NIVEIS_THD)]
+        # A soma quadrática dos coeficientes é exatamente o THD solicitado.
+        ratios = np.array([0.60, 0.30, 0.10], dtype=np.float64)
+        coeficientes = thd * ratios / np.linalg.norm(ratios)
+        w = 2.0 * np.pi * f0
+        voltage = (
+            np.sin(w * t)
+            + coeficientes[0] * np.sin(3.0 * w * t)
+            + coeficientes[1] * np.sin(5.0 * w * t)
+            + coeficientes[2] * np.sin(7.0 * w * t)
+        )
+        return voltage, {"thd": thd}
 
-def _configurar(fonte, config, capture_index):
-    # Só é chamado para os 4 níveis dentro do teto do CSINe — usar_trace()
-    # já desvia o nível de 30% para o caminho TRACe antes de chegar aqui.
-    thd = NIVEIS_THD[capture_index % len(NIVEIS_THD)]
-    fonte.write(f"SOURce:FUNCtion:SHAPe:CSINusoid {thd * 100.0:.8g}")
-    fonte.write("SOURce:FUNCtion:SHAPe CSINe")
-    fonte.write("VOLTage:MODE STEP")
-    fonte.write(f"VOLTage:TRIGgered {config.base_voltage_rms:.8g}")
-    return {"thd": thd}
+    def configurar(self, capture_index):
+        # Só é chamado para os 4 níveis dentro do teto do CSINe — usar_trace()
+        # já desvia o nível de 30% para o caminho TRACe antes de chegar aqui.
+        thd = NIVEIS_THD[capture_index % len(NIVEIS_THD)]
+        self.fonte.configure_harmonics_csine(thd * 100.0)
+        self.fonte.trigger_step(self.config.base_voltage_rms)
+        return {"thd": thd}
 
+    def usar_trace(self, capture_index):
+        return NIVEIS_THD[capture_index % len(NIVEIS_THD)] > TETO_CSINE
 
-def _usar_trace(capture_index):
-    return NIVEIS_THD[capture_index % len(NIVEIS_THD)] > TETO_CSINE
-
-
-def run(fonte, osc, config):
-    # Headroom generoso: a soma de harmônicas em 30% THD tem crista um pouco
-    # maior que a senoide limpa; escala pra caber com folga.
-    escala = config.base_voltage_rms * math.sqrt(2.0) * 1.5
-    executar_classe_nativa(
-        config, fonte, osc, "05", "HARMONICS", gerar, _configurar,
-        scope_scale_v=escala, usar_trace=_usar_trace,
-    )
+    def scope_scale_v(self):
+        # Headroom generoso: a soma de harmônicas em 30% THD tem crista um
+        # pouco maior que a senoide limpa; escala pra caber com folga.
+        return self.config.base_voltage_rms * math.sqrt(2.0) * 1.5

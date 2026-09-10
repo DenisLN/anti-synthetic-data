@@ -1,7 +1,8 @@
 $ErrorActionPreference = "Stop"
-Set-Location $PSScriptRoot
+$ProjectRoot = Split-Path $PSScriptRoot -Parent
+Set-Location $ProjectRoot
 
-$destination = Join-Path (Split-Path $PSScriptRoot -Parent) "tcc-instrumentacao-bancada.zip"
+$destination = Join-Path (Split-Path $ProjectRoot -Parent) "tcc-instrumentacao-bancada.zip"
 $items = Get-ChildItem -Force | Where-Object {
     $_.Name -notin @("env", ".venv", "__pycache__", "resultados", "logs", "backups", ".git")
 }

@@ -1,38 +1,111 @@
-# Instrução para o Codex no computador Windows da bancada
+# Instrução para agentes de IA no computador Windows da bancada
 
-O projeto deve estar em C:\Users\denis\TCC\code.
-
-Não refatore o código, não troque portas, não altere limites e não rode testes
-separados. A fonte e o osciloscópio já devem estar conectados assim:
+O projeto deve estar em `C:\Users\denis\TCC\code` (ajuste o caminho conforme a
+máquina). A fonte e o osciloscópio já devem estar conectados assim:
 
 - AMETEK MX30: porta USB da fonte, exposta pelo driver como PyVISA
-  ASRL10::INSTR (COM10), 115200 baud confirmados no equipamento real.
-- Keysight DSO-X 4034A:
-  USB0::0x0957::0x17A4::MY59240844::0::INSTR.
+  `ASRL10::INSTR` (`COM10`), 115200 baud confirmados no equipamento real.
+- Keysight DSO-X 4034A: `USB0::0x0957::0x17A4::MY59240844::0::INSTR`.
 - BNC: AMETEK Trigger Out -> Keysight EXT Trigger.
 - O cabo USB da AMETEK deve permanecer conectado. Não usar simultaneamente o
   conector DB9 RS-232.
 
-## Único comando
+## Fluxo do operador (a partir da v1.7)
 
-Abra um terminal como usuário normal:
+A operação deixou de ser um fluxo fixo de 5 etapas obrigatórias. O operador
+roda:
 
-    cd C:\Users\denis\TCC\code
-    START_BENCH.cmd
+```powershell
+cd C:\Users\denis\TCC\code
+scripts\START_BENCH.cmd
+```
 
-O script cria o ambiente Python automaticamente se ele ainda não existir.
-Depois faz internamente identificação, confirmação de OUTPUT OFF, trigger BNC,
-aquisição de 6000 pontos, teste em 5 Vrms e uma captura de cada classe.
+Isso prepara o venv, pergunta o fator EXATO da probe de tensão e a
+tensão/frequência do teste (uma vez, no início do processo — ver por quê na
+seção 5.3 do README) e entrega o resto para a CLI interativa
+(`logica/cli.py`). Dentro da CLI, `help`/`?` imprime a referência completa;
+resumo:
 
-O operador terá de informar o fator exato da probe de tensão e digitar
-ENERGIZAR-5V. Não invente o fator e não automatize essa confirmação.
+| Comando | Energiza? | Equivale a |
+|---|---|---|
+| `status`, `list` | não | — |
+| `comm` | não | antiga etapa Communication |
+| `trigger` | não | antiga etapa Trigger |
+| `lowvoltage` | sim, 5V | antiga etapa LowVoltage — agora OPCIONAL, só para recomissionar (fiação/probe mexidas), não roda mais automaticamente dentro de nada |
+| `native` | sim | antiga etapa NativeCommands (`preflight_new.py --native-commands`) |
+| `run <NN\|nome>` | sim | roda uma classe isolada |
+| `run all` | sim | bateria completa das 20 classes, resiliente por classe (ver abaixo) |
 
-Se o script terminar com erro:
+Todas as confirmações físicas (fator de probe, Vrms/Hz, e a string digitada
+antes de energizar — `ENERGIZAR-5V`, `ENERGIZAR-COMANDOS`,
+`EXECUTAR-CLASSE-<NN>`, `EXECUTAR-20-CLASSES`, todas case-sensitive) continuam
+existindo exatamente como no fluxo antigo. Não invente o fator de probe e não
+automatize essas confirmações.
+
+Se algo falhar de um jeito que indique infraestrutura real comprometida (porta
+serial caiu, impossível confirmar OUTPUT):
 
 1. confirmar fisicamente OUTPUT OFF no painel da AMETEK;
-2. não executar novamente de forma automática;
-3. entregar ao usuário o arquivo mais recente de logs\startup-bench-*.log;
+2. não executar de novo automaticamente;
+3. entregar ao usuário o arquivo mais recente de `logs\startup-bench-*.log`
+   (ou `logs\preflight_new-*.log` para falhas de `native`);
 4. não remover validações de IDN, timeout, tamanho de waveform ou SCPI.
 
-Captura de corrente permanece desligada. Não ativá-la sem fator da probe de
-corrente e corrente-base fornecidos pelo usuário.
+Uma falha isolada de EXPERIMENTO (RMS fora de tolerância, timeout de trigger,
+exceção em `gerar()`) durante `run all` **não** é motivo para parar e chamar o
+usuário — `Bancada.executar_bateria()` já isola, registra e segue para a
+classe seguinte sozinha (ver "Limites inegociáveis" abaixo). Só pare e avise
+diante de uma falha de infraestrutura real.
+
+Captura de corrente permanece desligada por padrão. Não ativá-la sem fator da
+probe de corrente e corrente-base fornecidos pelo usuário.
+
+## O que pode ser refatorado
+
+Este arquivo historicamente dizia "não refatore, não rode testes separados".
+Essa restrição está **suspensa** para os módulos abaixo, e continua suspensa
+para qualquer sessão futura que precise mexer neles (autorização registrada
+em 2026-09-09, ver `CHANGELOG/v1.7.md`):
+
+- `logica/mestre.py`, `logica/ametek_orm.py`, `logica/preflight.py`,
+  `logica/preflight_new.py`, `logica/cli.py`, e os scripts em `scripts/`.
+- `tests/test_offline.py` pode ser rodado e editado livremente — não toca
+  hardware, roda os dois ORMs em modo simulado.
+
+Nenhuma outra restrição foi suspensa. Em especial, os limites físicos abaixo
+continuam absolutos.
+
+## Limites inegociáveis (não mudar em nenhuma hipótese)
+
+- `AMETEK_PORT=COM10` e `AMETEK_BAUDRATE=115200` continuam fixos e validados
+  em `validate_bench_configuration()` (`logica/mestre.py`); não trocar
+  porta/baud nem remover essa validação.
+- Não remover nem enfraquecer validações de IDN, timeout, tamanho de waveform
+  (6000 pontos) ou erros SCPI (`assert_no_errors`/`check_errors`) — inclusive
+  as que ficaram MAIS específicas (ex.: o `assert_no_errors()` logo após
+  `SOURce:FUNCtion:SHAPe:CSINusoid` em `configure_harmonics_csine()`, que
+  corrigiu um erro que antes era atribuído ao comando SEGUINTE); nunca
+  torná-las mais fracas.
+- Não alterar `max_voltage_rms`, `max_peak_v` nem `max_current_a`, nem remover
+  `ParameterOutOfBoundsError` em `ametek_orm.py`.
+- Nenhum comando que energiza a saída pode rodar sem confirmação explícita
+  digitada pelo operador (case-sensitive) — vale para a CLI de hoje e para
+  qualquer fluxo futuro.
+- A resiliência por classe (`Bancada.executar_bateria`) isola falhas de
+  EXPERIMENTO mas continua abortando tudo, sem tentar de novo sozinho, diante
+  de `CommunicationError` ou `FalhaFatalDeInstrumento` (serial caiu,
+  impossível confirmar OUTPUT, impossível recuperar um estado seguro
+  conhecido via `recuperar_estado_seguro()`). Não amplie o que conta como
+  "falha de experimento recuperável" sem entender por que aquele tipo de erro
+  específico é seguro de ignorar.
+- O cache de TRACe em `program_capture()` (evita reescrever a Flash quando
+  forma/tensão/frequência não mudaram desde a última chamada bem-sucedida na
+  MESMA conexão) sempre reconfirma contra o instrumento (`TRACe:CATalog?`)
+  antes de reaproveitar, e é automaticamente invalidado a cada reconexão
+  (é um atributo da instância `AmetekMX30`, não algo persistido em disco). Não
+  troque isso por um cache entre processos sem antes resolver como
+  `AMETEK_CLEAR_USER_WAVEFORMS=1` (que apaga as TRACEs a cada conexão)
+  invalidaria um cache assim.
+- Captura de corrente permanece desligada por padrão (`CAPTURE_CURRENT=0`);
+  não ativar sem `CURRENT_PROBE_ATTENUATION` e `CURRENT_BASE_A` fornecidos
+  pelo usuário.

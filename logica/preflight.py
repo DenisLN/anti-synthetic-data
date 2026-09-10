@@ -14,7 +14,7 @@ from mestre import (
     GRID_FREQUENCY_HZ,
     OUTPUT_ARMED,
     POINTS,
-    inicializar_instrumentos,
+    Bancada,
 )
 
 
@@ -24,10 +24,10 @@ def normal_waveform() -> np.ndarray:
 
 
 def run(trigger_test: bool, low_voltage: bool) -> int:
-    source = None
-    scope = None
+    bancada = None
     try:
-        source, scope, _config = inicializar_instrumentos(require_output=low_voltage)
+        bancada = Bancada.from_env(require_output=low_voltage)
+        source, scope = bancada.fonte, bancada.osc
         if scope is None:
             raise RuntimeError("Preflight físico requer BENCH_MODE=1")
         print(f"AMETEK OK: {source.idn}")
@@ -38,7 +38,7 @@ def run(trigger_test: bool, low_voltage: bool) -> int:
         )
         print(f"KEYSIGHT VISA: {scope.adapter}")
         if low_voltage:
-            # inicializar_instrumentos já energizou o baseline quando
+            # Bancada.from_env já energizou o baseline quando
             # require_output=True e ARM_OUTPUT=YES (saída fica ligada durante
             # toda a bateria, não só durante este teste).
             if not OUTPUT_ARMED:
@@ -52,12 +52,19 @@ def run(trigger_test: bool, low_voltage: bool) -> int:
             print("OUTPUT OFF confirmado")
 
         if trigger_test or low_voltage:
-            source.program_capture(
-                normal_waveform(),
-                base_voltage_rms=BASE_VOLTAGE_RMS,
-                frequency_hz=GRID_FREQUENCY_HZ,
-            )
             if low_voltage:
+                # Só programa/grava as TRACEs TCCnn na Flash aqui: é a única
+                # etapa que de fato arma e dispara a AMETEK (arm_transient()
+                # + trigger() abaixo). A etapa --trigger-test só força o
+                # scope (force_trigger(), OUTPUT ainda OFF) para validar
+                # aquisição/download — nunca arma nem lê o conteúdo da
+                # AMETEK, então programar aqui só duplicava ~50s de escrita
+                # em Flash (TRACe:DELete:ALL + 12x TRACe:DEFine) sem uso.
+                source.program_capture(
+                    normal_waveform(),
+                    base_voltage_rms=BASE_VOLTAGE_RMS,
+                    frequency_hz=GRID_FREQUENCY_HZ,
+                )
                 scope.set_vertical_scale(1, BASE_VOLTAGE_RMS * math.sqrt(2.0))
             scope.arm()
             scope.wait_for_armed()
@@ -92,10 +99,8 @@ def run(trigger_test: bool, low_voltage: bool) -> int:
                 print("Aquisição/download do Keysight confirmados; BNC ainda NÃO testado")
         return 0
     finally:
-        if source is not None:
-            source.disconnect()
-        if scope is not None:
-            scope.close()
+        if bancada is not None:
+            bancada.shutdown()
 
 
 def main() -> int:

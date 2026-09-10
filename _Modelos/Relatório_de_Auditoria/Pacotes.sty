@@ -1,0 +1,112 @@
+%%%==== caracteres e tradução ====%%%
+\usepackage[utf8]{inputenc}
+\usepackage[brazil]{babel}
+\usepackage[T1]{fontenc}
+\usepackage{icomma}
+
+%%%==== formatação ====%%%
+\usepackage{indentfirst}
+\usepackage{geometry}
+\usepackage{setspace}
+\usepackage{graphicx}
+\usepackage{adjustbox}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{caption}
+\usepackage{multirow, diagbox}
+\usepackage[usestackEOL]{stackengine} % ESTUDAR
+\usepackage{hyperref}
+\usepackage{helvet}
+\usepackage{colortbl}
+\usepackage{multicol}
+\renewcommand{\familydefault}{\sfdefault}
+\usepackage{subcaption}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{listings}
+\renewcommand{\lstlistingname}{C}
+
+\renewcommand{\imprimircapa}{%
+\begin{capa}%
+\center
+    \begin{tikzpicture}
+        \centering
+        \node[remember picture, overlay] (UFPR) at (-0.5,-10)
+            {\includegraphics{Imagens/UFPR.pdf}};
+    \end{tikzpicture}\\
+\ABNTEXchapterfont\Large \imprimirinstituicao \\
+\vspace*{1cm}
+{\ABNTEXchapterfont\large\imprimirautor}
+\vfill
+\ABNTEXchapterfont\bfseries\LARGE\imprimirtitulo
+\vfill
+\large\imprimirlocal
+\par
+\large\imprimirdata
+\vspace*{1cm}
+\end{capa}
+}
+
+%%=== Setups ===%%
+\renewcommand{\ABNTEXchapterfontsize}{\LARGE}
+
+\geometry{
+    lmargin = 2cm,
+    bmargin = 2cm,
+    rmargin = 3cm,
+    tmargin = 3cm,
+    }
+
+\captionsetup{
+    font = small,
+    }
+
+\lstset { %
+    language=C++,
+    backgroundcolor=\color{black!5}, % set backgroundcolor
+    basicstyle=\footnotesize,% basic font setting
+}
+
+%%%==== notações matemáticas ====%%%
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{siunitx}
+\usepackage{bm}
+
+%%=== Setups ===%%
+\sisetup{   
+    output-decimal-marker = {,},
+    detect-all=true,
+}
+
+%%%==== gráficos e desenhos ====%%%
+\usepackage[dvipsnames]{xcolor}
+\usepackage{tikz}
+\usepackage[american voltages, RPvoltages]{circuitikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=newest, scaled y ticks=false}
+\tikzset{tbulb/.style={cute inductor,n=aux,append after command={(aux)
+       node[draw,circle,inner  sep=.35cm]{}}}}
+\usepackage{caption}
+
+%%%==== Bibliografia ====%%%
+\usepackage[brazilian,hyperpageref]{backref}
+\usepackage[alf, abnt-repeated-title-omit=yes, abnt-emphasize=bf, abnt-etal-list=0]{abntex2cite}
+\citebrackets()
+\newenvironment{citelong} % Ambiente para citação longa
+{\singlespacing \hfill \begin{minipage}{12cm}}
+{\end{minipage}\vspace{12pt} \onehalfspacing}
+
+
+%%%==== hifenização ====%%%
+\hyphenation{ex-pe-ri-men-tal}
+
+
+%%%==== Custom functions ====%%%
+\newcommand{\dev}[2]{\frac{d#1}{d#2}}
+\newcommand{\limit}[3]{\lim_{#1 \rightarrow #2} #3}
+
+\makeatletter
+\renewcommand{\apendicesname}{APÊNDICES}
+\renewcommand{\anexosname}{ANEXOS}
+
+\makeatother
