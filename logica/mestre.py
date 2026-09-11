@@ -733,7 +733,15 @@ class ExperimentoBase(ABC):
 
     def executar(self) -> None:
         simulated = self.osc is None
-        total = self.config.capturas(simulated)
+        niveis_count = self.total_niveis()
+        cobertura_por_nivel_ativa = (
+            not simulated and self.config.capturas_override is not None and niveis_count > 1
+        )
+        if cobertura_por_nivel_ativa:
+            capturas_por_nivel = self.config.capturas(False)
+            total = niveis_count * capturas_por_nivel
+        else:
+            total = self.config.capturas(simulated)
         logger.info(
             "[%s] %s: %d capturas, SNR=%s dB, modo=%s",
             self.id, self.nome, total, self.config.snr_levels_db,
@@ -762,8 +770,12 @@ class ExperimentoBase(ABC):
         metadados: List[dict] = []
         tempo_ms_eixo = None
 
-        for capture_index in range(total):
-            seed = self.config.base_seed + int(self.id) * 1_000_000 + capture_index
+        for indice_global in range(total):
+            if cobertura_por_nivel_ativa:
+                capture_index = indice_global // capturas_por_nivel  # nivel, agrupado
+            else:
+                capture_index = indice_global
+            seed = self.config.base_seed + int(self.id) * 1_000_000 + indice_global
             rng = np.random.default_rng(seed)
 
             if simulated:
@@ -783,19 +795,19 @@ class ExperimentoBase(ABC):
                 )
             self._validar_captura(time_s, measured_voltage_pu)
             tempo_ms_eixo = time_s * 1000.0
-            capture_id = f"{self.id}-{capture_index + 1:04d}"
+            capture_id = f"{self.id}-{indice_global + 1:04d}"
             ids.append(capture_id)
-            tensao_limpa[capture_index] = measured_voltage_pu
+            tensao_limpa[indice_global] = measured_voltage_pu
 
             medidas_snr = {}
             for snr_db in self.config.snr_levels_db:
                 noise_seed = seed + int(round(snr_db * 1000.0)) + 50_000_000
                 ruidoso = ruido_awgn(measured_voltage_pu, snr_db, np.random.default_rng(noise_seed))
-                tensao_por_snr[snr_db][capture_index] = ruidoso
+                tensao_por_snr[snr_db][indice_global] = ruidoso
                 medidas_snr[str(snr_db)] = snr_medida(measured_voltage_pu, ruidoso)
 
             if corrente is not None and measured_current_pu is not None:
-                corrente[capture_index] = measured_current_pu
+                corrente[indice_global] = measured_current_pu
 
             metadados.append({
                 "id_captura": capture_id,
@@ -806,9 +818,10 @@ class ExperimentoBase(ABC):
                 "pontos": self.config.points,
                 "parametros": parametros,
                 "snr_medido_db": medidas_snr,
+                "nivel_indice": capture_index if cobertura_por_nivel_ativa else 0,
             })
             if not simulated:
-                logger.info("[%s] captura %d/%d concluída", self.id, capture_index + 1, total)
+                logger.info("[%s] captura %d/%d concluída", self.id, indice_global + 1, total)
 
         if not simulated:
             # Forma de onda, modo AC/ACDC e offset são estado PERMANENTE, não

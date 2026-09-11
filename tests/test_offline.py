@@ -1021,5 +1021,85 @@ class TotalNiveisTests(unittest.TestCase):
         self.assertEqual(experimento.total_niveis(), 5)
 
 
+class RemapeamentoNivelTests(unittest.TestCase):
+    def _config(self, results_dir, **overrides):
+        base = dict(
+            fs_hz=30_000.0, points=6_000, duration_s=0.2, grid_frequency_hz=60.0,
+            base_voltage_rms=127.0, snr_levels_db=(), base_seed=1,
+            capture_current=False, current_base_a=None, results_dir=results_dir,
+            sim_captures_per_class=1, real_captures_per_class=1, disturbance_start_s=0.06,
+        )
+        base.update(overrides)
+        return mestre.Config(**base)
+
+    def test_sem_capturas_override_roda_so_1_capturas_nivel_0(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            config = self._config(tmp_dir / "resultados")
+            bancada = mestre.Bancada(mestre.AmetekMX30(simulated=True), mock.Mock(), config)
+            niveis_vistos = []
+
+            class _ComNiveis(mestre.ExperimentoNativo):
+                id = "97"
+                nome = "TESTE_NIVEIS"
+                NIVEIS = (0.1, 0.3, 0.5, 0.7, 0.9)
+                def gerar(self, t, f0, capture_index, rng):
+                    return np.sin(2.0 * np.pi * f0 * t), {"nivel": self.NIVEIS[capture_index % 5]}
+                def configurar(self, capture_index):
+                    niveis_vistos.append(self.NIVEIS[capture_index % 5])
+                    return {"nivel": self.NIVEIS[capture_index % 5]}
+
+            experimento = _ComNiveis(bancada)
+            experimento.osc = mock.Mock()  # simulated=False via osc não-None
+            self._forcar_captura_real_stub(experimento)
+            experimento.executar()
+
+            self.assertEqual(niveis_vistos, [0.1])
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_com_capturas_override_3_agrupa_3_por_nivel(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            config = self._config(tmp_dir / "resultados", capturas_override=3)
+            bancada = mestre.Bancada(mestre.AmetekMX30(simulated=True), mock.Mock(), config)
+            niveis_vistos = []
+
+            class _ComNiveis(mestre.ExperimentoNativo):
+                id = "97"
+                nome = "TESTE_NIVEIS"
+                NIVEIS = (0.1, 0.3, 0.5, 0.7, 0.9)
+                def gerar(self, t, f0, capture_index, rng):
+                    return np.sin(2.0 * np.pi * f0 * t), {"nivel": self.NIVEIS[capture_index % 5]}
+                def configurar(self, capture_index):
+                    niveis_vistos.append(self.NIVEIS[capture_index % 5])
+                    return {"nivel": self.NIVEIS[capture_index % 5]}
+
+            experimento = _ComNiveis(bancada)
+            experimento.osc = mock.Mock()
+            self._forcar_captura_real_stub(experimento)
+            experimento.executar()
+
+            self.assertEqual(
+                niveis_vistos,
+                [0.1, 0.1, 0.1, 0.3, 0.3, 0.3, 0.5, 0.5, 0.5, 0.7, 0.7, 0.7, 0.9, 0.9, 0.9],
+            )
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    @staticmethod
+    def _forcar_captura_real_stub(experimento):
+        """Substitui _capturar_real por um stub que devolve uma captura
+        válida sem tocar osciloscópio/fonte de verdade — só precisamos
+        observar QUAL capture_index cada chamada recebeu."""
+        pontos = experimento.config.points
+        tempo_s = np.arange(pontos, dtype=np.float64) / experimento.config.fs_hz
+        def _stub(capture_index, t, rng):
+            parametros = experimento.configurar(capture_index)
+            return tempo_s, np.sin(2.0 * np.pi * 60.0 * tempo_s), None, parametros
+        experimento._capturar_real = _stub
+        experimento._preparar_acquisicao_real = lambda: None
+
+
 if __name__ == "__main__":
     unittest.main()
