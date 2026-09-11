@@ -12,7 +12,7 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 import numpy as np
 
@@ -693,6 +693,19 @@ class ExperimentoBase(ABC):
         efetivamente saiu do gerador/instrumento — gravá-los sempre
         significa que aplicar (ou reaplicar) ruído no futuro, com outro SNR
         ou outra técnica, não exige regerar nem recapturar nada.
+
+        Como o nome do arquivo agora depende do parâmetro (ou da posição)
+        de CADA captura, rodar a mesma classe de novo com um conjunto de
+        capturas diferente (ex.: ``set capturas 5`` entre duas chamadas de
+        ``run 02``) pode deixar arquivos da rodada ANTERIOR sem nenhuma
+        captura desta rodada apontando para eles — órfãos, sem linha
+        correspondente no ``metadata/{id}_{nome}.jsonl`` recém-escrito. Por
+        isso, depois que todo arquivo NOVO desta rodada já foi gravado e
+        promovido (``.part`` -> replace) com sucesso, varremos cada
+        diretório tocado nesta chamada (``results_dir``, cada
+        ``snr_XXdb/``, ``corrente/``) por arquivos que casem com o prefixo
+        desta classe (``{id}_{nome}_*.npz``) mas não estejam entre os
+        nomes que ESTA rodada escreveu, e apagamos os que sobrarem.
         """
         config = self.config
         config.results_dir.mkdir(parents=True, exist_ok=True)
@@ -703,6 +716,12 @@ class ExperimentoBase(ABC):
                 valor_fmt = f"{valor:g}" if isinstance(valor, float) else str(valor)
                 return f"{chave}-{valor_fmt}"
             return f"cap{indice + 1:02d}"
+
+        prefixo_classe = f"{self.id}_{self.nome.lower()}_"
+        nomes_escritos_por_diretorio: Dict[Path, Set[str]] = {}
+
+        def _registrar_escrita(directory: Path, nome_arquivo: str) -> None:
+            nomes_escritos_por_diretorio.setdefault(directory, set()).add(nome_arquivo)
 
         for indice, metadado_captura in enumerate(metadados):
             rotulo = _rotulo(indice, metadado_captura["parametros"])
@@ -717,6 +736,7 @@ class ExperimentoBase(ABC):
                     classe=self.nome, id_captura=id_captura_array,
                 )
             os.replace(partial_path, final_path)
+            _registrar_escrita(config.results_dir, nome_base)
 
             for snr_db, tensao in tensao_por_snr.items():
                 rotulo_snr = str(int(snr_db)) if float(snr_db).is_integer() else str(snr_db).replace(".", "_")
@@ -730,6 +750,7 @@ class ExperimentoBase(ABC):
                         classe=self.nome, id_captura=id_captura_array,
                     )
                 os.replace(partial_path, final_path)
+                _registrar_escrita(directory, nome_base)
 
             if corrente is not None:
                 directory = config.results_dir / "corrente"
@@ -743,6 +764,16 @@ class ExperimentoBase(ABC):
                         classe=self.nome, id_captura=id_captura_array,
                     )
                 os.replace(partial_path, final_path)
+                _registrar_escrita(directory, nome_corrente)
+
+        # Só agora, com todos os arquivos NOVOS desta rodada já promovidos
+        # com sucesso, removemos órfãos de rodadas anteriores com conjunto
+        # de capturas diferente — nunca antes, para nunca ficar sem dado
+        # gravado se algo falhar no meio do laço acima.
+        for directory, nomes_escritos in nomes_escritos_por_diretorio.items():
+            for arquivo_existente in directory.glob(f"{prefixo_classe}*.npz"):
+                if arquivo_existente.name not in nomes_escritos:
+                    arquivo_existente.unlink()
 
         metadata_dir = config.results_dir / "metadata"
         metadata_dir.mkdir(parents=True, exist_ok=True)

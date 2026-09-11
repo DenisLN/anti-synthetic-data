@@ -1173,6 +1173,99 @@ class SalvarClasseArquivoUnicoTests(unittest.TestCase):
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
+    def test_rodada_com_capturas_diferentes_remove_arquivos_orfaos_da_rodada_anterior(self):
+        """Regressão do review: antes desta task, uma classe sempre gravava
+        UM arquivo (`{id}_{nome}.npz`) — uma nova rodada naturalmente
+        sobrescrevia esse único arquivo, órfão nunca sobrava. Agora que o
+        nome depende do parâmetro/posição de CADA captura, uma rodada com
+        um conjunto de capturas DIFERENTE (menos capturas, ou parâmetros
+        diferentes — ex.: `run 02` e depois `set capturas` + `run 02` de
+        novo) deixava os arquivos da rodada anterior, sem nenhuma captura
+        atual apontando pra eles, órfãos em `results_dir`/`snr_XXdb/`/
+        `corrente/`. `_salvar_classe()` deve limpar esses órfãos (só depois
+        que os arquivos novos já estão gravados com sucesso)."""
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            config = mestre.Config(
+                fs_hz=30_000.0, points=4, duration_s=0.2, grid_frequency_hz=60.0,
+                base_voltage_rms=127.0, snr_levels_db=(30.0,), base_seed=1,
+                capture_current=True, current_base_a=1.0, results_dir=tmp_dir,
+                sim_captures_per_class=1, real_captures_per_class=1, disturbance_start_s=0.06,
+            )
+            class _Concreta(mestre.ExperimentoWaveform):
+                id = "02"
+                nome = "SAG"
+
+                def gerar(self, t, f0, capture_index, rng):
+                    return np.sin(2.0 * np.pi * f0 * t), {}
+
+            bancada_fake = mock.Mock(config=config, fonte=None, osc=None)
+            experimento = _Concreta(bancada_fake)
+
+            # Rodada 1: 2 capturas (sag_pu 0.1 e 0.3).
+            experimento._salvar_classe(
+                tempo_ms=np.zeros(4),
+                tensao_limpa=np.zeros((2, 4)),
+                tensao_por_snr={30.0: np.zeros((2, 4))},
+                ids=["02-0001", "02-0002"],
+                corrente=np.zeros((2, 4)),
+                metadados=[
+                    {"id_captura": "02-0001", "classe": "SAG", "nivel_indice": 0,
+                     "parametros": {"sag_pu": 0.1}, "seed": 1, "simulado": False,
+                     "fs_hz": 30000.0, "pontos": 4, "snr_medido_db": {}},
+                    {"id_captura": "02-0002", "classe": "SAG", "nivel_indice": 1,
+                     "parametros": {"sag_pu": 0.3}, "seed": 2, "simulado": False,
+                     "fs_hz": 30000.0, "pontos": 4, "snr_medido_db": {}},
+                ],
+            )
+            arquivo_orfao = tmp_dir / "02_sag_sag_pu-0.1.npz"
+            arquivo_orfao_snr = tmp_dir / "snr_30db" / "02_sag_sag_pu-0.1.npz"
+            arquivo_orfao_corrente = tmp_dir / "corrente" / "02_sag_sag_pu-0.1_corrente.npz"
+            self.assertTrue(arquivo_orfao.exists())
+            self.assertTrue(arquivo_orfao_snr.exists())
+            self.assertTrue(arquivo_orfao_corrente.exists())
+
+            # Rodada 2: 1 captura só, com um parâmetro diferente (sag_pu 0.5)
+            # — simula `set capturas` mudando o conjunto entre duas rodadas.
+            experimento._salvar_classe(
+                tempo_ms=np.zeros(4),
+                tensao_limpa=np.zeros((1, 4)),
+                tensao_por_snr={30.0: np.zeros((1, 4))},
+                ids=["02-0003"],
+                corrente=np.zeros((1, 4)),
+                metadados=[
+                    {"id_captura": "02-0003", "classe": "SAG", "nivel_indice": 0,
+                     "parametros": {"sag_pu": 0.5}, "seed": 3, "simulado": False,
+                     "fs_hz": 30000.0, "pontos": 4, "snr_medido_db": {}},
+                ],
+            )
+
+            # Órfãos da rodada 1 devem ter sido removidos das três pastas.
+            self.assertFalse(arquivo_orfao.exists())
+            self.assertFalse(arquivo_orfao_snr.exists())
+            self.assertFalse(arquivo_orfao_corrente.exists())
+
+            # Só o arquivo da rodada 2 deve sobrar em cada pasta.
+            self.assertEqual(
+                sorted(p.name for p in tmp_dir.glob("02_sag_*.npz")),
+                ["02_sag_sag_pu-0.5.npz"],
+            )
+            self.assertEqual(
+                sorted(p.name for p in (tmp_dir / "snr_30db").glob("02_sag_*.npz")),
+                ["02_sag_sag_pu-0.5.npz"],
+            )
+            self.assertEqual(
+                sorted(p.name for p in (tmp_dir / "corrente").glob("02_sag_*.npz")),
+                ["02_sag_sag_pu-0.5_corrente.npz"],
+            )
+
+            # metadata.jsonl deve refletir só a rodada 2 (1 linha, captura 3).
+            linhas = (tmp_dir / "metadata" / "02_sag.jsonl").read_text(encoding="utf-8").splitlines()
+            self.assertEqual(len(linhas), 1)
+            self.assertIn("02-0003", linhas[0])
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
 
 if __name__ == "__main__":
     unittest.main()
