@@ -100,6 +100,15 @@ SIMULATED_MODE = not BENCH_MODE
 OUTPUT_ARMED = os.getenv("ARM_OUTPUT", "").strip().upper() == "YES"
 CAPTURE_CURRENT = env_bool("CAPTURE_CURRENT", default=False)
 
+# Estado de sessão da CLI interativa — mutável em runtime (mesmo idioma de
+# OUTPUT_ARMED/autorizar_saida()): None/False reproduzem o comportamento de
+# hoje sem nenhuma mudança. cli.py é quem escreve nesses globais; qualquer
+# outro consumidor (testes, scripts) nunca precisa tocá-los.
+SESSION_RESULTS_DIR: Optional[Path] = None
+CAPTURAS_OVERRIDE: Optional[int] = None
+MARGIN_MODE: bool = False
+DIAGNOSTICO_MODE: bool = False
+
 # AMETEK pela USB com porta COM virtual; 115200 foi confirmado no equipamento real.
 AMETEK_PORT = os.getenv("AMETEK_PORT", "COM10")
 AMETEK_BAUDRATE = env_int("AMETEK_BAUDRATE", 115_200)
@@ -174,9 +183,16 @@ class Config:
     sim_captures_per_class: int
     real_captures_per_class: int
     disturbance_start_s: float
+    capturas_override: Optional[int] = None
+    margin_mode: bool = False
+    diagnostico_mode: bool = False
 
     def capturas(self, simulated: bool) -> int:
-        return self.sim_captures_per_class if simulated else self.real_captures_per_class
+        if simulated:
+            return self.sim_captures_per_class
+        if self.capturas_override is not None:
+            return self.capturas_override
+        return self.real_captures_per_class
 
 
 @dataclass
@@ -204,10 +220,13 @@ def _build_config() -> Config:
         base_seed=BASE_SEED,
         capture_current=CAPTURE_CURRENT,
         current_base_a=CURRENT_BASE_A,
-        results_dir=RESULTS_DIR,
+        results_dir=SESSION_RESULTS_DIR or RESULTS_DIR,
         sim_captures_per_class=SIM_CAPTURES_PER_CLASS,
         real_captures_per_class=REAL_CAPTURES_PER_CLASS,
         disturbance_start_s=DISTURBANCE_START_S,
+        capturas_override=CAPTURAS_OVERRIDE,
+        margin_mode=MARGIN_MODE,
+        diagnostico_mode=DIAGNOSTICO_MODE,
     )
 
 
@@ -282,7 +301,7 @@ class Bancada:
             logger.warning("MODO SIMULADO: nenhum instrumento será aberto")
             # Nenhum experimento toca fonte/osc no modo simulado (usam gerar());
             # a instância existe só por consistência de assinatura.
-            return cls(AmetekMX30(simulated=True), None, config)
+            return cls(AmetekMX30(simulated=True, diagnostico=DIAGNOSTICO_MODE), None, config)
 
         validate_bench_configuration(require_output=require_output)
         fonte: Optional[AmetekMX30] = None
@@ -298,6 +317,7 @@ class Bancada:
                 max_voltage_rms=EUT_MAX_VOLTAGE_RMS,
                 max_peak_v=EUT_MAX_PEAK_V,
                 max_current_a=CURRENT_LIMIT_A,
+                diagnostico=DIAGNOSTICO_MODE,
             )
             fonte.configure_safe_baseline(
                 voltage_range_rms=SOURCE_VOLTAGE_RANGE_RMS,
@@ -600,6 +620,15 @@ class ExperimentoBase(ABC):
         """Fórmula da classe: produz a captura do dataset SIMULADO (sem
         hardware). Usada também na bancada real pelas classes que precisam
         de forma de onda arbitrária (ver ``ExperimentoWaveform``)."""
+
+    def total_niveis(self) -> int:
+        """Quantos valores discretos de parâmetro esta classe tem (ex.:
+        5 para SAG/SWELL/HARMONICS via ``NIVEIS``). ``1`` (padrão) para
+        classes de parâmetro contínuo ou sem parâmetro nenhum — usado por
+        ``executar()`` para decidir se agrupa capturas por nível quando
+        ``set capturas N`` está ativo (ver Task 4)."""
+        niveis = getattr(self, "NIVEIS", None)
+        return len(niveis) if niveis is not None else 1
 
     @abstractmethod
     def _capturar_real(

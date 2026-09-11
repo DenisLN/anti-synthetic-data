@@ -36,6 +36,32 @@ class _BancadaFake:
     fonte = None
     osc = None
 
+    @staticmethod
+    def experimento_sem_niveis():
+        class _SemNiveis(mestre.ExperimentoWaveform):
+            id = "99"
+            nome = "SEM_NIVEIS"
+
+            def gerar(self, t, f0, capture_index, rng):
+                return np.sin(2.0 * np.pi * f0 * t), {}
+
+        return _SemNiveis(_BancadaFake())
+
+    @staticmethod
+    def experimento_com_niveis():
+        class _ComNiveis(mestre.ExperimentoNativo):
+            id = "98"
+            nome = "COM_NIVEIS"
+            NIVEIS = (0.1, 0.3, 0.5, 0.7, 0.9)
+
+            def gerar(self, t, f0, capture_index, rng):
+                return np.sin(2.0 * np.pi * f0 * t), {}
+
+            def configurar(self, capture_index):
+                return {}
+
+        return _ComNiveis(_BancadaFake())
+
 
 def _load_experimento(experiment_id: str):
     """Carrega a classe Experimento de um experimentos_nativos/NN.py ou
@@ -953,6 +979,46 @@ class BateriaResilienciaTests(unittest.TestCase):
         fonte.write = write_quebrado
         with self.assertRaises(mestre.FalhaFatalDeInstrumento):
             bancada.recuperar_estado_seguro()
+
+
+class ConfigCoberturaTests(unittest.TestCase):
+    def _config(self, **overrides):
+        base = dict(
+            fs_hz=30_000.0, points=6_000, duration_s=0.2, grid_frequency_hz=60.0,
+            base_voltage_rms=127.0, snr_levels_db=(30.0,), base_seed=1,
+            capture_current=False, current_base_a=None, results_dir=Path("."),
+            sim_captures_per_class=2, real_captures_per_class=1, disturbance_start_s=0.06,
+        )
+        base.update(overrides)
+        return mestre.Config(**base)
+
+    def test_capturas_override_ausente_mantem_real_captures_per_class(self):
+        config = self._config()
+        self.assertEqual(config.capturas(simulated=False), 1)
+
+    def test_capturas_override_presente_vence_real_captures_per_class(self):
+        config = self._config(capturas_override=5)
+        self.assertEqual(config.capturas(simulated=False), 5)
+
+    def test_capturas_override_nao_afeta_modo_simulado(self):
+        config = self._config(capturas_override=5)
+        self.assertEqual(config.capturas(simulated=True), 2)
+
+    def test_defaults_reproduzem_config_de_hoje(self):
+        config = self._config()
+        self.assertIsNone(config.capturas_override)
+        self.assertFalse(config.margin_mode)
+        self.assertFalse(config.diagnostico_mode)
+
+
+class TotalNiveisTests(unittest.TestCase):
+    def test_classe_sem_niveis_retorna_1(self):
+        experimento = _BancadaFake.experimento_sem_niveis()
+        self.assertEqual(experimento.total_niveis(), 1)
+
+    def test_classe_com_niveis_retorna_o_tamanho_da_tupla(self):
+        experimento = _BancadaFake.experimento_com_niveis()
+        self.assertEqual(experimento.total_niveis(), 5)
 
 
 if __name__ == "__main__":

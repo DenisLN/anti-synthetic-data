@@ -23,6 +23,9 @@ class Experimento(ExperimentoNativo):
     id = "05"
     nome = "HARMONICS"
 
+    def total_niveis(self) -> int:
+        return len(NIVEIS_THD)
+
     def gerar(self, t, f0, capture_index, rng):
         thd = NIVEIS_THD[capture_index % len(NIVEIS_THD)]
         # A soma quadrática dos coeficientes é exatamente o THD solicitado.
