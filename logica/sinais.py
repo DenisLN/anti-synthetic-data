@@ -20,6 +20,34 @@ def janela(t: np.ndarray, inicio_s: float, duracao_s: float) -> np.ndarray:
     return (t >= inicio_s) & (t < inicio_s + duracao_s)
 
 
+def valor_para_captura(
+    rng: np.random.Generator,
+    lo: float,
+    hi: float,
+    capture_index: int,
+    total_capturas: int,
+    *,
+    cobertura_ativa: bool,
+) -> float:
+    """Decide entre sorteio (comportamento de sempre) e cobertura
+    determinística do intervalo ``[lo, hi]`` via ``linspace``.
+
+    Usado pelas classes de parâmetro contínuo (04/06/08/09/19) quando a
+    bancada real roda com ``set capturas N`` (``cobertura_ativa=True``,
+    ``total_capturas=N``): em vez de N sorteios independentes que podem se
+    repetir/concentrar, cada captura recebe um ponto igualmente espaçado de
+    ``lo`` a ``hi`` — ``capture_index=0`` sempre bate exatamente em ``lo``,
+    o último índice sempre bate exatamente em ``hi``.
+
+    Com ``cobertura_ativa=False`` (dataset simulado, ou bancada sem
+    ``set capturas``) ou ``total_capturas<=1``, comportamento idêntico ao
+    ``rng.uniform(lo, hi)`` de sempre.
+    """
+    if not cobertura_ativa or total_capturas <= 1:
+        return float(rng.uniform(lo, hi))
+    return float(np.linspace(lo, hi, total_capturas)[capture_index])
+
+
 def onda_com_harmonicos(t: np.ndarray, thd_fracao: float, *, frequencia_hz: float) -> np.ndarray:
     # A soma quadrática dos coeficientes é exatamente o THD solicitado.
     ratios = np.array([0.60, 0.30, 0.10], dtype=np.float64)

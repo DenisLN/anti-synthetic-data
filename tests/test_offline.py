@@ -21,6 +21,7 @@ from ametek_orm import (  # noqa: E402
 )
 from oscilloscope_orm import KeysightDSOX4034A  # noqa: E402
 from sinais import ruido_awgn, snr_medida  # noqa: E402
+import sinais  # noqa: E402
 import mestre  # noqa: E402
 import preflight_new  # noqa: E402
 
@@ -188,6 +189,30 @@ class SignalTests(unittest.TestCase):
         for snr in (20.0, 30.0, 40.0, 50.0):
             noisy = ruido_awgn(clean, snr, np.random.default_rng(int(snr)))
             self.assertAlmostEqual(snr_medida(clean, noisy), snr, delta=0.3)
+
+
+class ValorParaCapturaTests(unittest.TestCase):
+    def test_cobertura_inativa_sempre_sorteia(self):
+        rng = np.random.default_rng(1)
+        valor = sinais.valor_para_captura(rng, 5.0, 10.0, 0, 1, cobertura_ativa=False)
+        self.assertTrue(5.0 <= valor <= 10.0)
+
+    def test_total_capturas_1_sempre_sorteia_mesmo_com_cobertura_ativa(self):
+        rng = np.random.default_rng(1)
+        valor = sinais.valor_para_captura(rng, 5.0, 10.0, 0, 1, cobertura_ativa=True)
+        self.assertTrue(5.0 <= valor <= 10.0)
+
+    def test_cobertura_ativa_cobre_exatamente_lo_e_hi_nas_pontas(self):
+        rng = np.random.default_rng(1)
+        primeiro = sinais.valor_para_captura(rng, 5.0, 10.0, 0, 4, cobertura_ativa=True)
+        ultimo = sinais.valor_para_captura(rng, 5.0, 10.0, 3, 4, cobertura_ativa=True)
+        self.assertEqual(primeiro, 5.0)
+        self.assertEqual(ultimo, 10.0)
+
+    def test_cobertura_ativa_e_deterministica_independente_do_rng(self):
+        valor_a = sinais.valor_para_captura(np.random.default_rng(1), 0.0, 1.0, 2, 5, cobertura_ativa=True)
+        valor_b = sinais.valor_para_captura(np.random.default_rng(999), 0.0, 1.0, 2, 5, cobertura_ativa=True)
+        self.assertEqual(valor_a, valor_b)
 
 
 class AmetekTests(unittest.TestCase):
