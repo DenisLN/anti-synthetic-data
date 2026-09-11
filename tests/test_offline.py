@@ -1,4 +1,5 @@
 import importlib.util
+import logging
 import math
 import shutil
 import sys
@@ -523,6 +524,50 @@ class AmetekTests(unittest.TestCase):
                 device.trace_data_writes, 12,
                 "catálogo vazio no instrumento não pode confiar cegamente no cache local",
             )
+
+
+class DiagnosticoLogTests(unittest.TestCase):
+    def test_sem_diagnostico_nao_loga(self):
+        fonte = mestre.AmetekMX30(simulated=True, diagnostico=False)
+        with self.assertLogs("AmetekORM", level="INFO") as captura:
+            fonte._log_diagnostico("ponto_teste")
+            # nenhuma chamada real acontece; força um log de controle pra
+            # assertLogs não estourar por falta de QUALQUER log capturado
+            logging.getLogger("AmetekORM").info("controle")
+        self.assertEqual(len(captura.records), 1)
+        self.assertIn("controle", captura.records[0].getMessage())
+
+    def test_com_diagnostico_loga_ponto_e_timestamp(self):
+        fonte = mestre.AmetekMX30(simulated=True, diagnostico=True)
+        with self.assertLogs("AmetekORM", level="INFO") as captura:
+            fonte._log_diagnostico("ponto_teste", extra_info=42)
+        linhas = [registro.getMessage() for registro in captura.records]
+        self.assertTrue(any("ponto_teste" in linha for linha in linhas))
+        self.assertTrue(any("extra_info" in linha for linha in linhas))
+
+    def test_trigger_step_com_diagnostico_nao_muda_writes_enviados(self):
+        # max_voltage_rms explícito: o default da classe é 10.0 Vrms, que
+        # rejeitaria 100.0 (ParameterOutOfBoundsError) antes de qualquer
+        # write — o teste precisa exercitar trigger_step() de ponta a ponta,
+        # não abortar na validação de faixa.
+        sem_log = mestre.AmetekMX30(simulated=True, diagnostico=False, max_voltage_rms=100.0)
+        sem_log.trigger_step(100.0)
+        com_log = mestre.AmetekMX30(simulated=True, diagnostico=True, max_voltage_rms=100.0)
+        com_log.trigger_step(100.0)
+        # _log_diagnostico() só LÊ estado (query() sempre termina em "?"), e em
+        # modo simulado query() também grava em command_log — é assim que este
+        # mesmo arquivo já testa, por ex., os SYSTem:ERRor? de check_errors()
+        # (ver AmetekTests: "source.command_log.count('SYSTem:ERRor?')").
+        # Então diagnostico=True naturalmente adiciona ENTRADAS DE LEITURA a
+        # command_log; a garantia que a constraint global do plano pede é que
+        # nenhum WRITE (comando que muda estado do instrumento) seja
+        # reordenado/adicionado/removido — por isso comparamos só os comandos
+        # que não terminam em "?" (toda query SCPI usada neste driver termina
+        # em "?"; todo write, não).
+        def escritas(log):
+            return [comando for comando in log if not comando.endswith("?")]
+
+        self.assertEqual(escritas(sem_log.command_log), escritas(com_log.command_log))
 
 
 class KeysightTests(unittest.TestCase):

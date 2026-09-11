@@ -82,6 +82,7 @@ class AmetekMX30:
         max_peak_v: float = 100.0,
         max_current_a: float = 0.5,
         simulated: bool = False,
+        diagnostico: bool = False,
         visa_resource=None,
         resource_manager=None,
     ):
@@ -95,6 +96,7 @@ class AmetekMX30:
         self.max_peak_v = min(float(max_peak_v), self.MAX_SOURCE_PEAK_V)
         self.max_current_a = float(max_current_a)
         self.simulated = bool(simulated)
+        self.diagnostico = bool(diagnostico)
         self.resource_name = self._port_to_visa_resource(port)
         self._resource = visa_resource
         self._resource_manager = resource_manager
@@ -403,6 +405,36 @@ class AmetekMX30:
         if errors:
             raise InstrumentHardwareError(f"AMETEK reportou erros após {context}: {errors}")
 
+    def _log_diagnostico(self, ponto: str, **extra) -> None:
+        """Log opt-in (``diagnostico=True``) para confirmar/refutar as
+        hipóteses do CHANGELOG/v1.7.md sem mudar nenhum comando SCPI que já
+        existe — só lê estado (``query``) e escreve no logger. Cada chamada
+        tolera falha de leitura individualmente: um ``STATus:OPERation:
+        CONDition?`` sem resposta não pode fazer a captura inteira abortar."""
+        if not self.diagnostico:
+            return
+        timestamp = time.monotonic()
+        transiente_ativo = None
+        saida = None
+        tensao_v = None
+        try:
+            operacao = int(float(self.query("STATus:OPERation:CONDition?")))
+            transiente_ativo = bool(operacao & 0x8)  # bit 3 = TRANS (manual AMETEK, Tabela 7-1/pg. 169)
+        except (CommunicationError, ValueError):
+            pass
+        try:
+            saida = self.query("OUTPut:STATe?").strip()
+        except CommunicationError:
+            pass
+        try:
+            tensao_v = self.measure_voltage()
+        except (CommunicationError, InstrumentHardwareError):
+            pass
+        logger.info(
+            "[DIAGNOSTICO] ponto=%s t=%.6f transiente_ativo=%s output=%s tensao_v=%s extra=%s",
+            ponto, timestamp, transiente_ativo, saida, tensao_v, extra,
+        )
+
     def authorize_output(self, authorized: bool) -> None:
         self._output_authorized = bool(authorized)
 
@@ -510,6 +542,8 @@ class AmetekMX30:
         self.write("SOURce:FREQuency:MODE FIXed")
         self.write("VOLTage:MODE STEP")
         self.write(f"VOLTage:TRIGgered {voltage_rms:.8g}")
+        if self.diagnostico:
+            self._log_diagnostico("fim_trigger_step", erros=self.check_errors())
 
     def trigger_pulse(self, voltage_rms: float, *, width_s: float) -> None:
         """Programa um PULSe nativo: cai/sobe para ``voltage_rms`` por ``width_s``
@@ -529,6 +563,8 @@ class AmetekMX30:
         self.write("VOLTage:MODE PULSe")
         self.write(f"VOLTage:TRIGgered {voltage_rms:.8g}")
         self.write(f"PULSe:WIDTh {width_s:.8g}")
+        if self.diagnostico:
+            self._log_diagnostico("fim_trigger_pulse", erros=self.check_errors())
 
     def configure_harmonics_csine(self, thd_pct: float) -> None:
         """Programa o gerador nativo de senoide clipada (CSINe) para o THD
@@ -677,6 +713,7 @@ class AmetekMX30:
                 f"Offset {offset_v:.3f} V + pico AC {ac_peak_v:.3f} V = {combined_peak_v:.3f} V "
                 f"excede o limite de pico {self.max_peak_v:.3f} V"
             )
+        self._log_diagnostico("antes_sourcemode_acdc")
         self.write("SOURce:MODE ACDC")
         # Trocar SOURce:MODE também deixa a fonte ocupada — mesma razão do
         # *WAI em configure_harmonics_csine()/select_sine_shape(). Sem o
@@ -687,6 +724,7 @@ class AmetekMX30:
         # conexão até agora).
         self.write("*WAI")
         self.assert_no_errors("configuração ACDC (SOURce:MODE ACDC)")
+        self._log_diagnostico("apos_sourcemode_acdc")
         self._modo_saida = "ACDC"
         # SOURce:VOLTage:OFFSet só é aceito em modo ACDC (ver
         # disable_dc_offset()) — agora que _modo_saida já reflete ACDC, este
@@ -1093,6 +1131,8 @@ class AmetekMX30:
                 raise InstrumentHardwareError(
                     f"AMETEK rejeitou {command!r} durante programação da lista: {errors}"
                 )
+            if command == "VOLTage:MODE LIST":
+                self._log_diagnostico("apos_voltage_mode_list")
         self.last_programmed_peak_v = reconstructed_peak_v
         self._last_cycles = ciclos
         # A saída fica ligada durante toda a bateria (energize_baseline() é
@@ -1146,9 +1186,11 @@ class AmetekMX30:
         # até essas operações pendentes terminarem (exceto o transiente em si)
         # — validado na bancada como mais rápido e mais confiável que o
         # polling por *IDN? de aguardar_resposta() (ver docstring dela).
+        self._log_diagnostico("arm_antes_wai")
         self.write("*WAI")
         self.write("INITiate:IMMediate")
         self.assert_no_errors("comando INITiate:IMMediate")
+        self._log_diagnostico("arm_apos_init")
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
             state = self._query_tolerante("TRIGger:STATe?")
@@ -1218,6 +1260,7 @@ class AmetekMX30:
                 f"Configuração transient lida da MX30 é inválida: {invalid}; "
                 f"diagnóstico completo={diagnostics}"
             )
+        self._log_diagnostico("arm_transient_antes_wai")
         # *WAI antes do INIT — mesma razão de arm() (ver comentário lá):
         # comandos de list/trigger são processados em paralelo pela Rev. 5.53.
         self.write("*WAI")
@@ -1231,6 +1274,7 @@ class AmetekMX30:
             raise InstrumentHardwareError(
                 f"{exc}; configuração antes do INIT={diagnostics}"
             ) from exc
+        self._log_diagnostico("arm_transient_apos_init")
         deadline = time.monotonic() + timeout_s
         last_state = ""
         while time.monotonic() < deadline:
@@ -1259,6 +1303,7 @@ class AmetekMX30:
                 continue
             if state.startswith("IDLE"):
                 self.assert_no_errors("execução do transiente")
+                self._log_diagnostico("transiente_concluido")
                 return
             time.sleep(0.05)
         raise TimeoutError("AMETEK não concluiu a lista transitória")
