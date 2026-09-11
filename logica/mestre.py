@@ -205,8 +205,8 @@ class ResultadoClasse:
     motivo: Optional[str] = None
 
     @property
-    def arquivo_esperado(self) -> Path:
-        return RESULTS_DIR / f"{self.id}_{self.nome.lower()}.npz"
+    def pasta_esperada(self) -> Path:
+        return SESSION_RESULTS_DIR or RESULTS_DIR
 
 
 def _build_config() -> Config:
@@ -677,47 +677,72 @@ class ExperimentoBase(ABC):
         corrente: Optional[np.ndarray],
         metadados: List[dict],
     ) -> None:
-        """Grava a classe completa: dados puros (sem ruído) direto em
-        ``resultados/``, uma cópia com AWGN aplicado por nível de SNR em
-        ``resultados/snr_XXdb/`` (mesmo nome de arquivo, pasta diferente), e
-        um metadata.jsonl comum às duas.
+        """Grava um ``.npz`` POR CAPTURA (não mais um único arquivo por
+        classe com todas as capturas empilhadas) — necessário desde que
+        ``set capturas N`` pode gerar N capturas por nível, cada uma uma
+        condição física distinta que merece arquivo próprio. O nome carrega
+        o parâmetro físico da captura quando existe algum em ``parametros``
+        (ex.: ``sag_pu-0.1``); cai para ``capNN`` (posição, 1-based) quando
+        não há parâmetro nomeável. Continua atômico (``.part`` -> replace),
+        agora por arquivo individual; metadata continua 1 arquivo por
+        classe, 1 linha por captura.
 
-        Os dados puros são o que efetivamente saiu do gerador/instrumento —
-        gravá-los sempre significa que aplicar (ou reaplicar) ruído no futuro,
-        com outro SNR ou outra técnica, não exige regerar nem recapturar nada.
-
-        Escrita atômica: grava em ``.part`` e só promove para o nome final
-        (via ``os.replace``) depois que tudo terminou sem erro.
+        Os dados puros (sem ruído) vão direto em ``resultados/``, uma cópia
+        com AWGN aplicado por nível de SNR em ``resultados/snr_XXdb/``
+        (mesmo nome de arquivo, pasta diferente). Os dados puros são o que
+        efetivamente saiu do gerador/instrumento — gravá-los sempre
+        significa que aplicar (ou reaplicar) ruído no futuro, com outro SNR
+        ou outra técnica, não exige regerar nem recapturar nada.
         """
         config = self.config
-        ids_array = np.array(ids, dtype=object)
-        final_paths = []
-
         config.results_dir.mkdir(parents=True, exist_ok=True)
-        final_path = config.results_dir / f"{self.id}_{self.nome.lower()}.npz"
-        partial_path = final_path.with_suffix(".npz.part")
-        with partial_path.open("wb") as handle:
-            np.savez(handle, tempo_ms=tempo_ms, tensao_pu=tensao_limpa, classe=self.nome, id_captura=ids_array)
-        final_paths.append((partial_path, final_path))
 
-        for snr_db, tensao in tensao_por_snr.items():
-            rotulo = str(int(snr_db)) if float(snr_db).is_integer() else str(snr_db).replace(".", "_")
-            directory = config.results_dir / f"snr_{rotulo}db"
-            directory.mkdir(parents=True, exist_ok=True)
-            final_path = directory / f"{self.id}_{self.nome.lower()}.npz"
+        def _rotulo(indice: int, parametros: dict) -> str:
+            if parametros:
+                chave, valor = next(iter(parametros.items()))
+                valor_fmt = f"{valor:g}" if isinstance(valor, float) else str(valor)
+                return f"{chave}-{valor_fmt}"
+            return f"cap{indice + 1:02d}"
+
+        for indice, metadado_captura in enumerate(metadados):
+            rotulo = _rotulo(indice, metadado_captura["parametros"])
+            nome_base = f"{self.id}_{self.nome.lower()}_{rotulo}.npz"
+            id_captura_array = np.array([ids[indice]], dtype=object)
+
+            final_path = config.results_dir / nome_base
             partial_path = final_path.with_suffix(".npz.part")
             with partial_path.open("wb") as handle:
-                np.savez(handle, tempo_ms=tempo_ms, tensao_pu=tensao, classe=self.nome, id_captura=ids_array)
-            final_paths.append((partial_path, final_path))
+                np.savez(
+                    handle, tempo_ms=tempo_ms, tensao_pu=tensao_limpa[indice : indice + 1],
+                    classe=self.nome, id_captura=id_captura_array,
+                )
+            os.replace(partial_path, final_path)
 
-        if corrente is not None:
-            directory = config.results_dir / "corrente"
-            directory.mkdir(parents=True, exist_ok=True)
-            final_path = directory / f"{self.id}_{self.nome.lower()}_corrente.npz"
-            partial_path = final_path.with_suffix(".npz.part")
-            with partial_path.open("wb") as handle:
-                np.savez(handle, tempo_ms=tempo_ms, corrente_pu=corrente, classe=self.nome, id_captura=ids_array)
-            final_paths.append((partial_path, final_path))
+            for snr_db, tensao in tensao_por_snr.items():
+                rotulo_snr = str(int(snr_db)) if float(snr_db).is_integer() else str(snr_db).replace(".", "_")
+                directory = config.results_dir / f"snr_{rotulo_snr}db"
+                directory.mkdir(parents=True, exist_ok=True)
+                final_path = directory / nome_base
+                partial_path = final_path.with_suffix(".npz.part")
+                with partial_path.open("wb") as handle:
+                    np.savez(
+                        handle, tempo_ms=tempo_ms, tensao_pu=tensao[indice : indice + 1],
+                        classe=self.nome, id_captura=id_captura_array,
+                    )
+                os.replace(partial_path, final_path)
+
+            if corrente is not None:
+                directory = config.results_dir / "corrente"
+                directory.mkdir(parents=True, exist_ok=True)
+                nome_corrente = f"{self.id}_{self.nome.lower()}_{rotulo}_corrente.npz"
+                final_path = directory / nome_corrente
+                partial_path = final_path.with_suffix(".npz.part")
+                with partial_path.open("wb") as handle:
+                    np.savez(
+                        handle, tempo_ms=tempo_ms, corrente_pu=corrente[indice : indice + 1],
+                        classe=self.nome, id_captura=id_captura_array,
+                    )
+                os.replace(partial_path, final_path)
 
         metadata_dir = config.results_dir / "metadata"
         metadata_dir.mkdir(parents=True, exist_ok=True)
@@ -726,9 +751,6 @@ class ExperimentoBase(ABC):
         with metadata_partial.open("w", encoding="utf-8") as handle:
             for registro in metadados:
                 handle.write(json.dumps(registro, ensure_ascii=False, sort_keys=True) + "\n")
-
-        for partial_path, final_path in final_paths:
-            os.replace(partial_path, final_path)
         os.replace(metadata_partial, metadata_final)
 
     def executar(self) -> None:

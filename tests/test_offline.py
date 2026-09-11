@@ -841,7 +841,9 @@ class BateriaResilienciaTests(unittest.TestCase):
             self.assertEqual([resultado.ok for resultado in resultados], [True, False, True])
             self.assertEqual(resultados[1].id, "02")
             self.assertIn("falha proposital", resultados[1].motivo)
-            self.assertTrue((results_dir / "01_ok.npz").exists())
+            # sim_captures_per_class=2 e gerar() de "01_ok" devolve {} como
+            # parametros (sem parâmetro nomeável) -> nome cai para capNN.
+            self.assertTrue((results_dir / "01_ok_cap01.npz").exists())
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
@@ -1099,6 +1101,77 @@ class RemapeamentoNivelTests(unittest.TestCase):
             return tempo_s, np.sin(2.0 * np.pi * 60.0 * tempo_s), None, parametros
         experimento._capturar_real = _stub
         experimento._preparar_acquisicao_real = lambda: None
+
+
+class SalvarClasseArquivoUnicoTests(unittest.TestCase):
+    def test_grava_um_npz_por_captura_com_nivel_no_nome(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            config = mestre.Config(
+                fs_hz=30_000.0, points=4, duration_s=0.2, grid_frequency_hz=60.0,
+                base_voltage_rms=127.0, snr_levels_db=(), base_seed=1,
+                capture_current=False, current_base_a=None, results_dir=tmp_dir,
+                sim_captures_per_class=1, real_captures_per_class=1, disturbance_start_s=0.06,
+            )
+            class _Concreta(mestre.ExperimentoWaveform):
+                id = "02"
+                nome = "SAG"
+
+                def gerar(self, t, f0, capture_index, rng):
+                    return np.sin(2.0 * np.pi * f0 * t), {}
+
+            bancada_fake = mock.Mock(config=config, fonte=None, osc=None)
+            experimento = _Concreta(bancada_fake)
+            tensao = np.zeros((2, 4))
+            experimento._salvar_classe(
+                tempo_ms=np.zeros(4),
+                tensao_limpa=tensao,
+                tensao_por_snr={},
+                ids=["02-0001", "02-0002"],
+                corrente=None,
+                metadados=[
+                    {"id_captura": "02-0001", "classe": "SAG", "nivel_indice": 0,
+                     "parametros": {"sag_pu": 0.1}, "seed": 1, "simulado": False,
+                     "fs_hz": 30000.0, "pontos": 4, "snr_medido_db": {}},
+                    {"id_captura": "02-0002", "classe": "SAG", "nivel_indice": 1,
+                     "parametros": {"sag_pu": 0.3}, "seed": 2, "simulado": False,
+                     "fs_hz": 30000.0, "pontos": 4, "snr_medido_db": {}},
+                ],
+            )
+            arquivos = sorted(p.name for p in tmp_dir.glob("02_sag*.npz"))
+            self.assertEqual(arquivos, ["02_sag_sag_pu-0.1.npz", "02_sag_sag_pu-0.3.npz"])
+            self.assertTrue((tmp_dir / "metadata" / "02_sag.jsonl").exists())
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_classe_sem_parametro_nomeavel_usa_capNN(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            config = mestre.Config(
+                fs_hz=30_000.0, points=4, duration_s=0.2, grid_frequency_hz=60.0,
+                base_voltage_rms=127.0, snr_levels_db=(), base_seed=1,
+                capture_current=False, current_base_a=None, results_dir=tmp_dir,
+                sim_captures_per_class=1, real_captures_per_class=1, disturbance_start_s=0.06,
+            )
+            class _Concreta(mestre.ExperimentoWaveform):
+                id = "01"
+                nome = "NORMAL"
+
+                def gerar(self, t, f0, capture_index, rng):
+                    return np.sin(2.0 * np.pi * f0 * t), {}
+
+            bancada_fake = mock.Mock(config=config, fonte=None, osc=None)
+            experimento = _Concreta(bancada_fake)
+            experimento._salvar_classe(
+                tempo_ms=np.zeros(4), tensao_limpa=np.zeros((1, 4)), tensao_por_snr={},
+                ids=["01-0001"], corrente=None,
+                metadados=[{"id_captura": "01-0001", "classe": "NORMAL", "nivel_indice": 0,
+                            "parametros": {}, "seed": 1, "simulado": False,
+                            "fs_hz": 30000.0, "pontos": 4, "snr_medido_db": {}}],
+            )
+            self.assertTrue((tmp_dir / "01_normal_cap01.npz").exists())
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":
