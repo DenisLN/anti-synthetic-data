@@ -2,6 +2,7 @@
 
 import numpy as np
 
+import sinais
 from mestre import ExperimentoWaveform
 from sinais import oscilacao_amortecida
 
@@ -12,7 +13,10 @@ class Experimento(ExperimentoWaveform):
 
     def gerar(self, t, f0, capture_index, rng):
         voltage = np.sin(2.0 * np.pi * f0 * t)
-        frequencia = float(rng.uniform(300.0, 2400.0))
+        simulado = self.osc is None
+        total = self.config.capturas(simulado)
+        cobertura_ativa = not simulado and self.config.capturas_override is not None
+        frequencia = sinais.valor_para_captura(rng, 300.0, 2400.0, capture_index, total, cobertura_ativa=cobertura_ativa)
         duracao = float(rng.uniform(0.010, 0.040))
         voltage = voltage + oscilacao_amortecida(
             t, inicio_s=0.080, duracao_s=duracao, frequencia_hz=frequencia,

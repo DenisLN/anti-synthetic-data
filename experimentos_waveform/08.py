@@ -24,7 +24,15 @@ class Experimento(ExperimentoWaveform):
     def gerar(self, t, f0, capture_index, rng):
         fs_hz = 1.0 / (t[1] - t[0])
         voltage = np.sin(2.0 * np.pi * f0 * t)
-        amplitude = float(rng.uniform(5.0, 10.0))
+        simulado = self.osc is None
+        total = self.config.capturas(simulado)
+        cobertura_ativa = not simulado and self.config.capturas_override is not None
+        if cobertura_ativa and total > 1:
+            pico_min_pu, pico_max_pu = 1.2, self.limite_pico_bancada_pu()
+            pico_alvo_pu = float(np.linspace(pico_min_pu, pico_max_pu, total)[capture_index])
+            amplitude = pico_alvo_pu - 1.0
+        else:
+            amplitude = float(rng.uniform(5.0, 10.0))
         start_index = int(round(0.080 * fs_hz))
         pulse_samples = max(1, int(math.ceil(0.00005 * fs_hz)))
         voltage[start_index : start_index + pulse_samples] += amplitude

@@ -29,10 +29,16 @@ import preflight_new  # noqa: E402
 
 class _BancadaFake:
     """Suficiente para instanciar um Experimento sem abrir instrumento nenhum:
-    gerar() só usa self.config/self.fonte/self.osc se explicitamente
-    sobrescrito, e nenhuma classe hoje faz isso."""
+    gerar() de 04/06/08/09/19 lê self.config/self.osc para decidir
+    sorteio vs. cobertura determinística (osc=None => sempre "simulado",
+    ou seja, sempre sorteio — capturas_override não se aplica)."""
 
-    config = None
+    config = mestre.Config(
+        fs_hz=30_000.0, points=6_000, duration_s=0.2, grid_frequency_hz=60.0,
+        base_voltage_rms=127.0, snr_levels_db=(), base_seed=1,
+        capture_current=False, current_base_a=None, results_dir=Path("."),
+        sim_captures_per_class=1, real_captures_per_class=1, disturbance_start_s=0.06,
+    )
     fonte = None
     osc = None
 
@@ -1265,6 +1271,77 @@ class SalvarClasseArquivoUnicoTests(unittest.TestCase):
             self.assertIn("02-0003", linhas[0])
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+class CoberturaParametroContinuoTests(unittest.TestCase):
+    def _carregar(self, relative_path):
+        script_path = PROJECT_ROOT / relative_path
+        spec = importlib.util.spec_from_file_location("teste_cobertura", script_path)
+        module = importlib.util.module_from_spec(spec)
+        sys.path.insert(0, str(script_path.parent))
+        try:
+            spec.loader.exec_module(module)
+        finally:
+            sys.path.remove(str(script_path.parent))
+        return module.Experimento
+
+    def _config(self, capturas_override=None):
+        return mestre.Config(
+            fs_hz=30_000.0, points=6_000, duration_s=0.2, grid_frequency_hz=60.0,
+            base_voltage_rms=127.0, snr_levels_db=(), base_seed=1,
+            capture_current=False, current_base_a=None, results_dir=Path("."),
+            sim_captures_per_class=1, real_captures_per_class=1, disturbance_start_s=0.06,
+            capturas_override=capturas_override,
+        )
+
+    def test_04_interruption_sem_override_sorteia(self):
+        cls = self._carregar("experimentos_nativos/04.py")
+        instancia = cls.__new__(cls)
+        instancia.config = self._config(capturas_override=None)
+        instancia.osc = mock.Mock()  # not simulated
+        t = np.arange(6000) / 30000.0
+        _, parametros_a = instancia.gerar(t, 60.0, 0, np.random.default_rng(1))
+        _, parametros_b = instancia.gerar(t, 60.0, 0, np.random.default_rng(2))
+        self.assertNotEqual(parametros_a["interruption_pu"], parametros_b["interruption_pu"])
+
+    def test_04_interruption_com_override_cobre_intervalo(self):
+        cls = self._carregar("experimentos_nativos/04.py")
+        instancia = cls.__new__(cls)
+        instancia.config = self._config(capturas_override=3)
+        instancia.osc = mock.Mock()
+        t = np.arange(6000) / 30000.0
+        niveis = [
+            instancia.gerar(t, 60.0, indice, np.random.default_rng(indice))[1]["interruption_pu"]
+            for indice in range(3)
+        ]
+        self.assertAlmostEqual(niveis[0], 0.0)
+        self.assertAlmostEqual(niveis[-1], 0.09)
+
+    def test_04_interruption_simulado_ignora_override(self):
+        cls = self._carregar("experimentos_nativos/04.py")
+        instancia = cls.__new__(cls)
+        instancia.config = self._config(capturas_override=3)
+        instancia.osc = None  # simulado
+        t = np.arange(6000) / 30000.0
+        primeiro = instancia.gerar(t, 60.0, 0, np.random.default_rng(1))[1]["interruption_pu"]
+        segundo = instancia.gerar(t, 60.0, 0, np.random.default_rng(7))[1]["interruption_pu"]
+        self.assertNotEqual(primeiro, segundo)  # continua sorteio, override não se aplica
+
+    def test_08_transient_com_override_usa_pico_fisico_nao_a_spec(self):
+        cls = self._carregar("experimentos_waveform/08.py")
+        instancia = cls.__new__(cls)
+        instancia.config = self._config(capturas_override=3)
+        instancia.osc = mock.Mock()
+        instancia.fonte = mestre.AmetekMX30(simulated=True)
+        instancia.fonte.max_peak_v = 200.0  # limite_pico_bancada_pu() = 0.9*200/(127*sqrt2) ~ 0.79
+        t = np.arange(6000) / 30000.0
+        amplitudes = [
+            instancia.gerar(t, 60.0, indice, np.random.default_rng(indice))[1]["transient_amplitude_pu"]
+            for indice in range(3)
+        ]
+        limite_pico_pu = instancia.limite_pico_bancada_pu()
+        self.assertAlmostEqual(amplitudes[0], 1.2 - 1.0)
+        self.assertAlmostEqual(amplitudes[-1], limite_pico_pu - 1.0)
 
 
 if __name__ == "__main__":
