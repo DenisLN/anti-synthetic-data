@@ -545,6 +545,21 @@ class DiagnosticoLogTests(unittest.TestCase):
         self.assertTrue(any("ponto_teste" in linha for linha in linhas))
         self.assertTrue(any("extra_info" in linha for linha in linhas))
 
+    def test_com_diagnostico_tolera_resposta_nao_numerica_de_measure_voltage(self):
+        """Regressão: measure_voltage() faz ``float(self.query(...))`` — uma
+        resposta malformada/não numérica do instrumento levanta ValueError,
+        não CommunicationError/InstrumentHardwareError. Sem capturar
+        ValueError especificamente aqui (mesmo padrão já usado no bloco de
+        STATus:OPERation:CONDition? logo acima), essa falha de UMA leitura de
+        diagnóstico abortaria a chamada de produção inteira (trigger_step,
+        arm, etc.), contradizendo a docstring de _log_diagnostico()."""
+        fonte = mestre.AmetekMX30(simulated=True, diagnostico=True)
+        with mock.patch.object(fonte, "measure_voltage", side_effect=ValueError("resposta malformada")):
+            with self.assertLogs("AmetekORM", level="INFO") as captura:
+                fonte._log_diagnostico("ponto_teste")  # não deve propagar ValueError
+        linhas = [registro.getMessage() for registro in captura.records]
+        self.assertTrue(any("tensao_v=None" in linha for linha in linhas))
+
     def test_trigger_step_com_diagnostico_nao_muda_writes_enviados(self):
         # max_voltage_rms explícito: o default da classe é 10.0 Vrms, que
         # rejeitaria 100.0 (ParameterOutOfBoundsError) antes de qualquer

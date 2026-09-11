@@ -428,7 +428,7 @@ class AmetekMX30:
             pass
         try:
             tensao_v = self.measure_voltage()
-        except (CommunicationError, InstrumentHardwareError):
+        except (CommunicationError, InstrumentHardwareError, ValueError):
             pass
         logger.info(
             "[DIAGNOSTICO] ponto=%s t=%.6f transiente_ativo=%s output=%s tensao_v=%s extra=%s",
