@@ -700,12 +700,17 @@ class ExperimentoBase(ABC):
         ``run 02``) pode deixar arquivos da rodada ANTERIOR sem nenhuma
         captura desta rodada apontando para eles — órfãos, sem linha
         correspondente no ``metadata/{id}_{nome}.jsonl`` recém-escrito. Por
-        isso, depois que todo arquivo NOVO desta rodada já foi gravado e
-        promovido (``.part`` -> replace) com sucesso, varremos cada
-        diretório tocado nesta chamada (``results_dir``, cada
-        ``snr_XXdb/``, ``corrente/``) por arquivos que casem com o prefixo
-        desta classe (``{id}_{nome}_*.npz``) mas não estejam entre os
-        nomes que ESTA rodada escreveu, e apagamos os que sobrarem.
+        isso, só depois que TODO arquivo novo desta rodada já foi gravado e
+        promovido (``.part`` -> replace) com sucesso — dados por captura E
+        o ``metadata.jsonl``, nessa ordem — varremos cada diretório tocado
+        nesta chamada (``results_dir``, cada ``snr_XXdb/``, ``corrente/``)
+        por arquivos que casem com o prefixo desta classe
+        (``{id}_{nome}_*.npz``) mas não estejam entre os nomes que ESTA
+        rodada escreveu, e apagamos os que sobrarem. A limpeza roda por
+        último, depois do metadata: se o processo morrer antes disso, o
+        metadata sobrevivente (velho ou novo) nunca aponta para um arquivo
+        que já apagamos — na pior hipótese sobra um órfão que a PRÓXIMA
+        rodada bem-sucedida limpa.
         """
         config = self.config
         config.results_dir.mkdir(parents=True, exist_ok=True)
@@ -766,15 +771,6 @@ class ExperimentoBase(ABC):
                 os.replace(partial_path, final_path)
                 _registrar_escrita(directory, nome_corrente)
 
-        # Só agora, com todos os arquivos NOVOS desta rodada já promovidos
-        # com sucesso, removemos órfãos de rodadas anteriores com conjunto
-        # de capturas diferente — nunca antes, para nunca ficar sem dado
-        # gravado se algo falhar no meio do laço acima.
-        for directory, nomes_escritos in nomes_escritos_por_diretorio.items():
-            for arquivo_existente in directory.glob(f"{prefixo_classe}*.npz"):
-                if arquivo_existente.name not in nomes_escritos:
-                    arquivo_existente.unlink()
-
         metadata_dir = config.results_dir / "metadata"
         metadata_dir.mkdir(parents=True, exist_ok=True)
         metadata_final = metadata_dir / f"{self.id}_{self.nome.lower()}.jsonl"
@@ -783,6 +779,22 @@ class ExperimentoBase(ABC):
             for registro in metadados:
                 handle.write(json.dumps(registro, ensure_ascii=False, sort_keys=True) + "\n")
         os.replace(metadata_partial, metadata_final)
+
+        # Só agora — com todos os arquivos NOVOS desta rodada já promovidos
+        # com sucesso E o metadata.jsonl já substituído com sucesso —
+        # removemos órfãos de rodadas anteriores com conjunto de capturas
+        # diferente. Nunca antes: se o processo morresse entre apagar um
+        # órfão e substituir o metadata, o metadata sobrevivente (ainda o
+        # da rodada anterior) apontaria para um arquivo que acabamos de
+        # apagar. Rodando a limpeza só depois do metadata.jsonl já estar
+        # trocado, um crash em qualquer ponto anterior deixa o disco num
+        # estado consistente: ou o par dados+metadata da rodada anterior
+        # intacto, ou o da rodada nova já completo (possivelmente com
+        # órfãos que a PRÓXIMA rodada bem-sucedida vai limpar).
+        for directory, nomes_escritos in nomes_escritos_por_diretorio.items():
+            for arquivo_existente in directory.glob(f"{prefixo_classe}*.npz"):
+                if arquivo_existente.name not in nomes_escritos:
+                    arquivo_existente.unlink()
 
     def executar(self) -> None:
         simulated = self.osc is None
