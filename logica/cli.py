@@ -14,6 +14,7 @@ energiza a saída pede a SUA própria confirmação aqui dentro.
 
 from __future__ import annotations
 
+import datetime as _dt
 import os
 import sys
 import traceback
@@ -51,6 +52,16 @@ Comandos disponíveis (nenhum energiza a saída sem pedir confirmação própria
   run all             Roda a bateria completa das 20 classes, sequencialmente,
                        sem parar numa falha isolada (ver Prioridade 1 do
                        CHANGELOG). Pede EXECUTAR-20-CLASSES.                [ON]
+  set margin on|off   Liga/desliga captura com folga extra (~25ms de cada
+                       lado) antes/depois da janela nominal — salva o array
+                       bruto, sem recorte automático. Só afeta captura real.[OFF]
+  set diagnostico on|off
+                       Liga/desliga log extra de STATus:OPERation:CONDition?/
+                       OUTPut:STATe?/tensão imediata em pontos-chave de
+                       run/run all — para testar as hipóteses do v1.7.      [OFF]
+  set capturas <N>    Quantas capturas por classe na bancada real (default
+                       1). Em classes com níveis discretos (SAG/SWELL/
+                       HARMONICS), N por nível.                             [OFF]
   help / ?            Mostra esta referência.                              [OFF]
   quit / exit         Sai da CLI (não desliga nada por si só — a saída já
                        deve estar OFF entre comandos; ver "status").       [OFF]
@@ -67,6 +78,8 @@ funcionando em modo simulado.
 class SessaoCLI:
     def __init__(self) -> None:
         self.ultimo_resultado: dict[str, "mestre.ResultadoClasse"] = {}
+        self._sessao_timestamp = _dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        self._sessao_criada = False
 
     # -- infraestrutura ----------------------------------------------------
 
@@ -82,6 +95,19 @@ class SessaoCLI:
         mestre.OUTPUT_ARMED = autorizado
         preflight.OUTPUT_ARMED = autorizado
         preflight_new.OUTPUT_ARMED = autorizado
+
+    def _garantir_pasta_sessao(self) -> None:
+        """Cria resultados/sessao_<timestamp>/ na PRIMEIRA gravação da sessão
+        (não no boot da CLI) — status/comm/trigger sem run não deixam pasta
+        vazia. Todo run subsequente na MESMA sessão de CLI grava na mesma
+        pasta (timestamp fixado em __init__)."""
+        if self._sessao_criada:
+            return
+        sessao_dir = mestre.RESULTS_DIR / f"sessao_{self._sessao_timestamp}"
+        sessao_dir.mkdir(parents=True, exist_ok=True)
+        mestre.SESSION_RESULTS_DIR = sessao_dir
+        self._sessao_criada = True
+        print(f"Sessão gravando em: {sessao_dir}")
 
     @staticmethod
     def confirmar(aviso: str, esperado: str) -> bool:
@@ -117,6 +143,13 @@ class SessaoCLI:
             f"Tensão/frequência base: {mestre.BASE_VOLTAGE_RMS:.3f} Vrms / "
             f"{mestre.GRID_FREQUENCY_HZ:.3f} Hz"
         )
+        print(
+            f"margin: {'ON' if mestre.MARGIN_MODE else 'OFF'}   "
+            f"diagnostico: {'ON' if mestre.DIAGNOSTICO_MODE else 'OFF'}   "
+            f"capturas: {mestre.CAPTURAS_OVERRIDE or mestre.REAL_CAPTURES_PER_CLASS}"
+        )
+        if self._sessao_criada:
+            print(f"Sessão: {mestre.SESSION_RESULTS_DIR}")
         if not self.ultimo_resultado:
             print("Nenhuma classe rodada nesta sessão ainda (use 'list' para ver as 20 classes).")
             return 0
@@ -142,6 +175,42 @@ class SessaoCLI:
     def cmd_help(self, _args: List[str]) -> int:
         print(HELP_TEXT)
         return 0
+
+    def cmd_set(self, args: List[str]) -> int:
+        if len(args) < 2:
+            print("Uso: set margin on|off   |   set diagnostico on|off   |   set capturas <N>")
+            return 1
+        chave, valor = args[0].lower(), args[1].lower()
+        if chave == "margin":
+            if valor not in ("on", "off"):
+                print("Uso: set margin on|off")
+                return 1
+            mestre.MARGIN_MODE = valor == "on"
+            print(f"margin: {'ON' if mestre.MARGIN_MODE else 'OFF'}")
+            if mestre.MARGIN_MODE and not mestre.BENCH_MODE:
+                print("Aviso: margin on só tem efeito em captura FÍSICA (BENCH_MODE=1); sem efeito em modo simulado.")
+            return 0
+        if chave == "diagnostico":
+            if valor not in ("on", "off"):
+                print("Uso: set diagnostico on|off")
+                return 1
+            mestre.DIAGNOSTICO_MODE = valor == "on"
+            print(f"diagnostico: {'ON' if mestre.DIAGNOSTICO_MODE else 'OFF'}")
+            return 0
+        if chave == "capturas":
+            try:
+                n = int(args[1])
+            except ValueError:
+                print("Uso: set capturas <N> (inteiro positivo)")
+                return 1
+            if n < 1:
+                print(f"capturas: valor inválido ({n}); mantendo {mestre.CAPTURAS_OVERRIDE or mestre.REAL_CAPTURES_PER_CLASS}")
+                return 1
+            mestre.CAPTURAS_OVERRIDE = n
+            print(f"capturas: {n} por classe (por nível, nas classes que têm níveis discretos)")
+            return 0
+        print(f"Chave desconhecida: {chave!r}. Use margin, diagnostico ou capturas.")
+        return 1
 
     # -- preflights (energizam conforme o comando) -----------------------
 
@@ -201,6 +270,7 @@ class SessaoCLI:
             confirmacao,
         ):
             return 1
+        self._garantir_pasta_sessao()
         self.autorizar_saida(True)
         try:
             with mestre.Bancada.from_env(require_output=True) as bancada:
@@ -212,7 +282,7 @@ class SessaoCLI:
                 bancada.assegurar_tensao_base()
                 experimento_cls(bancada).executar()
             resultado = mestre.ResultadoClasse(script_path.stem, nome, ok=True)
-            print(f"OK: [{resultado.id}] {resultado.nome} -> {resultado.arquivo_esperado}")
+            print(f"OK: [{resultado.id}] {resultado.nome} -> {resultado.pasta_esperada}")
         except Exception as exc:
             resultado = mestre.ResultadoClasse(script_path.stem, nome, ok=False, motivo=str(exc))
             print(f"FALHOU: [{resultado.id}] {resultado.nome}: {exc}")
@@ -230,6 +300,7 @@ class SessaoCLI:
             "EXECUTAR-20-CLASSES",
         ):
             return 1
+        self._garantir_pasta_sessao()
         self.autorizar_saida(True)
         try:
             scripts = mestre._experiment_scripts()
@@ -248,7 +319,7 @@ class SessaoCLI:
         print(f"\nResumo final: {ok}/{len(resultados)} classes OK")
         for resultado in resultados:
             if resultado.ok:
-                print(f"  OK     [{resultado.id}] {resultado.nome} -> {resultado.arquivo_esperado}")
+                print(f"  OK     [{resultado.id}] {resultado.nome} -> {resultado.pasta_esperada}")
             else:
                 print(f"  FALHOU [{resultado.id}] {resultado.nome}: {resultado.motivo}")
         return 0 if ok == len(resultados) else 1
@@ -259,6 +330,7 @@ class SessaoCLI:
         "status": cmd_status,
         "list": cmd_list,
         "help": cmd_help,
+        "set": cmd_set,
         "comm": cmd_comm,
         "trigger": cmd_trigger,
         "lowvoltage": cmd_lowvoltage,
