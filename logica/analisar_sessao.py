@@ -160,6 +160,23 @@ def analisar_sessao(sessao_dir: Path, *, gerar_imagens: bool = True) -> List[Dic
     for npz_path in sorted(sessao_dir.glob("*.npz")):
         stem = npz_path.stem
         dados = np.load(npz_path, allow_pickle=True)
+        n_capturas = dados["tensao_pu"].shape[0]
+        if n_capturas > 1:
+            # Formato simulado (_salvar_classe_simulada em mestre.py): um
+            # único .npz por classe com todas as capturas empilhadas em
+            # tensao_pu (N, pontos) — bem diferente do formato real (1 .npz
+            # por captura, sempre 1 linha), que é o único que esta ferramenta
+            # sabe analisar. Sem este check, dados["tensao_pu"][0] analisaria
+            # silenciosamente só a 1ª de até N capturas e reportaria como se
+            # fosse a classe inteira — nenhum erro, resultado enganoso.
+            relatorio.append({
+                "classe": stem,
+                "erro": (
+                    f"arquivo tem {n_capturas} capturas empilhadas (formato simulado); "
+                    "esta ferramenta só analisa capturas únicas do formato real (1 por arquivo)"
+                ),
+            })
+            continue
         id_captura = str(dados["id_captura"][0])
         metadado = metadados_por_id_captura.get(id_captura)
         if metadado is None:

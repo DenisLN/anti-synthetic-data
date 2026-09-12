@@ -1682,6 +1682,42 @@ class AnalisarSessaoTests(unittest.TestCase):
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
+    def test_analisar_sessao_relata_erro_para_npz_simulado_empilhado(self):
+        # Formato simulado (_salvar_classe_simulada em mestre.py): um único
+        # .npz por classe com tensao_pu empilhado (N, pontos) e um id_captura
+        # por linha — em vez do formato real (1 .npz por captura, sempre 1
+        # linha). analisar_sessao() deve reconhecer isso e reportar um erro
+        # claro por arquivo, nunca analisar silenciosamente só a linha 0 como
+        # se fosse a captura inteira da classe.
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            sessao_dir = tmp_dir / "sessao_teste"
+            (sessao_dir / "metadata").mkdir(parents=True)
+            fs_hz = 30_000.0
+            pontos = 6000
+            t = np.arange(pontos) / fs_hz
+            n_capturas = 3
+            capturas = np.stack([np.sin(2.0 * np.pi * 60.0 * t) for _ in range(n_capturas)])
+            ids = np.array([f"01-{i + 1:04d}" for i in range(n_capturas)], dtype=object)
+            np.savez(
+                sessao_dir / "01_normal.npz", tempo_ms=t * 1000.0,
+                tensao_pu=capturas, classe="NORMAL", id_captura=ids,
+            )
+            with (sessao_dir / "metadata" / "01_normal.jsonl").open("w", encoding="utf-8") as handle:
+                for i in range(n_capturas):
+                    handle.write(json.dumps({
+                        "classe": "NORMAL", "fs_hz": fs_hz, "id_captura": f"01-{i + 1:04d}",
+                        "parametros": {}, "pontos": pontos, "seed": 21260827, "simulado": True,
+                    }) + "\n")
+            import analisar_sessao
+            relatorio = analisar_sessao.analisar_sessao(sessao_dir, gerar_imagens=False)
+            self.assertEqual(len(relatorio), 1)
+            self.assertEqual(relatorio[0]["classe"], "01_normal")
+            self.assertIn("erro", relatorio[0])
+            self.assertNotIn("lag_amostras", relatorio[0])
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
 
 if __name__ == "__main__":
     unittest.main()
