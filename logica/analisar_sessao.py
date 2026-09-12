@@ -115,17 +115,23 @@ def _reconstruir_esperado(class_id: str, metadado: dict) -> np.ndarray:
     # discretos, ou cobertura contínua da Task 6) — sem isto, toda captura
     # reconstruiria o nível 0, incompatível com o real. metadata sempre tem
     # "nivel_indice" desde a Task 4 (mestre.py:908); .get(...) só é rede de
-    # segurança para metadata no formato antigo, pré-v1.8.
+    # segurança para metadata no formato antigo, pré-v1.8. Desde o fix pós-
+    # -Task 9 em mestre.py:908, "nivel_indice" grava o capture_index real de
+    # TODA captura física (not simulated), não só quando agrupada por nível
+    # — cobre igualmente SAG/SWELL/HARMONICS, 04/06/08/09/19 e 18.py.
     #
-    # Limitação conhecida: "nivel_indice" só é != 0 quando mestre.py agrupou
-    # capturas por nível (ver ExperimentoBase.total_niveis()/executar()) —
-    # ou seja, quando "set capturas N" estava ativo E a classe tem NIVEIS
-    # discretos (SAG/SWELL/HARMONICS). Fora desse caso — cobertura contínua
-    # de 04/06/08/09/19, ou NIVEIS sem "set capturas" ativo — o metadata
-    # atual não persiste o capture_index real usado por gerar(), então o
-    # nível/parâmetro reconstruído aqui pode não ser exatamente o
-    # fisicamente programado na bancada. Isso afeta principalmente
-    # "razao_pico"; a portadora de 60 Hz (e portanto o lag por
+    # Limitação residual (não corrigível aqui): mesmo com o capture_index
+    # certo em mãos, _BancadaOffline força self.osc=None dentro de gerar(),
+    # ou seja "simulado=True" e "cobertura_ativa=False" — para 04/06/08/09/19
+    # isso faz valor_para_captura() cair sempre no ramo de sorteio
+    # (rng.uniform), mesmo quando a captura real usou o ramo determinístico
+    # de cobertura ("set capturas N>1" ativo). O índice reconstruído já é o
+    # certo; é o RAMO de gerar() que ainda pode ser o errado para essas 5
+    # classes especificamente. Corrigir isso exigiria simular osc "ligado" e
+    # config.capturas_override/total consistentes com a sessão real dentro
+    # de _BancadaOffline — fora do escopo deste fix. Efeito prático: só
+    # "razao_pico" dessas 5 classes pode ficar impreciso quando cobertura
+    # estava ativa; a portadora de 60 Hz (e portanto o lag por
     # cross-correlação, o diagnóstico principal desta ferramenta) não
     # depende do parâmetro de distúrbio e não é afetada.
     capture_index = metadado.get("nivel_indice", 0)

@@ -905,7 +905,7 @@ class ExperimentoBase(ABC):
                 "pontos": self.config.points,
                 "parametros": parametros,
                 "snr_medido_db": medidas_snr,
-                "nivel_indice": capture_index if cobertura_por_nivel_ativa else 0,
+                "nivel_indice": capture_index if (cobertura_por_nivel_ativa or not simulated) else 0,
             })
             if margem_amostras > 0:
                 metadados[-1]["margem_amostras_antes"] = margem_amostras

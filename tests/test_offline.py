@@ -1096,6 +1096,42 @@ class RemapeamentoNivelTests(unittest.TestCase):
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
+    def test_nivel_indice_registra_capture_index_real_mesmo_sem_niveis_discretos(self):
+        """Task 9 (analisar_sessao.py) expôs que classes SEM NIVEIS (04/06/08/09/19,
+        18) nunca agrupam por nível (niveis_count sempre 1), então
+        cobertura_por_nivel_ativa é sempre False para elas e o nivel_indice
+        gravado ficava sempre 0 mesmo com `set capturas N>1` ativo — apesar de
+        _capturar_real(capture_index, ...) (linha ~880) sempre receber o
+        capture_index real. mestre.py:908 agora grava capture_index também
+        quando `not simulated`, não só quando agrupado por nível."""
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            config = self._config(tmp_dir / "resultados", capturas_override=3)
+            bancada = mestre.Bancada(mestre.AmetekMX30(simulated=True), mock.Mock(), config)
+
+            class _SemNiveis(mestre.ExperimentoNativo):
+                id = "95"
+                nome = "TESTE_SEM_NIVEIS"
+
+                def gerar(self, t, f0, capture_index, rng):
+                    return np.sin(2.0 * np.pi * f0 * t), {}
+
+                def configurar(self, capture_index):
+                    return {}
+
+            experimento = _SemNiveis(bancada)
+            experimento.osc = mock.Mock()  # simulated=False via osc não-None
+            self._forcar_captura_real_stub(experimento)
+            experimento.executar()
+
+            metadata_path = config.results_dir / "metadata" / "95_teste_sem_niveis.jsonl"
+            registros = [
+                json.loads(linha) for linha in metadata_path.read_text(encoding="utf-8").splitlines()
+            ]
+            self.assertEqual([registro["nivel_indice"] for registro in registros], [0, 1, 2])
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
     @staticmethod
     def _forcar_captura_real_stub(experimento):
         """Substitui _capturar_real por um stub que devolve uma captura
