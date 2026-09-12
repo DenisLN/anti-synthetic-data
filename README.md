@@ -535,6 +535,9 @@ resultado de execuções anteriores.
 - [`CHANGELOG/v1.7.md`](CHANGELOG/v1.7.md) — correção do timing do CSINe
   (segundo `aguardar_resposta()`), resiliência por classe na bateria de 20,
   CLI interativa (`logica/cli.py`) e cache de TRACe por conexão.
+- [`CHANGELOG/v1.8.md`](CHANGELOG/v1.8.md) — `set margin`/`diagnostico`/
+  `capturas`, sessão isolada por pasta (`resultados/sessao_<timestamp>/`),
+  cobertura determinística de níveis/parâmetros e `logica/analisar_sessao.py`.
 - `docs/AMETEK_MX_SCPI_Programming_Manual.pdf` e
   `docs/Keysight_4000X_Programmers_Guide.pdf` — manuais SCPI originais dos
   dois instrumentos.
