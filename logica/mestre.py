@@ -644,21 +644,25 @@ class ExperimentoBase(ABC):
     def _ler_captura(
         self, parametros: Dict[str, float]
     ) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray], Dict[str, float]]:
-        time_s, voltage_v = self.osc.get_waveform(1, expected_points=self.config.points)
+        pontos_efetivos = self._pontos_efetivos_captura_atual
+        time_s, voltage_v = self.osc.get_waveform(1, expected_points=pontos_efetivos)
         voltage_pu = voltage_v / (self.config.base_voltage_rms * math.sqrt(2.0))
         current_values = None
         if self.config.capture_current:
-            current_time, current_a = self.osc.get_waveform(2, expected_points=self.config.points)
+            current_time, current_a = self.osc.get_waveform(2, expected_points=pontos_efetivos)
             if not np.allclose(current_time, time_s, rtol=0, atol=1e-9):
                 raise RuntimeError("CH1 e CH2 possuem eixos temporais diferentes")
             current_values = current_a / float(self.config.current_base_a)
         return time_s, voltage_pu, current_values, parametros
 
-    def _validar_captura(self, time_s: np.ndarray, voltage_pu: np.ndarray) -> None:
+    def _validar_captura(
+        self, time_s: np.ndarray, voltage_pu: np.ndarray, *, pontos_esperados: Optional[int] = None,
+    ) -> None:
         config = self.config
-        if time_s.shape != (config.points,) or voltage_pu.shape != (config.points,):
+        esperado = pontos_esperados if pontos_esperados is not None else config.points
+        if time_s.shape != (esperado,) or voltage_pu.shape != (esperado,):
             raise ValueError(
-                f"Captura deve ter {config.points} pontos; recebido {time_s.size}/{voltage_pu.size}"
+                f"Captura deve ter {esperado} pontos; recebido {time_s.size}/{voltage_pu.size}"
             )
         if not np.all(np.isfinite(time_s)) or not np.all(np.isfinite(voltage_pu)):
             raise ValueError("Captura contém NaN ou infinito")
@@ -666,6 +670,17 @@ class ExperimentoBase(ABC):
         incremento_esperado = 1.0 / config.fs_hz
         if not np.allclose(incrementos, incremento_esperado, rtol=0, atol=1e-9):
             raise ValueError(f"Eixo temporal não corresponde a {config.fs_hz:.0f} Sa/s")
+
+    @staticmethod
+    def _calcular_margem(*, margin_mode: bool, config_points: int, fs_hz: float) -> Tuple[int, int]:
+        """``margin on``: 25ms de folga de cada lado (750 amostras a 30kSa/s
+        — cobre com sobra o maior deslocamento já medido, ~20ms/600
+        amostras, ver CHANGELOG/v1.7.md). Devolve (amostras de margem de UM
+        lado, total de amostras incluindo os dois lados)."""
+        if not margin_mode:
+            return 0, config_points
+        margem_amostras = int(round(0.025 * fs_hz))
+        return margem_amostras, config_points + 2 * margem_amostras
 
     def _salvar_classe(
         self,
@@ -813,22 +828,29 @@ class ExperimentoBase(ABC):
             "SIMULADO" if simulated else "BANCADA",
         )
         t = tempo(self.config)
+        margem_amostras, pontos_efetivos = self._calcular_margem(
+            margin_mode=(not simulated and self.config.margin_mode),
+            config_points=self.config.points, fs_hz=self.config.fs_hz,
+        )
+        self._pontos_efetivos_captura_atual = pontos_efetivos
         if not simulated:
+            duracao_efetiva = pontos_efetivos / self.config.fs_hz
+            pre_trigger_efetivo = self.pre_trigger_s + margem_amostras / self.config.fs_hz
             self.osc.configure_acquisition(
                 sample_rate_hz=self.config.fs_hz,
-                points=self.config.points,
-                duration_s=self.config.duration_s,
-                pre_trigger_s=self.pre_trigger_s,
+                points=pontos_efetivos,
+                duration_s=duracao_efetiva,
+                pre_trigger_s=pre_trigger_efetivo,
             )
             self._preparar_acquisicao_real()
 
-        tensao_limpa = np.empty((total, self.config.points), dtype=np.float64)
+        tensao_limpa = np.empty((total, pontos_efetivos), dtype=np.float64)
         tensao_por_snr: Dict[float, np.ndarray] = {
-            snr_db: np.empty((total, self.config.points), dtype=np.float64)
+            snr_db: np.empty((total, pontos_efetivos), dtype=np.float64)
             for snr_db in self.config.snr_levels_db
         }
         corrente = (
-            np.empty((total, self.config.points), dtype=np.float64)
+            np.empty((total, pontos_efetivos), dtype=np.float64)
             if self.config.capture_current else None
         )
         ids: List[str] = []
@@ -858,7 +880,7 @@ class ExperimentoBase(ABC):
                 time_s, measured_voltage_pu, measured_current_pu, parametros = self._capturar_real(
                     capture_index, t, rng,
                 )
-            self._validar_captura(time_s, measured_voltage_pu)
+            self._validar_captura(time_s, measured_voltage_pu, pontos_esperados=pontos_efetivos)
             tempo_ms_eixo = time_s * 1000.0
             capture_id = f"{self.id}-{indice_global + 1:04d}"
             ids.append(capture_id)
@@ -885,6 +907,10 @@ class ExperimentoBase(ABC):
                 "snr_medido_db": medidas_snr,
                 "nivel_indice": capture_index if cobertura_por_nivel_ativa else 0,
             })
+            if margem_amostras > 0:
+                metadados[-1]["margem_amostras_antes"] = margem_amostras
+                metadados[-1]["margem_amostras_depois"] = margem_amostras
+                metadados[-1]["amostras_totais"] = pontos_efetivos
             if not simulated:
                 logger.info("[%s] captura %d/%d concluída", self.id, indice_global + 1, total)
 

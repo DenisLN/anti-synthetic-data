@@ -1344,5 +1344,38 @@ class CoberturaParametroContinuoTests(unittest.TestCase):
         self.assertAlmostEqual(amplitudes[-1], limite_pico_pu - 1.0)
 
 
+class MargemCapturaTests(unittest.TestCase):
+    def test_margin_off_mantem_pontos_nominais(self):
+        margem_amostras, pontos_totais = mestre.ExperimentoBase._calcular_margem(
+            margin_mode=False, config_points=6000, fs_hz=30_000.0,
+        )
+        self.assertEqual(margem_amostras, 0)
+        self.assertEqual(pontos_totais, 6000)
+
+    def test_margin_on_adiciona_amostras_de_cada_lado(self):
+        margem_amostras, pontos_totais = mestre.ExperimentoBase._calcular_margem(
+            margin_mode=True, config_points=6000, fs_hz=30_000.0,
+        )
+        self.assertEqual(margem_amostras, 750)  # 25ms * 30kSa/s
+        self.assertEqual(pontos_totais, 6000 + 2 * 750)
+
+    def test_validar_captura_aceita_pontos_extras_quando_esperado_explicito(self):
+        config = mestre.Config(
+            fs_hz=30_000.0, points=6000, duration_s=0.2, grid_frequency_hz=60.0,
+            base_voltage_rms=127.0, snr_levels_db=(), base_seed=1,
+            capture_current=False, current_base_a=None, results_dir=Path("."),
+            sim_captures_per_class=1, real_captures_per_class=1, disturbance_start_s=0.06,
+        )
+        class _ExperimentoWaveformConcreto(mestre.ExperimentoWaveform):
+            def gerar(self, t, f0, capture_index, rng):
+                raise NotImplementedError
+
+        experimento = _ExperimentoWaveformConcreto.__new__(_ExperimentoWaveformConcreto)
+        experimento.config = config
+        pontos_totais = 7500
+        tempo_s = np.arange(pontos_totais) / 30_000.0
+        experimento._validar_captura(tempo_s, np.zeros(pontos_totais), pontos_esperados=pontos_totais)  # não levanta
+
+
 if __name__ == "__main__":
     unittest.main()
