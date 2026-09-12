@@ -691,16 +691,42 @@ class ExperimentoBase(ABC):
         ids: List[str],
         corrente: Optional[np.ndarray],
         metadados: List[dict],
+        simulated: bool,
     ) -> None:
-        """Grava um ``.npz`` POR CAPTURA (não mais um único arquivo por
-        classe com todas as capturas empilhadas) — necessário desde que
-        ``set capturas N`` pode gerar N capturas por nível, cada uma uma
-        condição física distinta que merece arquivo próprio. O nome carrega
-        o parâmetro físico da captura quando existe algum em ``parametros``
-        (ex.: ``sag_pu-0.1``); cai para ``capNN`` (posição, 1-based) quando
-        não há parâmetro nomeável. Continua atômico (``.part`` -> replace),
-        agora por arquivo individual; metadata continua 1 arquivo por
-        classe, 1 linha por captura.
+        """Grava a classe completa. O LAYOUT depende de ``simulated``:
+
+        * ``simulated=True`` (dataset sintético, ``SIM_CAPTURES_PER_CLASS``
+          capturas por classe): UM ``.npz`` por classe
+          (``{id}_{nome}.npz``) com todas as capturas EMPILHADAS, shape
+          ``(total, pontos)`` — o formato que valeu por toda a história do
+          projeto. Arquivo por captura aqui não só não traz nada (arrays
+          numpy não colidem, e nenhuma captura simulada é uma "condição
+          física" irrepetível) como DESTRÓI dados: o nome derivado de
+          ``parametros`` se repete entre capturas em pelo menos 11 das 20
+          classes (02/03/05 ciclam 5 níveis por ``capture_index % 5``, 18
+          alterna 2 valores, 10-17 devolvem dicts LITERAIS constantes), e
+          as capturas seguintes sobrescreviam as anteriores em silêncio.
+          Um nome determinístico por classe também é naturalmente
+          idempotente entre rodadas — nunca gera órfão, nunca precisa de
+          limpeza.
+        * ``simulated=False`` (bancada real): UM ``.npz`` POR CAPTURA, já
+          que ``set capturas N`` pode gerar N capturas por nível e cada uma
+          é uma condição física distinta que merece arquivo próprio. O nome
+          carrega o parâmetro físico da captura quando existe algum em
+          ``parametros`` (ex.: ``sag_pu-0.1``); cai para ``capNN``
+          (posição, 1-based) quando não há parâmetro nomeável. Como
+          ``set capturas N`` agrupa N capturas no MESMO nível (mesmo
+          ``capture_index``, ver ``executar()``), o rótulo derivado do
+          parâmetro se REPETE dentro da mesma rodada — a 2ª ocorrência em
+          diante ganha sufixo ``_NN`` (1-based por ocorrência:
+          ``sag_pu-0.1.npz``, ``sag_pu-0.1_02.npz``, ...), sem o qual as N
+          capturas físicas colapsariam num arquivo só. O fallback
+          ``capNN`` já é único por captura (``indice`` enumera 0..total-1),
+          então não entra no contador.
+
+        Em ambos os casos a escrita é atômica (``.part`` -> ``os.replace``)
+        e o ``metadata/{id}_{nome}.jsonl`` é o mesmo: 1 arquivo por classe,
+        1 linha por captura.
 
         Os dados puros (sem ruído) vão direto em ``resultados/``, uma cópia
         com AWGN aplicado por nível de SNR em ``resultados/snr_XXdb/``
@@ -709,15 +735,16 @@ class ExperimentoBase(ABC):
         significa que aplicar (ou reaplicar) ruído no futuro, com outro SNR
         ou outra técnica, não exige regerar nem recapturar nada.
 
-        Como o nome do arquivo agora depende do parâmetro (ou da posição)
-        de CADA captura, rodar a mesma classe de novo com um conjunto de
-        capturas diferente (ex.: ``set capturas 5`` entre duas chamadas de
-        ``run 02``) pode deixar arquivos da rodada ANTERIOR sem nenhuma
-        captura desta rodada apontando para eles — órfãos, sem linha
-        correspondente no ``metadata/{id}_{nome}.jsonl`` recém-escrito. Por
-        isso, só depois que TODO arquivo novo desta rodada já foi gravado e
-        promovido (``.part`` -> replace) com sucesso — dados por captura E
-        o ``metadata.jsonl``, nessa ordem — varremos cada diretório tocado
+        Só no caminho REAL o nome do arquivo depende do parâmetro (ou da
+        posição) de CADA captura; por isso só ele precisa limpar órfãos.
+        Rodar a mesma classe de novo com um conjunto de capturas diferente
+        (ex.: ``set capturas 5`` entre duas chamadas de ``run 02``) pode
+        deixar arquivos da rodada ANTERIOR sem nenhuma captura desta rodada
+        apontando para eles — órfãos, sem linha correspondente no
+        ``metadata/{id}_{nome}.jsonl`` recém-escrito. Por isso, só depois
+        que TODO arquivo novo desta rodada já foi gravado e promovido
+        (``.part`` -> replace) com sucesso — dados por captura E o
+        ``metadata.jsonl``, nessa ordem — varremos cada diretório tocado
         nesta chamada (``results_dir``, cada ``snr_XXdb/``, ``corrente/``)
         por arquivos que casem com o prefixo desta classe
         (``{id}_{nome}_*.npz``) mas não estejam entre os nomes que ESTA
@@ -730,12 +757,29 @@ class ExperimentoBase(ABC):
         config = self.config
         config.results_dir.mkdir(parents=True, exist_ok=True)
 
+        if simulated:
+            self._salvar_classe_simulada(
+                tempo_ms=tempo_ms, tensao_limpa=tensao_limpa, tensao_por_snr=tensao_por_snr,
+                ids=ids, corrente=corrente, metadados=metadados,
+            )
+            return
+
+        ocorrencias_por_rotulo: Dict[str, int] = {}
+
         def _rotulo(indice: int, parametros: dict) -> str:
-            if parametros:
-                chave, valor = next(iter(parametros.items()))
-                valor_fmt = f"{valor:g}" if isinstance(valor, float) else str(valor)
-                return f"{chave}-{valor_fmt}"
-            return f"cap{indice + 1:02d}"
+            if not parametros:
+                # Já único por captura: `indice` percorre 0..total-1.
+                return f"cap{indice + 1:02d}"
+            chave, valor = next(iter(parametros.items()))
+            valor_fmt = f"{valor:g}" if isinstance(valor, float) else str(valor)
+            base = f"{chave}-{valor_fmt}"
+            ocorrencia = ocorrencias_por_rotulo.get(base, 0) + 1
+            ocorrencias_por_rotulo[base] = ocorrencia
+            # 1ª ocorrência fica sem sufixo (nome histórico, legível); da 2ª
+            # em diante `_02`, `_03`, ... lê naturalmente como "captura #N
+            # deste rótulo". `:02d` é só largura MÍNIMA — `set capturas`
+            # não tem teto na CLI, e N>=100 vira `_100` sem colidir.
+            return base if ocorrencia == 1 else f"{base}_{ocorrencia:02d}"
 
         prefixo_classe = f"{self.id}_{self.nome.lower()}_"
         nomes_escritos_por_diretorio: Dict[Path, Set[str]] = {}
@@ -810,6 +854,64 @@ class ExperimentoBase(ABC):
             for arquivo_existente in directory.glob(f"{prefixo_classe}*.npz"):
                 if arquivo_existente.name not in nomes_escritos:
                     arquivo_existente.unlink()
+
+    def _salvar_classe_simulada(
+        self,
+        *,
+        tempo_ms: np.ndarray,
+        tensao_limpa: np.ndarray,
+        tensao_por_snr: Dict[float, np.ndarray],
+        ids: List[str],
+        corrente: Optional[np.ndarray],
+        metadados: List[dict],
+    ) -> None:
+        """Layout histórico do dataset sintético: um ``.npz`` por classe com
+        todas as capturas empilhadas (``tensao_pu`` com shape
+        ``(total, pontos)``, ``id_captura`` com um id por linha), o mesmo em
+        cada ``snr_XXdb/`` e em ``corrente/``. Escrita atômica: tudo grava em
+        ``.part`` e só é promovido (``os.replace``) depois que TODOS os
+        arquivos terminaram sem erro — nunca deixa uma classe meio gravada.
+        """
+        config = self.config
+        ids_array = np.array(ids, dtype=object)
+        final_paths = []
+
+        final_path = config.results_dir / f"{self.id}_{self.nome.lower()}.npz"
+        partial_path = final_path.with_suffix(".npz.part")
+        with partial_path.open("wb") as handle:
+            np.savez(handle, tempo_ms=tempo_ms, tensao_pu=tensao_limpa, classe=self.nome, id_captura=ids_array)
+        final_paths.append((partial_path, final_path))
+
+        for snr_db, tensao in tensao_por_snr.items():
+            rotulo = str(int(snr_db)) if float(snr_db).is_integer() else str(snr_db).replace(".", "_")
+            directory = config.results_dir / f"snr_{rotulo}db"
+            directory.mkdir(parents=True, exist_ok=True)
+            final_path = directory / f"{self.id}_{self.nome.lower()}.npz"
+            partial_path = final_path.with_suffix(".npz.part")
+            with partial_path.open("wb") as handle:
+                np.savez(handle, tempo_ms=tempo_ms, tensao_pu=tensao, classe=self.nome, id_captura=ids_array)
+            final_paths.append((partial_path, final_path))
+
+        if corrente is not None:
+            directory = config.results_dir / "corrente"
+            directory.mkdir(parents=True, exist_ok=True)
+            final_path = directory / f"{self.id}_{self.nome.lower()}_corrente.npz"
+            partial_path = final_path.with_suffix(".npz.part")
+            with partial_path.open("wb") as handle:
+                np.savez(handle, tempo_ms=tempo_ms, corrente_pu=corrente, classe=self.nome, id_captura=ids_array)
+            final_paths.append((partial_path, final_path))
+
+        metadata_dir = config.results_dir / "metadata"
+        metadata_dir.mkdir(parents=True, exist_ok=True)
+        metadata_final = metadata_dir / f"{self.id}_{self.nome.lower()}.jsonl"
+        metadata_partial = metadata_final.with_suffix(".jsonl.part")
+        with metadata_partial.open("w", encoding="utf-8") as handle:
+            for registro in metadados:
+                handle.write(json.dumps(registro, ensure_ascii=False, sort_keys=True) + "\n")
+
+        for partial_path, final_path in final_paths:
+            os.replace(partial_path, final_path)
+        os.replace(metadata_partial, metadata_final)
 
     def executar(self) -> None:
         simulated = self.osc is None
@@ -926,7 +1028,7 @@ class ExperimentoBase(ABC):
 
         self._salvar_classe(
             tempo_ms=tempo_ms_eixo, tensao_limpa=tensao_limpa, tensao_por_snr=tensao_por_snr,
-            ids=ids, corrente=corrente, metadados=metadados,
+            ids=ids, corrente=corrente, metadados=metadados, simulated=simulated,
         )
         logger.info("[%s] classe concluída: %s", self.id, self.nome)
 

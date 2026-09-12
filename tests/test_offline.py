@@ -848,9 +848,11 @@ class BateriaResilienciaTests(unittest.TestCase):
             self.assertEqual([resultado.ok for resultado in resultados], [True, False, True])
             self.assertEqual(resultados[1].id, "02")
             self.assertIn("falha proposital", resultados[1].motivo)
-            # sim_captures_per_class=2 e gerar() de "01_ok" devolve {} como
-            # parametros (sem parâmetro nomeável) -> nome cai para capNN.
-            self.assertTrue((results_dir / "01_ok_cap01.npz").exists())
+            # Caminho SIMULADO: um único .npz por classe com as
+            # sim_captures_per_class=2 capturas empilhadas.
+            self.assertTrue((results_dir / "01_ok.npz").exists())
+            with np.load(results_dir / "01_ok.npz", allow_pickle=True) as dados:
+                self.assertEqual(dados["tensao_pu"].shape, (2, 6_000))
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
@@ -1180,6 +1182,7 @@ class SalvarClasseArquivoUnicoTests(unittest.TestCase):
                      "parametros": {"sag_pu": 0.3}, "seed": 2, "simulado": False,
                      "fs_hz": 30000.0, "pontos": 4, "snr_medido_db": {}},
                 ],
+                simulated=False,
             )
             arquivos = sorted(p.name for p in tmp_dir.glob("02_sag*.npz"))
             self.assertEqual(arquivos, ["02_sag_sag_pu-0.1.npz", "02_sag_sag_pu-0.3.npz"])
@@ -1211,6 +1214,7 @@ class SalvarClasseArquivoUnicoTests(unittest.TestCase):
                 metadados=[{"id_captura": "01-0001", "classe": "NORMAL", "nivel_indice": 0,
                             "parametros": {}, "seed": 1, "simulado": False,
                             "fs_hz": 30000.0, "pontos": 4, "snr_medido_db": {}}],
+                simulated=False,
             )
             self.assertTrue((tmp_dir / "01_normal_cap01.npz").exists())
         finally:
@@ -1260,6 +1264,7 @@ class SalvarClasseArquivoUnicoTests(unittest.TestCase):
                      "parametros": {"sag_pu": 0.3}, "seed": 2, "simulado": False,
                      "fs_hz": 30000.0, "pontos": 4, "snr_medido_db": {}},
                 ],
+                simulated=False,
             )
             arquivo_orfao = tmp_dir / "02_sag_sag_pu-0.1.npz"
             arquivo_orfao_snr = tmp_dir / "snr_30db" / "02_sag_sag_pu-0.1.npz"
@@ -1281,6 +1286,7 @@ class SalvarClasseArquivoUnicoTests(unittest.TestCase):
                      "parametros": {"sag_pu": 0.5}, "seed": 3, "simulado": False,
                      "fs_hz": 30000.0, "pontos": 4, "snr_medido_db": {}},
                 ],
+                simulated=False,
             )
 
             # Órfãos da rodada 1 devem ter sido removidos das três pastas.
@@ -1306,6 +1312,220 @@ class SalvarClasseArquivoUnicoTests(unittest.TestCase):
             linhas = (tmp_dir / "metadata" / "02_sag.jsonl").read_text(encoding="utf-8").splitlines()
             self.assertEqual(len(linhas), 1)
             self.assertIn("02-0003", linhas[0])
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_capturas_reais_com_mesmo_rotulo_nao_se_sobrescrevem(self):
+        """Regressão crítica: `set capturas 5` numa classe com NIVEIS agrupa
+        5 capturas FÍSICAS no MESMO nível (mesmo `capture_index`, ver o ramo
+        `cobertura_por_nivel_ativa` de executar()), logo as 5 têm o mesmo
+        `parametros` e o mesmo rótulo. Sem desambiguação, as 5 gravavam no
+        mesmo `.npz` e 4 capturas reais eram silenciosamente descartadas —
+        exatamente o oposto do que a feature promete ("cada uma em um .npz
+        diferente")."""
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            config = mestre.Config(
+                fs_hz=30_000.0, points=4, duration_s=0.2, grid_frequency_hz=60.0,
+                base_voltage_rms=127.0, snr_levels_db=(30.0,), base_seed=1,
+                capture_current=True, current_base_a=1.0, results_dir=tmp_dir,
+                sim_captures_per_class=1, real_captures_per_class=1, disturbance_start_s=0.06,
+            )
+            class _Concreta(mestre.ExperimentoWaveform):
+                id = "02"
+                nome = "SAG"
+
+                def gerar(self, t, f0, capture_index, rng):
+                    return np.sin(2.0 * np.pi * f0 * t), {}
+
+            bancada_fake = mock.Mock(config=config, fonte=None, osc=None)
+            experimento = _Concreta(bancada_fake)
+            # 3 capturas no nível 0.1 + 2 no nível 0.3 (o que `set capturas`
+            # produz de verdade ao agrupar por nível).
+            niveis = [0.1, 0.1, 0.1, 0.3, 0.3]
+            tensao = np.arange(5 * 4, dtype=np.float64).reshape(5, 4)
+            experimento._salvar_classe(
+                tempo_ms=np.zeros(4),
+                tensao_limpa=tensao,
+                tensao_por_snr={30.0: tensao + 100.0},
+                ids=[f"02-{indice + 1:04d}" for indice in range(5)],
+                corrente=tensao + 1000.0,
+                metadados=[
+                    {"id_captura": f"02-{indice + 1:04d}", "classe": "SAG",
+                     "nivel_indice": indice // 3, "parametros": {"sag_pu": nivel},
+                     "seed": indice, "simulado": False, "fs_hz": 30000.0, "pontos": 4,
+                     "snr_medido_db": {}}
+                    for indice, nivel in enumerate(niveis)
+                ],
+                simulated=False,
+            )
+
+            esperados = [
+                "02_sag_sag_pu-0.1.npz", "02_sag_sag_pu-0.1_02.npz", "02_sag_sag_pu-0.1_03.npz",
+                "02_sag_sag_pu-0.3.npz", "02_sag_sag_pu-0.3_02.npz",
+            ]
+            self.assertEqual(sorted(p.name for p in tmp_dir.glob("02_sag_*.npz")), sorted(esperados))
+            self.assertEqual(
+                sorted(p.name for p in (tmp_dir / "snr_30db").glob("02_sag_*.npz")),
+                sorted(esperados),
+            )
+            self.assertEqual(
+                sorted(p.name for p in (tmp_dir / "corrente").glob("02_sag_*.npz")),
+                sorted(nome.replace(".npz", "_corrente.npz") for nome in esperados),
+            )
+
+            # Cada arquivo carrega a captura CERTA — nenhuma foi sobrescrita.
+            for indice, nome in enumerate(esperados):
+                with np.load(tmp_dir / nome, allow_pickle=True) as dados:
+                    np.testing.assert_array_equal(dados["tensao_pu"], tensao[indice: indice + 1])
+                    self.assertEqual(list(dados["id_captura"]), [f"02-{indice + 1:04d}"])
+
+            linhas = (tmp_dir / "metadata" / "02_sag.jsonl").read_text(encoding="utf-8").splitlines()
+            self.assertEqual(len(linhas), 5)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+class SalvarClasseSimuladoTests(unittest.TestCase):
+    """O dataset SIMULADO nunca teve motivo para um arquivo por captura:
+    arrays numpy não colidem, e o formato empilhado (um `.npz` por classe,
+    shape `(N, pontos)`) foi o que valeu por toda a história do projeto.
+    Task 5 aplicou o nome-por-parâmetro aos DOIS caminhos, e como muitas
+    classes repetem `parametros` entre capturas (02/03/05 ciclam 5 níveis,
+    18 alterna 2, 10-17 devolvem dicts constantes), até 2000 capturas
+    simuladas colapsavam em punhado de arquivos."""
+
+    def _config(self, results_dir, **overrides):
+        base = dict(
+            fs_hz=30_000.0, points=4, duration_s=0.2, grid_frequency_hz=60.0,
+            base_voltage_rms=127.0, snr_levels_db=(30.0,), base_seed=1,
+            capture_current=True, current_base_a=1.0, results_dir=results_dir,
+            sim_captures_per_class=1, real_captures_per_class=1, disturbance_start_s=0.06,
+        )
+        base.update(overrides)
+        return mestre.Config(**base)
+
+    @staticmethod
+    def _experimento(config):
+        class _Concreta(mestre.ExperimentoWaveform):
+            id = "02"
+            nome = "SAG"
+
+            def gerar(self, t, f0, capture_index, rng):
+                return np.sin(2.0 * np.pi * f0 * t), {}
+
+        return _Concreta(mock.Mock(config=config, fonte=None, osc=None))
+
+    def test_simulado_grava_um_unico_npz_por_classe_com_capturas_empilhadas(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            config = self._config(tmp_dir)
+            experimento = self._experimento(config)
+            tensao = np.arange(3 * 4, dtype=np.float64).reshape(3, 4)
+            ids = ["02-0001", "02-0002", "02-0003"]
+            experimento._salvar_classe(
+                tempo_ms=np.zeros(4),
+                tensao_limpa=tensao,
+                tensao_por_snr={30.0: tensao + 100.0},
+                ids=ids,
+                corrente=tensao + 1000.0,
+                metadados=[
+                    {"id_captura": id_captura, "classe": "SAG", "nivel_indice": 0,
+                     "parametros": {"sag_pu": 0.1}, "seed": indice, "simulado": True,
+                     "fs_hz": 30000.0, "pontos": 4, "snr_medido_db": {}}
+                    for indice, id_captura in enumerate(ids)
+                ],
+                simulated=True,
+            )
+
+            self.assertEqual(sorted(p.name for p in tmp_dir.glob("*.npz")), ["02_sag.npz"])
+            self.assertEqual(
+                sorted(p.name for p in (tmp_dir / "snr_30db").glob("*.npz")), ["02_sag.npz"],
+            )
+            self.assertEqual(
+                sorted(p.name for p in (tmp_dir / "corrente").glob("*.npz")), ["02_sag_corrente.npz"],
+            )
+
+            with np.load(tmp_dir / "02_sag.npz", allow_pickle=True) as dados:
+                self.assertEqual(dados["tensao_pu"].shape, (3, 4))
+                np.testing.assert_array_equal(dados["tensao_pu"], tensao)
+                self.assertEqual(list(dados["id_captura"]), ids)
+                self.assertEqual(str(dados["classe"]), "SAG")
+            with np.load(tmp_dir / "snr_30db" / "02_sag.npz", allow_pickle=True) as dados:
+                np.testing.assert_array_equal(dados["tensao_pu"], tensao + 100.0)
+            with np.load(tmp_dir / "corrente" / "02_sag_corrente.npz", allow_pickle=True) as dados:
+                np.testing.assert_array_equal(dados["corrente_pu"], tensao + 1000.0)
+
+            linhas = (tmp_dir / "metadata" / "02_sag.jsonl").read_text(encoding="utf-8").splitlines()
+            self.assertEqual(len(linhas), 3)
+            self.assertEqual([json.loads(linha)["id_captura"] for linha in linhas], ids)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_simulado_nao_perde_capturas_com_parametros_repetidos(self):
+        """O caso real: 02/03/05 ciclam `capture_index % 5` entre 5 níveis,
+        então 12 capturas simuladas geram só 5 rótulos distintos. No formato
+        empilhado nada colide — as 12 continuam no array."""
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            config = self._config(tmp_dir, snr_levels_db=(), capture_current=False,
+                                  current_base_a=None)
+            experimento = self._experimento(config)
+            niveis = (0.1, 0.3, 0.5, 0.7, 0.9)
+            total = 12
+            tensao = np.arange(total * 4, dtype=np.float64).reshape(total, 4)
+            ids = [f"02-{indice + 1:04d}" for indice in range(total)]
+            experimento._salvar_classe(
+                tempo_ms=np.zeros(4), tensao_limpa=tensao, tensao_por_snr={}, ids=ids,
+                corrente=None,
+                metadados=[
+                    {"id_captura": ids[indice], "classe": "SAG", "nivel_indice": 0,
+                     "parametros": {"sag_pu": niveis[indice % 5]}, "seed": indice,
+                     "simulado": True, "fs_hz": 30000.0, "pontos": 4, "snr_medido_db": {}}
+                    for indice in range(total)
+                ],
+                simulated=True,
+            )
+
+            self.assertEqual(sorted(p.name for p in tmp_dir.glob("*.npz")), ["02_sag.npz"])
+            with np.load(tmp_dir / "02_sag.npz", allow_pickle=True) as dados:
+                self.assertEqual(dados["tensao_pu"].shape, (total, 4))
+                np.testing.assert_array_equal(dados["tensao_pu"], tensao)
+                self.assertEqual(list(dados["id_captura"]), ids)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_executar_simulado_grava_arquivo_unico_com_todas_as_capturas(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            config = self._config(tmp_dir / "resultados", points=6_000,
+                                  sim_captures_per_class=4, snr_levels_db=(),
+                                  capture_current=False, current_base_a=None)
+            bancada = mestre.Bancada(mestre.AmetekMX30(simulated=True), None, config)
+
+            class _ComNiveis(mestre.ExperimentoWaveform):
+                id = "02"
+                nome = "SAG"
+                NIVEIS = (0.1, 0.3, 0.5, 0.7, 0.9)
+
+                def gerar(self, t, f0, capture_index, rng):
+                    nivel = self.NIVEIS[capture_index % 5]
+                    return (1.0 - nivel) * np.sin(2.0 * np.pi * f0 * t), {"sag_pu": nivel}
+
+            _ComNiveis(bancada).executar()
+
+            resultados = config.results_dir
+            self.assertEqual(sorted(p.name for p in resultados.glob("*.npz")), ["02_sag.npz"])
+            with np.load(resultados / "02_sag.npz", allow_pickle=True) as dados:
+                self.assertEqual(dados["tensao_pu"].shape, (4, 6_000))
+                self.assertEqual(
+                    list(dados["id_captura"]),
+                    ["02-0001", "02-0002", "02-0003", "02-0004"],
+                )
+            linhas = (resultados / "metadata" / "02_sag.jsonl").read_text(
+                encoding="utf-8"
+            ).splitlines()
+            self.assertEqual(len(linhas), 4)
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
