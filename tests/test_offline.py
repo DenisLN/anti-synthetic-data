@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import logging
 import math
 import shutil
@@ -1375,6 +1376,55 @@ class MargemCapturaTests(unittest.TestCase):
         pontos_totais = 7500
         tempo_s = np.arange(pontos_totais) / 30_000.0
         experimento._validar_captura(tempo_s, np.zeros(pontos_totais), pontos_esperados=pontos_totais)  # não levanta
+
+
+class AnalisarSessaoTests(unittest.TestCase):
+    def test_analisar_offset_detecta_deslocamento_conhecido(self):
+        import analisar_sessao
+        fs_hz = 30_000.0
+        t = np.arange(6000) / fs_hz
+        esperado = np.sin(2.0 * np.pi * 60.0 * t)
+        # 200 amostras (<1 período de 500 amostras a 60 Hz/30 kSa/s), não 599:
+        # uma senoide pura de 60 Hz é exatamente periódica a cada 500 amostras
+        # dentro do array de 6000, então qualquer deslocamento >= meio período
+        # é matematicamente ambíguo com seu equivalente mod-500 (roll(x,599) é
+        # bit-a-bit idêntico a roll(x,99) para esta senoide) — nenhuma técnica
+        # de cross-correlação consegue distinguir os dois só a partir dos
+        # dados. 200 evita essa ambiguidade e cai fora da faixa onde a curva
+        # de correlação desta senoide pura fica quase simétrica ao redor do
+        # pico (empiricamente, várias amostras entre ~60 e ~190 dão erro de
+        # +-1 amostra por essa quase-simetria; 200 tem margem clara).
+        deslocamento_amostras = 200
+        capturado = np.roll(esperado, deslocamento_amostras)
+        lag, corr = analisar_sessao.analisar_offset(esperado, capturado, fs_hz)
+        self.assertEqual(lag, deslocamento_amostras)
+        self.assertGreater(corr, 0.9)
+
+    def test_analisar_sessao_gera_relatorio_para_uma_pasta(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            sessao_dir = tmp_dir / "sessao_teste"
+            (sessao_dir / "metadata").mkdir(parents=True)
+            fs_hz = 30_000.0
+            pontos = 6000
+            t = np.arange(pontos) / fs_hz
+            captura = np.sin(2.0 * np.pi * 60.0 * t)
+            np.savez(
+                sessao_dir / "01_normal_cap01.npz", tempo_ms=t * 1000.0,
+                tensao_pu=captura.reshape(1, -1), classe="NORMAL",
+                id_captura=np.array(["01-0001"], dtype=object),
+            )
+            (sessao_dir / "metadata" / "01_normal.jsonl").write_text(
+                json.dumps({"classe": "NORMAL", "fs_hz": fs_hz, "id_captura": "01-0001",
+                            "parametros": {}, "pontos": pontos, "seed": 21260827, "simulado": False}) + "\n",
+                encoding="utf-8",
+            )
+            import analisar_sessao
+            relatorio = analisar_sessao.analisar_sessao(sessao_dir, gerar_imagens=False)
+            self.assertEqual(len(relatorio), 1)
+            self.assertEqual(relatorio[0]["classe"], "01_normal_cap01")
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":
