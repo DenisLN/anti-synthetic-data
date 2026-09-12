@@ -392,25 +392,39 @@ os dados de uma sessão anterior. Fora da CLI interativa (scripts standalone,
 `tests/test_offline.py`, geração do dataset simulado), a gravação continua
 indo direto para `resultados/`, sem subpasta de sessão.
 
-Dentro da pasta (`resultados/` ou `resultados/sessao_<timestamp>/`), cada
-CAPTURA individual grava seu próprio arquivo — não mais um `.npz` por classe
-com todas as capturas empilhadas. O nome carrega o parâmetro físico da
-captura quando existe algum (ex.: `02_sag_sag_pu-0.1.npz`); classes sem
-parâmetro nomeável usam a posição (`01_normal_cap01.npz`):
+Dentro da pasta (`resultados/` ou `resultados/sessao_<timestamp>/`), o
+formato do `.npz` depende do modo — a bancada real precisa identificar cada
+condição física capturada; a geração do dataset simulado nunca precisou
+disso e mantém o formato de sempre:
 
-- **Dados puros** (sem ruído): `{id}_{classe}_{parametro-valor|capNN}.npz`
-- **Dados com AWGN**, um arquivo por nível de SNR, mesmo nome de arquivo:
-  `snr_XXdb/{id}_{classe}_{parametro-valor|capNN}.npz`
+- **Bancada real** (execução via CLI, `run`/`run all`): cada CAPTURA
+  individual grava seu próprio arquivo. O nome carrega o parâmetro físico
+  quando existe algum (ex.: `02_sag_sag_pu-0.1.npz`); classes sem parâmetro
+  nomeável usam a posição (`01_normal_cap01.npz`). Quando `set capturas N`
+  agrupa N capturas físicas no mesmo nível/parâmetro, a 1ª ocorrência fica
+  sem sufixo e as seguintes ganham `_02`, `_03`, ... (`sag_pu-0.1.npz`,
+  `sag_pu-0.1_02.npz`, ...) — sem isso, capturas com o mesmo rótulo se
+  sobrescreveriam.
+  - **Dados puros** (sem ruído): `{id}_{classe}_{parametro-valor|capNN}[_NN].npz`
+  - **Dados com AWGN**, um arquivo por nível de SNR, mesmo nome de arquivo:
+    `snr_XXdb/{id}_{classe}_{parametro-valor|capNN}[_NN].npz`
+- **Dataset simulado** (`run_simulation_windows.ps1`, `SIM_CAPTURES_PER_CLASS`
+  capturas por classe): formato histórico do projeto, inalterado — UM `.npz`
+  por classe com todas as capturas empilhadas (`tensao_pu.shape = (total,
+  pontos)`): `{id}_{classe}.npz` / `snr_XXdb/{id}_{classe}.npz` (ver 6, mais
+  abaixo).
 - **Metadados** (parâmetros físicos da captura, SNR medido por nível, e o
   `nivel_indice` usado para reconstruir a captura depois): continua **um
-  arquivo por classe**, uma linha por captura —
-  `metadata/{id}_{classe}.jsonl`
+  arquivo por classe**, uma linha por captura, nos dois modos —
+  `metadata/{id}_{classe}.jsonl`.
 
 Rodar a mesma classe de novo na bancada real com um conjunto de capturas
 diferente (ex.: `set capturas 5` entre duas chamadas de `run 02`) pode deixar
 arquivos órfãos da rodada anterior sem captura correspondente no metadata
 novo; `_salvar_classe()` limpa esses órfãos automaticamente, sempre depois
 que os arquivos novos e o `metadata.jsonl` já foram gravados com sucesso.
+Isso só se aplica ao caminho real — o nome fixo por classe do dataset
+simulado nunca gera órfão.
 
 Gravação é atômica (`.npz.part`/`.jsonl.part` → `os.replace`), então uma
 execução interrompida no meio não deixa arquivo de dados corrompido — só
@@ -453,26 +467,30 @@ descrito em `CHANGELOG/v1.0.md` (seção 6.2).
 
 ### Visualizando os dados capturados
 
-Cada `.npz` em `resultados/` guarda **uma única captura** (`tensao_pu` tem
-shape `(1, 6000)`) — desde a v1.8, `_salvar_classe()` grava um arquivo por
-captura em vez de empilhar todas as capturas de uma classe num só. Gerando
-o dataset simulado (`N = SIM_CAPTURES_PER_CLASS`, 2000 por padrão) isso
-produz até 2000 arquivos por classe, nomeados por posição
-(`{id}_{classe}_capNNNN.npz`) quando a classe não tem parâmetro físico
-nomeável, ou pelo parâmetro (`{id}_{classe}_{parametro}-{valor}.npz`) quando
-tem — mesmo formato de nome usado na bancada real (ver 5.8). **Atenção:**
-classes de nível discreto (`02/SAG`, `03/SWELL`, `05/HARMONICS`) nomeiam só
-pelo valor do nível, sem desambiguar — capturas repetidas no mesmo nível se
-sobrescrevem silenciosamente (ver `CHANGELOG/v1.8.md`, "Bug conhecido");
-confirme a contagem de arquivos dessas 3 classes antes de treinar qualquer
-modelo com o dataset simulado até isso ser corrigido.
+Cada `.npz` em `resultados/` gerado pelo dataset simulado (`N =
+SIM_CAPTURES_PER_CLASS`, 2000 por padrão) guarda **várias capturas
+empilhadas**, não um waveform só — `tensao_pu` tem shape `(N, 6000)`, uma
+linha por captura, exatamente como sempre foi (ver 5.8: `_salvar_classe()`
+tem um formato para o dataset simulado e outro para a bancada real desde a
+v1.8 — o simulado nunca mudou). É por isso que os 20 arquivos gerados por
+`run_simulation_windows.ps1` têm praticamente o mesmo tamanho (~91,6 MB): o
+`.npz` não é comprimido, então o tamanho em disco só depende da forma do
+array, igual para todas as classes — não do conteúdo.
+
+Já um `.npz` capturado na **bancada real** (via CLI, `run`/`run all`) guarda
+uma única captura por arquivo, nomeado pelo parâmetro físico ou posição (ver
+5.8) — inspecione o arquivo específico da condição que interessa, sem
+precisar de `--captura`.
 
 Para inspecionar visualmente um arquivo:
 
 ```powershell
-.\scripts\visualizar_npz.ps1 -Npz resultados\02_sag_sag_pu-0.1.npz
-# ou direto:
-.\env\Scripts\python.exe logica\visualizador.py resultados\02_sag_sag_pu-0.1.npz
+# dataset simulado (várias capturas empilhadas):
+.\scripts\visualizar_npz.ps1 -Npz resultados\02_sag.npz
+.\env\Scripts\python.exe logica\visualizador.py resultados\02_sag.npz --captura 12
+
+# captura real (um arquivo por captura):
+.\scripts\visualizar_npz.ps1 -Npz resultados\sessao_2026-09-15_14-30-00\02_sag_sag_pu-0.1.npz
 ```
 
 Gera um PNG (amostra de capturas sobrepostas, uma captura individual,
