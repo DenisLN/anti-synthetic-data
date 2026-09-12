@@ -257,6 +257,9 @@ momento; resumo:
 | `native` | **sim** | antiga etapa "Comandos nativos" — `preflight_new.py --native-commands` |
 | `run <NN\|nome>` | **sim** | roda UMA classe isolada (ex.: `run 02` ou `run SAG`) |
 | `run all` | **sim** | bateria completa das 20 classes, sequencial, resiliente por classe (ver 5.5) |
+| `set margin on\|off` | não | liga/desliga captura com ~25ms de folga extra antes/depois da janela nominal, salva o array bruto sem recorte automático — só afeta captura real (`OFF` por padrão) |
+| `set diagnostico on\|off` | não | liga/desliga log extra de `STATus:OPERation:CONDition?`/`OUTPut:STATe?`/tensão imediata em pontos-chave de `run`/`run all`, para testar as hipóteses de timing do `CHANGELOG/v1.7.md` (`OFF` por padrão) |
+| `set capturas <N>` | não | quantas capturas por classe na bancada real (default `1`); em classes com níveis discretos (SAG/SWELL/HARMONICS), `N` por nível, cobertura determinística em vez de sorteio |
 | `quit` / `exit` | não | sai da CLI |
 
 Ordem recomendada para uma sessão do zero: `comm` → `trigger` → `native` →
@@ -379,17 +382,44 @@ fluxo PowerShell). Campos que o operador tipicamente revisa:
 
 ### 5.8 Onde os dados caem
 
-Cada execução (simulada ou real) grava em [`resultados/`](resultados/):
+**Cada sessão da CLI interativa grava numa pasta própria.** No primeiro
+`run`/`run all` da sessão (não no boot da CLI — `status`/`comm`/`trigger`/
+`native` sozinhos não criam pasta), `logica/cli.py` cria
+`resultados/sessao_<timestamp>/` e passa a gravar tudo ali; qualquer `run`
+seguinte na MESMA sessão de CLI usa a mesma pasta, então reabrir a CLI
+depois (ou rodar `logica/mestre.py`/os testes fora da CLI) nunca sobrescreve
+os dados de uma sessão anterior. Fora da CLI interativa (scripts standalone,
+`tests/test_offline.py`, geração do dataset simulado), a gravação continua
+indo direto para `resultados/`, sem subpasta de sessão.
 
-- **Dados puros** (sem ruído): `resultados/{id}_{classe}.npz`
-- **Dados com AWGN**, um arquivo por nível de SNR:
-  `resultados/snr_XXdb/{id}_{classe}.npz`
-- **Metadados** (parâmetros físicos da captura, SNR medido por nível):
-  `resultados/metadata/{id}_{classe}.jsonl`
+Dentro da pasta (`resultados/` ou `resultados/sessao_<timestamp>/`), cada
+CAPTURA individual grava seu próprio arquivo — não mais um `.npz` por classe
+com todas as capturas empilhadas. O nome carrega o parâmetro físico da
+captura quando existe algum (ex.: `02_sag_sag_pu-0.1.npz`); classes sem
+parâmetro nomeável usam a posição (`01_normal_cap01.npz`):
 
-Gravação é atômica (`.npz.part` → `os.replace`), então uma execução
-interrompida no meio não deixa arquivo de dados corrompido — só incompleto
-(faltando classes posteriores).
+- **Dados puros** (sem ruído): `{id}_{classe}_{parametro-valor|capNN}.npz`
+- **Dados com AWGN**, um arquivo por nível de SNR, mesmo nome de arquivo:
+  `snr_XXdb/{id}_{classe}_{parametro-valor|capNN}.npz`
+- **Metadados** (parâmetros físicos da captura, SNR medido por nível, e o
+  `nivel_indice` usado para reconstruir a captura depois): continua **um
+  arquivo por classe**, uma linha por captura —
+  `metadata/{id}_{classe}.jsonl`
+
+Rodar a mesma classe de novo na bancada real com um conjunto de capturas
+diferente (ex.: `set capturas 5` entre duas chamadas de `run 02`) pode deixar
+arquivos órfãos da rodada anterior sem captura correspondente no metadata
+novo; `_salvar_classe()` limpa esses órfãos automaticamente, sempre depois
+que os arquivos novos e o `metadata.jsonl` já foram gravados com sucesso.
+
+Gravação é atômica (`.npz.part`/`.jsonl.part` → `os.replace`), então uma
+execução interrompida no meio não deixa arquivo de dados corrompido — só
+incompleto (faltando classes ou capturas posteriores).
+
+Para inspecionar uma sessão inteira depois — deslocamento por
+cross-correlação, razão de pico e comparação visual gerado-vs-capturado por
+arquivo — use `logica/analisar_sessao.py <pasta_da_sessao>` (offline, sem
+hardware; ver 8, `CHANGELOG/v1.8.md`).
 
 Logs de cada execução do fluxo guiado ficam em `logs\startup-bench-*.log`,
 nomeados com a etapa e o timestamp.
@@ -423,20 +453,26 @@ descrito em `CHANGELOG/v1.0.md` (seção 6.2).
 
 ### Visualizando os dados capturados
 
-Cada `.npz` em `resultados/` guarda **várias capturas empilhadas**, não um
-waveform só — `tensao_pu` tem shape `(N, 6000)`, uma linha por captura (no
-modo simulado, `N = SIM_CAPTURES_PER_CLASS`, 2000 por padrão; na bancada
-real, `N = REAL_CAPTURES_PER_CLASS`, 1 por padrão). É por isso que os 20
-arquivos de `resultados/` têm praticamente o mesmo tamanho (~91,6 MB): o
-`.npz` não é comprimido, então o tamanho em disco só depende da forma do
-array, igual para todas as classes — não do conteúdo.
+Cada `.npz` em `resultados/` guarda **uma única captura** (`tensao_pu` tem
+shape `(1, 6000)`) — desde a v1.8, `_salvar_classe()` grava um arquivo por
+captura em vez de empilhar todas as capturas de uma classe num só. Gerando
+o dataset simulado (`N = SIM_CAPTURES_PER_CLASS`, 2000 por padrão) isso
+produz até 2000 arquivos por classe, nomeados por posição
+(`{id}_{classe}_capNNNN.npz`) quando a classe não tem parâmetro físico
+nomeável, ou pelo parâmetro (`{id}_{classe}_{parametro}-{valor}.npz`) quando
+tem — mesmo formato de nome usado na bancada real (ver 5.8). **Atenção:**
+classes de nível discreto (`02/SAG`, `03/SWELL`, `05/HARMONICS`) nomeiam só
+pelo valor do nível, sem desambiguar — capturas repetidas no mesmo nível se
+sobrescrevem silenciosamente (ver `CHANGELOG/v1.8.md`, "Bug conhecido");
+confirme a contagem de arquivos dessas 3 classes antes de treinar qualquer
+modelo com o dataset simulado até isso ser corrigido.
 
 Para inspecionar visualmente um arquivo:
 
 ```powershell
-.\scripts\visualizar_npz.ps1 -Npz resultados\02_sag.npz
+.\scripts\visualizar_npz.ps1 -Npz resultados\02_sag_sag_pu-0.1.npz
 # ou direto:
-.\env\Scripts\python.exe logica\visualizador.py resultados\02_sag.npz --captura 12
+.\env\Scripts\python.exe logica\visualizador.py resultados\02_sag_sag_pu-0.1.npz
 ```
 
 Gera um PNG (amostra de capturas sobrepostas, uma captura individual,
