@@ -257,7 +257,7 @@ momento; resumo:
 | `native` | **sim** | antiga etapa "Comandos nativos" — `preflight_new.py --native-commands` |
 | `run <NN\|nome>` | **sim** | roda UMA classe isolada (ex.: `run 02` ou `run SAG`) |
 | `run all` | **sim** | bateria completa das 20 classes, sequencial, resiliente por classe (ver 5.5) |
-| `set margin on\|off` | não | liga/desliga captura com ~25ms de folga extra antes/depois da janela nominal, salva o array bruto sem recorte automático — só afeta captura real (`OFF` por padrão) |
+| `set margin on\|off` | não | liga/desliga captura com ~500ms de folga extra antes/depois da janela nominal, salva o array bruto sem recorte automático — só afeta captura real (`OFF` por padrão) |
 | `set diagnostico on\|off` | não | liga/desliga log extra de `STATus:OPERation:CONDition?`/`OUTPut:STATe?`/tensão imediata em pontos-chave de `run`/`run all`, para testar as hipóteses de timing do `CHANGELOG/v1.7.md` (`OFF` por padrão) |
 | `set capturas <N>` | não | quantas capturas por classe na bancada real (default `1`); em classes com níveis discretos (SAG/SWELL/HARMONICS), `N` por nível, cobertura determinística em vez de sorteio |
 | `quit` / `exit` | não | sai da CLI |

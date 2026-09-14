@@ -673,13 +673,19 @@ class ExperimentoBase(ABC):
 
     @staticmethod
     def _calcular_margem(*, margin_mode: bool, config_points: int, fs_hz: float) -> Tuple[int, int]:
-        """``margin on``: 25ms de folga de cada lado (750 amostras a 30kSa/s
-        — cobre com sobra o maior deslocamento já medido, ~20ms/600
-        amostras, ver CHANGELOG/v1.7.md). Devolve (amostras de margem de UM
-        lado, total de amostras incluindo os dois lados)."""
+        """``margin on``: 500ms de folga de cada lado (15000 amostras a
+        30kSa/s). Os 25ms originais (CHANGELOG/v1.7.md) só cobriam o atraso
+        universal de rampa inicial (~20ms); a hipótese LIST:REPeat
+        (CHANGELOG/v1.9.md) prevê o DISTÚRBIO em si atrasando até ~2,7x a
+        janela nominal de 200ms (~540ms) — 500ms de cada lado cobre esse
+        pior caso com sobra e ainda fica dentro do teto de 60000 pontos
+        (``:WAVeform:POINts``, ``oscilloscope_orm.py``) somado aos 6000
+        pontos nominais (36000 pontos, abaixo do teto de 60000). Devolve
+        (amostras de margem de UM lado, total de amostras incluindo os dois
+        lados)."""
         if not margin_mode:
             return 0, config_points
-        margem_amostras = int(round(0.025 * fs_hz))
+        margem_amostras = int(round(0.5 * fs_hz))
         return margem_amostras, config_points + 2 * margem_amostras
 
     def _salvar_classe(

@@ -1664,8 +1664,19 @@ class MargemCapturaTests(unittest.TestCase):
         margem_amostras, pontos_totais = mestre.ExperimentoBase._calcular_margem(
             margin_mode=True, config_points=6000, fs_hz=30_000.0,
         )
-        self.assertEqual(margem_amostras, 750)  # 25ms * 30kSa/s
-        self.assertEqual(pontos_totais, 6000 + 2 * 750)
+        self.assertEqual(margem_amostras, 15_000)  # 500ms * 30kSa/s
+        self.assertEqual(pontos_totais, 6000 + 2 * 15_000)
+
+    def test_margin_on_fica_dentro_do_teto_de_pontos_do_osciloscopio(self):
+        # oscilloscope_orm.py fixa ":WAVeform:POINts 60000" tanto em
+        # configure_acquisition() quanto em get_waveform() — um pontos_totais
+        # acima disso faria a preamble real declarar menos pontos do que
+        # pedido, e get_waveform() levantaria OscilloscopeError na próxima
+        # sessão física (CHANGELOG/v1.9.md).
+        _, pontos_totais = mestre.ExperimentoBase._calcular_margem(
+            margin_mode=True, config_points=6000, fs_hz=30_000.0,
+        )
+        self.assertLess(pontos_totais, 60_000)
 
     def test_validar_captura_aceita_pontos_extras_quando_esperado_explicito(self):
         config = mestre.Config(
