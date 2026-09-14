@@ -617,6 +617,57 @@ class DiagnosticoLogTests(unittest.TestCase):
 
         self.assertEqual(escritas(sem_log.command_log), escritas(com_log.command_log))
 
+    def test_program_capture_com_diagnostico_loga_antes_e_depois_voltage_mode_list(self):
+        # Hipótese em aberto (CHANGELOG/v1.9.md): a captura real de classes
+        # TRACe/LIST começa com a saída visivelmente zerada por ~20ms. Este
+        # par de logs (mesmo idioma de antes_sourcemode_acdc/
+        # apos_sourcemode_acdc) é o que vai permitir, na próxima sessão
+        # física, ver se a tensão já cai ANTES de VOLTage:MODE LIST ou só
+        # DEPOIS dele.
+        t = np.arange(6000, dtype=np.float64) / 30000.0
+        voltage = np.sin(2.0 * np.pi * 50.0 * t)
+        fonte = AmetekMX30(simulated=True, diagnostico=True, max_voltage_rms=10.0, max_peak_v=100.0)
+        with self.assertLogs("AmetekORM", level="INFO") as captura:
+            fonte.program_capture(voltage, base_voltage_rms=5.0, frequency_hz=50.0)
+        linhas = [registro.getMessage() for registro in captura.records]
+        indice_antes = next(i for i, linha in enumerate(linhas) if "ponto=antes_voltage_mode_list" in linha)
+        indice_depois = next(i for i, linha in enumerate(linhas) if "ponto=apos_voltage_mode_list" in linha)
+        self.assertLess(indice_antes, indice_depois)
+
+    def test_program_capture_com_diagnostico_nao_muda_writes_enviados(self):
+        t = np.arange(6000, dtype=np.float64) / 30000.0
+        voltage = np.sin(2.0 * np.pi * 50.0 * t)
+        sem_log = AmetekMX30(simulated=True, diagnostico=False, max_voltage_rms=10.0, max_peak_v=100.0)
+        sem_log.program_capture(voltage, base_voltage_rms=5.0, frequency_hz=50.0)
+        com_log = AmetekMX30(simulated=True, diagnostico=True, max_voltage_rms=10.0, max_peak_v=100.0)
+        com_log.program_capture(voltage, base_voltage_rms=5.0, frequency_hz=50.0)
+
+        def escritas(log):
+            return [comando for comando in log if not comando.endswith("?")]
+
+        self.assertEqual(escritas(sem_log.command_log), escritas(com_log.command_log))
+
+    def test_trigger_com_diagnostico_loga_apos_trigger(self):
+        fonte = AmetekMX30(simulated=True, diagnostico=True, max_voltage_rms=10.0, max_peak_v=100.0)
+        fonte.write("INITiate:IMMediate")  # simulado: TRIGger:STATe? -> ARM (ver _simulate_write)
+        with self.assertLogs("AmetekORM", level="INFO") as captura:
+            fonte.trigger()
+        linhas = [registro.getMessage() for registro in captura.records]
+        self.assertTrue(any("ponto=apos_trigger" in linha for linha in linhas))
+
+    def test_trigger_com_diagnostico_nao_muda_writes_enviados(self):
+        sem_log = AmetekMX30(simulated=True, diagnostico=False, max_voltage_rms=10.0, max_peak_v=100.0)
+        sem_log.write("INITiate:IMMediate")
+        sem_log.trigger()
+        com_log = AmetekMX30(simulated=True, diagnostico=True, max_voltage_rms=10.0, max_peak_v=100.0)
+        com_log.write("INITiate:IMMediate")
+        com_log.trigger()
+
+        def escritas(log):
+            return [comando for comando in log if not comando.endswith("?")]
+
+        self.assertEqual(escritas(sem_log.command_log), escritas(com_log.command_log))
+
 
 class KeysightTests(unittest.TestCase):
     def test_channel_mapping_and_acquisition(self):

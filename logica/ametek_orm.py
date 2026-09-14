@@ -1125,6 +1125,15 @@ class AmetekMX30:
             "OUTPut:TTLTrg:SOURce BOT",
             "OUTPut:TTLTrg ON",
         ):
+            if command == "VOLTage:MODE LIST":
+                # Par "antes/depois" da mesma leitura de tensão, mesmo idioma
+                # de antes_sourcemode_acdc/apos_sourcemode_acdc acima —
+                # hipótese em aberto (CHANGELOG/v1.9.md): a captura real de
+                # classes TRACe/LIST começa com a saída visivelmente zerada
+                # por ~20ms; este par de logs deixa registrado se a tensão já
+                # estava caindo ANTES deste comando específico ou só cai
+                # DEPOIS dele.
+                self._log_diagnostico("antes_voltage_mode_list")
             self.write(command)
             errors = self.check_errors()
             if errors:
@@ -1294,6 +1303,14 @@ class AmetekMX30:
         if not state.startswith(("ARM", "WTRIG")):
             raise InstrumentHardwareError(f"AMETEK não estava armada antes de *TRG: {state!r}")
         self.write("*TRG")
+        # Único ponto do caminho de trigger sem leitura de diagnóstico
+        # nenhuma até agora — fecha a linha do tempo entre
+        # arm_transient_apos_init (INITiate:IMMediate) e transiente_concluido
+        # (TRIGger:STATe? IDLE): o timestamp monotônico daqui é a referência
+        # pra testar a hipótese de SOURce:LIST:REPeat (CHANGELOG/v1.9.md)
+        # medindo quanto tempo o transiente realmente leva pra concluir a
+        # partir do disparo de verdade, não só da armação.
+        self._log_diagnostico("apos_trigger")
 
     def wait_transient_complete(self, timeout_s: float = 5.0) -> None:
         deadline = time.monotonic() + timeout_s
