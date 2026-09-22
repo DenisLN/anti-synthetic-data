@@ -1,0 +1,374 @@
+diff --git a/logica/analisar_sessao.py b/logica/analisar_sessao.py
+index 0b01d3a..bb36295 100644
+--- a/logica/analisar_sessao.py
++++ b/logica/analisar_sessao.py
+@@ -24,6 +24,16 @@ import numpy as np
+ 
+ PROJECT_ROOT = Path(__file__).resolve().parent.parent
+ EXPERIMENT_DIRS = (PROJECT_ROOT / "experimentos_nativos", PROJECT_ROOT / "experimentos_waveform")
++if str(PROJECT_ROOT / "logica") not in sys.path:
++    sys.path.insert(0, str(PROJECT_ROOT / "logica"))
++from sinais import janela_nominal  # noqa: E402
++
++# Valores usados só quando o metadata é ANTIGO e não os traz. Enquanto
++# estiveram chumbados no código (60 Hz na chamada de gerar() e 127 V em
++# _ConfigOffline), toda a sessão 2 — que rodou a 220 V/50 Hz — era analisada
++# contra o modelo errado (relatório 01 §4 item 8).
++F0_PADRAO_HZ = 60.0
++TENSAO_BASE_PADRAO_RMS = 127.0
+ 
+ 
+ def analisar_offset(expected: np.ndarray, captured: np.ndarray, fs_hz: float) -> Tuple[int, float]:
+@@ -64,7 +74,10 @@ class _ConfigOffline:
+     ativa."""
+ 
+     capturas_override: Optional[int] = None
+-    base_voltage_rms: float = 127.0
++    base_voltage_rms: float = TENSAO_BASE_PADRAO_RMS
++
++    def __init__(self, base_voltage_rms: float = TENSAO_BASE_PADRAO_RMS):
++        self.base_voltage_rms = float(base_voltage_rms)
+ 
+     def capturas(self, simulated: bool) -> int:
+         return 1
+@@ -77,10 +90,12 @@ class _BancadaOffline:
+     tratar a reconstrução como ``simulado=True`` — o mesmo ramo usado para
+     gerar o dataset offline, sem hardware nenhum envolvido."""
+ 
+-    config = _ConfigOffline()
+     fonte = None
+     osc = None
+ 
++    def __init__(self, base_voltage_rms: float = TENSAO_BASE_PADRAO_RMS):
++        self.config = _ConfigOffline(base_voltage_rms)
++
+ 
+ def _carregar_experimento_cls(class_id: str):
+     for diretorio in EXPERIMENT_DIRS:
+@@ -100,13 +115,18 @@ def _carregar_experimento_cls(class_id: str):
+ 
+ def _reconstruir_esperado(class_id: str, metadado: dict) -> np.ndarray:
+     cls = _carregar_experimento_cls(class_id)
++    # f0 e tensão base saem do metadata da PRÓPRIA sessão (gravados a partir
++    # da v1.11); só caem no padrão para metadata antigo, e nesse caso o
++    # relatório avisa.
+     # Instancia via __init__ normal (não cls.__new__(cls)): 04/06/08/09/19
+     # leem self.config/self.osc dentro do próprio gerar() (cobertura
+     # determinística de parâmetro contínuo, Task 6) — sem __init__ essas
+     # leituras explodem com AttributeError para essas 5 classes, mesmo
+     # quando a cobertura não estava ativa. _BancadaOffline supre isso sem
+     # tocar hardware nenhum.
+-    instancia = cls(_BancadaOffline())
++    f0_hz = float(metadado.get("f0_hz", F0_PADRAO_HZ))
++    tensao_base = float(metadado.get("tensao_base_rms", TENSAO_BASE_PADRAO_RMS))
++    instancia = cls(_BancadaOffline(tensao_base))
+     fs_hz = metadado["fs_hz"]
+     pontos = metadado["pontos"]
+     t = np.arange(pontos, dtype=np.float64) / fs_hz
+@@ -135,7 +155,7 @@ def _reconstruir_esperado(class_id: str, metadado: dict) -> np.ndarray:
+     # cross-correlação, o diagnóstico principal desta ferramenta) não
+     # depende do parâmetro de distúrbio e não é afetada.
+     capture_index = metadado.get("nivel_indice", 0)
+-    voltage_pu, _ = instancia.gerar(t, 60.0, capture_index, rng)
++    voltage_pu, _ = instancia.gerar(t, f0_hz, capture_index, rng)
+     return np.asarray(voltage_pu, dtype=np.float64)
+ 
+ 
+@@ -153,6 +173,7 @@ def analisar_sessao(sessao_dir: Path, *, gerar_imagens: bool = True) -> List[Dic
+             metadados_por_id_captura[registro["id_captura"]] = registro
+ 
+     relatorio: List[Dict] = []
++    avisos: List[str] = []
+     imagens_dir = sessao_dir / "analise"
+     if gerar_imagens:
+         imagens_dir.mkdir(exist_ok=True)
+@@ -193,19 +214,36 @@ def analisar_sessao(sessao_dir: Path, *, gerar_imagens: bool = True) -> List[Dic
+             relatorio.append({"classe": stem, "erro": f"falha reconstruindo esperado: {exc}"})
+             continue
+ 
+-        if margem_antes:
+-            # captura em margin mode: recorta a janela nominal do meio do
+-            # array bruto antes de comparar com o esperado (que sempre tem
+-            # o tamanho nominal, config.points).
+-            capturado_para_comparar = capturado[margem_antes : margem_antes + len(esperado)]
+-        else:
+-            capturado_para_comparar = capturado[: len(esperado)]
++        # Recorte alinhado pelo TRIGGER real (indice_trigger, derivado de
++        # x_origin da preamble), não por margem_amostras_antes: com
++        # REFerence LEFT o trigger caía uma divisão (janela/10) adiante do
++        # que o código supunha e todo recorte saía deslocado (H-REF10).
++        # Metadata antigo, sem indice_trigger, cai no comportamento anterior.
++        indice_trigger = metadado.get("indice_trigger")
++        if indice_trigger is None:
++            indice_trigger = margem_antes
++            if margem_antes:
++                avisos.append(
++                    f"{stem}: metadata sem indice_trigger; recorte alinhado por "
++                    "margem_amostras_antes (pode ter viés de janela/10)"
++                )
++        capturado_para_comparar = janela_nominal(
++            capturado,
++            indice_trigger=int(indice_trigger),
++            pre_trigger_s=float(metadado.get("pre_trigger_s", 0.0)),
++            pontos=len(esperado),
++            fs_hz=float(metadado["fs_hz"]),
++        )
+ 
+         lag, corr = analisar_offset(esperado, capturado_para_comparar, metadado["fs_hz"])
+         pico_esperado = float(np.max(np.abs(esperado)))
+         pico_capturado = float(np.max(np.abs(capturado)))
+         relatorio.append({
+             "classe": stem,
++            "f0_hz": float(metadado.get("f0_hz", F0_PADRAO_HZ)),
++            "tensao_base_rms": float(metadado.get("tensao_base_rms", TENSAO_BASE_PADRAO_RMS)),
++            "indice_trigger": int(indice_trigger),
++            "validacao_fisica_ok": (metadado.get("validacao_fisica") or {}).get("ok"),
+             "lag_amostras": lag,
+             "lag_ms": lag / metadado["fs_hz"] * 1000.0,
+             "correlacao": corr,
+@@ -217,6 +255,8 @@ def analisar_sessao(sessao_dir: Path, *, gerar_imagens: bool = True) -> List[Dic
+         if gerar_imagens:
+             _salvar_imagem_comparacao(imagens_dir, stem, esperado, capturado, metadado["fs_hz"])
+ 
++    for aviso in avisos:
++        print(f"AVISO: {aviso}")
+     return relatorio
+ 
+ 
+diff --git a/logica/mestre.py b/logica/mestre.py
+index 9470cc2..12c6e45 100644
+--- a/logica/mestre.py
++++ b/logica/mestre.py
+@@ -912,8 +912,20 @@ class ExperimentoBase(ABC):
+         if not np.allclose(incrementos, incremento_esperado, rtol=0, atol=1e-9):
+             raise ValueError(f"Eixo temporal não corresponde a {config.fs_hz:.0f} Sa/s")
+ 
++    # Margem de ``margin on``, em segundos, ANTES e DEPOIS da janela nominal.
++    # 400 ms de cada lado (v1.10) foram dimensionados contra dois números que
++    # os relatórios 01/02 mostraram falsos: o "atraso universal de ~20 ms"
++    # (era o offset de referência horizontal, H-REF10) e o "pior caso de
++    # 540 ms do LIST:REPeat" (com REPeat 0 o evento é nominal). Os valores
++    # abaixo vêm da medida: o fim de evento mais tardio das duas sessões é
++    # 116,7 ms após o trigger e o conteúdo programado termina em 200 ms
++    # (relatório 01 §2(i)); 50 ms depois cobrem o retorno ao regime e o
++    # sobre-pico de transição. NÃO reduzir abaixo disto sem refazer a medida.
++    MARGEM_ANTES_S = env_float("MARGEM_ANTES_S", 0.020)
++    MARGEM_DEPOIS_S = env_float("MARGEM_DEPOIS_S", 0.050)
++
+     @staticmethod
+-    def _calcular_margem(*, margin_mode: bool, config_points: int, fs_hz: float) -> Tuple[int, int]:
++    def _calcular_margem(*, margin_mode: bool, config_points: int, fs_hz: float) -> Tuple[int, int, int]:
+         """``margin on``: 400ms de folga de cada lado (12000 amostras a
+         30kSa/s). Os 25ms originais (CHANGELOG/v1.7.md) só cobriam o atraso
+         universal de rampa inicial (~20ms); a hipótese LIST:REPeat
+@@ -934,9 +946,10 @@ class ExperimentoBase(ABC):
+         (amostras de margem de UM lado, total de amostras incluindo os dois
+         lados)."""
+         if not margin_mode:
+-            return 0, config_points
+-        margem_amostras = int(round(0.4 * fs_hz))
+-        return margem_amostras, config_points + 2 * margem_amostras
++            return 0, 0, config_points
++        antes = int(round(ExperimentoBase.MARGEM_ANTES_S * fs_hz))
++        depois = int(round(ExperimentoBase.MARGEM_DEPOIS_S * fs_hz))
++        return antes, depois, config_points + antes + depois
+ 
+     def _salvar_classe(
+         self,
+@@ -1256,14 +1269,14 @@ class ExperimentoBase(ABC):
+             plano = self._indices_viaveis(plano)
+             total = len(plano)
+         t = tempo(self.config)
+-        margem_amostras, pontos_efetivos = self._calcular_margem(
++        margem_antes, margem_depois, pontos_efetivos = self._calcular_margem(
+             margin_mode=(not simulated and self.config.margin_mode),
+             config_points=self.config.points, fs_hz=self.config.fs_hz,
+         )
+         self._pontos_efetivos_captura_atual = pontos_efetivos
+         if not simulated:
+             duracao_efetiva = pontos_efetivos / self.config.fs_hz
+-            pre_trigger_efetivo = self.pre_trigger_s + margem_amostras / self.config.fs_hz
++            pre_trigger_efetivo = self.pre_trigger_s + margem_antes / self.config.fs_hz
+             self.osc.configure_acquisition(
+                 sample_rate_hz=self.config.fs_hz,
+                 points=pontos_efetivos,
+@@ -1341,9 +1354,9 @@ class ExperimentoBase(ABC):
+                 })
+                 if not simulated:
+                     metadados[-1].update(self._contexto_da_sessao())
+-                if margem_amostras > 0:
+-                    metadados[-1]["margem_amostras_antes"] = margem_amostras
+-                    metadados[-1]["margem_amostras_depois"] = margem_amostras
++                if margem_antes or margem_depois:
++                    metadados[-1]["margem_amostras_antes"] = margem_antes
++                    metadados[-1]["margem_amostras_depois"] = margem_depois
+                     metadados[-1]["amostras_totais"] = pontos_efetivos
+                 if not simulated:
+                     validacao = self._validar_fisicamente(
+diff --git a/logica/sinais.py b/logica/sinais.py
+index d966aeb..6dd7e14 100644
+--- a/logica/sinais.py
++++ b/logica/sinais.py
+@@ -269,3 +269,23 @@ def comparar_fisicamente(
+         "thd_medida": thd_obtida,
+         "thd_esperada": thd_esperada,
+     }
++
++
++def janela_nominal(
++    registro: np.ndarray, *, indice_trigger: int, pre_trigger_s: float, pontos: int, fs_hz: float,
++) -> np.ndarray:
++    """Recorta do registro bruto a janela NOMINAL de ``pontos`` amostras, a
++    mesma base de tempo que ``gerar()`` usa.
++
++    O trigger cai em ``indice_trigger`` (lido de ``x_origin``, ver
++    ``oscilloscope_orm.get_waveform``) e as classes com ``pre_trigger_s > 0``
++    (02/03/04, PULSe) querem o evento em ``pre_trigger_s`` dentro da janela —
++    por isso o recorte começa ANTES do trigger nessas classes.
++
++    Antes, o recorte usava ``margem_amostras_antes`` como se fosse o índice do
++    trigger; com ``REFerence LEFT`` o trigger caía uma divisão adiante e todo
++    recorte errava por ``janela/10`` (H-REF10, relatório 01 §1.1)."""
++    registro = np.asarray(registro, dtype=np.float64)
++    inicio = int(round(indice_trigger - pre_trigger_s * fs_hz))
++    inicio = max(0, min(inicio, max(0, registro.size - pontos)))
++    return registro[inicio : inicio + pontos]
+diff --git a/tests/test_offline.py b/tests/test_offline.py
+index d4f4b1f..cf838f1 100644
+--- a/tests/test_offline.py
++++ b/tests/test_offline.py
+@@ -1705,19 +1705,39 @@ class CoberturaParametroContinuoTests(unittest.TestCase):
+ 
+ 
+ class MargemCapturaTests(unittest.TestCase):
++    """ADAPTADO em P08 (não enfraquecido): ``_calcular_margem`` passou a
++    devolver ``(antes, depois, total)`` em vez de ``(margem, total)``, porque
++    a margem deixou de ser simétrica. As asserções continuam as mesmas em
++    natureza (margin off = janela nominal; margin on = folga dos dois lados,
++    dentro dos dois tetos do osciloscópio); só os NÚMEROS mudaram, de
++    400/400 ms para 20/50 ms. Justificativa completa em
++    03_propostas_melhorias.md, proposta P1-2."""
++
+     def test_margin_off_mantem_pontos_nominais(self):
+-        margem_amostras, pontos_totais = mestre.ExperimentoBase._calcular_margem(
++        antes, depois, pontos_totais = mestre.ExperimentoBase._calcular_margem(
+             margin_mode=False, config_points=6000, fs_hz=30_000.0,
+         )
+-        self.assertEqual(margem_amostras, 0)
++        self.assertEqual((antes, depois), (0, 0))
+         self.assertEqual(pontos_totais, 6000)
+ 
+     def test_margin_on_adiciona_amostras_de_cada_lado(self):
+-        margem_amostras, pontos_totais = mestre.ExperimentoBase._calcular_margem(
++        antes, depois, pontos_totais = mestre.ExperimentoBase._calcular_margem(
++            margin_mode=True, config_points=6000, fs_hz=30_000.0,
++        )
++        self.assertEqual(antes, 600)    # 20 ms * 30 kSa/s
++        self.assertEqual(depois, 1_500)  # 50 ms * 30 kSa/s
++        self.assertEqual(pontos_totais, 6000 + 600 + 1_500)
++
++    def test_margem_cobre_o_fim_de_evento_mais_tardio_ja_medido(self):
++        """O conteúdo programado termina em trigger+200 ms e o fim de evento
++        mais tardio medido nas duas sessões é 116,7 ms (relatório 01 §2(i)).
++        A janela precisa conter os 200 ms nominais E a folga de retorno ao
++        regime."""
++        _, depois, pontos_totais = mestre.ExperimentoBase._calcular_margem(
+             margin_mode=True, config_points=6000, fs_hz=30_000.0,
+         )
+-        self.assertEqual(margem_amostras, 12_000)  # 400ms * 30kSa/s
+-        self.assertEqual(pontos_totais, 6000 + 2 * 12_000)
++        self.assertGreaterEqual(6000 + depois, int(0.250 * 30_000))
++        self.assertEqual(pontos_totais / 30_000.0, 0.270)
+ 
+     def test_margin_on_fica_dentro_do_teto_de_pontos_do_osciloscopio(self):
+         # oscilloscope_orm.py fixa ":WAVeform:POINts 60000" tanto em
+@@ -1725,7 +1745,7 @@ class MargemCapturaTests(unittest.TestCase):
+         # acima disso faria a preamble real declarar menos pontos do que
+         # pedido, e get_waveform() levantaria OscilloscopeError na próxima
+         # sessão física (CHANGELOG/v1.9.md).
+-        _, pontos_totais = mestre.ExperimentoBase._calcular_margem(
++        *_, pontos_totais = mestre.ExperimentoBase._calcular_margem(
+             margin_mode=True, config_points=6000, fs_hz=30_000.0,
+         )
+         self.assertLess(pontos_totais, 60_000)
+@@ -1738,7 +1758,7 @@ class MargemCapturaTests(unittest.TestCase):
+         # :WAVeform:POINts acima. É esse teto REAL, não o teórico, que
+         # limita quanto pontos_totais pode pedir; 30000 fica com ~2258
+         # pontos (~7,5%) de folga sobre o pior caso já medido.
+-        _, pontos_totais = mestre.ExperimentoBase._calcular_margem(
++        *_, pontos_totais = mestre.ExperimentoBase._calcular_margem(
+             margin_mode=True, config_points=6000, fs_hz=30_000.0,
+         )
+         self.assertLessEqual(pontos_totais, 30_000)
+@@ -2561,7 +2581,7 @@ class LogDeSessaoEMetadataTests(unittest.TestCase):
+             )
+             experimento._preparar_acquisicao_real = lambda: None
+             with mock.patch.object(
+-                mestre.ExperimentoBase, "_calcular_margem", staticmethod(lambda **kw: (600, 7200))
++                mestre.ExperimentoBase, "_calcular_margem", staticmethod(lambda **kw: (600, 600, 7200))
+             ):
+                 experimento.executar()
+             registro = json.loads(
+@@ -2666,5 +2686,62 @@ class PosicaoDoTriggerTests(unittest.TestCase):
+             scope.get_waveform(1, expected_points=8100)
+ 
+ 
++class JanelaNominalEAnaliseTests(unittest.TestCase):
++    """P08 — recorte e análise offline passam a usar ``indice_trigger`` e o
++    contexto gravado no metadata, em vez de ``margem_amostras_antes`` e de
++    60 Hz/127 V chumbados (relatório 01 §1.1 e §4 item 8)."""
++
++    def test_janela_nominal_desconta_o_pre_trigger_da_classe(self):
++        registro = np.arange(8100, dtype=np.float64)
++        janela = sinais.janela_nominal(
++            registro, indice_trigger=600, pre_trigger_s=0.0, pontos=6000, fs_hz=30_000.0,
++        )
++        self.assertEqual(janela[0], 600.0)
++        # classe PULSe: o evento começa no trigger e gerar() o quer em 60 ms
++        janela_pulse = sinais.janela_nominal(
++            registro, indice_trigger=2400, pre_trigger_s=0.060, pontos=6000, fs_hz=30_000.0,
++        )
++        self.assertEqual(janela_pulse[0], 2400.0 - 1800.0)
++
++    def test_janela_nominal_nao_estoura_o_registro(self):
++        registro = np.arange(6000, dtype=np.float64)
++        janela = sinais.janela_nominal(
++            registro, indice_trigger=5000, pre_trigger_s=0.0, pontos=6000, fs_hz=30_000.0,
++        )
++        self.assertEqual(janela.size, 6000)
++
++    def test_analisar_sessao_usa_f0_e_tensao_base_do_metadata(self):
++        tmp_dir = Path(tempfile.mkdtemp())
++        try:
++            sessao_dir = tmp_dir / "sessao_teste"
++            (sessao_dir / "metadata").mkdir(parents=True)
++            fs_hz, pontos = 30_000.0, 6000
++            t = np.arange(pontos, dtype=np.float64) / fs_hz
++            capturado = np.sin(2.0 * np.pi * 50.0 * t)  # sessão de 50 Hz
++            np.savez(
++                sessao_dir / "01_normal_cap01.npz",
++                tempo_ms=t * 1000.0, tensao_pu=capturado[np.newaxis, :],
++                classe="NORMAL", id_captura=np.array(["01-0001"], dtype=object),
++            )
++            with (sessao_dir / "metadata" / "01_normal.jsonl").open("w", encoding="utf-8") as handle:
++                handle.write(json.dumps({
++                    "classe": "NORMAL", "fs_hz": fs_hz, "id_captura": "01-0001",
++                    "parametros": {}, "pontos": pontos, "seed": 21260827, "simulado": False,
++                    "nivel_indice": 0, "f0_hz": 50.0, "tensao_base_rms": 220.0,
++                    "pre_trigger_s": 0.0, "indice_trigger": 0,
++                }) + chr(10))
++            import analisar_sessao
++            import importlib
++            importlib.reload(analisar_sessao)
++            relatorio = analisar_sessao.analisar_sessao(sessao_dir, gerar_imagens=False)
++            self.assertEqual(len(relatorio), 1)
++            self.assertNotIn("erro", relatorio[0])
++            # com f0 correto a correlação é ~1; com 60 Hz chumbado seria baixa
++            self.assertGreater(relatorio[0]["correlacao"], 0.99)
++            self.assertEqual(relatorio[0]["f0_hz"], 50.0)
++        finally:
++            shutil.rmtree(tmp_dir, ignore_errors=True)
++
++
+ if __name__ == "__main__":
+     unittest.main()
