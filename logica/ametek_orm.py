@@ -127,6 +127,10 @@ class AmetekMX30:
         # AmetekMX30, ex. depois de reconectar) sempre começa com cache vazio,
         # o que já invalida automaticamente o cache quando
         # AMETEK_CLEAR_USER_WAVEFORMS=1 apagou as TRACEs da conexão anterior.
+        # O que o último trigger_step()/trigger_pulse()/frequency_drift_list()
+        # ESCREVEU — arm() lê de volta e recusa divergência (ver arm()).
+        # Vazio = nada a conferir (caminho LIST usa arm_transient()).
+        self._transiente_esperado: Dict[str, object] = {}
         self._last_capture_signature: Optional[tuple] = None
         self._last_capture_list_voltages: List[float] = []
         self._last_capture_peak_v = 0.0
@@ -522,6 +526,76 @@ class AmetekMX30:
         self.write(f"SOURce:CURRent:LEVel:IMMediate:AMPLitude {value:.8g}")
         self._sim["current"] = value
 
+    def aguardar_idle(self, timeout_s: float = 20.0) -> str:
+        """Bloqueia até ``TRIGger:STATe?`` reportar IDLE.
+
+        Manual AMETEK p. 217, erro 19 "Illegal during transient": "Operation
+        requested not available while transient is running"; remédio "Wait
+        till transient execution is completed or abort transient execution
+        first." Antes desta função, ``trigger_step``/``trigger_pulse``
+        escreviam ``VOLTage:MODE``/``VOLTage:TRIGgered`` SEM nenhuma consulta
+        de estado — só ``arm()``, DEPOIS das escritas, é que esperava IDLE.
+        Se o transiente da captura anterior ainda estivesse rodando, o manual
+        diz que a operação não está disponível: o valor antigo permanece e o
+        ``*TRG`` seguinte o reaplica (padrão exato de H-NATIVO, relatório 01
+        §1.2 / 02 §(c) candidato 1).
+
+        Tolera consulta sem resposta como ``arm()`` (ver ``_query_tolerante``).
+        Não resolve sozinho o "falso IDLE" documentado (manual p. 132) — por
+        isso ``arm()`` ainda lê de volta o que foi escrito. Em modo simulado a
+        primeira consulta já devolve IDLE (ver ``_simulate_query``), então não
+        há laço nem espera: a função é a MESMA nos dois modos, de propósito —
+        é o que permite testá-la offline."""
+        deadline = time.monotonic() + float(timeout_s)
+        ultimo = ""
+        while time.monotonic() < deadline:
+            estado = self._query_tolerante("TRIGger:STATe?")
+            if estado is None:
+                continue
+            ultimo = estado
+            if ultimo.startswith("IDLE"):
+                return ultimo
+            time.sleep(0.05)
+        raise TimeoutError(
+            f"AMETEK não voltou a IDLE em {timeout_s:.1f} s antes de programar um "
+            f"transiente nativo; último estado={ultimo!r}. Manual p. 217 (erro 19): "
+            "escrever durante um transiente em curso é aceito e ignorado."
+        )
+
+    def _confirmar_fila_apos_transiente(self, contexto: str) -> List[Tuple[int, str]]:
+        """``check_errors()`` que interpreta o erro 19 do Apêndice C.
+
+        Antes, ``trigger_step``/``trigger_pulse`` só liam a fila quando
+        ``diagnostico`` estava ligado — exatamente por isso as duas sessões de
+        2026-09-16 registraram ``erros=[]`` em 1043 linhas e um valor errado
+        foi aplicado em silêncio."""
+        erros = self.check_errors()
+        if not erros:
+            return erros
+        codigos = {codigo for codigo, _ in erros}
+        if 19 in codigos:
+            raise InstrumentHardwareError(
+                f"AMETEK recusou {contexto} com erro 19 'Illegal during transient' "
+                f"(escrita durante transiente em curso; manual p. 217): {erros}. "
+                "O valor programado NÃO foi aplicado — captura descartada em vez de "
+                "gravar dado errado."
+            )
+        raise InstrumentHardwareError(f"AMETEK reportou erros após {contexto}: {erros}")
+
+    def _neutralizar_transientes_residuais(self) -> None:
+        """Passo 1 do procedimento de transiente do manual (§6.4.2, p. 152):
+        "Set the functions that you do not want to generate transients to
+        FIXed mode."
+
+        O caminho nativo nunca escrevia ``FUNCtion:MODE FIXed``: depois de
+        qualquer classe waveform, ``FUNCtion:MODE`` ficava em ``LIST`` com a
+        lista de 12 pontos de forma da classe anterior, que passava a
+        participar do ``*TRG`` junto com o STEP/PULSe de tensão. É a causa
+        documentada do ``-226`` da classe 18 (manual §4.17, p. 90 + Apêndice
+        C, p. 214) e o candidato n.º 2 de H-NATIVO (relatório 02 §(c))."""
+        self.write("FUNCtion:MODE FIXed")
+        self.write("SOURce:FREQuency:MODE FIXed")
+
     def trigger_step(self, voltage_rms: float) -> None:
         """Programa um STEP para ``voltage_rms`` no próximo *TRG.
 
@@ -534,16 +608,24 @@ class AmetekMX30:
             raise ParameterOutOfBoundsError(
                 f"Tensão {voltage_rms} Vrms fora do limite de software 0..{self.max_voltage_rms}"
             )
-        # FREQuency:MODE é um eixo independente de VOLTage:MODE (cap. 4.13/4.17
-        # do manual SCPI): um LIST de frequência residual de uma captura
-        # anterior (ex.: classe 18/FREQUENCY_DRIFT) continua sendo aplicado a
-        # cada *TRG mesmo com VOLTage:MODE em STEP. Força FIXed aqui, único
-        # ponto por onde toda captura nativa sem TRACe passa antes de armar.
-        self.write("SOURce:FREQuency:MODE FIXed")
+        self.aguardar_idle()
+        # FREQuency:MODE e FUNCtion:MODE são eixos independentes de
+        # VOLTage:MODE (cap. 4.13/4.17 do manual SCPI): um LIST de frequência
+        # (classe 18) ou de FORMA (qualquer classe waveform) residual continua
+        # sendo aplicado a cada *TRG mesmo com VOLTage:MODE em STEP. Ver
+        # _neutralizar_transientes_residuais().
+        self._neutralizar_transientes_residuais()
         self.write("VOLTage:MODE STEP")
         self.write(f"VOLTage:TRIGgered {voltage_rms:.8g}")
+        self._transiente_esperado = {
+            "VOLTage:MODE?": "STEP",
+            "VOLTage:TRIGgered?": voltage_rms,
+            "FUNCtion:MODE?": "FIX",
+            "SOURce:FREQuency:MODE?": "FIX",
+        }
+        erros = self._confirmar_fila_apos_transiente("programação do STEP nativo")
         if self.diagnostico:
-            self._log_diagnostico("fim_trigger_step", erros=self.check_errors())
+            self._log_diagnostico("fim_trigger_step", erros=erros)
 
     def trigger_pulse(self, voltage_rms: float, *, width_s: float) -> None:
         """Programa um PULSe nativo: cai/sobe para ``voltage_rms`` por ``width_s``
@@ -557,14 +639,23 @@ class AmetekMX30:
             )
         if not width_s > 0:
             raise ParameterOutOfBoundsError(f"Duração do pulso deve ser positiva; recebido {width_s}")
-        # Ver comentário equivalente em trigger_step(): neutraliza um LIST de
-        # frequência residual antes de armar este PULSe.
-        self.write("SOURce:FREQuency:MODE FIXed")
+        self.aguardar_idle()
+        # Ver comentário equivalente em trigger_step(): neutraliza listas de
+        # frequência E de forma residuais antes de armar este PULSe.
+        self._neutralizar_transientes_residuais()
         self.write("VOLTage:MODE PULSe")
         self.write(f"VOLTage:TRIGgered {voltage_rms:.8g}")
         self.write(f"PULSe:WIDTh {width_s:.8g}")
+        self._transiente_esperado = {
+            "VOLTage:MODE?": "PULS",
+            "VOLTage:TRIGgered?": voltage_rms,
+            "PULSe:WIDTh?": width_s,
+            "FUNCtion:MODE?": "FIX",
+            "SOURce:FREQuency:MODE?": "FIX",
+        }
+        erros = self._confirmar_fila_apos_transiente("programação do PULSe nativo")
         if self.diagnostico:
-            self._log_diagnostico("fim_trigger_pulse", erros=self.check_errors())
+            self._log_diagnostico("fim_trigger_pulse", erros=erros)
 
     def configure_harmonics_csine(self, thd_pct: float) -> None:
         """Programa o gerador nativo de senoide clipada (CSINe) para o THD
@@ -585,6 +676,13 @@ class AmetekMX30:
         # só reconhece o nome completo. Ordem também alinhada ao exemplo
         # funcional do cap. 6.2.7: seleciona a forma primeiro, só depois
         # ajusta o nível de clipping.
+        self.aguardar_idle()
+        # Mesma razão de trigger_step()/trigger_pulse(): a classe 05 roda
+        # DEPOIS de classes waveform na bateria e herdava FUNCtion:MODE LIST
+        # com a lista de forma da classe anterior ativa (candidato n.º 2 de
+        # H-NATIVO). Sem isto, a forma efetivamente aplicada no *TRG é a da
+        # LISTA, não a CSINusoid recém-selecionada.
+        self._neutralizar_transientes_residuais()
         self.write("SOURce:FUNCtion:SHAPe CSINusoid")
         # Trocar a forma de onda recarrega a tabela e deixa a Rev. 5.53 MUDA
         # por alguns segundos (cap. 7.7 do manual: comandos que afetam "list
@@ -687,6 +785,15 @@ class AmetekMX30:
             )
         if not dwell_s > 0:
             raise ParameterOutOfBoundsError(f"Dwell deve ser positivo; recebido {dwell_s}")
+        self.aguardar_idle()
+        # Causa EXATA do ``-226 Lists not same length`` da classe 18 quando ela
+        # roda depois da 17 (manual §4.17, p. 90: "All active subsystems that
+        # have their modes set to LIST must have the same number of points ...
+        # or an error is generated when the first list point is triggered").
+        # A 17 deixa uma lista de FORMA de 12 pontos ativa; esta programa uma
+        # de FREQuência com 2. O remédio é o Passo 1 do §6.4.2 (p. 152).
+        self._neutralizar_transientes_residuais()
+        self.write("VOLTage:MODE FIXed")
         self.write("FREQuency:MODE LIST")
         self.write(f"LIST:FREQuency {start_hz:.8g},{end_hz:.8g}")
         self.write(f"LIST:VOLTage {voltage_rms:.8g},{voltage_rms:.8g}")

@@ -1826,5 +1826,119 @@ class AnalisarSessaoTests(unittest.TestCase):
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
+class CaminhoNativoIntegridadeTests(unittest.TestCase):
+    """P01 — integridade do caminho nativo (STEP/PULSe/CSINe).
+
+    Manual AMETEK §6.4.2 p. 152, Passo 1: "Set the functions that you do not
+    want to generate transients to FIXed mode." O caminho nativo nunca
+    escrevia ``FUNCtion:MODE FIXed`` — causa documentada do ``-226`` da
+    classe 18 (02 §(b) item 8) e candidato n.º 2 de H-NATIVO (02 §(c)).
+    Manual p. 217, erro 19 "Illegal during transient" + p. 132 (falso IDLE)
+    são o candidato n.º 1: escrever enquanto um transiente ainda roda é
+    aceito na fila mas ignorado."""
+
+    def _fonte(self, **kwargs):
+        kwargs.setdefault("max_voltage_rms", 300.0)
+        kwargs.setdefault("max_peak_v", 425.0)
+        kwargs.setdefault("max_current_a", 0.5)
+        return AmetekMX30(simulated=True, **kwargs)
+
+    def test_trigger_step_poe_function_mode_em_fixed_antes_do_voltage_mode(self):
+        fonte = self._fonte()
+        fonte.trigger_step(127.0)
+        log = fonte.command_log
+        self.assertIn("FUNCtion:MODE FIXed", log)
+        self.assertLess(log.index("FUNCtion:MODE FIXed"), log.index("VOLTage:MODE STEP"))
+
+    def test_trigger_pulse_poe_function_mode_em_fixed_antes_do_voltage_mode(self):
+        fonte = self._fonte()
+        fonte.trigger_pulse(12.7, width_s=0.060)
+        log = fonte.command_log
+        self.assertIn("FUNCtion:MODE FIXed", log)
+        self.assertLess(log.index("FUNCtion:MODE FIXed"), log.index("VOLTage:MODE PULSe"))
+
+    def test_configure_harmonics_csine_neutraliza_listas_residuais(self):
+        fonte = self._fonte()
+        fonte.configure_harmonics_csine(5.0)
+        log = fonte.command_log
+        self.assertIn("FUNCtion:MODE FIXed", log)
+        self.assertLess(
+            log.index("FUNCtion:MODE FIXed"),
+            log.index("SOURce:FUNCtion:SHAPe CSINusoid"),
+        )
+
+    def test_frequency_drift_list_neutraliza_lista_de_forma_residual(self):
+        """Causa exata do ``-226 Lists not same length`` da classe 18 depois da
+        17 (relatório 02 §(b) item 8): a lista de FORMA de 12 pontos da 17
+        continua ativa enquanto a 18 programa uma lista de FREQuência de 2
+        pontos."""
+        fonte = self._fonte()
+        fonte.frequency_drift_list(57.0, 63.0, voltage_rms=127.0, dwell_s=0.1)
+        log = fonte.command_log
+        self.assertIn("FUNCtion:MODE FIXed", log)
+        self.assertLess(log.index("FUNCtion:MODE FIXed"), log.index("FREQuency:MODE LIST"))
+
+    def test_caminho_nativo_espera_idle_antes_de_escrever(self):
+        """Nada pode ser escrito enquanto ``TRIGger:STATe?`` for BUSY."""
+        fonte = self._fonte()
+        estados = ["BUSY", "BUSY", "IDLE"]
+        escritas_quando_busy = []
+        query_original = fonte.query
+        write_original = fonte.write
+
+        def query_fake(command):
+            if command.strip().upper().startswith("TRIG"):
+                return estados.pop(0) if estados else "IDLE"
+            return query_original(command)
+
+        def write_espiao(command):
+            if estados:  # ainda não chegou em IDLE
+                escritas_quando_busy.append(command)
+            return write_original(command)
+
+        fonte.query = query_fake
+        fonte.write = write_espiao
+        fonte.trigger_step(127.0)
+        self.assertEqual(escritas_quando_busy, [])
+        self.assertEqual(estados, [])
+
+    def test_caminho_nativo_recusa_erro_19_illegal_during_transient(self):
+        """Manual p. 217: erro 19 = "Operation requested not available while
+        transient is running". Hoje a fila só era lida com ``diagnostico on``
+        e o valor escrito ficava silenciosamente sem efeito."""
+        fonte = self._fonte()
+        query_original = fonte.query
+        fila = ['19,"Illegal during transient"', '0,"No error"']
+
+        def query_fake(command):
+            if command.strip().upper().startswith(("SYST", "SYSTEM")):
+                return fila.pop(0) if fila else '0,"No error"'
+            return query_original(command)
+
+        fonte.query = query_fake
+        with self.assertRaises(InstrumentHardwareError) as ctx:
+            fonte.trigger_step(127.0)
+        self.assertIn("19", str(ctx.exception))
+        self.assertIn("transiente", str(ctx.exception).lower())
+
+    def test_aguardar_idle_falha_com_mensagem_propria(self):
+        fonte = self._fonte()
+        fonte.query = lambda command: "BUSY"
+        with self.assertRaises(TimeoutError) as ctx:
+            fonte.aguardar_idle(timeout_s=0.3)
+        self.assertIn("IDLE", str(ctx.exception))
+
+    def test_diagnostico_continua_sem_mudar_writes_no_trigger_step(self):
+        sem_log = self._fonte(diagnostico=False)
+        sem_log.trigger_step(127.0)
+        com_log = self._fonte(diagnostico=True)
+        com_log.trigger_step(127.0)
+
+        def escritas(log):
+            return [comando for comando in log if not comando.endswith("?")]
+
+        self.assertEqual(escritas(sem_log.command_log), escritas(com_log.command_log))
+
+
 if __name__ == "__main__":
     unittest.main()
