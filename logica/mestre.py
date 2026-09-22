@@ -779,96 +779,155 @@ class ExperimentoBase(ABC):
             )
             return
 
-        ocorrencias_por_rotulo: Dict[str, int] = {}
-
-        def _rotulo(indice: int, parametros: dict) -> str:
-            if not parametros:
-                # Já único por captura: `indice` percorre 0..total-1.
-                return f"cap{indice + 1:02d}"
-            chave, valor = next(iter(parametros.items()))
-            valor_fmt = f"{valor:g}" if isinstance(valor, float) else str(valor)
-            base = f"{chave}-{valor_fmt}"
-            ocorrencia = ocorrencias_por_rotulo.get(base, 0) + 1
-            ocorrencias_por_rotulo[base] = ocorrencia
-            # 1ª ocorrência fica sem sufixo (nome histórico, legível); da 2ª
-            # em diante `_02`, `_03`, ... lê naturalmente como "captura #N
-            # deste rótulo". `:02d` é só largura MÍNIMA — `set capturas`
-            # não tem teto na CLI, e N>=100 vira `_100` sem colidir.
-            return base if ocorrencia == 1 else f"{base}_{ocorrencia:02d}"
-
-        prefixo_classe = f"{self.id}_{self.nome.lower()}_"
-        nomes_escritos_por_diretorio: Dict[Path, Set[str]] = {}
-
-        def _registrar_escrita(directory: Path, nome_arquivo: str) -> None:
-            nomes_escritos_por_diretorio.setdefault(directory, set()).add(nome_arquivo)
-
+        # Caminho real: a gravação é feita CAPTURA A CAPTURA (ver
+        # _iniciar_gravacao_incremental/_salvar_captura/_finalizar_gravacao).
+        # Este método continua existindo com a mesma assinatura porque é a
+        # porta de entrada usada por quem já tem a classe inteira em memória.
+        self._iniciar_gravacao_incremental()
         for indice, metadado_captura in enumerate(metadados):
-            rotulo = _rotulo(indice, metadado_captura["parametros"])
-            nome_base = f"{self.id}_{self.nome.lower()}_{rotulo}.npz"
-            id_captura_array = np.array([ids[indice]], dtype=object)
+            self._salvar_captura(
+                tempo_ms=tempo_ms,
+                tensao_limpa_captura=tensao_limpa[indice],
+                tensao_por_snr_captura={
+                    snr_db: tensao[indice] for snr_db, tensao in tensao_por_snr.items()
+                },
+                corrente_captura=None if corrente is None else corrente[indice],
+                id_captura=ids[indice],
+                metadado=metadado_captura,
+            )
+        self._finalizar_gravacao(parcial=False)
 
-            final_path = config.results_dir / nome_base
-            partial_path = final_path.with_suffix(".npz.part")
-            with partial_path.open("wb") as handle:
-                np.savez(
-                    handle, tempo_ms=tempo_ms, tensao_pu=tensao_limpa[indice : indice + 1],
-                    classe=self.nome, id_captura=id_captura_array,
-                )
-            os.replace(partial_path, final_path)
-            _registrar_escrita(config.results_dir, nome_base)
-
-            for snr_db, tensao in tensao_por_snr.items():
-                rotulo_snr = str(int(snr_db)) if float(snr_db).is_integer() else str(snr_db).replace(".", "_")
-                directory = config.results_dir / f"snr_{rotulo_snr}db"
-                directory.mkdir(parents=True, exist_ok=True)
-                final_path = directory / nome_base
-                partial_path = final_path.with_suffix(".npz.part")
-                with partial_path.open("wb") as handle:
-                    np.savez(
-                        handle, tempo_ms=tempo_ms, tensao_pu=tensao[indice : indice + 1],
-                        classe=self.nome, id_captura=id_captura_array,
-                    )
-                os.replace(partial_path, final_path)
-                _registrar_escrita(directory, nome_base)
-
-            if corrente is not None:
-                directory = config.results_dir / "corrente"
-                directory.mkdir(parents=True, exist_ok=True)
-                nome_corrente = f"{self.id}_{self.nome.lower()}_{rotulo}_corrente.npz"
-                final_path = directory / nome_corrente
-                partial_path = final_path.with_suffix(".npz.part")
-                with partial_path.open("wb") as handle:
-                    np.savez(
-                        handle, tempo_ms=tempo_ms, corrente_pu=corrente[indice : indice + 1],
-                        classe=self.nome, id_captura=id_captura_array,
-                    )
-                os.replace(partial_path, final_path)
-                _registrar_escrita(directory, nome_corrente)
-
+    def _iniciar_gravacao_incremental(self) -> None:
+        """Abre o ``metadata/*.jsonl.part`` da classe e zera o estado de
+        gravação. Depois disto cada captura pode ir para o disco sozinha."""
+        config = self.config
+        config.results_dir.mkdir(parents=True, exist_ok=True)
         metadata_dir = config.results_dir / "metadata"
         metadata_dir.mkdir(parents=True, exist_ok=True)
         metadata_final = metadata_dir / f"{self.id}_{self.nome.lower()}.jsonl"
         metadata_partial = metadata_final.with_suffix(".jsonl.part")
-        with metadata_partial.open("w", encoding="utf-8") as handle:
-            for registro in metadados:
-                handle.write(json.dumps(registro, ensure_ascii=False, sort_keys=True) + "\n")
-        os.replace(metadata_partial, metadata_final)
+        self._gravacao = {
+            "ocorrencias": {},
+            "nomes_por_diretorio": {},
+            "metadata_final": metadata_final,
+            "metadata_partial": metadata_partial,
+            "handle": metadata_partial.open("w", encoding="utf-8"),
+            "linhas": 0,
+            "indice": 0,
+        }
 
-        # Só agora — com todos os arquivos NOVOS desta rodada já promovidos
-        # com sucesso E o metadata.jsonl já substituído com sucesso —
-        # removemos órfãos de rodadas anteriores com conjunto de capturas
-        # diferente. Nunca antes: se o processo morresse entre apagar um
-        # órfão e substituir o metadata, o metadata sobrevivente (ainda o
-        # da rodada anterior) apontaria para um arquivo que acabamos de
-        # apagar. Rodando a limpeza só depois do metadata.jsonl já estar
-        # trocado, um crash em qualquer ponto anterior deixa o disco num
-        # estado consistente: ou o par dados+metadata da rodada anterior
-        # intacto, ou o da rodada nova já completo (possivelmente com
-        # órfãos que a PRÓXIMA rodada bem-sucedida vai limpar).
-        for directory, nomes_escritos in nomes_escritos_por_diretorio.items():
+    def _salvar_captura(
+        self,
+        *,
+        tempo_ms: np.ndarray,
+        tensao_limpa_captura: np.ndarray,
+        tensao_por_snr_captura: Dict[float, np.ndarray],
+        corrente_captura: Optional[np.ndarray],
+        id_captura: str,
+        metadado: dict,
+    ) -> None:
+        """Grava UMA captura (dados puros + cada ``snr_XXdb/`` + corrente) e
+        acrescenta a linha dela ao ``metadata/*.jsonl.part``, com ``flush`` +
+        ``fsync`` por linha.
+
+        Escrita atômica por arquivo (``.part`` -> ``os.replace``), igual ao
+        comportamento anterior — a diferença é QUANDO ela acontece: antes, no
+        fim da classe inteira; agora, assim que a captura existe. É o que
+        teria salvo as 7 capturas boas de 08 e as 52 de 03 da sessão 2
+        (relatório 01 §3 P1)."""
+        config = self.config
+        gravacao = self._gravacao
+        indice = gravacao["indice"]
+        gravacao["indice"] = indice + 1
+        rotulo = self._rotulo_da_captura(indice, metadado.get("parametros") or {})
+        nome_base = f"{self.id}_{self.nome.lower()}_{rotulo}.npz"
+        id_captura_array = np.array([id_captura], dtype=object)
+
+        def _registrar(directory: Path, nome_arquivo: str) -> None:
+            gravacao["nomes_por_diretorio"].setdefault(directory, set()).add(nome_arquivo)
+
+        def _gravar(directory: Path, nome_arquivo: str, **arrays) -> None:
+            directory.mkdir(parents=True, exist_ok=True)
+            final_path = directory / nome_arquivo
+            partial_path = final_path.with_suffix(".npz.part")
+            with partial_path.open("wb") as handle:
+                np.savez(handle, classe=self.nome, id_captura=id_captura_array, **arrays)
+            os.replace(partial_path, final_path)
+            _registrar(directory, nome_arquivo)
+
+        _gravar(
+            config.results_dir, nome_base,
+            tempo_ms=tempo_ms, tensao_pu=tensao_limpa_captura[np.newaxis, :],
+        )
+        for snr_db, tensao in tensao_por_snr_captura.items():
+            rotulo_snr = str(int(snr_db)) if float(snr_db).is_integer() else str(snr_db).replace(".", "_")
+            _gravar(
+                config.results_dir / f"snr_{rotulo_snr}db", nome_base,
+                tempo_ms=tempo_ms, tensao_pu=tensao[np.newaxis, :],
+            )
+        if corrente_captura is not None:
+            _gravar(
+                config.results_dir / "corrente",
+                f"{self.id}_{self.nome.lower()}_{rotulo}_corrente.npz",
+                tempo_ms=tempo_ms, corrente_pu=corrente_captura[np.newaxis, :],
+            )
+
+        handle = gravacao["handle"]
+        handle.write(json.dumps(metadado, ensure_ascii=False, sort_keys=True) + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+        gravacao["linhas"] += 1
+
+    def _finalizar_gravacao(self, *, parcial: bool) -> None:
+        """Promove o ``metadata/*.jsonl.part`` e, só quando a rodada terminou
+        INTEIRA (``parcial=False``), remove órfãos de rodadas anteriores.
+
+        Numa rodada abortada no meio, os arquivos da rodada anterior ainda são
+        os melhores dados existentes — apagá-los com base numa lista
+        incompleta seria trocar dado bom por dado faltando."""
+        gravacao = getattr(self, "_gravacao", None)
+        if not gravacao:
+            return
+        self._gravacao = None
+        handle = gravacao["handle"]
+        try:
+            handle.flush()
+            os.fsync(handle.fileno())
+        finally:
+            handle.close()
+        if gravacao["linhas"] == 0:
+            gravacao["metadata_partial"].unlink(missing_ok=True)
+            return
+        os.replace(gravacao["metadata_partial"], gravacao["metadata_final"])
+        if parcial:
+            logger.error(
+                "[%s] classe interrompida: %d captura(s) preservada(s) em %s "
+                "(metadata PARCIAL; limpeza de órfãos NÃO executada)",
+                self.id, gravacao["linhas"], self.config.results_dir,
+            )
+            return
+        prefixo_classe = f"{self.id}_{self.nome.lower()}_"
+        for directory, nomes_escritos in gravacao["nomes_por_diretorio"].items():
             for arquivo_existente in directory.glob(f"{prefixo_classe}*.npz"):
                 if arquivo_existente.name not in nomes_escritos:
                     arquivo_existente.unlink()
+
+    def _rotulo_da_captura(self, indice: int, parametros: dict) -> str:
+        """Nome legível da captura dentro da classe. 1ª ocorrência de um
+        rótulo fica sem sufixo (nome histórico); da 2ª em diante `_02`, `_03`,
+        ... — sem isso as N capturas de `set capturas N` colapsariam num
+        arquivo só (ver docstring de _salvar_classe)."""
+        if not parametros:
+            # Já único por captura: `indice` percorre 0..total-1.
+            return f"cap{indice + 1:02d}"
+        chave, valor = next(iter(parametros.items()))
+        valor_fmt = f"{valor:g}" if isinstance(valor, float) else str(valor)
+        base = f"{chave}-{valor_fmt}"
+        ocorrencias = self._gravacao["ocorrencias"]
+        ocorrencia = ocorrencias.get(base, 0) + 1
+        ocorrencias[base] = ocorrencia
+        return base if ocorrencia == 1 else f"{base}_{ocorrencia:02d}"
+
 
     def _salvar_classe_simulada(
         self,
@@ -973,63 +1032,92 @@ class ExperimentoBase(ABC):
         ids: List[str] = []
         metadados: List[dict] = []
         tempo_ms_eixo = None
+        if not simulated:
+            # Gravação incremental: cada captura vai para o disco assim que
+            # sai (ver _salvar_captura). Sem isto, uma falha na captura k
+            # jogava fora as k-1 boas, que só existiam em memória —
+            # exatamente o que aconteceu com as 7 capturas de 08 e as 52 de
+            # 03 na sessão 2 (relatório 01 §3 P1, caminho #1).
+            self._iniciar_gravacao_incremental()
+        try:
+            for indice_global in range(total):
+                if cobertura_por_nivel_ativa:
+                    capture_index = indice_global // capturas_por_nivel  # nivel, agrupado
+                else:
+                    capture_index = indice_global
+                seed = self.config.base_seed + int(self.id) * 1_000_000 + indice_global
+                rng = np.random.default_rng(seed)
 
-        for indice_global in range(total):
-            if cobertura_por_nivel_ativa:
-                capture_index = indice_global // capturas_por_nivel  # nivel, agrupado
-            else:
-                capture_index = indice_global
-            seed = self.config.base_seed + int(self.id) * 1_000_000 + indice_global
-            rng = np.random.default_rng(seed)
+                if simulated:
+                    voltage_pu, parametros = self.gerar(t, self.config.grid_frequency_hz, capture_index, rng)
+                    voltage_pu = np.asarray(voltage_pu, dtype=np.float64)
+                    if voltage_pu.shape != (self.config.points,) or not np.all(np.isfinite(voltage_pu)):
+                        raise RuntimeError(f"gerar() do experimento {self.id} produziu forma inválida")
+                    time_s = t
+                    measured_voltage_pu = voltage_pu
+                    measured_current_pu = (
+                        0.8 * np.sin(2.0 * np.pi * self.config.grid_frequency_hz * t - 0.2)
+                        if self.config.capture_current else None
+                    )
+                else:
+                    time_s, measured_voltage_pu, measured_current_pu, parametros = self._capturar_real(
+                        capture_index, t, rng,
+                    )
+                self._validar_captura(time_s, measured_voltage_pu, pontos_esperados=pontos_efetivos)
+                tempo_ms_eixo = time_s * 1000.0
+                capture_id = f"{self.id}-{indice_global + 1:04d}"
+                ids.append(capture_id)
+                tensao_limpa[indice_global] = measured_voltage_pu
 
-            if simulated:
-                voltage_pu, parametros = self.gerar(t, self.config.grid_frequency_hz, capture_index, rng)
-                voltage_pu = np.asarray(voltage_pu, dtype=np.float64)
-                if voltage_pu.shape != (self.config.points,) or not np.all(np.isfinite(voltage_pu)):
-                    raise RuntimeError(f"gerar() do experimento {self.id} produziu forma inválida")
-                time_s = t
-                measured_voltage_pu = voltage_pu
-                measured_current_pu = (
-                    0.8 * np.sin(2.0 * np.pi * self.config.grid_frequency_hz * t - 0.2)
-                    if self.config.capture_current else None
-                )
-            else:
-                time_s, measured_voltage_pu, measured_current_pu, parametros = self._capturar_real(
-                    capture_index, t, rng,
-                )
-            self._validar_captura(time_s, measured_voltage_pu, pontos_esperados=pontos_efetivos)
-            tempo_ms_eixo = time_s * 1000.0
-            capture_id = f"{self.id}-{indice_global + 1:04d}"
-            ids.append(capture_id)
-            tensao_limpa[indice_global] = measured_voltage_pu
+                medidas_snr = {}
+                for snr_db in self.config.snr_levels_db:
+                    noise_seed = seed + int(round(snr_db * 1000.0)) + 50_000_000
+                    ruidoso = ruido_awgn(measured_voltage_pu, snr_db, np.random.default_rng(noise_seed))
+                    tensao_por_snr[snr_db][indice_global] = ruidoso
+                    medidas_snr[str(snr_db)] = snr_medida(measured_voltage_pu, ruidoso)
 
-            medidas_snr = {}
-            for snr_db in self.config.snr_levels_db:
-                noise_seed = seed + int(round(snr_db * 1000.0)) + 50_000_000
-                ruidoso = ruido_awgn(measured_voltage_pu, snr_db, np.random.default_rng(noise_seed))
-                tensao_por_snr[snr_db][indice_global] = ruidoso
-                medidas_snr[str(snr_db)] = snr_medida(measured_voltage_pu, ruidoso)
+                if corrente is not None and measured_current_pu is not None:
+                    corrente[indice_global] = measured_current_pu
 
-            if corrente is not None and measured_current_pu is not None:
-                corrente[indice_global] = measured_current_pu
+                metadados.append({
+                    "id_captura": capture_id,
+                    "classe": self.nome,
+                    "seed": seed,
+                    "simulado": simulated,
+                    "fs_hz": self.config.fs_hz,
+                    "pontos": self.config.points,
+                    "parametros": parametros,
+                    "snr_medido_db": medidas_snr,
+                    "nivel_indice": capture_index if (cobertura_por_nivel_ativa or not simulated) else 0,
+                })
+                if margem_amostras > 0:
+                    metadados[-1]["margem_amostras_antes"] = margem_amostras
+                    metadados[-1]["margem_amostras_depois"] = margem_amostras
+                    metadados[-1]["amostras_totais"] = pontos_efetivos
+                if not simulated:
+                    self._salvar_captura(
+                        tempo_ms=tempo_ms_eixo,
+                        tensao_limpa_captura=tensao_limpa[indice_global],
+                        tensao_por_snr_captura={
+                            snr_db: tensao[indice_global]
+                            for snr_db, tensao in tensao_por_snr.items()
+                        },
+                        corrente_captura=(
+                            None if corrente is None or measured_current_pu is None
+                            else corrente[indice_global]
+                        ),
+                        id_captura=capture_id,
+                        metadado=metadados[-1],
+                    )
+                    logger.info("[%s] captura %d/%d gravada", self.id, indice_global + 1, total)
 
-            metadados.append({
-                "id_captura": capture_id,
-                "classe": self.nome,
-                "seed": seed,
-                "simulado": simulated,
-                "fs_hz": self.config.fs_hz,
-                "pontos": self.config.points,
-                "parametros": parametros,
-                "snr_medido_db": medidas_snr,
-                "nivel_indice": capture_index if (cobertura_por_nivel_ativa or not simulated) else 0,
-            })
-            if margem_amostras > 0:
-                metadados[-1]["margem_amostras_antes"] = margem_amostras
-                metadados[-1]["margem_amostras_depois"] = margem_amostras
-                metadados[-1]["amostras_totais"] = pontos_efetivos
+        except BaseException:
+            # Fecha a gravação incremental PRESERVANDO o que já foi para o
+            # disco (metadata parcial promovido, limpeza de órfãos suprimida)
+            # antes de deixar a exceção subir para executar_bateria().
             if not simulated:
-                logger.info("[%s] captura %d/%d concluída", self.id, indice_global + 1, total)
+                self._finalizar_gravacao(parcial=True)
+            raise
 
         if not simulated:
             # Forma de onda, modo AC/ACDC e offset são estado PERMANENTE, não
@@ -1037,14 +1125,15 @@ class ExperimentoBase(ABC):
             # a senoide clipada que a 05 (HARMONICS) ligou, ou com o offset e
             # o modo ACDC que a 19 (DC_OFFSET) ligou. As classes waveform se
             # salvam por acaso (program_capture() reprograma forma e modo);
-            # as nativas, não. Não precisa de try/finally: se uma captura
-            # falhar, a bateria aborta e o shutdown fail-safe assume.
+            # as nativas, não.
             self.fonte.restaurar_forma_e_modo_padrao()
-
-        self._salvar_classe(
-            tempo_ms=tempo_ms_eixo, tensao_limpa=tensao_limpa, tensao_por_snr=tensao_por_snr,
-            ids=ids, corrente=corrente, metadados=metadados, simulated=simulated,
-        )
+            self._finalizar_gravacao(parcial=False)
+        else:
+            self._salvar_classe(
+                tempo_ms=tempo_ms_eixo, tensao_limpa=tensao_limpa,
+                tensao_por_snr=tensao_por_snr, ids=ids, corrente=corrente,
+                metadados=metadados, simulated=True,
+            )
         logger.info("[%s] classe concluída: %s", self.id, self.nome)
 
 

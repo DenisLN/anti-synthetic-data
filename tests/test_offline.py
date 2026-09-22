@@ -2062,5 +2062,107 @@ class ArmLeDeVoltaTests(unittest.TestCase):
         self.assertIn("220", str(ctx.exception))
 
 
+class SalvamentoIncrementalTests(unittest.TestCase):
+    """P03 — cada captura vai para o disco assim que sai.
+
+    Relatório 01 §3 P1 caminho #1: ``executar()`` só chamava
+    ``_salvar_classe()`` DEPOIS do laço inteiro. Na sessão 2, as 7 capturas
+    boas da classe 08 e as 52 físicas da 03 foram perdidas porque só existiam
+    em memória quando a falha ocorreu."""
+
+    def _config(self, results_dir, **overrides):
+        base = dict(
+            fs_hz=30_000.0, points=6_000, duration_s=0.2, grid_frequency_hz=60.0,
+            base_voltage_rms=127.0, snr_levels_db=(), base_seed=1,
+            capture_current=False, current_base_a=None, results_dir=results_dir,
+            sim_captures_per_class=1, real_captures_per_class=1, disturbance_start_s=0.06,
+            capturas_override=4,
+        )
+        base.update(overrides)
+        return mestre.Config(**base)
+
+    def _experimento(self, config, falhar_em=None, observador=None):
+        bancada = mestre.Bancada(mestre.AmetekMX30(simulated=True), mock.Mock(), config)
+
+        class _Classe(mestre.ExperimentoNativo):
+            id = "96"
+            nome = "TESTE_INCREMENTAL"
+
+            def gerar(self, t, f0, capture_index, rng):
+                return np.sin(2.0 * np.pi * f0 * t), {}
+
+            def configurar(self, capture_index):
+                return {}
+
+        experimento = _Classe(bancada)
+        experimento.osc = mock.Mock()
+        pontos = config.points
+        tempo_s = np.arange(pontos, dtype=np.float64) / config.fs_hz
+        chamadas = {"n": 0}
+
+        def _stub(capture_index, t, rng):
+            chamadas["n"] += 1
+            if observador is not None:
+                observador(chamadas["n"])
+            if falhar_em is not None and chamadas["n"] == falhar_em:
+                raise InstrumentHardwareError("falha simulada no meio da classe")
+            return tempo_s, np.sin(2.0 * np.pi * 60.0 * tempo_s), None, {}
+
+        experimento._capturar_real = _stub
+        experimento._preparar_acquisicao_real = lambda: None
+        return experimento
+
+    def test_cada_captura_aparece_no_disco_antes_da_proxima(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            config = self._config(tmp_dir / "resultados")
+            vistos = []
+
+            def observador(n):
+                vistos.append(len(list((config.results_dir).glob("96_*.npz"))))
+
+            experimento = self._experimento(config, observador=observador)
+            experimento.executar()
+            # antes da captura 1 não há nada; antes da 2 já existe 1 arquivo...
+            self.assertEqual(vistos, [0, 1, 2, 3])
+            self.assertEqual(len(list(config.results_dir.glob("96_*.npz"))), 4)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_falha_no_meio_preserva_as_capturas_boas_anteriores(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            config = self._config(tmp_dir / "resultados")
+            experimento = self._experimento(config, falhar_em=3)
+            with self.assertRaises(InstrumentHardwareError):
+                experimento.executar()
+            arquivos = sorted(p.name for p in config.results_dir.glob("96_*.npz"))
+            self.assertEqual(len(arquivos), 2, f"esperava 2 capturas preservadas, achei {arquivos}")
+            metadata = config.results_dir / "metadata" / "96_teste_incremental.jsonl"
+            self.assertTrue(metadata.exists(), "metadata parcial precisa existir para os .npz serem usáveis")
+            linhas = [l for l in metadata.read_text(encoding="utf-8").splitlines() if l.strip()]
+            self.assertEqual(len(linhas), 2)
+            self.assertTrue(all(json.loads(l)["id_captura"].startswith("96-") for l in linhas))
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_falha_parcial_nao_apaga_arquivos_da_rodada_anterior(self):
+        """A limpeza de órfãos (docstring de ``_salvar_classe``) só pode rodar
+        quando a rodada terminou inteira: numa rodada abortada no meio, os
+        arquivos da rodada anterior ainda são os melhores dados existentes."""
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            config = self._config(tmp_dir / "resultados")
+            config.results_dir.mkdir(parents=True, exist_ok=True)
+            orfao = config.results_dir / "96_teste_incremental_cap09.npz"
+            np.savez(orfao, tempo_ms=np.zeros(3), tensao_pu=np.zeros((1, 3)))
+            experimento = self._experimento(config, falhar_em=2)
+            with self.assertRaises(InstrumentHardwareError):
+                experimento.executar()
+            self.assertTrue(orfao.exists(), "rodada abortada não pode apagar dados da rodada anterior")
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main()
