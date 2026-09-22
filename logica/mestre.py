@@ -187,7 +187,6 @@ CAPTURE_CURRENT = env_bool("CAPTURE_CURRENT", default=False)
 # outro consumidor (testes, scripts) nunca precisa tocá-los.
 SESSION_RESULTS_DIR: Optional[Path] = None
 CAPTURAS_OVERRIDE: Optional[int] = None
-MARGIN_MODE: bool = False
 DIAGNOSTICO_MODE: bool = False
 
 # AMETEK pela USB com porta COM virtual; 115200 foi confirmado no equipamento real.
@@ -312,7 +311,6 @@ class Config:
     real_captures_per_class: int
     disturbance_start_s: float
     capturas_override: Optional[int] = None
-    margin_mode: bool = False
     diagnostico_mode: bool = False
 
     def capturas(self, simulated: bool) -> int:
@@ -359,7 +357,6 @@ def _build_config() -> Config:
         real_captures_per_class=REAL_CAPTURES_PER_CLASS,
         disturbance_start_s=DISTURBANCE_START_S,
         capturas_override=CAPTURAS_OVERRIDE,
-        margin_mode=MARGIN_MODE,
         diagnostico_mode=DIAGNOSTICO_MODE,
     )
 
@@ -829,7 +826,15 @@ class ExperimentoBase(ABC):
             "tensao_base_rms": self.config.base_voltage_rms,
             "probe_tensao": VOLTAGE_PROBE_ATTENUATION,
             "pre_trigger_s": float(getattr(self, "pre_trigger_s", 0.0)),
-            "margin_mode": bool(self.config.margin_mode),
+            # Desde 2026-09-22 (P10) a margem de captura deixou de ser opt-in
+            # (era "margin_mode"/`set margin on|off`) — passa a ser aplicada
+            # sempre, então o que vale registrar são os valores em si, não
+            # mais um booleano "estava ligado?". margem_amostras_antes/depois
+            # (gravados logo abaixo, por captura) são os números REALMENTE
+            # usados; estes dois são a config-fonte (útil se alguém rodou com
+            # MARGEM_ANTES_S/MARGEM_DEPOIS_S sobrescritos por ambiente).
+            "margem_antes_s": ExperimentoBase.MARGEM_ANTES_S,
+            "margem_depois_s": ExperimentoBase.MARGEM_DEPOIS_S,
             "diagnostico_mode": bool(self.config.diagnostico_mode),
             "versao_codigo": versao_do_codigo(),
             "idn_fonte": str(getattr(self.fonte, "idn", "")),
@@ -972,40 +977,39 @@ class ExperimentoBase(ABC):
         if not np.allclose(incrementos, incremento_esperado, rtol=0, atol=1e-9):
             raise ValueError(f"Eixo temporal não corresponde a {config.fs_hz:.0f} Sa/s")
 
-    # Margem de ``margin on``, em segundos, ANTES e DEPOIS da janela nominal.
-    # 400 ms de cada lado (v1.10) foram dimensionados contra dois números que
-    # os relatórios 01/02 mostraram falsos: o "atraso universal de ~20 ms"
-    # (era o offset de referência horizontal, H-REF10) e o "pior caso de
-    # 540 ms do LIST:REPeat" (com REPeat 0 o evento é nominal). Os valores
-    # abaixo vêm da medida: o fim de evento mais tardio das duas sessões é
-    # 116,7 ms após o trigger e o conteúdo programado termina em 200 ms
-    # (relatório 01 §2(i)); 50 ms depois cobrem o retorno ao regime e o
-    # sobre-pico de transição. NÃO reduzir abaixo disto sem refazer a medida.
+    # Margem de captura, em segundos, ANTES e DEPOIS da janela nominal.
+    # Histórico dos valores (por que 400ms → 20/50ms, não 500ms nem 25ms):
+    # v1.7/v1.8 mediram um "atraso universal de ~20ms" e adotaram 25ms; v1.9
+    # hipotetizou o DISTÚRBIO inteiro atrasando até ~2,7x (500ms); v1.10 caiu
+    # para 400ms por causa do teto real do modo AUTO do osciloscópio
+    # (~32,3-32,7 mil pontos). Os relatórios 01/02 (2026-09-21) mostraram os
+    # dois números de origem FALSOS: o "atraso" era só o offset de referência
+    # horizontal do osciloscópio (H-REF10, corrigido no P07/indice_trigger),
+    # não latência real da fonte; e com LIST:REPeat=0 (v1.10) o evento já sai
+    # no lugar nominal. Sem esse "atraso" fantasma para cobrir, a folga real
+    # necessária é medida diretamente: o fim de evento mais tardio das duas
+    # sessões de 2026-09-16 é 116,7ms após o trigger, e o conteúdo programado
+    # termina em 200ms (relatório 01 §2(i)); 50ms depois cobrem o retorno ao
+    # regime e o sobre-pico de transição observado nas bordas do evento.
+    #
+    # Desde 2026-09-22 (P10, pedido do dono) esta margem deixou de ser
+    # opt-in — não existe mais ``set margin on|off`` nem modo "sem margem"
+    # para captura física; é sempre aplicada. NÃO reduzir abaixo disto sem
+    # refazer a medida (ver docs/analise-2026-09-21/01_conclusao_investigacao.md §2(i)).
     MARGEM_ANTES_S = env_float("MARGEM_ANTES_S", 0.020)
     MARGEM_DEPOIS_S = env_float("MARGEM_DEPOIS_S", 0.050)
 
     @staticmethod
-    def _calcular_margem(*, margin_mode: bool, config_points: int, fs_hz: float) -> Tuple[int, int, int]:
-        """``margin on``: 400ms de folga de cada lado (12000 amostras a
-        30kSa/s). Os 25ms originais (CHANGELOG/v1.7.md) só cobriam o atraso
-        universal de rampa inicial (~20ms); a hipótese LIST:REPeat
-        (CHANGELOG/v1.9.md) previu o DISTÚRBIO em si atrasando até ~2,7x a
-        janela nominal de 200ms (~540ms), o que motivou uma folga de 500ms
-        na v1.9 — mas uma aquisição SINGLE real em modo AUTO (o único modo
-        viável neste osciloscópio; ``:ACQuire:DIGitizer ON`` foi investigado
-        a fundo e rejeitado, ver CHANGELOG/v1.10.md) entrega só ~32,3-32,7
-        mil pontos reais, quase constante e bem abaixo do teto teórico de
-        60000 do ``:WAVeform:POINts``. 400ms de cada lado (30000 pontos
-        totais) fica ~7,5% abaixo do pior valor real já medido (32258),
-        cobrindo o atraso universal (~20ms) com folga confortável mas SEM
-        cobrir o pior caso hipotético de 540ms do LIST:REPeat — trade-off
-        aceito na ausência de uma correção completa para esse atraso
-        (CHANGELOG/v1.10.md tem a investigação: a hipótese foi parcialmente
-        confirmada e uma correção candidata já foi aplicada em
-        ``ametek_orm.py``, mas não elimina todo o atraso sozinha). Devolve
-        (amostras de margem de UM lado, total de amostras incluindo os dois
-        lados)."""
-        if not margin_mode:
+    def _calcular_margem(*, captura_fisica: bool, config_points: int, fs_hz: float) -> Tuple[int, int, int]:
+        """Folga de ``MARGEM_ANTES_S``/``MARGEM_DEPOIS_S`` de cada lado da
+        janela nominal (20ms/50ms por padrão — 600/1500 amostras a 30kSa/s,
+        8100 pontos totais) — SEMPRE, em toda captura física, sem opt-in
+        (ver comentário acima do módulo/campo). ``captura_fisica=False``
+        (dataset simulado, ``gerar()``) nunca teve margem e continua sem —
+        devolve ``(0, 0, config_points)`` sem folga nenhuma, comportamento
+        idêntico ao de sempre. Devolve (amostras de margem antes, amostras
+        de margem depois, total de amostras incluindo os dois lados)."""
+        if not captura_fisica:
             return 0, 0, config_points
         antes = int(round(ExperimentoBase.MARGEM_ANTES_S * fs_hz))
         depois = int(round(ExperimentoBase.MARGEM_DEPOIS_S * fs_hz))
@@ -1330,7 +1334,7 @@ class ExperimentoBase(ABC):
             total = len(plano)
         t = tempo(self.config)
         margem_antes, margem_depois, pontos_efetivos = self._calcular_margem(
-            margin_mode=(not simulated and self.config.margin_mode),
+            captura_fisica=not simulated,
             config_points=self.config.points, fs_hz=self.config.fs_hz,
         )
         self._pontos_efetivos_captura_atual = pontos_efetivos

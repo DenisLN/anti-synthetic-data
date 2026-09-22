@@ -1111,7 +1111,6 @@ class ConfigCoberturaTests(unittest.TestCase):
     def test_defaults_reproduzem_config_de_hoje(self):
         config = self._config()
         self.assertIsNone(config.capturas_override)
-        self.assertFalse(config.margin_mode)
         self.assertFalse(config.diagnostico_mode)
 
 
@@ -1242,6 +1241,7 @@ class RemapeamentoNivelTests(unittest.TestCase):
         """Substitui _capturar_real por um stub que devolve uma captura
         válida sem tocar osciloscópio/fonte de verdade — só precisamos
         observar QUAL capture_index cada chamada recebeu."""
+        experimento._calcular_margem = lambda **kw: (0, 0, kw["config_points"])
         pontos = experimento.config.points
         tempo_s = np.arange(pontos, dtype=np.float64) / experimento.config.fs_hz
         def _stub(capture_index, t, rng):
@@ -1705,24 +1705,28 @@ class CoberturaParametroContinuoTests(unittest.TestCase):
 
 
 class MargemCapturaTests(unittest.TestCase):
-    """ADAPTADO em P08 (não enfraquecido): ``_calcular_margem`` passou a
-    devolver ``(antes, depois, total)`` em vez de ``(margem, total)``, porque
-    a margem deixou de ser simétrica. As asserções continuam as mesmas em
-    natureza (margin off = janela nominal; margin on = folga dos dois lados,
-    dentro dos dois tetos do osciloscópio); só os NÚMEROS mudaram, de
-    400/400 ms para 20/50 ms. Justificativa completa em
-    03_propostas_melhorias.md, proposta P1-2."""
+    """ADAPTADO em P10 (não enfraquecido, 2026-09-22): a margem deixou de ser
+    opt-in — ``_calcular_margem`` trocou o parâmetro ``margin_mode: bool``
+    (toggle ligado/desligado por ``set margin on|off``) por
+    ``captura_fisica: bool`` (é captura real ou dataset simulado?). As
+    asserções continuam as mesmas em natureza (simulado = janela nominal,
+    sem folga; captura real = folga dos dois lados, dentro dos dois tetos do
+    osciloscópio, SEMPRE — não há mais 'desligado' para captura real); os
+    NÚMEROS (20/50 ms) já vinham do P08 e não mudam aqui. Justificativa
+    completa em 03_propostas_melhorias.md, proposta P1-2, e no pedido do
+    dono de 2026-09-22 ("descontinue o margin on... faça esse comportamento
+    de janela o default")."""
 
-    def test_margin_off_mantem_pontos_nominais(self):
+    def test_simulado_mantem_pontos_nominais_sem_margem(self):
         antes, depois, pontos_totais = mestre.ExperimentoBase._calcular_margem(
-            margin_mode=False, config_points=6000, fs_hz=30_000.0,
+            captura_fisica=False, config_points=6000, fs_hz=30_000.0,
         )
         self.assertEqual((antes, depois), (0, 0))
         self.assertEqual(pontos_totais, 6000)
 
-    def test_margin_on_adiciona_amostras_de_cada_lado(self):
+    def test_captura_fisica_sempre_adiciona_amostras_de_cada_lado(self):
         antes, depois, pontos_totais = mestre.ExperimentoBase._calcular_margem(
-            margin_mode=True, config_points=6000, fs_hz=30_000.0,
+            captura_fisica=True, config_points=6000, fs_hz=30_000.0,
         )
         self.assertEqual(antes, 600)    # 20 ms * 30 kSa/s
         self.assertEqual(depois, 1_500)  # 50 ms * 30 kSa/s
@@ -1734,23 +1738,23 @@ class MargemCapturaTests(unittest.TestCase):
         A janela precisa conter os 200 ms nominais E a folga de retorno ao
         regime."""
         _, depois, pontos_totais = mestre.ExperimentoBase._calcular_margem(
-            margin_mode=True, config_points=6000, fs_hz=30_000.0,
+            captura_fisica=True, config_points=6000, fs_hz=30_000.0,
         )
         self.assertGreaterEqual(6000 + depois, int(0.250 * 30_000))
         self.assertEqual(pontos_totais / 30_000.0, 0.270)
 
-    def test_margin_on_fica_dentro_do_teto_de_pontos_do_osciloscopio(self):
+    def test_captura_fisica_fica_dentro_do_teto_de_pontos_do_osciloscopio(self):
         # oscilloscope_orm.py fixa ":WAVeform:POINts 60000" tanto em
         # configure_acquisition() quanto em get_waveform() — um pontos_totais
         # acima disso faria a preamble real declarar menos pontos do que
         # pedido, e get_waveform() levantaria OscilloscopeError na próxima
         # sessão física (CHANGELOG/v1.9.md).
         *_, pontos_totais = mestre.ExperimentoBase._calcular_margem(
-            margin_mode=True, config_points=6000, fs_hz=30_000.0,
+            captura_fisica=True, config_points=6000, fs_hz=30_000.0,
         )
         self.assertLess(pontos_totais, 60_000)
 
-    def test_margin_on_fica_com_folga_do_teto_real_do_modo_auto(self):
+    def test_captura_fisica_fica_com_folga_do_teto_real_do_modo_auto(self):
         # CHANGELOG/v1.10.md: uma aquisição SINGLE real em modo AUTO entrega
         # só ~32,3-32,7 mil pontos reais, quase independente da janela
         # pedida (medido: 32258/32258/32653/32432 pontos para janelas de
@@ -1759,9 +1763,18 @@ class MargemCapturaTests(unittest.TestCase):
         # limita quanto pontos_totais pode pedir; 30000 fica com ~2258
         # pontos (~7,5%) de folga sobre o pior caso já medido.
         *_, pontos_totais = mestre.ExperimentoBase._calcular_margem(
-            margin_mode=True, config_points=6000, fs_hz=30_000.0,
+            captura_fisica=True, config_points=6000, fs_hz=30_000.0,
         )
         self.assertLessEqual(pontos_totais, 30_000)
+
+    def test_nao_ha_mais_modo_sem_margem_para_captura_fisica(self):
+        """Pedido do dono, 2026-09-22: descontinuar 'set margin on|off' e
+        tornar a janela pequena o default — não pode sobrar nenhum jeito de
+        pedir 'captura real sem margem' pela assinatura da função."""
+        import inspect
+        assinatura = inspect.signature(mestre.ExperimentoBase._calcular_margem)
+        self.assertNotIn("margin_mode", assinatura.parameters)
+        self.assertIn("captura_fisica", assinatura.parameters)
 
     def test_validar_captura_aceita_pontos_extras_quando_esperado_explicito(self):
         config = mestre.Config(
@@ -2136,6 +2149,9 @@ class SalvamentoIncrementalTests(unittest.TestCase):
 
         experimento = _Classe(bancada)
         experimento.osc = mock.Mock()
+        # Esta classe testa gravação incremental, não margem (P10) — neutraliza
+        # a folga fixa para os stubs poderem devolver arrays de config.points.
+        experimento._calcular_margem = lambda **kw: (0, 0, kw["config_points"])
         pontos = config.points
         tempo_s = np.arange(pontos, dtype=np.float64) / config.fs_hz
         chamadas = {"n": 0}
@@ -2254,6 +2270,7 @@ class ErroDeterministicoEPreValidacaoTests(unittest.TestCase):
         return _Swell
 
     def _preparar(self, experimento):
+        experimento._calcular_margem = lambda **kw: (0, 0, kw["config_points"])
         pontos = experimento.config.points
         tempo_s = np.arange(pontos, dtype=np.float64) / experimento.config.fs_hz
 
@@ -2475,6 +2492,7 @@ class ValidacaoFisicaTests(unittest.TestCase):
 
             experimento = _Classe(bancada)
             experimento.osc = mock.Mock()
+            experimento._calcular_margem = lambda **kw: (0, 0, kw["config_points"])
             tempo_s = np.arange(6000, dtype=np.float64) / 30_000.0
             # a "fonte" entrega 127 V onde a classe pediu 220 V
             experimento._capturar_real = lambda ci, t, rng: (
@@ -2562,7 +2580,7 @@ class LogDeSessaoEMetadataTests(unittest.TestCase):
                 base_voltage_rms=220.0, snr_levels_db=(), base_seed=1,
                 capture_current=False, current_base_a=None, results_dir=tmp_dir / "resultados",
                 sim_captures_per_class=1, real_captures_per_class=1, disturbance_start_s=0.06,
-                capturas_override=1, margin_mode=True, diagnostico_mode=True,
+                capturas_override=1, diagnostico_mode=True,
             )
             fonte = mestre.AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=425.0)
             bancada = mestre.Bancada(fonte, mock.Mock(), config)
@@ -2595,14 +2613,17 @@ class LogDeSessaoEMetadataTests(unittest.TestCase):
                 (config.results_dir / "metadata" / "02_sag.jsonl").read_text(encoding="utf-8").splitlines()[0]
             )
             for chave in (
-                "f0_hz", "tensao_base_rms", "pre_trigger_s", "margin_mode", "diagnostico_mode",
-                "versao_codigo", "idn_fonte", "indice_trigger", "escritas_trace_na_conexao",
+                "f0_hz", "tensao_base_rms", "pre_trigger_s", "margem_antes_s", "margem_depois_s",
+                "diagnostico_mode", "versao_codigo", "idn_fonte", "indice_trigger",
+                "escritas_trace_na_conexao",
             ):
                 self.assertIn(chave, registro, f"metadata precisa gravar {chave}")
             self.assertEqual(registro["f0_hz"], 50.0)
             self.assertEqual(registro["tensao_base_rms"], 220.0)
             self.assertEqual(registro["pre_trigger_s"], 0.060)
             self.assertEqual(registro["indice_trigger"], 777)
+            self.assertEqual(registro["margem_antes_s"], mestre.ExperimentoBase.MARGEM_ANTES_S)
+            self.assertEqual(registro["margem_depois_s"], mestre.ExperimentoBase.MARGEM_DEPOIS_S)
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
@@ -2792,6 +2813,10 @@ class CapturaDescartavelTests(unittest.TestCase):
 
         experimento = _Classe(bancada)
         experimento.osc = mock.Mock()
+        # Este teste é sobre a lógica de descarte, não sobre margem (P10) —
+        # neutraliza a folga fixa para os stubs poderem devolver arrays do
+        # tamanho nominal de sempre.
+        experimento._calcular_margem = lambda **kw: (0, 0, kw["config_points"])
         pontos = config.points
         tempo_s = np.arange(pontos, dtype=np.float64) / config.fs_hz
         chamadas = {"n": 0}
@@ -2963,6 +2988,7 @@ class CapturaDescartavelTests(unittest.TestCase):
 
             experimento = _Classe(bancada)
             experimento.osc = mock.Mock()
+            experimento._calcular_margem = lambda **kw: (0, 0, kw["config_points"])
             tempo_s = np.arange(6000, dtype=np.float64) / 30_000.0
             chamadas = {"n": 0}
 
@@ -3004,6 +3030,7 @@ class CapturaDescartavelTests(unittest.TestCase):
 
             experimento_instancia = _ClasseReal(bancada)
             experimento_instancia.osc = mock.Mock()
+            experimento_instancia._calcular_margem = lambda **kw: (0, 0, kw["config_points"])
             tempo_s = np.arange(6000, dtype=np.float64) / 30_000.0
             chamadas = {"n": 0}
 

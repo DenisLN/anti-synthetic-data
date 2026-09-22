@@ -257,8 +257,7 @@ momento; resumo:
 | `native` | **sim** | antiga etapa "Comandos nativos" — `preflight_new.py --native-commands` |
 | `run <NN\|nome>` | **sim** | roda UMA classe isolada (ex.: `run 02` ou `run SAG`) |
 | `run all` | **sim** | bateria completa das 20 classes, sequencial, resiliente por classe (ver 5.5) |
-| `set margin on\|off` | não | liga/desliga captura com ~400ms de folga extra antes/depois da janela nominal, salva o array bruto sem recorte automático — só afeta captura real (`OFF` por padrão) |
-| `set diagnostico on\|off` | não | liga/desliga log extra de `STATus:OPERation:CONDition?`/`OUTPut:STATe?`/tensão imediata em pontos-chave de `run`/`run all`, para testar as hipóteses de timing do `CHANGELOG/v1.7.md` (`OFF` por padrão) |
+| `set diagnostico on\|off` | não | liga/desliga log extra de `STATus:OPERation:CONDition?`/`OUTPut:STATe?`/tensão imediata em pontos-chave de `run`/`run all`, para testar as hipóteses de timing do `CHANGELOG/v1.7.md` (`OFF` por padrão); com `on`, também abre um terminal extra acompanhando a transcrição SCPI da sessão em tempo real |
 | `set capturas <N>` | não | quantas capturas por classe na bancada real (default `1`); em classes com níveis discretos (SAG/SWELL/HARMONICS), `N` por nível, cobertura determinística em vez de sorteio |
 | `quit` / `exit` | não | sai da CLI |
 
@@ -269,6 +268,14 @@ Sem hardware (`BENCH_MODE=0`), `status`/`list`/`run` continuam funcionando em
 modo simulado; `comm`/`trigger`/`lowvoltage`/`native` exigem bancada física de
 verdade (mesma restrição que `preflight.py`/`preflight_new.py` sempre
 tiveram) e falham com uma mensagem clara.
+
+**Margem de captura (desde 2026-09-22, v1.11):** toda captura FÍSICA grava com
+folga fixa de `MARGEM_ANTES_S`/`MARGEM_DEPOIS_S` (20 ms antes / 50 ms depois da
+janela nominal por padrão) — deixou de ser opt-in. O comando `set margin
+on|off` (v1.8–v1.10) foi **descontinuado**: não existe mais um modo "sem
+margem" para captura real, e digitá-lo na CLI só imprime um aviso. Ajustável
+só por variável de ambiente antes de iniciar a sessão, nunca em runtime. Ver
+`CHANGELOG/v1.11.md`.
 
 ### 5.4 Confirmações interativas — não são automatizáveis
 

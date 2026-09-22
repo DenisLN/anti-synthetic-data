@@ -52,13 +52,12 @@ Comandos disponíveis (nenhum energiza a saída sem pedir confirmação própria
   run all             Roda a bateria completa das 20 classes, sequencialmente,
                        sem parar numa falha isolada (ver Prioridade 1 do
                        CHANGELOG). Pede EXECUTAR-20-CLASSES.                [ON]
-  set margin on|off   Liga/desliga captura com folga extra (~400ms de cada
-                       lado) antes/depois da janela nominal — salva o array
-                       bruto, sem recorte automático. Só afeta captura real.[OFF]
   set diagnostico on|off
                        Liga/desliga log extra de STATus:OPERation:CONDition?/
                        OUTPut:STATe?/tensão imediata em pontos-chave de
-                       run/run all — para testar as hipóteses do v1.7.      [OFF]
+                       run/run all — para testar as hipóteses do v1.7. Com
+                       "on", também abre um terminal extra acompanhando a
+                       transcrição SCPI da sessão em tempo real (tail -f).   [OFF]
   set capturas <N>    Quantas capturas por classe na bancada real (default
                        1). Em classes com níveis discretos (SAG/SWELL/
                        HARMONICS), N por nível.                             [OFF]
@@ -72,6 +71,12 @@ Ordem recomendada para uma sessão do zero:
 Sem hardware (BENCH_MODE=0): comm/trigger/lowvoltage/native exigem bancada
 física de verdade e falham com um erro claro; status/list/run continuam
 funcionando em modo simulado.
+
+Margem de captura: desde 2026-09-22 toda captura FÍSICA grava com folga fixa
+de MARGEM_ANTES_S/MARGEM_DEPOIS_S (20ms antes / 50ms depois da janela nominal
+por padrão) — não é mais opt-in ("set margin on|off" foi descontinuado, não
+existe mais modo sem margem para captura real). Ajustável só por variável de
+ambiente antes de iniciar a sessão, nunca em runtime.
 """.strip("\n")
 
 
@@ -152,7 +157,9 @@ class SessaoCLI:
             f"{mestre.GRID_FREQUENCY_HZ:.3f} Hz"
         )
         print(
-            f"margin: {'ON' if mestre.MARGIN_MODE else 'OFF'}   "
+            f"margem: {mestre.ExperimentoBase.MARGEM_ANTES_S * 1000:.0f}ms antes / "
+            f"{mestre.ExperimentoBase.MARGEM_DEPOIS_S * 1000:.0f}ms depois (fixo, "
+            f"não é mais opt-in)   "
             f"diagnostico: {'ON' if mestre.DIAGNOSTICO_MODE else 'OFF'}   "
             f"capturas: {mestre.CAPTURAS_OVERRIDE or mestre.REAL_CAPTURES_PER_CLASS}"
         )
@@ -186,17 +193,17 @@ class SessaoCLI:
 
     def cmd_set(self, args: List[str]) -> int:
         if len(args) < 2:
-            print("Uso: set margin on|off   |   set diagnostico on|off   |   set capturas <N>")
+            print("Uso: set diagnostico on|off   |   set capturas <N>")
             return 1
         chave, valor = args[0].lower(), args[1].lower()
         if chave == "margin":
-            if valor not in ("on", "off"):
-                print("Uso: set margin on|off")
-                return 1
-            mestre.MARGIN_MODE = valor == "on"
-            print(f"margin: {'ON' if mestre.MARGIN_MODE else 'OFF'}")
-            if mestre.MARGIN_MODE and not mestre.BENCH_MODE:
-                print("Aviso: margin on só tem efeito em captura FÍSICA (BENCH_MODE=1); sem efeito em modo simulado.")
+            print(
+                "set margin foi descontinuado em 2026-09-22: a margem de captura "
+                f"({mestre.ExperimentoBase.MARGEM_ANTES_S * 1000:.0f}ms antes / "
+                f"{mestre.ExperimentoBase.MARGEM_DEPOIS_S * 1000:.0f}ms depois) agora é "
+                "SEMPRE aplicada em toda captura física — não há mais 'on'/'off'. Ver "
+                "CHANGELOG/v1.11.md."
+            )
             return 0
         if chave == "diagnostico":
             if valor not in ("on", "off"):
