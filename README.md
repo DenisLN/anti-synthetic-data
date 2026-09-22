@@ -545,6 +545,19 @@ resultado de execuções anteriores.
 - [`CHANGELOG/v1.8.md`](CHANGELOG/v1.8.md) — `set margin`/`diagnostico`/
   `capturas`, sessão isolada por pasta (`resultados/sessao_<timestamp>/`),
   cobertura determinística de níveis/parâmetros e `logica/analisar_sessao.py`.
+- [`CHANGELOG/v1.9.md`](CHANGELOG/v1.9.md) — hipótese `LIST:REPeat`
+  dobrando cada ciclo, dois pontos de diagnóstico novos, folga de
+  `margin on` para 500ms.
+- [`CHANGELOG/v1.10.md`](CHANGELOG/v1.10.md) — `LIST:REPeat` confirmado
+  parcialmente e corrigido, modo Digitizer investigado e descartado,
+  margem cai para 400ms; três bugs encontrados e ainda não corrigidos
+  naquela versão (resolvidos em v1.11, ver abaixo).
+- [`CHANGELOG/v1.11.md`](CHANGELOG/v1.11.md) — análise offline completa das
+  duas sessões de 2026-09-16 (`docs/analise-2026-09-21/`): caminho nativo
+  íntegro (H-NATIVO), validação física pós-captura, posição do trigger
+  corrigida (H-REF10), margem fixa de 20/50ms (`set margin` descontinuado),
+  captura com erro descartável não aborta mais a bateria, terminal de
+  `tail -f` da transcrição SCPI com `diagnostico on`.
 - `docs/AMETEK_MX_SCPI_Programming_Manual.pdf` e
   `docs/Keysight_4000X_Programmers_Guide.pdf` — manuais SCPI originais dos
   dois instrumentos.
