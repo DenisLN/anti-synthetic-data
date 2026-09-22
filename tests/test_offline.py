@@ -1940,5 +1940,127 @@ class CaminhoNativoIntegridadeTests(unittest.TestCase):
         self.assertEqual(escritas(sem_log.command_log), escritas(com_log.command_log))
 
 
+class ArmLeDeVoltaTests(unittest.TestCase):
+    """P02 — ``arm()`` (caminho nativo) lê de volta o que foi escrito.
+
+    Assimetria que deixou H-NATIVO passar em silêncio por duas sessões
+    (relatório 01 §1.2): ``arm_transient()`` (LIST) lê 9 parâmetros do
+    instrumento e recusa divergência; ``arm()`` (nativo) não lia nada.
+    NÃO consultamos ``FUNCtion:SHAPe?``/``SOURce:MODE?``: a Rev. 5.53 não os
+    implementa como QUERY e devolve ``-113`` (documentado na docstring de
+    ``aguardar_resposta``) — o relatório 01 recomenda ler ``FUNCtion:SHAPe?``
+    e nisso ele está errado para este firmware."""
+
+    def _fonte(self, **kwargs):
+        kwargs.setdefault("max_voltage_rms", 300.0)
+        kwargs.setdefault("max_peak_v", 425.0)
+        kwargs.setdefault("max_current_a", 0.5)
+        return AmetekMX30(simulated=True, **kwargs)
+
+    def test_arm_consulta_os_parametros_do_step(self):
+        fonte = self._fonte()
+        fonte.trigger_step(127.0)
+        fonte.command_log.clear()
+        fonte.arm(timeout_s=2.0)
+        consultas = [c.upper() for c in fonte.command_log if c.endswith("?")]
+        self.assertIn("VOLTAGE:MODE?", consultas)
+        self.assertIn("VOLTAGE:TRIGGERED?", consultas)
+        self.assertIn("FUNCTION:MODE?", consultas)
+        self.assertIn("SOURCE:FREQUENCY:MODE?", consultas)
+        self.assertNotIn("SOURCE:FUNCTION:SHAPE?", consultas)
+        self.assertNotIn("SOURCE:MODE?", consultas)
+
+    def test_arm_consulta_pulse_width_so_em_modo_pulse(self):
+        fonte = self._fonte()
+        fonte.trigger_step(127.0)
+        fonte.command_log.clear()
+        fonte.arm(timeout_s=2.0)
+        self.assertNotIn("PULSE:WIDTH?", [c.upper() for c in fonte.command_log])
+        fonte.trigger()  # devolve o simulador ao estado IDLE, como na bancada
+        fonte.trigger_pulse(12.7, width_s=0.060)
+        fonte.command_log.clear()
+        fonte.arm(timeout_s=2.0)
+        self.assertIn("PULSE:WIDTH?", [c.upper() for c in fonte.command_log])
+
+    def test_arm_recusa_quando_voltage_triggered_nao_pegou(self):
+        """O caso exato da sessão 2: a classe escreveu 220 V e a fonte
+        continuou com 242 V (nível anterior). Sem readback isso virou dado
+        rotulado errado; com readback vira falha de captura."""
+        fonte = self._fonte()
+        fonte.trigger_pulse(220.0, width_s=0.060)
+        original = fonte.query
+
+        def query_valor_preso(command):
+            if command.strip().upper().startswith("VOLTAGE:TRIGGERED?"):
+                return "242.0"
+            return original(command)
+
+        fonte.query = query_valor_preso
+        with self.assertRaises(InstrumentHardwareError) as ctx:
+            fonte.arm(timeout_s=2.0)
+        mensagem = str(ctx.exception)
+        self.assertIn("VOLTage:TRIGgered", mensagem)
+        self.assertIn("242", mensagem)
+
+    def test_arm_recusa_quando_function_mode_ficou_em_list(self):
+        """Candidato n.º 2 de H-NATIVO: lista de forma residual de uma classe
+        waveform anterior ainda ativa no *TRG nativo."""
+        fonte = self._fonte()
+        fonte.trigger_step(127.0)
+        original = fonte.query
+
+        def query_modo_residual(command):
+            if command.strip().upper().startswith("FUNCTION:MODE?"):
+                return "LIST"
+            return original(command)
+
+        fonte.query = query_modo_residual
+        with self.assertRaises(InstrumentHardwareError) as ctx:
+            fonte.arm(timeout_s=2.0)
+        self.assertIn("FUNCtion:MODE", str(ctx.exception))
+
+    def test_arm_aceita_abreviacoes_do_firmware(self):
+        """A Rev. 5.53 responde 'FIX'/'PULS'/'STEP' (forma curta SCPI)."""
+        fonte = self._fonte()
+        fonte.trigger_pulse(12.7, width_s=0.060)
+        original = fonte.query
+
+        def query_abreviado(command):
+            upper = command.strip().upper()
+            if upper == "VOLTAGE:MODE?":
+                return "PULS"
+            if upper == "FUNCTION:MODE?":
+                return "FIX"
+            if upper == "SOURCE:FREQUENCY:MODE?":
+                return "FIX"
+            return original(command)
+
+        fonte.query = query_abreviado
+        fonte.arm(timeout_s=2.0)  # não deve levantar
+
+    def test_arm_relata_init_ignorado_lendo_a_fila(self):
+        """Manual p. 129: "If the trigger system is not in the Idle state, the
+        initiate commands are ignored" e p. 214 ``-220 "Init ignored"``.
+        Assinatura observada na classe 05 (relatório 01 §1.3 B5): INIT sem
+        erro e o estado nunca sai de IDLE."""
+        fonte = self._fonte()
+        fonte.trigger_step(127.0)
+        original = fonte.query
+        fila = ['0,"No error"', '-220,"Init ignored"', '0,"No error"']
+
+        def query_preso_em_idle(command):
+            upper = command.strip().upper()
+            if upper.startswith(("TRIGGER:STATE?", "TRIG:STATE?")):
+                return "IDLE"
+            if upper.startswith(("SYST", "SYSTEM")):
+                return fila.pop(0) if fila else '0,"No error"'
+            return original(command)
+
+        fonte.query = query_preso_em_idle
+        with self.assertRaises(TimeoutError) as ctx:
+            fonte.arm(timeout_s=0.3)
+        self.assertIn("220", str(ctx.exception))
+
+
 if __name__ == "__main__":
     unittest.main()
