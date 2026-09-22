@@ -17,7 +17,8 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple
 import numpy as np
 
 from ametek_orm import (
-    AmetekMX30, CommunicationError, FalhaFatalDeInstrumento, ParameterOutOfBoundsError,
+    AmetekMX30, CommunicationError, FalhaFatalDeInstrumento, InstrumentHardwareError,
+    ParameterOutOfBoundsError,
 )
 from sinais import comparar_fisicamente, ruido_awgn, snr_medida, tempo
 
@@ -262,6 +263,36 @@ VALIDACAO_FISICA = env_bool("VALIDACAO_FISICA", default=True)
 VALIDACAO_TOL_ENVELOPE = env_float("VALIDACAO_TOL_ENVELOPE", 0.15)
 VALIDACAO_TOL_THD = env_float("VALIDACAO_TOL_THD", 0.20)
 
+# Erros que invalidam só UMA captura: ExperimentoBase.executar() loga,
+# descarta a captura (não grava nada para ela) e segue para a PRÓXIMA
+# posição do plano — nunca propaga para executar_bateria(). Pedido do dono
+# em 2026-09-22, reagindo ao readback do p01/p02 ("a captura falha na
+# hora"): "não aborte a bateria de testes, apenas log e descarte — abortar
+# gasta MUITO tempo" (reexecutar a classe inteira do zero, até 3x, custava
+# exatamente isso).
+#
+# - InstrumentHardwareError: erro 19 "Illegal during transient" (p01),
+#   divergência de readback (p02), ou qualquer outro assert_no_errors()
+#   dentro de _capturar_real() — sempre sobre O QUE ACABOU DE SER
+#   programado/armado/disparado NESTA captura, nunca sobre o estado da
+#   conexão em si (isso é CommunicationError, de propósito FORA desta
+#   lista — ver o comentário em executar()).
+# - TimeoutError: espera de IDLE/ARM/trigger de UMA captura (ex.: o -113
+#   esporádico documentado desde o v1.7).
+# - ValueError (cobre ParameterOutOfBoundsError): _validar_captura() ou um
+#   nível fora de faixa não pego pela pré-validação do p04 (classes de
+#   parâmetro contínuo, onde _indices_viaveis() não filtra por não
+#   conhecer o valor de antemão) — outro capture_index pode estar dentro
+#   da faixa, vale tentar o próximo.
+#
+# Deliberadamente NÃO inclui CommunicationError/FalhaFatalDeInstrumento
+# (a serial caiu / não é seguro recuperar um estado conhecido — isso
+# continua abortando a bateria imediatamente, ver AGENTS.md "Limites
+# inegociáveis") nem RuntimeError (gerar() com forma inválida é bug de
+# código, não falha intermitente de hardware — descartar captura a
+# captura só adiaria a mesma exceção até sobrar zero, sem nunca avisar).
+ERROS_CAPTURA_DESCARTAVEL = (InstrumentHardwareError, TimeoutError, ValueError)
+
 
 @dataclass(frozen=True)
 class Config:
@@ -300,6 +331,12 @@ class ResultadoClasse:
     nome: str
     ok: bool
     motivo: Optional[str] = None
+    # Capturas individuais perdidas dentro de uma classe que, no total,
+    # terminou ``ok=True`` (ver ERROS_CAPTURA_DESCARTAVEL/ExperimentoBase.
+    # executar()). ``descartadas`` = erro (nada gravado); ``invalidas`` =
+    # gravada, mas a validação física (P05) reprovou o conteúdo.
+    descartadas: int = 0
+    invalidas: int = 0
 
     @property
     def pasta_esperada(self) -> Path:
@@ -541,6 +578,8 @@ class Bancada:
 
             sucesso = False
             ultimo_erro: Optional[str] = None
+            descartadas = 0
+            invalidas = 0
             for tentativa in range(1, self.MAX_TENTATIVAS_POR_CLASSE + 1):
                 if tentativa > 1:
                     logger.warning(
@@ -551,8 +590,11 @@ class Bancada:
                     "========== Experimento %s (%s) ==========", class_id, script_path.parent.name
                 )
                 try:
-                    experimento_cls(self).executar()
+                    experimento = self._instanciar_experimento(experimento_cls)
+                    experimento.executar()
                     sucesso = True
+                    descartadas = getattr(experimento, "_capturas_descartadas_count", 0)
+                    invalidas = getattr(experimento, "_capturas_invalidas_count", 0)
                     break
                 except (CommunicationError, FalhaFatalDeInstrumento):
                     logger.error(
@@ -578,7 +620,9 @@ class Bancada:
                         self.recuperar_estado_seguro()
 
             if sucesso:
-                resultados.append(ResultadoClasse(class_id, nome, ok=True))
+                resultados.append(ResultadoClasse(
+                    class_id, nome, ok=True, descartadas=descartadas, invalidas=invalidas,
+                ))
             else:
                 logger.error(
                     "[%s] FALHOU definitivamente após %d tentativas — classe abortada, "
@@ -594,7 +638,23 @@ class Bancada:
         for resultado in resultados:
             if not resultado.ok:
                 logger.warning("  FALHOU [%s] %s: %s", resultado.id, resultado.nome, resultado.motivo)
+            elif resultado.descartadas or resultado.invalidas:
+                logger.warning(
+                    "  OK COM RESSALVAS [%s] %s: %d captura(s) descartada(s) por erro, "
+                    "%d marcada(s) inválida(s) na validação física (gravadas mesmo assim, "
+                    "ver 'validacao_fisica' no metadata)",
+                    resultado.id, resultado.nome, resultado.descartadas, resultado.invalidas,
+                )
         return resultados
+
+    def _instanciar_experimento(self, experimento_cls: type) -> "ExperimentoBase":
+        """Seam de teste: ``executar_bateria`` sempre cria a instância por
+        aqui, nunca inline, para poder ler ``_capturas_descartadas_count``/
+        ``_capturas_invalidas_count`` dela depois de ``.executar()`` retornar
+        (ver ResultadoClasse.descartadas/invalidas) e para que um teste possa
+        injetar uma instância já preparada (stubs de ``_capturar_real`` etc.)
+        sem reconstruir toda a cadeia de carregamento dinâmico do script."""
+        return experimento_cls(self)
 
     @staticmethod
     def _carregar_classe_experimento(script_path: Path) -> type:
@@ -1297,6 +1357,7 @@ class ExperimentoBase(ABC):
         ids: List[str] = []
         metadados: List[dict] = []
         capturas_invalidas: List[Tuple[str, List[str]]] = []
+        capturas_descartadas: List[Tuple[str, int, str]] = []
         tempo_ms_eixo = None
         if not simulated:
             # Gravação incremental: cada captura vai para o disco assim que
@@ -1309,6 +1370,7 @@ class ExperimentoBase(ABC):
             for posicao, (indice_global, capture_index) in enumerate(plano):
                 seed = self.config.base_seed + int(self.id) * 1_000_000 + indice_global
                 rng = np.random.default_rng(seed)
+                capture_id = f"{self.id}-{indice_global + 1:04d}"
 
                 if simulated:
                     voltage_pu, parametros = self.gerar(t, self.config.grid_frequency_hz, capture_index, rng)
@@ -1321,13 +1383,30 @@ class ExperimentoBase(ABC):
                         0.8 * np.sin(2.0 * np.pi * self.config.grid_frequency_hz * t - 0.2)
                         if self.config.capture_current else None
                     )
+                    self._validar_captura(time_s, measured_voltage_pu, pontos_esperados=pontos_efetivos)
                 else:
-                    time_s, measured_voltage_pu, measured_current_pu, parametros = self._capturar_real(
-                        capture_index, t, rng,
-                    )
-                self._validar_captura(time_s, measured_voltage_pu, pontos_esperados=pontos_efetivos)
+                    try:
+                        time_s, measured_voltage_pu, measured_current_pu, parametros = self._capturar_real(
+                            capture_index, t, rng,
+                        )
+                        self._validar_captura(time_s, measured_voltage_pu, pontos_esperados=pontos_efetivos)
+                    except ERROS_CAPTURA_DESCARTAVEL as exc:
+                        # Só ESTA captura é perdida — a bateria/classe seguem para a
+                        # próxima posição do plano, sem retentar do zero (pedido do
+                        # dono em 2026-09-22: "não aborte, apenas log e descarte;
+                        # abortar a bateria gasta MUITO tempo"). Nada é gravado para
+                        # ela. Ver ERROS_CAPTURA_DESCARTAVEL para o que entra/não
+                        # entra nesta lista e por quê.
+                        logger.error(
+                            "[%s] captura %s (%d/%d, nível %d) DESCARTADA — %s: %s. A "
+                            "classe e a bateria continuam; nada foi gravado para esta "
+                            "captura.",
+                            self.id, capture_id, posicao + 1, total, capture_index,
+                            type(exc).__name__, exc,
+                        )
+                        capturas_descartadas.append((capture_id, capture_index, str(exc)))
+                        continue
                 tempo_ms_eixo = time_s * 1000.0
-                capture_id = f"{self.id}-{indice_global + 1:04d}"
                 ids.append(capture_id)
                 tensao_limpa[posicao] = measured_voltage_pu
 
@@ -1403,14 +1482,37 @@ class ExperimentoBase(ABC):
             # as nativas, não.
             self.fonte.restaurar_forma_e_modo_padrao()
             self._finalizar_gravacao(parcial=False)
-            if capturas_invalidas:
-                # Os dados já estão no disco, marcados. A exceção existe para
-                # o operador SABER — silêncio aqui seria exatamente o que
-                # deixou duas sessões inteiras com rótulo errado.
-                raise ValidacaoFisicaError(
-                    f"[{self.id}] {len(capturas_invalidas)} de {total} capturas não "
-                    f"correspondem ao programado: {capturas_invalidas}. Os arquivos foram "
-                    "GRAVADOS com validacao_fisica.ok=false no metadata."
+            capturas_boas = total - len(capturas_descartadas) - len(capturas_invalidas)
+            self._capturas_descartadas_count = len(capturas_descartadas)
+            self._capturas_invalidas_count = len(capturas_invalidas)
+            if capturas_descartadas or capturas_invalidas:
+                # Os dados válidos e os inválidos (marcados) já estão no
+                # disco. Log sempre, mesmo quando a classe vai terminar OK —
+                # silêncio aqui seria exatamente o que deixou duas sessões
+                # inteiras com rótulo errado sem ninguém notar.
+                logger.warning(
+                    "[%s] %d/%d capturas boas; %d descartada(s) por erro (nada gravado), "
+                    "%d marcada(s) inválida(s) na validação física (gravadas mesmo assim, "
+                    "ver 'validacao_fisica' no metadata).",
+                    self.id, capturas_boas, total, len(capturas_descartadas), len(capturas_invalidas),
+                )
+            if total > 0 and capturas_boas <= 0:
+                # Rede de segurança: só chega aqui se TODA captura planejada
+                # foi perdida — a classe não pode terminar silenciosamente
+                # como OK com zero dado. Isto ainda propaga para
+                # executar_bateria() (ao contrário do caso comum de 1-em-N
+                # acima, que não levanta nada).
+                if capturas_invalidas:
+                    raise ValidacaoFisicaError(
+                        f"[{self.id}] nenhuma das {total} capturas planejadas passou na "
+                        f"validação física ({len(capturas_invalidas)} gravadas mas "
+                        f"reprovadas, {len(capturas_descartadas)} descartadas por erro): "
+                        f"{capturas_invalidas}. Os arquivos foram GRAVADOS com "
+                        "validacao_fisica.ok=false no metadata."
+                    )
+                raise InstrumentHardwareError(
+                    f"[{self.id}] nenhuma das {total} capturas planejadas produziu dado "
+                    f"válido — todas descartadas por erro: {capturas_descartadas}."
                 )
         else:
             self._salvar_classe(

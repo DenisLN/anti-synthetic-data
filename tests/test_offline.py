@@ -2145,7 +2145,14 @@ class SalvamentoIncrementalTests(unittest.TestCase):
             if observador is not None:
                 observador(chamadas["n"])
             if falhar_em is not None and chamadas["n"] == falhar_em:
-                raise InstrumentHardwareError("falha simulada no meio da classe")
+                # CommunicationError (não InstrumentHardwareError): desde o
+                # P09 (2026-09-22), InstrumentHardwareError de UMA captura é
+                # descartada e a classe SEGUE (ver CapturaDescartavelTests) —
+                # deixaria de exercitar o abort-preserva-parcial que esta
+                # classe testa. CommunicationError continua abortando de
+                # propósito (serial caiu de verdade), que é o cenário real
+                # que a gravação incremental foi desenhada para proteger.
+                raise CommunicationError("falha de infraestrutura simulada no meio da classe")
             return tempo_s, np.sin(2.0 * np.pi * 60.0 * tempo_s), None, {}
 
         experimento._capturar_real = _stub
@@ -2174,7 +2181,7 @@ class SalvamentoIncrementalTests(unittest.TestCase):
         try:
             config = self._config(tmp_dir / "resultados")
             experimento = self._experimento(config, falhar_em=3)
-            with self.assertRaises(InstrumentHardwareError):
+            with self.assertRaises(CommunicationError):
                 experimento.executar()
             arquivos = sorted(p.name for p in config.results_dir.glob("96_*.npz"))
             self.assertEqual(len(arquivos), 2, f"esperava 2 capturas preservadas, achei {arquivos}")
@@ -2197,7 +2204,7 @@ class SalvamentoIncrementalTests(unittest.TestCase):
             orfao = config.results_dir / "96_teste_incremental_cap09.npz"
             np.savez(orfao, tempo_ms=np.zeros(3), tensao_pu=np.zeros((1, 3)))
             experimento = self._experimento(config, falhar_em=2)
-            with self.assertRaises(InstrumentHardwareError):
+            with self.assertRaises(CommunicationError):
                 experimento.executar()
             self.assertTrue(orfao.exists(), "rodada abortada não pode apagar dados da rodada anterior")
         finally:
@@ -2739,6 +2746,287 @@ class JanelaNominalEAnaliseTests(unittest.TestCase):
             # com f0 correto a correlação é ~1; com 60 Hz chumbado seria baixa
             self.assertGreater(relatorio[0]["correlacao"], 0.99)
             self.assertEqual(relatorio[0]["f0_hz"], 50.0)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+class CapturaDescartavelTests(unittest.TestCase):
+    """P09 — uma captura com erro descartável (InstrumentHardwareError,
+    TimeoutError, ValueError de _validar_captura) é logada e PULADA — não
+    retenta a classe inteira, não aborta a bateria.
+
+    Pedido do dono em 2026-09-22, reagindo ao p01/p02 ("a captura falha na
+    hora"): "só por favor não aborte a bateria de testes. apenas log e
+    descarte. abortar a bateria gasta MUITO tempo." Antes deste patch,
+    QUALQUER InstrumentHardwareError dentro de _capturar_real() (erro 19 do
+    p01, divergência de readback do p02) propagava para fora do laço de
+    executar() e disparava o retry de CLASSE INTEIRA de executar_bateria()
+    (até 3×, refazendo do zero até as capturas que já tinham dado certo) —
+    exatamente o custo que o dono não quer pagar por uma falha isolada."""
+
+    def _config(self, results_dir, **overrides):
+        base = dict(
+            fs_hz=30_000.0, points=6_000, duration_s=0.2, grid_frequency_hz=60.0,
+            base_voltage_rms=127.0, snr_levels_db=(), base_seed=1,
+            capture_current=False, current_base_a=None, results_dir=results_dir,
+            sim_captures_per_class=1, real_captures_per_class=1, disturbance_start_s=0.06,
+            capturas_override=5,
+        )
+        base.update(overrides)
+        return mestre.Config(**base)
+
+    def _experimento(self, config, falhas=None):
+        """``falhas``: dict {n_da_chamada (1-based): excecao_a_levantar}."""
+        fonte = mestre.AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=425.0)
+        bancada = mestre.Bancada(fonte, mock.Mock(), config)
+
+        class _Classe(mestre.ExperimentoNativo):
+            id = "97"
+            nome = "TESTE_DESCARTE"
+
+            def gerar(self, t, f0, capture_index, rng):
+                return np.sin(2.0 * np.pi * f0 * t), {}
+
+            def configurar(self, capture_index):
+                return {}
+
+        experimento = _Classe(bancada)
+        experimento.osc = mock.Mock()
+        pontos = config.points
+        tempo_s = np.arange(pontos, dtype=np.float64) / config.fs_hz
+        chamadas = {"n": 0}
+        falhas = falhas or {}
+
+        def _stub(capture_index, t, rng):
+            chamadas["n"] += 1
+            if chamadas["n"] in falhas:
+                raise falhas[chamadas["n"]]
+            return tempo_s, np.sin(2.0 * np.pi * 60.0 * tempo_s), None, {}
+
+        experimento._capturar_real = _stub
+        experimento._preparar_acquisicao_real = lambda: None
+        return experimento, chamadas
+
+    def test_uma_captura_com_erro_descartavel_nao_aborta_as_demais(self):
+        """5 capturas planejadas, a 3ª levanta InstrumentHardwareError (erro
+        19 simulado). As outras 4 devem sair normalmente, SEM exceção."""
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            config = self._config(tmp_dir / "resultados")
+            experimento, chamadas = self._experimento(
+                config, falhas={3: InstrumentHardwareError("erro 19 simulado")},
+            )
+            with self.assertLogs("MestreExperimentos", level="ERROR") as captura:
+                experimento.executar()  # NÃO pode levantar
+            self.assertEqual(chamadas["n"], 5, "as 5 posições do plano devem ser tentadas")
+            arquivos = sorted(p.name for p in (tmp_dir / "resultados").glob("97_*.npz"))
+            self.assertEqual(len(arquivos), 4, f"esperava 4 capturas boas, achei {arquivos}")
+            self.assertTrue(
+                any("DESCARTADA" in m for m in captura.output),
+                "precisa logar claramente que a captura foi descartada",
+            )
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_timeout_error_tambem_e_descartavel(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            config = self._config(tmp_dir / "resultados", capturas_override=3)
+            experimento, chamadas = self._experimento(
+                config, falhas={2: TimeoutError("AMETEK não entrou em ARM/WTRIG")},
+            )
+            experimento.executar()
+            arquivos = list((tmp_dir / "resultados").glob("97_*.npz"))
+            self.assertEqual(len(arquivos), 2)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_captura_descartada_nao_dispara_retry_de_classe_na_bateria(self):
+        """No nível de executar_bateria(): a classe deve rodar UMA vez só
+        (não 3×) quando algumas capturas internas são descartadas mas a
+        classe como um todo termina com dado bom."""
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            config = self._config(tmp_dir / "resultados")
+            fonte = mestre.AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=425.0)
+            bancada = mestre.Bancada(fonte, mock.Mock(), config)
+            chamadas_executar = {"n": 0}
+
+            class _Classe(mestre.ExperimentoNativo):
+                id = "97"
+                nome = "TESTE_DESCARTE"
+
+                def gerar(self, t, f0, capture_index, rng):
+                    return np.sin(2.0 * np.pi * f0 * t), {}
+
+                def configurar(self, capture_index):
+                    return {}
+
+                def executar(self):
+                    chamadas_executar["n"] += 1
+                    # Simula o comportamento real de ExperimentoBase.executar():
+                    # 1 de 5 capturas descartada, classe termina OK.
+
+            with mock.patch.object(
+                mestre.Bancada, "_carregar_classe_experimento",
+                staticmethod(lambda script_path: _Classe),
+            ), mock.patch.object(mestre.Bancada, "recuperar_estado_seguro", lambda self: None):
+                resultados = bancada.executar_bateria([Path("97.py")])
+            self.assertEqual(chamadas_executar["n"], 1, "classe sem exceção não pode ser retentada")
+            self.assertTrue(resultados[0].ok)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_todas_as_capturas_descartadas_ainda_falha_a_classe(self):
+        """Rede de segurança: se TODAS as capturas planejadas forem
+        descartadas, a classe não pode terminar silenciosamente como OK com
+        zero arquivos — isso ainda precisa levantar (e ainda pode ser
+        retentado pela bateria, ao contrário do caso comum de 1-em-N)."""
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            config = self._config(tmp_dir / "resultados", capturas_override=3)
+            experimento, chamadas = self._experimento(
+                config, falhas={
+                    1: InstrumentHardwareError("erro 19"),
+                    2: InstrumentHardwareError("erro 19"),
+                    3: InstrumentHardwareError("erro 19"),
+                },
+            )
+            with self.assertRaises(InstrumentHardwareError):
+                experimento.executar()
+            self.assertEqual(len(list((tmp_dir / "resultados").glob("97_*.npz"))), 0)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_communication_error_continua_propagando_na_hora_para_abortar_bateria(self):
+        """CRÍTICO: CommunicationError (serial caiu) NUNCA pode ser tratada
+        como descarte-e-continua — precisa propagar imediatamente para
+        executar_bateria() abortar a bateria inteira (AGENTS.md: não ampliar
+        o que conta como falha recuperável sem entender a fundo)."""
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            config = self._config(tmp_dir / "resultados", capturas_override=5)
+            experimento, chamadas = self._experimento(
+                config, falhas={2: CommunicationError("porta serial caiu")},
+            )
+            with self.assertRaises(CommunicationError):
+                experimento.executar()
+            self.assertEqual(chamadas["n"], 2, "não pode tentar as capturas seguintes após a serial cair")
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_runtime_error_de_gerar_nao_e_descartado(self):
+        """RuntimeError (forma inválida de gerar()) indica um BUG na classe,
+        não uma falha intermitente de hardware — não deve ser silenciosamente
+        descartada captura a captura até sobrar zero; propaga na hora."""
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            config = self._config(tmp_dir / "resultados", capturas_override=3)
+            experimento, chamadas = self._experimento(
+                config, falhas={1: RuntimeError("bug: forma com shape errado")},
+            )
+            with self.assertRaises(RuntimeError):
+                experimento.executar()
+            self.assertEqual(chamadas["n"], 1, "não deve tentar as próximas capturas depois de um bug")
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_captura_fisicamente_invalida_nao_aborta_classe_com_boas_misturadas(self):
+        """P05 já não abortava a captura seguinte (só reprovava no fim se
+        HOUVESSE alguma inválida). Este teste confirma o refinamento: com
+        1 boa + 1 inválida, a classe agora passa (fica só o aviso no log e a
+        marca 'validacao_fisica.ok=false' no metadata) — só falha se NENHUMA
+        captura da classe for fisicamente válida (ver
+        ValidacaoFisicaTests.test_classe_marca_metadata_e_falha_sem_retry_quando_invalida,
+        que continua cobrindo o caso de 100% inválido)."""
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            config = mestre.Config(
+                fs_hz=30_000.0, points=6_000, duration_s=0.2, grid_frequency_hz=60.0,
+                base_voltage_rms=220.0, snr_levels_db=(), base_seed=1,
+                capture_current=False, current_base_a=None, results_dir=tmp_dir / "resultados",
+                sim_captures_per_class=1, real_captures_per_class=1, disturbance_start_s=0.06,
+                capturas_override=2,
+            )
+            fonte = mestre.AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=425.0)
+            bancada = mestre.Bancada(fonte, mock.Mock(), config)
+
+            class _Classe(mestre.ExperimentoNativo):
+                id = "01"
+                nome = "NORMAL"
+
+                def gerar(self, t, f0, capture_index, rng):
+                    return np.sin(2.0 * np.pi * f0 * t), {}
+
+                def configurar(self, capture_index):
+                    return {}
+
+            experimento = _Classe(bancada)
+            experimento.osc = mock.Mock()
+            tempo_s = np.arange(6000, dtype=np.float64) / 30_000.0
+            chamadas = {"n": 0}
+
+            def _stub(ci, t, rng):
+                chamadas["n"] += 1
+                # 1ª captura: correta (220V). 2ª: sai a 127V (H-NATIVO).
+                razao = 1.0 if chamadas["n"] == 1 else 127.0 / 220.0
+                return tempo_s, np.sin(2.0 * np.pi * 60.0 * tempo_s) * razao, None, {}
+
+            experimento._capturar_real = _stub
+            experimento._preparar_acquisicao_real = lambda: None
+            experimento.executar()  # NÃO pode levantar: 1 de 2 é boa
+            metadata = config.results_dir / "metadata" / "01_normal.jsonl"
+            registros = [
+                json.loads(l) for l in metadata.read_text(encoding="utf-8").splitlines() if l.strip()
+            ]
+            self.assertEqual(len(registros), 2, "as duas capturas continuam gravadas")
+            self.assertTrue(registros[0]["validacao_fisica"]["ok"])
+            self.assertFalse(registros[1]["validacao_fisica"]["ok"])
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_resultado_classe_registra_contagem_de_descartes_e_invalidas(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            config = self._config(tmp_dir / "resultados")
+            fonte = mestre.AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=425.0)
+            bancada = mestre.Bancada(fonte, mock.Mock(), config)
+
+            class _ClasseReal(mestre.ExperimentoNativo):
+                id = "97"
+                nome = "TESTE_DESCARTE"
+
+                def gerar(self, t, f0, capture_index, rng):
+                    return np.sin(2.0 * np.pi * f0 * t), {}
+
+                def configurar(self, capture_index):
+                    return {}
+
+            experimento_instancia = _ClasseReal(bancada)
+            experimento_instancia.osc = mock.Mock()
+            tempo_s = np.arange(6000, dtype=np.float64) / 30_000.0
+            chamadas = {"n": 0}
+
+            def _stub(ci, t, rng):
+                chamadas["n"] += 1
+                if chamadas["n"] == 3:
+                    raise InstrumentHardwareError("erro 19 simulado")
+                return tempo_s, np.sin(2.0 * np.pi * 60.0 * tempo_s), None, {}
+
+            experimento_instancia._capturar_real = _stub
+            experimento_instancia._preparar_acquisicao_real = lambda: None
+
+            with mock.patch.object(
+                mestre.Bancada, "_carregar_classe_experimento",
+                staticmethod(lambda script_path: _ClasseReal),
+            ), mock.patch.object(
+                mestre.Bancada, "_instanciar_experimento",
+                lambda self, cls: experimento_instancia,
+            ):
+                resultados = bancada.executar_bateria([Path("97.py")])
+            self.assertTrue(resultados[0].ok)
+            self.assertEqual(resultados[0].descartadas, 1)
+            self.assertEqual(resultados[0].invalidas, 0)
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
