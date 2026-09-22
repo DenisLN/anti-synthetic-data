@@ -209,8 +209,15 @@ class KeysightDSOX4034A(SCPIMixin, Instrument):
             ":ACQuire:DIGitizer OFF",
             ":TIMebase:MODE MAIN",
             f":TIMebase:RANGe {duration_s:.12g}",
-            ":TIMebase:REFerence LEFT",
-            f":TIMebase:POSition {(-pre_trigger_s) or 0.0:.12g}",
+        ):
+            self.write(command)
+            errors = self.check_errors()
+            if errors:
+                raise OscilloscopeError(
+                    f"Keysight rejeitou {command!r} durante configuração da aquisição: {errors}"
+                )
+        self._programar_referencia_horizontal(duration_s=duration_s, pre_trigger_s=pre_trigger_s)
+        for command in (
             ":ACQuire:POINts:ANALog:AUTO ON",
             ":ACQuire:SRATe:ANALog:AUTO ON",
             ":WAVeform:POINts:MODE NORMal",
@@ -252,6 +259,53 @@ class KeysightDSOX4034A(SCPIMixin, Instrument):
             raise OscilloscopeError(
                 f"Keysight aceitou janela {actual_range} s; esperado {duration_s} s"
             )
+
+    def _programar_referencia_horizontal(self, *, duration_s: float, pre_trigger_s: float) -> None:
+        """Põe a referência horizontal EXATAMENTE na borda esquerda da janela.
+
+        ``:TIMebase:REFerence LEFT`` NÃO é a borda: o manual ([KS] p. 1337) diz
+        "LEFT -- one division from the left side of the screen", e uma divisão
+        é 10% do ``RANGe`` ([KS] p. 1335). Com ``:TIMebase:POSition
+        -pre_trigger`` isso punha o trigger em ``pre_trigger + RANGe/10``
+        dentro do registro — o "atraso de 20 ms" do v1.7 e o "atraso de
+        100 ms" do v1.10 são esse mesmo artefato (H-REF10, relatório 01 §1.1).
+
+        ``:TIMebase:REFerence CUSTom`` + ``:TIMebase:REFerence:LOCation 0.0``
+        ([KS] p. 1337-1338: "0.0 is the left edge") resolve na origem. Se o
+        firmware não aceitar, caímos para ``LEFT`` COMPENSANDO a divisão no
+        comando — e registramos qual dos dois valeu (``referencia_horizontal_
+        efetiva``, gravada no metadata). Em nenhum dos casos o deslocamento
+        fica desconhecido; ``get_waveform()`` ainda confere pela preamble."""
+        self.referencia_horizontal_efetiva = "CUSTOM"
+        try:
+            for command in (":TIMebase:REFerence CUSTom", ":TIMebase:REFerence:LOCation 0.0"):
+                self.write(command)
+                errors = self.check_errors()
+                if errors:
+                    raise OscilloscopeError(f"{command!r} rejeitado: {errors}")
+            referencia = str(self.ask(":TIMebase:REFerence?")).strip().upper()
+            location = float(self.ask(":TIMebase:REFerence:LOCation?"))
+            if not referencia.startswith("CUST") or abs(location) > 1e-6:
+                raise OscilloscopeError(
+                    f"referência horizontal lida de volta como {referencia!r}/{location!r}"
+                )
+        except (OscilloscopeError, ValueError, TypeError) as exc:
+            self.referencia_horizontal_efetiva = "LEFT"
+            logger.warning(
+                "Firmware não aceitou :TIMebase:REFerence CUSTom (%s). Usando LEFT com a "
+                "divisão COMPENSADA em :TIMebase:POSition (%+.6g s). A posição do trigger "
+                "continua conhecida, mas confira indice_trigger no metadata.",
+                exc, duration_s / 10.0,
+            )
+            self.write(":TIMebase:REFerence LEFT")
+            self.assert_no_errors("referência horizontal LEFT")
+        # Com CUSTom/LOCation 0 a referência JÁ é a borda esquerda: POSition é
+        # só -pre_trigger. Com LEFT, a referência está 1 divisão adiante, e a
+        # borda esquerda cai em POSition - RANGe/10 — por isso a soma.
+        compensacao = 0.0 if self.referencia_horizontal_efetiva == "CUSTOM" else duration_s / 10.0
+        posicao = -pre_trigger_s + compensacao
+        self.write(f":TIMebase:POSition {posicao or 0.0:.12g}")
+        self.assert_no_errors("posição da base de tempo")
 
     def setup_external_trigger(
         self,
@@ -389,11 +443,23 @@ class KeysightDSOX4034A(SCPIMixin, Instrument):
             raise OscilloscopeError(
                 f"Preamble indica somente {actual_rate} Sa/s; mínimo 30000 Sa/s"
             )
+        # x_origin é o instante (relativo ao TRIGGER) da PRIMEIRA amostra
+        # ([KS] p. 1476, com XREFerence sempre 0 na p. 1477). Antes,
+        # ``time_axis -= time_axis[0]`` jogava fora exatamente essa
+        # informação — a única que diz onde o trigger caiu no registro
+        # (H-REF10). Agora ela é preservada como índice e gravada no
+        # metadata; o eixo devolvido continua começando em zero para não
+        # mudar nem o formato do .npz nem _validar_captura().
+        self.ultimo_x_origin = float(x_origin)
+        self.ultimo_x_increment = float(x_increment)
+        self.ultimo_indice_trigger = int(round(-x_origin / x_increment))
         time_axis -= time_axis[0]
         target_time = np.arange(expected_points, dtype=np.float64) / 30_000.0
-        if time_axis[-1] + x_increment < 0.2 - (0.5 / 30_000.0):
+        cobertura_minima = expected_points / 30_000.0
+        if time_axis[-1] + x_increment < cobertura_minima - (0.5 / 30_000.0):
             raise OscilloscopeError(
-                f"Waveform cobre apenas {time_axis[-1] + x_increment:.9f} s; esperado 0.2 s"
+                f"Waveform cobre apenas {time_axis[-1] + x_increment:.9f} s; "
+                f"esperado {cobertura_minima:.9f} s ({expected_points} pontos a 30 kSa/s)"
             )
         target_values = np.interp(target_time, time_axis, values)
         return target_time, target_values
