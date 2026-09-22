@@ -24,6 +24,16 @@ import numpy as np
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 EXPERIMENT_DIRS = (PROJECT_ROOT / "experimentos_nativos", PROJECT_ROOT / "experimentos_waveform")
+if str(PROJECT_ROOT / "logica") not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT / "logica"))
+from sinais import janela_nominal  # noqa: E402
+
+# Valores usados só quando o metadata é ANTIGO e não os traz. Enquanto
+# estiveram chumbados no código (60 Hz na chamada de gerar() e 127 V em
+# _ConfigOffline), toda a sessão 2 — que rodou a 220 V/50 Hz — era analisada
+# contra o modelo errado (relatório 01 §4 item 8).
+F0_PADRAO_HZ = 60.0
+TENSAO_BASE_PADRAO_RMS = 127.0
 
 
 def analisar_offset(expected: np.ndarray, captured: np.ndarray, fs_hz: float) -> Tuple[int, float]:
@@ -64,7 +74,10 @@ class _ConfigOffline:
     ativa."""
 
     capturas_override: Optional[int] = None
-    base_voltage_rms: float = 127.0
+    base_voltage_rms: float = TENSAO_BASE_PADRAO_RMS
+
+    def __init__(self, base_voltage_rms: float = TENSAO_BASE_PADRAO_RMS):
+        self.base_voltage_rms = float(base_voltage_rms)
 
     def capturas(self, simulated: bool) -> int:
         return 1
@@ -77,9 +90,11 @@ class _BancadaOffline:
     tratar a reconstrução como ``simulado=True`` — o mesmo ramo usado para
     gerar o dataset offline, sem hardware nenhum envolvido."""
 
-    config = _ConfigOffline()
     fonte = None
     osc = None
+
+    def __init__(self, base_voltage_rms: float = TENSAO_BASE_PADRAO_RMS):
+        self.config = _ConfigOffline(base_voltage_rms)
 
 
 def _carregar_experimento_cls(class_id: str):
@@ -100,13 +115,18 @@ def _carregar_experimento_cls(class_id: str):
 
 def _reconstruir_esperado(class_id: str, metadado: dict) -> np.ndarray:
     cls = _carregar_experimento_cls(class_id)
+    # f0 e tensão base saem do metadata da PRÓPRIA sessão (gravados a partir
+    # da v1.11); só caem no padrão para metadata antigo, e nesse caso o
+    # relatório avisa.
     # Instancia via __init__ normal (não cls.__new__(cls)): 04/06/08/09/19
     # leem self.config/self.osc dentro do próprio gerar() (cobertura
     # determinística de parâmetro contínuo, Task 6) — sem __init__ essas
     # leituras explodem com AttributeError para essas 5 classes, mesmo
     # quando a cobertura não estava ativa. _BancadaOffline supre isso sem
     # tocar hardware nenhum.
-    instancia = cls(_BancadaOffline())
+    f0_hz = float(metadado.get("f0_hz", F0_PADRAO_HZ))
+    tensao_base = float(metadado.get("tensao_base_rms", TENSAO_BASE_PADRAO_RMS))
+    instancia = cls(_BancadaOffline(tensao_base))
     fs_hz = metadado["fs_hz"]
     pontos = metadado["pontos"]
     t = np.arange(pontos, dtype=np.float64) / fs_hz
@@ -135,7 +155,7 @@ def _reconstruir_esperado(class_id: str, metadado: dict) -> np.ndarray:
     # cross-correlação, o diagnóstico principal desta ferramenta) não
     # depende do parâmetro de distúrbio e não é afetada.
     capture_index = metadado.get("nivel_indice", 0)
-    voltage_pu, _ = instancia.gerar(t, 60.0, capture_index, rng)
+    voltage_pu, _ = instancia.gerar(t, f0_hz, capture_index, rng)
     return np.asarray(voltage_pu, dtype=np.float64)
 
 
@@ -153,6 +173,7 @@ def analisar_sessao(sessao_dir: Path, *, gerar_imagens: bool = True) -> List[Dic
             metadados_por_id_captura[registro["id_captura"]] = registro
 
     relatorio: List[Dict] = []
+    avisos: List[str] = []
     imagens_dir = sessao_dir / "analise"
     if gerar_imagens:
         imagens_dir.mkdir(exist_ok=True)
@@ -193,19 +214,36 @@ def analisar_sessao(sessao_dir: Path, *, gerar_imagens: bool = True) -> List[Dic
             relatorio.append({"classe": stem, "erro": f"falha reconstruindo esperado: {exc}"})
             continue
 
-        if margem_antes:
-            # captura em margin mode: recorta a janela nominal do meio do
-            # array bruto antes de comparar com o esperado (que sempre tem
-            # o tamanho nominal, config.points).
-            capturado_para_comparar = capturado[margem_antes : margem_antes + len(esperado)]
-        else:
-            capturado_para_comparar = capturado[: len(esperado)]
+        # Recorte alinhado pelo TRIGGER real (indice_trigger, derivado de
+        # x_origin da preamble), não por margem_amostras_antes: com
+        # REFerence LEFT o trigger caía uma divisão (janela/10) adiante do
+        # que o código supunha e todo recorte saía deslocado (H-REF10).
+        # Metadata antigo, sem indice_trigger, cai no comportamento anterior.
+        indice_trigger = metadado.get("indice_trigger")
+        if indice_trigger is None:
+            indice_trigger = margem_antes
+            if margem_antes:
+                avisos.append(
+                    f"{stem}: metadata sem indice_trigger; recorte alinhado por "
+                    "margem_amostras_antes (pode ter viés de janela/10)"
+                )
+        capturado_para_comparar = janela_nominal(
+            capturado,
+            indice_trigger=int(indice_trigger),
+            pre_trigger_s=float(metadado.get("pre_trigger_s", 0.0)),
+            pontos=len(esperado),
+            fs_hz=float(metadado["fs_hz"]),
+        )
 
         lag, corr = analisar_offset(esperado, capturado_para_comparar, metadado["fs_hz"])
         pico_esperado = float(np.max(np.abs(esperado)))
         pico_capturado = float(np.max(np.abs(capturado)))
         relatorio.append({
             "classe": stem,
+            "f0_hz": float(metadado.get("f0_hz", F0_PADRAO_HZ)),
+            "tensao_base_rms": float(metadado.get("tensao_base_rms", TENSAO_BASE_PADRAO_RMS)),
+            "indice_trigger": int(indice_trigger),
+            "validacao_fisica_ok": (metadado.get("validacao_fisica") or {}).get("ok"),
             "lag_amostras": lag,
             "lag_ms": lag / metadado["fs_hz"] * 1000.0,
             "correlacao": corr,
@@ -217,6 +255,8 @@ def analisar_sessao(sessao_dir: Path, *, gerar_imagens: bool = True) -> List[Dic
         if gerar_imagens:
             _salvar_imagem_comparacao(imagens_dir, stem, esperado, capturado, metadado["fs_hz"])
 
+    for aviso in avisos:
+        print(f"AVISO: {aviso}")
     return relatorio
 
 

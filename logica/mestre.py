@@ -912,8 +912,20 @@ class ExperimentoBase(ABC):
         if not np.allclose(incrementos, incremento_esperado, rtol=0, atol=1e-9):
             raise ValueError(f"Eixo temporal não corresponde a {config.fs_hz:.0f} Sa/s")
 
+    # Margem de ``margin on``, em segundos, ANTES e DEPOIS da janela nominal.
+    # 400 ms de cada lado (v1.10) foram dimensionados contra dois números que
+    # os relatórios 01/02 mostraram falsos: o "atraso universal de ~20 ms"
+    # (era o offset de referência horizontal, H-REF10) e o "pior caso de
+    # 540 ms do LIST:REPeat" (com REPeat 0 o evento é nominal). Os valores
+    # abaixo vêm da medida: o fim de evento mais tardio das duas sessões é
+    # 116,7 ms após o trigger e o conteúdo programado termina em 200 ms
+    # (relatório 01 §2(i)); 50 ms depois cobrem o retorno ao regime e o
+    # sobre-pico de transição. NÃO reduzir abaixo disto sem refazer a medida.
+    MARGEM_ANTES_S = env_float("MARGEM_ANTES_S", 0.020)
+    MARGEM_DEPOIS_S = env_float("MARGEM_DEPOIS_S", 0.050)
+
     @staticmethod
-    def _calcular_margem(*, margin_mode: bool, config_points: int, fs_hz: float) -> Tuple[int, int]:
+    def _calcular_margem(*, margin_mode: bool, config_points: int, fs_hz: float) -> Tuple[int, int, int]:
         """``margin on``: 400ms de folga de cada lado (12000 amostras a
         30kSa/s). Os 25ms originais (CHANGELOG/v1.7.md) só cobriam o atraso
         universal de rampa inicial (~20ms); a hipótese LIST:REPeat
@@ -934,9 +946,10 @@ class ExperimentoBase(ABC):
         (amostras de margem de UM lado, total de amostras incluindo os dois
         lados)."""
         if not margin_mode:
-            return 0, config_points
-        margem_amostras = int(round(0.4 * fs_hz))
-        return margem_amostras, config_points + 2 * margem_amostras
+            return 0, 0, config_points
+        antes = int(round(ExperimentoBase.MARGEM_ANTES_S * fs_hz))
+        depois = int(round(ExperimentoBase.MARGEM_DEPOIS_S * fs_hz))
+        return antes, depois, config_points + antes + depois
 
     def _salvar_classe(
         self,
@@ -1256,14 +1269,14 @@ class ExperimentoBase(ABC):
             plano = self._indices_viaveis(plano)
             total = len(plano)
         t = tempo(self.config)
-        margem_amostras, pontos_efetivos = self._calcular_margem(
+        margem_antes, margem_depois, pontos_efetivos = self._calcular_margem(
             margin_mode=(not simulated and self.config.margin_mode),
             config_points=self.config.points, fs_hz=self.config.fs_hz,
         )
         self._pontos_efetivos_captura_atual = pontos_efetivos
         if not simulated:
             duracao_efetiva = pontos_efetivos / self.config.fs_hz
-            pre_trigger_efetivo = self.pre_trigger_s + margem_amostras / self.config.fs_hz
+            pre_trigger_efetivo = self.pre_trigger_s + margem_antes / self.config.fs_hz
             self.osc.configure_acquisition(
                 sample_rate_hz=self.config.fs_hz,
                 points=pontos_efetivos,
@@ -1341,9 +1354,9 @@ class ExperimentoBase(ABC):
                 })
                 if not simulated:
                     metadados[-1].update(self._contexto_da_sessao())
-                if margem_amostras > 0:
-                    metadados[-1]["margem_amostras_antes"] = margem_amostras
-                    metadados[-1]["margem_amostras_depois"] = margem_amostras
+                if margem_antes or margem_depois:
+                    metadados[-1]["margem_amostras_antes"] = margem_antes
+                    metadados[-1]["margem_amostras_depois"] = margem_depois
                     metadados[-1]["amostras_totais"] = pontos_efetivos
                 if not simulated:
                     validacao = self._validar_fisicamente(

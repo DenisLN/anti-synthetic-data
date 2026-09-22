@@ -1705,19 +1705,39 @@ class CoberturaParametroContinuoTests(unittest.TestCase):
 
 
 class MargemCapturaTests(unittest.TestCase):
+    """ADAPTADO em P08 (não enfraquecido): ``_calcular_margem`` passou a
+    devolver ``(antes, depois, total)`` em vez de ``(margem, total)``, porque
+    a margem deixou de ser simétrica. As asserções continuam as mesmas em
+    natureza (margin off = janela nominal; margin on = folga dos dois lados,
+    dentro dos dois tetos do osciloscópio); só os NÚMEROS mudaram, de
+    400/400 ms para 20/50 ms. Justificativa completa em
+    03_propostas_melhorias.md, proposta P1-2."""
+
     def test_margin_off_mantem_pontos_nominais(self):
-        margem_amostras, pontos_totais = mestre.ExperimentoBase._calcular_margem(
+        antes, depois, pontos_totais = mestre.ExperimentoBase._calcular_margem(
             margin_mode=False, config_points=6000, fs_hz=30_000.0,
         )
-        self.assertEqual(margem_amostras, 0)
+        self.assertEqual((antes, depois), (0, 0))
         self.assertEqual(pontos_totais, 6000)
 
     def test_margin_on_adiciona_amostras_de_cada_lado(self):
-        margem_amostras, pontos_totais = mestre.ExperimentoBase._calcular_margem(
+        antes, depois, pontos_totais = mestre.ExperimentoBase._calcular_margem(
             margin_mode=True, config_points=6000, fs_hz=30_000.0,
         )
-        self.assertEqual(margem_amostras, 12_000)  # 400ms * 30kSa/s
-        self.assertEqual(pontos_totais, 6000 + 2 * 12_000)
+        self.assertEqual(antes, 600)    # 20 ms * 30 kSa/s
+        self.assertEqual(depois, 1_500)  # 50 ms * 30 kSa/s
+        self.assertEqual(pontos_totais, 6000 + 600 + 1_500)
+
+    def test_margem_cobre_o_fim_de_evento_mais_tardio_ja_medido(self):
+        """O conteúdo programado termina em trigger+200 ms e o fim de evento
+        mais tardio medido nas duas sessões é 116,7 ms (relatório 01 §2(i)).
+        A janela precisa conter os 200 ms nominais E a folga de retorno ao
+        regime."""
+        _, depois, pontos_totais = mestre.ExperimentoBase._calcular_margem(
+            margin_mode=True, config_points=6000, fs_hz=30_000.0,
+        )
+        self.assertGreaterEqual(6000 + depois, int(0.250 * 30_000))
+        self.assertEqual(pontos_totais / 30_000.0, 0.270)
 
     def test_margin_on_fica_dentro_do_teto_de_pontos_do_osciloscopio(self):
         # oscilloscope_orm.py fixa ":WAVeform:POINts 60000" tanto em
@@ -1725,7 +1745,7 @@ class MargemCapturaTests(unittest.TestCase):
         # acima disso faria a preamble real declarar menos pontos do que
         # pedido, e get_waveform() levantaria OscilloscopeError na próxima
         # sessão física (CHANGELOG/v1.9.md).
-        _, pontos_totais = mestre.ExperimentoBase._calcular_margem(
+        *_, pontos_totais = mestre.ExperimentoBase._calcular_margem(
             margin_mode=True, config_points=6000, fs_hz=30_000.0,
         )
         self.assertLess(pontos_totais, 60_000)
@@ -1738,7 +1758,7 @@ class MargemCapturaTests(unittest.TestCase):
         # :WAVeform:POINts acima. É esse teto REAL, não o teórico, que
         # limita quanto pontos_totais pode pedir; 30000 fica com ~2258
         # pontos (~7,5%) de folga sobre o pior caso já medido.
-        _, pontos_totais = mestre.ExperimentoBase._calcular_margem(
+        *_, pontos_totais = mestre.ExperimentoBase._calcular_margem(
             margin_mode=True, config_points=6000, fs_hz=30_000.0,
         )
         self.assertLessEqual(pontos_totais, 30_000)
@@ -2561,7 +2581,7 @@ class LogDeSessaoEMetadataTests(unittest.TestCase):
             )
             experimento._preparar_acquisicao_real = lambda: None
             with mock.patch.object(
-                mestre.ExperimentoBase, "_calcular_margem", staticmethod(lambda **kw: (600, 7200))
+                mestre.ExperimentoBase, "_calcular_margem", staticmethod(lambda **kw: (600, 600, 7200))
             ):
                 experimento.executar()
             registro = json.loads(
@@ -2664,6 +2684,63 @@ class PosicaoDoTriggerTests(unittest.TestCase):
         scope.initialize_safe()
         with self.assertRaises(OscilloscopeError):
             scope.get_waveform(1, expected_points=8100)
+
+
+class JanelaNominalEAnaliseTests(unittest.TestCase):
+    """P08 — recorte e análise offline passam a usar ``indice_trigger`` e o
+    contexto gravado no metadata, em vez de ``margem_amostras_antes`` e de
+    60 Hz/127 V chumbados (relatório 01 §1.1 e §4 item 8)."""
+
+    def test_janela_nominal_desconta_o_pre_trigger_da_classe(self):
+        registro = np.arange(8100, dtype=np.float64)
+        janela = sinais.janela_nominal(
+            registro, indice_trigger=600, pre_trigger_s=0.0, pontos=6000, fs_hz=30_000.0,
+        )
+        self.assertEqual(janela[0], 600.0)
+        # classe PULSe: o evento começa no trigger e gerar() o quer em 60 ms
+        janela_pulse = sinais.janela_nominal(
+            registro, indice_trigger=2400, pre_trigger_s=0.060, pontos=6000, fs_hz=30_000.0,
+        )
+        self.assertEqual(janela_pulse[0], 2400.0 - 1800.0)
+
+    def test_janela_nominal_nao_estoura_o_registro(self):
+        registro = np.arange(6000, dtype=np.float64)
+        janela = sinais.janela_nominal(
+            registro, indice_trigger=5000, pre_trigger_s=0.0, pontos=6000, fs_hz=30_000.0,
+        )
+        self.assertEqual(janela.size, 6000)
+
+    def test_analisar_sessao_usa_f0_e_tensao_base_do_metadata(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            sessao_dir = tmp_dir / "sessao_teste"
+            (sessao_dir / "metadata").mkdir(parents=True)
+            fs_hz, pontos = 30_000.0, 6000
+            t = np.arange(pontos, dtype=np.float64) / fs_hz
+            capturado = np.sin(2.0 * np.pi * 50.0 * t)  # sessão de 50 Hz
+            np.savez(
+                sessao_dir / "01_normal_cap01.npz",
+                tempo_ms=t * 1000.0, tensao_pu=capturado[np.newaxis, :],
+                classe="NORMAL", id_captura=np.array(["01-0001"], dtype=object),
+            )
+            with (sessao_dir / "metadata" / "01_normal.jsonl").open("w", encoding="utf-8") as handle:
+                handle.write(json.dumps({
+                    "classe": "NORMAL", "fs_hz": fs_hz, "id_captura": "01-0001",
+                    "parametros": {}, "pontos": pontos, "seed": 21260827, "simulado": False,
+                    "nivel_indice": 0, "f0_hz": 50.0, "tensao_base_rms": 220.0,
+                    "pre_trigger_s": 0.0, "indice_trigger": 0,
+                }) + chr(10))
+            import analisar_sessao
+            import importlib
+            importlib.reload(analisar_sessao)
+            relatorio = analisar_sessao.analisar_sessao(sessao_dir, gerar_imagens=False)
+            self.assertEqual(len(relatorio), 1)
+            self.assertNotIn("erro", relatorio[0])
+            # com f0 correto a correlação é ~1; com 60 Hz chumbado seria baixa
+            self.assertGreater(relatorio[0]["correlacao"], 0.99)
+            self.assertEqual(relatorio[0]["f0_hz"], 50.0)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

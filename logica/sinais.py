@@ -269,3 +269,23 @@ def comparar_fisicamente(
         "thd_medida": thd_obtida,
         "thd_esperada": thd_esperada,
     }
+
+
+def janela_nominal(
+    registro: np.ndarray, *, indice_trigger: int, pre_trigger_s: float, pontos: int, fs_hz: float,
+) -> np.ndarray:
+    """Recorta do registro bruto a janela NOMINAL de ``pontos`` amostras, a
+    mesma base de tempo que ``gerar()`` usa.
+
+    O trigger cai em ``indice_trigger`` (lido de ``x_origin``, ver
+    ``oscilloscope_orm.get_waveform``) e as classes com ``pre_trigger_s > 0``
+    (02/03/04, PULSe) querem o evento em ``pre_trigger_s`` dentro da janela —
+    por isso o recorte começa ANTES do trigger nessas classes.
+
+    Antes, o recorte usava ``margem_amostras_antes`` como se fosse o índice do
+    trigger; com ``REFerence LEFT`` o trigger caía uma divisão adiante e todo
+    recorte errava por ``janela/10`` (H-REF10, relatório 01 §1.1)."""
+    registro = np.asarray(registro, dtype=np.float64)
+    inicio = int(round(indice_trigger - pre_trigger_s * fs_hz))
+    inicio = max(0, min(inicio, max(0, registro.size - pontos)))
+    return registro[inicio : inicio + pontos]
