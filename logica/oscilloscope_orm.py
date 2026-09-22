@@ -224,7 +224,20 @@ class KeysightDSOX4034A(SCPIMixin, Instrument):
         actual_range = float(self.ask(":TIMebase:RANGe?"))
         # Em modo automático, estando parado, o firmware 07.30 informou 3000
         # pontos; uma aquisição SINGLE usa outra profundidade. A suficiência
-        # real é validada pela preamble imediatamente após a captura.
+        # real é validada pela preamble imediatamente após a captura. Essa
+        # profundidade real de uma aquisição SINGLE fica em ~32,3-32,7 mil
+        # pontos, praticamente CONSTANTE independente de duration_s pedido —
+        # é o teto real deste modo (CHANGELOG/v1.10.md).
+        #
+        # ``:ACQuire:DIGitizer ON`` (pontos/taxa explícitos) foi investigado
+        # como alternativa para pedir mais que esse teto e REJEITADO: além
+        # de exigir REFerence CENTer (não aceita LEFT, ver comentário acima),
+        # o teto de faixa/tempo do próprio modo Digitizer nesta taxa mostrou
+        # ser MENOR que 1 segundo a partir de um estado limpo (`*RST`) — bem
+        # abaixo do que pareceu funcionar numa sessão anterior (artefato de
+        # estado residual, nunca reproduzido a partir de um reset) — e
+        # instável mesmo dentro de uma única sessão. Não tente de novo sem
+        # reler CHANGELOG/v1.10.md primeiro.
         if actual_points <= 0 or actual_rate < sample_rate_hz * 0.995:
             raise OscilloscopeError(
                 f"Aquisição insuficiente: {actual_points} pontos a {actual_rate} Sa/s; "

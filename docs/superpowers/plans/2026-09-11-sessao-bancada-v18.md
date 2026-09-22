@@ -1453,7 +1453,13 @@ def _reconstruir_esperado(class_id: str, metadado: dict) -> np.ndarray:
     pontos = metadado["pontos"]
     t = np.arange(pontos, dtype=np.float64) / fs_hz
     rng = np.random.default_rng(metadado["seed"])
-    voltage_pu, _ = instancia.gerar(t, 60.0, 0, rng)
+    # capture_index seleciona o nível/parâmetro dentro de gerar() (SAG/SWELL
+    # discretos, ou cobertura contínua da Task 6) — sem isto, toda captura
+    # reconstruiria o nível 0, incompatível com o real. metadata sempre tem
+    # "nivel_indice" desde a Task 4 (mestre.py:908); .get(...) só é rede de
+    # segurança para metadata no formato antigo, pré-v1.8.
+    capture_index = metadado.get("nivel_indice", 0)
+    voltage_pu, _ = instancia.gerar(t, 60.0, capture_index, rng)
     return np.asarray(voltage_pu, dtype=np.float64)
 
 

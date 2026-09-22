@@ -673,19 +673,28 @@ class ExperimentoBase(ABC):
 
     @staticmethod
     def _calcular_margem(*, margin_mode: bool, config_points: int, fs_hz: float) -> Tuple[int, int]:
-        """``margin on``: 500ms de folga de cada lado (15000 amostras a
+        """``margin on``: 400ms de folga de cada lado (12000 amostras a
         30kSa/s). Os 25ms originais (CHANGELOG/v1.7.md) só cobriam o atraso
         universal de rampa inicial (~20ms); a hipótese LIST:REPeat
-        (CHANGELOG/v1.9.md) prevê o DISTÚRBIO em si atrasando até ~2,7x a
-        janela nominal de 200ms (~540ms) — 500ms de cada lado cobre esse
-        pior caso com sobra e ainda fica dentro do teto de 60000 pontos
-        (``:WAVeform:POINts``, ``oscilloscope_orm.py``) somado aos 6000
-        pontos nominais (36000 pontos, abaixo do teto de 60000). Devolve
+        (CHANGELOG/v1.9.md) previu o DISTÚRBIO em si atrasando até ~2,7x a
+        janela nominal de 200ms (~540ms), o que motivou uma folga de 500ms
+        na v1.9 — mas uma aquisição SINGLE real em modo AUTO (o único modo
+        viável neste osciloscópio; ``:ACQuire:DIGitizer ON`` foi investigado
+        a fundo e rejeitado, ver CHANGELOG/v1.10.md) entrega só ~32,3-32,7
+        mil pontos reais, quase constante e bem abaixo do teto teórico de
+        60000 do ``:WAVeform:POINts``. 400ms de cada lado (30000 pontos
+        totais) fica ~7,5% abaixo do pior valor real já medido (32258),
+        cobrindo o atraso universal (~20ms) com folga confortável mas SEM
+        cobrir o pior caso hipotético de 540ms do LIST:REPeat — trade-off
+        aceito na ausência de uma correção completa para esse atraso
+        (CHANGELOG/v1.10.md tem a investigação: a hipótese foi parcialmente
+        confirmada e uma correção candidata já foi aplicada em
+        ``ametek_orm.py``, mas não elimina todo o atraso sozinha). Devolve
         (amostras de margem de UM lado, total de amostras incluindo os dois
         lados)."""
         if not margin_mode:
             return 0, config_points
-        margem_amostras = int(round(0.5 * fs_hz))
+        margem_amostras = int(round(0.4 * fs_hz))
         return margem_amostras, config_points + 2 * margem_amostras
 
     def _salvar_classe(

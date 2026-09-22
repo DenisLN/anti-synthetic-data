@@ -694,7 +694,9 @@ class AmetekMX30:
         # Rev. 5.53 rejeita ':COUNt' (-113 Undefined header) e também rejeita
         # sem o prefixo 'SOURce:' — confirmado em preflight_new.py
         # --list-diagnostics: só 'SOURce:LIST:REPeat' (sem ':COUNt') é aceito.
-        self.write("SOURce:LIST:REPeat 1,1")
+        # "1" == repete uma vez (toca 2x) na Rev. 5.53, não "sem repetição"
+        # -- mesma correção de program_capture() (CHANGELOG/v1.9.md/v1.10.md).
+        self.write("SOURce:LIST:REPeat 0,0")
         self.write("LIST:COUNt 1")
         self.write("LIST:STEP AUTO")
         self.write("VOLTage:MODE LIST")
@@ -1081,7 +1083,12 @@ class AmetekMX30:
         names = ",".join(trace_names)
         voltages = ",".join(f"{value:.8g}" for value in list_voltages)
         dwells = ",".join(f"{dwell_s:.10g}" for _ in trace_names)
-        repeats = ",".join("1" for _ in trace_names)
+        # "1" era lido pelo firmware Rev. 5.53 como "repete uma vez" (toca
+        # cada ciclo 2x), não "sem repetição" -- confirmado na bancada
+        # (CHANGELOG/v1.9.md hipótese, v1.10 confirmação): NOTCH real levou
+        # 516ms (2,58x os ~200ms nominais de 12 ciclos a 60Hz) entre
+        # apos_trigger e transiente_concluido.
+        repeats = ",".join("0" for _ in trace_names)
         # Cada comando de dados de LISTA é confirmado IMEDIATAMENTE pela sua
         # própria consulta ":POINts?" (write seguido de query, sem delay
         # adivinhado) — se um comando não "pegar" (ex.: o firmware ainda

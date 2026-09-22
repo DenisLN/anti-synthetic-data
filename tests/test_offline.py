@@ -168,12 +168,15 @@ class ScriptedAdapter(Adapter):
         self.commands = []
         self.last_command = ""
         self.channel_scale = 10.0
+        self.timebase_range = 0.2
 
     def write(self, command, **kwargs):
         self.last_command = command
         self.commands.append(command)
         if command.upper().startswith(":CHANNEL1:SCALE "):
             self.channel_scale = float(command.split()[-1])
+        if command.upper().startswith(":TIMEBASE:RANGE "):
+            self.timebase_range = float(command.split()[-1])
 
     def read(self):
         command = self.last_command.upper()
@@ -190,7 +193,7 @@ class ScriptedAdapter(Adapter):
         if "CHANNEL1:SCALE?" in command:
             return str(self.channel_scale)
         if "TIMEBASE:RANGE?" in command:
-            return "0.2"
+            return str(self.timebase_range)
         if "WAVEFORM:PREAMBLE?" in command:
             return "0,0,6000,1,3.333333333333e-5,0,0,0.01,0,128"
         return "0"
@@ -300,6 +303,18 @@ class AmetekTests(unittest.TestCase):
             source.command_log.index("SOURce:FREQuency:MODE FIXed"),
             source.command_log.index("VOLTage:MODE STEP"),
         )
+
+    def test_frequency_drift_list_repeat_e_zero_nao_um(self):
+        """Hipótese LIST:REPeat (CHANGELOG/v1.9.md), confirmada na bancada
+        v1.10 (NOTCH real: 516ms de transiente contra ~200ms nominais,
+        2,58x — dentro da faixa 2x-2,7x já medida): 'SOURce:LIST:REPeat 1'
+        é lido pelo firmware Rev. 5.53 como 'repete uma vez' (toca 2x), não
+        'sem repetição'. Mesma correção de program_capture(), aqui para os
+        2 pontos (início/fim) da rampa de frequência da classe 18."""
+        source = AmetekMX30(simulated=True, max_voltage_rms=10.0, max_peak_v=100.0, max_current_a=0.5)
+        source.frequency_drift_list(57.0, 63.0, voltage_rms=5.0, dwell_s=0.1)
+        self.assertIn("SOURce:LIST:REPeat 0,0", source.command_log)
+        self.assertNotIn("SOURce:LIST:REPeat 1,1", source.command_log)
 
     def test_trigger_pulse_resets_residual_frequency_list_from_previous_class(self):
         source = AmetekMX30(simulated=True, max_voltage_rms=10.0, max_peak_v=100.0, max_current_a=0.5)
@@ -509,6 +524,23 @@ class AmetekTests(unittest.TestCase):
         self.assertTrue(dwell_commands, "Nenhum comando SOURce:LIST:DWELl encontrado")
         primeiro_dwell = float(dwell_commands[-1].split()[-1].split(",")[0])
         self.assertAlmostEqual(primeiro_dwell, 1.0 / 60.0, places=6)
+
+    def test_list_repeat_e_zero_nao_um_para_nao_dobrar_cada_ciclo(self):
+        """Hipótese LIST:REPeat (CHANGELOG/v1.9.md) confirmada na bancada
+        (v1.10): NOTCH real levou 516ms para concluir o transiente
+        (apos_trigger -> transiente_concluido) contra ~200ms nominais (12
+        ciclos x 16,67ms a 60Hz) — 2,58x, dentro da faixa de 2x-2,7x já
+        medida nas outras 7 classes TRACe. 'SOURce:LIST:REPeat 1' é lido
+        pelo firmware Rev. 5.53 como 'repete uma vez' (toca 2x cada ciclo),
+        não 'sem repetição' — o valor certo para tocar cada ciclo uma única
+        vez é 0."""
+        source = AmetekMX30(simulated=True, max_voltage_rms=10.0, max_peak_v=100.0, max_current_a=0.5)
+        t = np.arange(6000, dtype=np.float64) / 30000.0
+        voltage = np.sin(2.0 * np.pi * 60.0 * t)
+        source.program_capture(voltage, base_voltage_rms=5.0, frequency_hz=60.0)
+        repeat_commands = [c for c in source.command_log if c.startswith("SOURce:LIST:REPeat ")]
+        self.assertTrue(repeat_commands, "Nenhum comando SOURce:LIST:REPeat encontrado")
+        self.assertEqual(repeat_commands[-1], "SOURce:LIST:REPeat " + ",".join("0" for _ in range(12)))
 
     def test_program_capture_reaproveita_trace_identica_na_mesma_conexao(self):
         """Regressão: --low-voltage (e qualquer classe que reuse a mesma forma
@@ -1664,8 +1696,8 @@ class MargemCapturaTests(unittest.TestCase):
         margem_amostras, pontos_totais = mestre.ExperimentoBase._calcular_margem(
             margin_mode=True, config_points=6000, fs_hz=30_000.0,
         )
-        self.assertEqual(margem_amostras, 15_000)  # 500ms * 30kSa/s
-        self.assertEqual(pontos_totais, 6000 + 2 * 15_000)
+        self.assertEqual(margem_amostras, 12_000)  # 400ms * 30kSa/s
+        self.assertEqual(pontos_totais, 6000 + 2 * 12_000)
 
     def test_margin_on_fica_dentro_do_teto_de_pontos_do_osciloscopio(self):
         # oscilloscope_orm.py fixa ":WAVeform:POINts 60000" tanto em
@@ -1677,6 +1709,19 @@ class MargemCapturaTests(unittest.TestCase):
             margin_mode=True, config_points=6000, fs_hz=30_000.0,
         )
         self.assertLess(pontos_totais, 60_000)
+
+    def test_margin_on_fica_com_folga_do_teto_real_do_modo_auto(self):
+        # CHANGELOG/v1.10.md: uma aquisição SINGLE real em modo AUTO entrega
+        # só ~32,3-32,7 mil pontos reais, quase independente da janela
+        # pedida (medido: 32258/32258/32653/32432 pontos para janelas de
+        # 0.2/0.25/0.8/1.2s) -- MUITO abaixo do teto teórico de 60000 do
+        # :WAVeform:POINts acima. É esse teto REAL, não o teórico, que
+        # limita quanto pontos_totais pode pedir; 30000 fica com ~2258
+        # pontos (~7,5%) de folga sobre o pior caso já medido.
+        _, pontos_totais = mestre.ExperimentoBase._calcular_margem(
+            margin_mode=True, config_points=6000, fs_hz=30_000.0,
+        )
+        self.assertLessEqual(pontos_totais, 30_000)
 
     def test_validar_captura_aceita_pontos_extras_quando_esperado_explicito(self):
         config = mestre.Config(

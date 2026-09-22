@@ -52,7 +52,7 @@ Comandos disponíveis (nenhum energiza a saída sem pedir confirmação própria
   run all             Roda a bateria completa das 20 classes, sequencialmente,
                        sem parar numa falha isolada (ver Prioridade 1 do
                        CHANGELOG). Pede EXECUTAR-20-CLASSES.                [ON]
-  set margin on|off   Liga/desliga captura com folga extra (~500ms de cada
+  set margin on|off   Liga/desliga captura com folga extra (~400ms de cada
                        lado) antes/depois da janela nominal — salva o array
                        bruto, sem recorte automático. Só afeta captura real.[OFF]
   set diagnostico on|off
