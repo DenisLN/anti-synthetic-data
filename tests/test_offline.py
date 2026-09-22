@@ -1116,6 +1116,14 @@ class TotalNiveisTests(unittest.TestCase):
 
 
 class RemapeamentoNivelTests(unittest.TestCase):
+    """Nota (P04): a fonte fake destes testes passou a ser criada com
+    ``max_voltage_rms=300`` — o teto REAL do manual ([AM] §4.14, p. 84) — em
+    vez do default de comissionamento de 10 Vrms. Com base de 127 V e níveis
+    de 0,1 a 0,9 pu, o default antigo descrevia uma bancada fisicamente
+    impossível (12,7 V pedidos contra um teto de 10 V) que só passava porque
+    ninguém validava os níveis antes de capturar. As asserções destes testes
+    (quais capture_index o laço visita) continuam exatamente as mesmas."""
+
     def _config(self, results_dir, **overrides):
         base = dict(
             fs_hz=30_000.0, points=6_000, duration_s=0.2, grid_frequency_hz=60.0,
@@ -1130,7 +1138,8 @@ class RemapeamentoNivelTests(unittest.TestCase):
         tmp_dir = Path(tempfile.mkdtemp())
         try:
             config = self._config(tmp_dir / "resultados")
-            bancada = mestre.Bancada(mestre.AmetekMX30(simulated=True), mock.Mock(), config)
+            fonte = mestre.AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=425.0)
+            bancada = mestre.Bancada(fonte, mock.Mock(), config)
             niveis_vistos = []
 
             class _ComNiveis(mestre.ExperimentoNativo):
@@ -1156,7 +1165,8 @@ class RemapeamentoNivelTests(unittest.TestCase):
         tmp_dir = Path(tempfile.mkdtemp())
         try:
             config = self._config(tmp_dir / "resultados", capturas_override=3)
-            bancada = mestre.Bancada(mestre.AmetekMX30(simulated=True), mock.Mock(), config)
+            fonte = mestre.AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=425.0)
+            bancada = mestre.Bancada(fonte, mock.Mock(), config)
             niveis_vistos = []
 
             class _ComNiveis(mestre.ExperimentoNativo):
@@ -2160,6 +2170,154 @@ class SalvamentoIncrementalTests(unittest.TestCase):
             with self.assertRaises(InstrumentHardwareError):
                 experimento.executar()
             self.assertTrue(orfao.exists(), "rodada abortada não pode apagar dados da rodada anterior")
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+class ErroDeterministicoEPreValidacaoTests(unittest.TestCase):
+    """P04 — erro determinístico não é retentado; nível inviável é detectado
+    ANTES da primeira captura.
+
+    Relatório 01 §3 P1 caminho #4 e §3 P1 "Defeito adicional": a classe 03 a
+    220 V pede 1,4 pu = 308 Vrms, acima do teto FÍSICO de 300 Vrms do manual
+    ([AM] §4.14, p. 84 / relatório 02 B46). O código só descobria isso depois
+    de 20 capturas físicas, três vezes seguidas, e terminava com zero
+    arquivos."""
+
+    def _bancada(self, results_dir, **overrides):
+        base = dict(
+            fs_hz=30_000.0, points=6_000, duration_s=0.2, grid_frequency_hz=60.0,
+            base_voltage_rms=220.0, snr_levels_db=(), base_seed=1,
+            capture_current=False, current_base_a=None, results_dir=results_dir,
+            sim_captures_per_class=1, real_captures_per_class=1, disturbance_start_s=0.06,
+            capturas_override=1,
+        )
+        base.update(overrides)
+        config = mestre.Config(**base)
+        fonte = mestre.AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=425.0)
+        return mestre.Bancada(fonte, mock.Mock(), config)
+
+    @staticmethod
+    def _classe_swell(tentativas):
+        class _Swell(mestre.ExperimentoNativo):
+            id = "03"
+            nome = "SWELL"
+            NIVEIS = (1.1, 1.2, 1.4, 1.6, 1.8)
+
+            def gerar(self, t, f0, capture_index, rng):
+                nivel = self.NIVEIS[capture_index % len(self.NIVEIS)]
+                return np.sin(2.0 * np.pi * f0 * t) * nivel, {"swell_pu": nivel}
+
+            def configurar(self, capture_index):
+                nivel = self.NIVEIS[capture_index % len(self.NIVEIS)]
+                tentativas.append(nivel)
+                self.fonte.trigger_pulse(nivel * self.config.base_voltage_rms, width_s=0.060)
+                return {"swell_pu": nivel}
+
+        return _Swell
+
+    def _preparar(self, experimento):
+        pontos = experimento.config.points
+        tempo_s = np.arange(pontos, dtype=np.float64) / experimento.config.fs_hz
+
+        def _stub(capture_index, t, rng):
+            parametros = experimento.configurar(capture_index)
+            return tempo_s, np.sin(2.0 * np.pi * 60.0 * tempo_s), None, parametros
+
+        experimento._capturar_real = _stub
+        experimento._preparar_acquisicao_real = lambda: None
+
+    def test_nivel_acima_do_teto_e_pulado_antes_de_qualquer_captura(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            tentativas = []
+            bancada = self._bancada(tmp_dir / "resultados")
+            experimento = self._classe_swell(tentativas)(bancada)
+            experimento.osc = mock.Mock()
+            self._preparar(experimento)
+            with self.assertLogs("MestreExperimentos", level="WARNING"):
+                experimento.executar()
+            # 1,4/1,6/1,8 x 220 V passam de 300 Vrms: só 1,1 e 1,2 rodam.
+            self.assertEqual(tentativas, [1.1, 1.2])
+            arquivos = sorted(p.name for p in (tmp_dir / "resultados").glob("03_swell*.npz"))
+            self.assertEqual(len(arquivos), 2)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_classe_sem_nenhum_nivel_viavel_falha_sem_capturar(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            tentativas = []
+            bancada = self._bancada(tmp_dir / "resultados", base_voltage_rms=280.0)
+            experimento = self._classe_swell(tentativas)(bancada)
+            experimento.osc = mock.Mock()
+            self._preparar(experimento)
+            with self.assertRaises(ParameterOutOfBoundsError):
+                experimento.executar()
+            self.assertEqual(tentativas, [])
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_erro_deterministico_nao_e_retentado_pela_bateria(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            bancada = self._bancada(tmp_dir / "resultados")
+            chamadas = {"n": 0}
+
+            class _Determinista(mestre.ExperimentoNativo):
+                id = "03"
+                nome = "SWELL"
+
+                def gerar(self, t, f0, capture_index, rng):
+                    return np.sin(2.0 * np.pi * f0 * t), {}
+
+                def configurar(self, capture_index):
+                    return {}
+
+                def executar(self):
+                    chamadas["n"] += 1
+                    raise ParameterOutOfBoundsError("Tensão 308.0 Vrms fora do limite 0..300.0")
+
+            with mock.patch.object(
+                mestre.Bancada, "_carregar_classe_experimento",
+                staticmethod(lambda script_path: _Determinista),
+            ), mock.patch.object(mestre.Bancada, "recuperar_estado_seguro", lambda self: None):
+                resultados = bancada.executar_bateria([Path("03.py")])
+            self.assertEqual(chamadas["n"], 1, "erro determinístico não pode ser retentado 3x")
+            self.assertFalse(resultados[0].ok)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_erro_intermitente_continua_sendo_retentado(self):
+        """A rede de segurança para -113/-300 esporádicos (docstring de
+        ``executar_bateria``) NÃO pode ser removida junto."""
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            bancada = self._bancada(tmp_dir / "resultados")
+            chamadas = {"n": 0}
+
+            class _Intermitente(mestre.ExperimentoNativo):
+                id = "03"
+                nome = "SWELL"
+
+                def gerar(self, t, f0, capture_index, rng):
+                    return np.sin(2.0 * np.pi * f0 * t), {}
+
+                def configurar(self, capture_index):
+                    return {}
+
+                def executar(self):
+                    chamadas["n"] += 1
+                    if chamadas["n"] < 2:
+                        raise InstrumentHardwareError("-113 esporádico")
+
+            with mock.patch.object(
+                mestre.Bancada, "_carregar_classe_experimento",
+                staticmethod(lambda script_path: _Intermitente),
+            ), mock.patch.object(mestre.Bancada, "recuperar_estado_seguro", lambda self: None):
+                resultados = bancada.executar_bateria([Path("03.py")])
+            self.assertEqual(chamadas["n"], 2)
+            self.assertTrue(resultados[0].ok)
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
