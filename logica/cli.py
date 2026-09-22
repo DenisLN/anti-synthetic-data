@@ -15,7 +15,9 @@ energiza a saída pede a SUA própria confirmação aqui dentro.
 from __future__ import annotations
 
 import datetime as _dt
+import logging
 import os
+import subprocess
 import sys
 import traceback
 from pathlib import Path
@@ -24,6 +26,34 @@ from typing import List, Optional
 import mestre
 import preflight
 import preflight_new
+
+logger = logging.getLogger(__name__)
+
+# Opt-out do terminal de diagnóstico (ver comando_terminal_diagnostico() /
+# SessaoCLI._abrir_terminal_de_diagnostico()) — "0"/"false"/"off"/"no"
+# desliga; qualquer outro valor (inclusive ausente) mantém o padrão (ligado).
+# Existe para quem roda a CLI sem uma sessão gráfica de console (ex.: SSH
+# headless) ou simplesmente não quer a janela extra.
+DIAGNOSTICO_ABRIR_TERMINAL = os.getenv("DIAGNOSTICO_ABRIR_TERMINAL", "1").strip().lower() not in (
+    "0", "false", "off", "no",
+)
+
+
+def comando_terminal_diagnostico(caminho_log: Path) -> List[str]:
+    """Monta o comando do PowerShell que acompanha ``caminho_log`` (a
+    transcrição SCPI da sessão, ver ``mestre.configurar_log_de_sessao``) em
+    tempo real — o equivalente a ``tail -f`` no Windows. Função PURA: só
+    monta a lista de argumentos, não abre nada sozinha (ver
+    ``SessaoCLI._abrir_terminal_de_diagnostico``, quem chama
+    ``subprocess.Popen`` de fato) — assim dá para testar offline sem
+    depender de conseguir abrir uma janela de verdade."""
+    titulo = f"diagnostico SCPI - {caminho_log.parent.name}"
+    script = (
+        f"$Host.UI.RawUI.WindowTitle = '{titulo}'; "
+        f"Write-Host 'Acompanhando {caminho_log} (Ctrl+C fecha so esta janela, nao a bancada)'; "
+        f"Get-Content -Path '{caminho_log}' -Wait -Tail 20"
+    )
+    return ["powershell.exe", "-NoExit", "-Command", script]
 
 HELP_TEXT = """
 Comandos disponíveis (nenhum energiza a saída sem pedir confirmação própria):
@@ -85,6 +115,10 @@ class SessaoCLI:
         self.ultimo_resultado: dict[str, "mestre.ResultadoClasse"] = {}
         self._sessao_timestamp = _dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         self._runs_nesta_sessao = 0
+        # Janela de "tail -f" da transcrição SCPI (ver
+        # _abrir_terminal_de_diagnostico) — no máximo uma por vez; a do run
+        # anterior é fechada antes de abrir a do run atual.
+        self._processo_terminal_diagnostico: Optional[subprocess.Popen] = None
 
     # -- infraestrutura ----------------------------------------------------
 
@@ -121,6 +155,37 @@ class SessaoCLI:
         mestre.SESSION_RESULTS_DIR = sessao_dir
         mestre.configurar_log_de_sessao(sessao_dir)
         print(f"Sessão gravando em: {sessao_dir}")
+        if mestre.DIAGNOSTICO_MODE and mestre.BENCH_MODE and DIAGNOSTICO_ABRIR_TERMINAL:
+            self._abrir_terminal_de_diagnostico(sessao_dir / "scpi_transcricao.log")
+
+    def _abrir_terminal_de_diagnostico(self, caminho_log: Path) -> None:
+        """Abre uma janela de console nova fazendo ``tail -f`` de
+        ``caminho_log`` — pedido do dono em 2026-09-22 ("faça o diagnostico
+        on abrir um terminal com algo como tail -f nas logs de scpi
+        concomitantemente ao terminal"). Fecha a janela do run ANTERIOR
+        desta mesma sessão de CLI antes de abrir a nova (só uma por vez,
+        sempre acompanhando a pasta do run atual — cada run tem sua própria
+        pasta/log, ver P06b). Nunca deixa uma falha aqui (console
+        indisponível, ``powershell.exe`` não encontrado etc.) derrubar a
+        sessão de bancada — só loga um aviso e segue sem a janela extra."""
+        processo_anterior = self._processo_terminal_diagnostico
+        if processo_anterior is not None and processo_anterior.poll() is None:
+            try:
+                processo_anterior.terminate()
+            except Exception:  # noqa: BLE001 - best-effort, nunca crítico
+                logger.warning("Não foi possível fechar o terminal de diagnóstico anterior", exc_info=True)
+        self._processo_terminal_diagnostico = None
+        try:
+            self._processo_terminal_diagnostico = subprocess.Popen(
+                comando_terminal_diagnostico(caminho_log),
+                creationflags=subprocess.CREATE_NEW_CONSOLE,
+            )
+        except Exception:  # noqa: BLE001 - conveniência, nunca pode derrubar a sessão
+            logger.warning(
+                "Não foi possível abrir o terminal de diagnóstico (tail -f de %s) — "
+                "a sessão continua normalmente, sem essa janela extra.",
+                caminho_log, exc_info=True,
+            )
 
     @staticmethod
     def confirmar(aviso: str, esperado: str) -> bool:

@@ -2652,6 +2652,139 @@ class PastaDeSessaoPorRunTests(unittest.TestCase):
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
+class TerminalDeDiagnosticoTests(unittest.TestCase):
+    """P11 — pedido do dono, 2026-09-22: "faça o diagnostico on abrir um
+    terminal com algo como tail -f nas logs de scpi concomitantemente ao
+    terminal". Com ``set diagnostico on`` e captura FÍSICA (``BENCH_MODE``),
+    cada ``_garantir_pasta_sessao()`` (chamada no início de todo `run`/`run
+    all`) abre uma janela de console nova acompanhando
+    ``scpi_transcricao.log`` (P06) da pasta da sessão em tempo real, sem
+    nunca derrubar a sessão se o console não puder ser aberto."""
+
+    def _sessao(self, tmp_dir):
+        import cli
+        sessao = cli.SessaoCLI()
+        return sessao, tmp_dir
+
+    def test_comando_do_terminal_aponta_para_o_scpi_transcricao_log_e_usa_tail(self):
+        """Função pura (sem Popen): o comando gerado precisa referenciar o
+        arquivo certo e usar o equivalente a `tail -f` (Get-Content -Wait)."""
+        import cli
+        caminho = Path(r"C:\bancada\resultados\sessao_x\scpi_transcricao.log")
+        comando = cli.comando_terminal_diagnostico(caminho)
+        self.assertIsInstance(comando, list)
+        junto = " ".join(comando)
+        self.assertIn(str(caminho), junto)
+        self.assertIn("Get-Content", junto)
+        self.assertIn("-Wait", junto)
+
+    def test_abre_terminal_quando_diagnostico_on_e_bench_mode(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            sessao, _ = self._sessao(tmp_dir)
+            with mock.patch.object(mestre, "RESULTS_DIR", tmp_dir), \
+                 mock.patch.object(mestre, "DIAGNOSTICO_MODE", True), \
+                 mock.patch.object(mestre, "BENCH_MODE", True), \
+                 mock.patch("cli.subprocess.Popen") as popen_mock:
+                popen_mock.return_value = mock.Mock(poll=lambda: None)
+                sessao._garantir_pasta_sessao()
+            mestre.encerrar_log_de_sessao()
+            popen_mock.assert_called_once()
+            _args, kwargs = popen_mock.call_args
+            self.assertIn("scpi_transcricao.log", " ".join(_args[0]))
+            self.assertIn("creationflags", kwargs)
+        finally:
+            mestre.encerrar_log_de_sessao()
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_nao_abre_terminal_com_diagnostico_off(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            sessao, _ = self._sessao(tmp_dir)
+            with mock.patch.object(mestre, "RESULTS_DIR", tmp_dir), \
+                 mock.patch.object(mestre, "DIAGNOSTICO_MODE", False), \
+                 mock.patch.object(mestre, "BENCH_MODE", True), \
+                 mock.patch("cli.subprocess.Popen") as popen_mock:
+                sessao._garantir_pasta_sessao()
+            mestre.encerrar_log_de_sessao()
+            popen_mock.assert_not_called()
+        finally:
+            mestre.encerrar_log_de_sessao()
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_nao_abre_terminal_em_modo_simulado(self):
+        """diagnostico on sozinho não basta — sem captura FÍSICA não há SCPI
+        de verdade para acompanhar."""
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            sessao, _ = self._sessao(tmp_dir)
+            with mock.patch.object(mestre, "RESULTS_DIR", tmp_dir), \
+                 mock.patch.object(mestre, "DIAGNOSTICO_MODE", True), \
+                 mock.patch.object(mestre, "BENCH_MODE", False), \
+                 mock.patch("cli.subprocess.Popen") as popen_mock:
+                sessao._garantir_pasta_sessao()
+            mestre.encerrar_log_de_sessao()
+            popen_mock.assert_not_called()
+        finally:
+            mestre.encerrar_log_de_sessao()
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_opt_out_por_variavel_de_ambiente(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            import cli
+            sessao, _ = self._sessao(tmp_dir)
+            with mock.patch.object(mestre, "RESULTS_DIR", tmp_dir), \
+                 mock.patch.object(mestre, "DIAGNOSTICO_MODE", True), \
+                 mock.patch.object(mestre, "BENCH_MODE", True), \
+                 mock.patch.object(cli, "DIAGNOSTICO_ABRIR_TERMINAL", False), \
+                 mock.patch("cli.subprocess.Popen") as popen_mock:
+                sessao._garantir_pasta_sessao()
+            mestre.encerrar_log_de_sessao()
+            popen_mock.assert_not_called()
+        finally:
+            mestre.encerrar_log_de_sessao()
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_falha_ao_abrir_terminal_nao_derruba_a_sessao(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            sessao, _ = self._sessao(tmp_dir)
+            with mock.patch.object(mestre, "RESULTS_DIR", tmp_dir), \
+                 mock.patch.object(mestre, "DIAGNOSTICO_MODE", True), \
+                 mock.patch.object(mestre, "BENCH_MODE", True), \
+                 mock.patch("cli.subprocess.Popen", side_effect=FileNotFoundError("powershell.exe")), \
+                 self.assertLogs("cli", level="WARNING"):
+                sessao._garantir_pasta_sessao()  # NÃO pode levantar
+            mestre.encerrar_log_de_sessao()
+            self.assertTrue(mestre.SESSION_RESULTS_DIR.is_dir())
+        finally:
+            mestre.encerrar_log_de_sessao()
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_fecha_terminal_anterior_antes_de_abrir_o_proximo(self):
+        """2 'run's na mesma sessão de CLI: só uma janela de tail por vez,
+        sempre acompanhando a pasta do run ATUAL — a do run anterior (que
+        aponta pra uma pasta antiga) é encerrada antes de abrir a nova."""
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            sessao, _ = self._sessao(tmp_dir)
+            processo_1 = mock.Mock(poll=lambda: None)  # ainda "rodando"
+            with mock.patch.object(mestre, "RESULTS_DIR", tmp_dir), \
+                 mock.patch.object(mestre, "DIAGNOSTICO_MODE", True), \
+                 mock.patch.object(mestre, "BENCH_MODE", True), \
+                 mock.patch("cli.subprocess.Popen") as popen_mock:
+                popen_mock.side_effect = [processo_1, mock.Mock(poll=lambda: None)]
+                sessao._garantir_pasta_sessao()
+                sessao._garantir_pasta_sessao()
+            mestre.encerrar_log_de_sessao()
+            self.assertEqual(popen_mock.call_count, 2)
+            processo_1.terminate.assert_called_once()
+        finally:
+            mestre.encerrar_log_de_sessao()
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
 class PosicaoDoTriggerTests(unittest.TestCase):
     """P07 — H-REF10 (relatório 01 §0 ACHADO 1, confirmada em 02 A1-A6).
 
