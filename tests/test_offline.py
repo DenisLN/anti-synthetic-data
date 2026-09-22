@@ -2457,5 +2457,142 @@ class ValidacaoFisicaTests(unittest.TestCase):
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
+class LogDeSessaoEMetadataTests(unittest.TestCase):
+    """P06 — nada do contexto da sessão era gravado (relatório 01 §1.3 B6 e
+    §4 item 9): ``logging.basicConfig(stream=sys.stdout)`` e nenhum
+    ``FileHandler``; ``logs/`` vazio; metadata sem f0, tensão base, probe,
+    pre_trigger, flags, versão nem IDN. Quando a fonte travou, o único
+    registro do que tinha sido enviado era o console do operador."""
+
+    def test_configurar_log_de_sessao_cria_arquivo_e_faz_flush_por_linha(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            caminho = mestre.configurar_log_de_sessao(tmp_dir)
+            try:
+                logging.getLogger("MestreExperimentos").info("linha de teste")
+                # flush por linha: o conteúdo precisa estar em disco JÁ, sem
+                # esperar o fim do processo — foi o que faltou no travamento.
+                self.assertIn("linha de teste", caminho.read_text(encoding="utf-8"))
+            finally:
+                mestre.encerrar_log_de_sessao()
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_transcricao_scpi_registra_writes_e_queries_com_timestamp(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            mestre.configurar_log_de_sessao(tmp_dir)
+            transcricao = tmp_dir / "scpi_transcricao.log"
+            try:
+                fonte = AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=425.0)
+                fonte.write("VOLTage:MODE STEP")
+                fonte.query("VOLTage:MODE?")
+                texto = transcricao.read_text(encoding="utf-8")
+            finally:
+                mestre.encerrar_log_de_sessao()
+            self.assertIn("VOLTage:MODE STEP", texto)
+            self.assertIn("VOLTage:MODE?", texto)
+            self.assertIn("W ", texto)
+            self.assertIn("Q ", texto)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_transcricao_trunca_trace_data_mas_registra_o_tamanho(self):
+        """Um ``TRACe:DATA`` tem ~11,3 kB numa linha. Guardar os 280 de uma
+        conexão inteiros inflaria o arquivo sem acrescentar nada; o que
+        importa é QUE ele foi enviado e QUANDO."""
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            mestre.configurar_log_de_sessao(tmp_dir)
+            transcricao = tmp_dir / "scpi_transcricao.log"
+            try:
+                fonte = AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=425.0)
+                fonte.write("TRACe:DATA TCC00," + ",".join("0.123456" for _ in range(1024)))
+                texto = transcricao.read_text(encoding="utf-8")
+            finally:
+                mestre.encerrar_log_de_sessao()
+            linha = [l for l in texto.splitlines() if "TRACe:DATA" in l][0]
+            self.assertLess(len(linha), 400)
+            self.assertIn("bytes", linha)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_metadata_grava_contexto_da_sessao(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            config = mestre.Config(
+                fs_hz=30_000.0, points=6_000, duration_s=0.2, grid_frequency_hz=50.0,
+                base_voltage_rms=220.0, snr_levels_db=(), base_seed=1,
+                capture_current=False, current_base_a=None, results_dir=tmp_dir / "resultados",
+                sim_captures_per_class=1, real_captures_per_class=1, disturbance_start_s=0.06,
+                capturas_override=1, margin_mode=True, diagnostico_mode=True,
+            )
+            fonte = mestre.AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=425.0)
+            bancada = mestre.Bancada(fonte, mock.Mock(), config)
+
+            class _Classe(mestre.ExperimentoNativo):
+                id = "02"
+                nome = "SAG"
+                pre_trigger_s = 0.060
+
+                def gerar(self, t, f0, capture_index, rng):
+                    return np.sin(2.0 * np.pi * f0 * t), {}
+
+                def configurar(self, capture_index):
+                    return {}
+
+            experimento = _Classe(bancada)
+            experimento.osc = mock.Mock()
+            experimento.osc.ultimo_indice_trigger = 777
+            experimento.osc.idn = "KEYSIGHT,DSOX4034A,MY59240844,07.66"
+            tempo_s = np.arange(6000 + 2 * 600, dtype=np.float64) / 30_000.0
+            experimento._capturar_real = lambda ci, t, rng: (
+                tempo_s, np.sin(2.0 * np.pi * 50.0 * tempo_s), None, {},
+            )
+            experimento._preparar_acquisicao_real = lambda: None
+            with mock.patch.object(
+                mestre.ExperimentoBase, "_calcular_margem", staticmethod(lambda **kw: (600, 7200))
+            ):
+                experimento.executar()
+            registro = json.loads(
+                (config.results_dir / "metadata" / "02_sag.jsonl").read_text(encoding="utf-8").splitlines()[0]
+            )
+            for chave in (
+                "f0_hz", "tensao_base_rms", "pre_trigger_s", "margin_mode", "diagnostico_mode",
+                "versao_codigo", "idn_fonte", "indice_trigger", "escritas_trace_na_conexao",
+            ):
+                self.assertIn(chave, registro, f"metadata precisa gravar {chave}")
+            self.assertEqual(registro["f0_hz"], 50.0)
+            self.assertEqual(registro["tensao_base_rms"], 220.0)
+            self.assertEqual(registro["pre_trigger_s"], 0.060)
+            self.assertEqual(registro["indice_trigger"], 777)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+class PastaDeSessaoPorRunTests(unittest.TestCase):
+    """P06b — ``run 01`` e o ``run all`` seguinte gravavam na MESMA pasta e o
+    segundo sobrescrevia o primeiro em silêncio, mesmo com flags diferentes
+    (relatório 01 §3 P1 caminho #7 / §4 item 10; log1 linhas 89-110)."""
+
+    def test_cada_run_ganha_a_sua_pasta_e_o_seu_log(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            import cli
+            sessao = cli.SessaoCLI()
+            with mock.patch.object(mestre, "RESULTS_DIR", tmp_dir):
+                sessao._garantir_pasta_sessao()
+                primeira = mestre.SESSION_RESULTS_DIR
+                sessao._garantir_pasta_sessao()
+                segunda = mestre.SESSION_RESULTS_DIR
+            mestre.encerrar_log_de_sessao()
+            self.assertNotEqual(primeira, segunda)
+            self.assertTrue(primeira.is_dir() and segunda.is_dir())
+            self.assertTrue((segunda / "sessao.log").exists())
+        finally:
+            mestre.encerrar_log_de_sessao()
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -167,6 +167,11 @@ class KeysightDSOX4034A(SCPIMixin, Instrument):
                 f"CH{channel} cobre apenas +/-{actual_scale * 4.0:.3f}; "
                 f"pico requerido {required_peak:.3f}"
             )
+        # Registrado para o metadata: sem a escala vertical não dá para saber
+        # quantos LSB do conversor o sinal ocupava — é o que impede decidir se
+        # a classe 19 (offset de ~2 LSB) mediu a fonte ou o ruído do ADC
+        # (relatório 01 §4 item 6).
+        self.ultima_escala_vertical_v = actual_scale
         return actual_scale
 
     def configure_acquisition(

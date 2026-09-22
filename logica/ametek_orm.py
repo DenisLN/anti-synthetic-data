@@ -26,6 +26,23 @@ except ImportError:  # permite importar o modo simulado sem PyVISA
 
 
 logger = logging.getLogger("AmetekORM")
+# Transcrição SCPI: TODO comando enviado e TODA consulta, com timestamp
+# monotônico. Silenciosa até mestre.configurar_log_de_sessao() anexar um
+# FileHandler (não há custo perceptível: um logging.debug por comando contra
+# ~11 ms de serial). Quando a fonte travou na sessão 2, o único registro do
+# que tinha sido enviado era o console do operador (relatório 01 §3 P3).
+scpi_logger = logging.getLogger("AmetekORM.scpi")
+# Comandos com payload gigante (TRACe:DATA tem ~11,3 kB numa linha) entram
+# truncados: o que importa é QUE foram enviados e QUANDO.
+MAX_TRANSCRICAO_CHARS = 160
+
+
+def _transcrever(tipo: str, texto: str) -> None:
+    if not scpi_logger.isEnabledFor(logging.DEBUG):
+        return
+    if len(texto) > MAX_TRANSCRICAO_CHARS:
+        texto = f"{texto[:MAX_TRANSCRICAO_CHARS]}... [{len(texto)} bytes no total]"
+    scpi_logger.debug("t=%.6f %s %s", time.monotonic(), tipo, texto)
 
 
 class AmetekORMError(Exception):
@@ -112,6 +129,10 @@ class AmetekMX30:
         self.idn = ""
         self.command_log: List[str] = []
         self.last_programmed_peak_v = 0.0
+        # Quantas TRACe:DATA esta CONEXÃO já gravou na memória não volátil
+        # da fonte ([AM] p. 126). A sessão 2 travou na 280.ª; sem este
+        # número no metadata não há como correlacionar exposição e falha.
+        self.escritas_trace = 0
         self._last_cycles = 0
         # Modo/forma atuais rastreados em Python — coincidem com o que
         # configure_safe_baseline() sempre programa numa conexão nova (AC,
@@ -250,6 +271,7 @@ class AmetekMX30:
 
     def _raw_write(self, command: str, *, append_eot: Optional[bool] = None) -> None:
         command = command.strip()
+        _transcrever("W", command)
         if append_eot is None:
             # A USB serial da MX30 da bancada exige LF e uma transferência EOT
             # separada para executar também comandos sem resposta. Sem isso,
@@ -277,6 +299,7 @@ class AmetekMX30:
 
     def query(self, command: str) -> str:
         command = command.strip()
+        _transcrever("Q", command)
         with self._lock:
             if self.simulated:
                 self.command_log.append(command)
@@ -1211,6 +1234,7 @@ class AmetekMX30:
                         )
                 values = ",".join(f"{value:.8g}" for value in trace)
                 self.write(f"TRACe:DATA {name},{values}")
+                self.escritas_trace += 1
                 # A transferência serial em 115200 baud na Rev. 5.53 pode deixar o buffer ocupado
                 # se checado imediatamente via SYST:ERR?. Limpamos com *CLS e aguardamos o processamento.
                 if not self.simulated:

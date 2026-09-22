@@ -30,6 +30,84 @@ logging.basicConfig(
 )
 logger = logging.getLogger("MestreExperimentos")
 
+_HANDLERS_DE_SESSAO: List[logging.Handler] = []
+
+
+class _HandlerComFlush(logging.FileHandler):
+    """``FileHandler`` que dá flush em CADA linha.
+
+    Sem isto, o buffer do arquivo teria sido perdido exatamente no cenário que
+    interessa: a fonte travou, o processo morreu e o que estava em memória
+    nunca chegou ao disco (relatório 01 §3 P3)."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        super().emit(record)
+        self.flush()
+
+
+def configurar_log_de_sessao(pasta: Path) -> Path:
+    """Anexa à pasta da sessão um log de execução e uma transcrição SCPI.
+
+    Fecha o buraco do relatório 01 §1.3 B6: ``logging.basicConfig`` manda só
+    para ``sys.stdout``, ``cli.py`` nunca acrescentou ``FileHandler`` e
+    ``logs/`` ficou vazio nas duas sessões. Devolve o caminho do log."""
+    encerrar_log_de_sessao()
+    pasta.mkdir(parents=True, exist_ok=True)
+    formato = logging.Formatter(
+        "[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+    )
+    execucao = _HandlerComFlush(pasta / "sessao.log", encoding="utf-8")
+    execucao.setFormatter(formato)
+    execucao.setLevel(logging.INFO)
+    logging.getLogger().addHandler(execucao)
+    logging.getLogger().setLevel(logging.INFO)
+
+    transcricao = _HandlerComFlush(pasta / "scpi_transcricao.log", encoding="utf-8")
+    transcricao.setFormatter(logging.Formatter("[%(asctime)s.%(msecs)03d] %(message)s", datefmt="%H:%M:%S"))
+    transcricao.setLevel(logging.DEBUG)
+    scpi = logging.getLogger("AmetekORM.scpi")
+    scpi.setLevel(logging.DEBUG)
+    # propagate=False: a transcrição não polui o console do operador.
+    scpi.propagate = False
+    scpi.addHandler(transcricao)
+
+    _HANDLERS_DE_SESSAO.extend([execucao, transcricao])
+    logger.info("Log desta sessão em %s", pasta / "sessao.log")
+    return pasta / "sessao.log"
+
+
+def encerrar_log_de_sessao() -> None:
+    scpi = logging.getLogger("AmetekORM.scpi")
+    for handler in list(_HANDLERS_DE_SESSAO):
+        logging.getLogger().removeHandler(handler)
+        scpi.removeHandler(handler)
+        handler.close()
+    _HANDLERS_DE_SESSAO.clear()
+    scpi.setLevel(logging.NOTSET)
+    scpi.propagate = True
+
+
+def versao_do_codigo() -> str:
+    """``git describe --dirty`` do próprio repositório, ou ``desconhecida``.
+
+    Sem isto não há como saber, a partir de ``resultados/``, que as duas
+    sessões de 2026-09-16 rodaram "v1.9 commitado + v1.10 não commitado"."""
+    global _VERSAO_CACHE
+    if _VERSAO_CACHE is not None:
+        return _VERSAO_CACHE
+    try:
+        import subprocess
+        _VERSAO_CACHE = subprocess.run(
+            ["git", "describe", "--always", "--dirty", "--tags"],
+            cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=10, check=True,
+        ).stdout.strip() or "desconhecida"
+    except Exception:  # noqa: BLE001 - nunca impedir uma sessão por causa disto
+        _VERSAO_CACHE = "desconhecida"
+    return _VERSAO_CACHE
+
+
+_VERSAO_CACHE: Optional[str] = None
+
 
 # ---------------------------------------------------------------------------
 # Helpers de variável de ambiente
@@ -679,6 +757,36 @@ class ExperimentoBase(ABC):
         """Hook opcional, chamado uma vez antes do laço de capturas (bancada
         real), para ajustes que não mudam entre capturas."""
 
+    def _contexto_da_sessao(self) -> dict:
+        """Tudo que só existia no console do operador e, por isso, não podia
+        ser recuperado de ``resultados/`` (relatório 01 §1.3 B6 / §4 item 9):
+        f0, tensão base, fator de probe, pré-trigger da classe, escala
+        vertical, índice do trigger dentro do registro, flags da sessão,
+        versão do código e IDN dos dois instrumentos."""
+        osc = self.osc
+        contexto = {
+            "f0_hz": self.config.grid_frequency_hz,
+            "tensao_base_rms": self.config.base_voltage_rms,
+            "probe_tensao": VOLTAGE_PROBE_ATTENUATION,
+            "pre_trigger_s": float(getattr(self, "pre_trigger_s", 0.0)),
+            "margin_mode": bool(self.config.margin_mode),
+            "diagnostico_mode": bool(self.config.diagnostico_mode),
+            "versao_codigo": versao_do_codigo(),
+            "idn_fonte": str(getattr(self.fonte, "idn", "")),
+            "idn_osciloscopio": str(getattr(osc, "idn", "")),
+            "escritas_trace_na_conexao": int(getattr(self.fonte, "escritas_trace", 0)),
+        }
+        # indice_trigger vem da preamble do osciloscópio (ver
+        # oscilloscope_orm.get_waveform): é a única informação que diz onde o
+        # trigger caiu DENTRO do registro.
+        indice_trigger = getattr(osc, "ultimo_indice_trigger", None)
+        if isinstance(indice_trigger, (int, float)):
+            contexto["indice_trigger"] = int(indice_trigger)
+        escala = getattr(osc, "ultima_escala_vertical_v", None)
+        if isinstance(escala, (int, float)):
+            contexto["escala_vertical_v_div"] = float(escala)
+        return contexto
+
     def forma_esperada_para_validacao(
         self, capture_index: int, t: np.ndarray, seed: int
     ) -> Optional[np.ndarray]:
@@ -1231,6 +1339,8 @@ class ExperimentoBase(ABC):
                     "snr_medido_db": medidas_snr,
                     "nivel_indice": capture_index if (cobertura_por_nivel_ativa or not simulated) else 0,
                 })
+                if not simulated:
+                    metadados[-1].update(self._contexto_da_sessao())
                 if margem_amostras > 0:
                     metadados[-1]["margem_amostras_antes"] = margem_amostras
                     metadados[-1]["margem_amostras_depois"] = margem_amostras

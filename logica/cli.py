@@ -79,7 +79,7 @@ class SessaoCLI:
     def __init__(self) -> None:
         self.ultimo_resultado: dict[str, "mestre.ResultadoClasse"] = {}
         self._sessao_timestamp = _dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        self._sessao_criada = False
+        self._runs_nesta_sessao = 0
 
     # -- infraestrutura ----------------------------------------------------
 
@@ -97,16 +97,24 @@ class SessaoCLI:
         preflight_new.OUTPUT_ARMED = autorizado
 
     def _garantir_pasta_sessao(self) -> None:
-        """Cria resultados/sessao_<timestamp>/ na PRIMEIRA gravação da sessão
-        (não no boot da CLI) — status/comm/trigger sem run não deixam pasta
-        vazia. Todo run subsequente na MESMA sessão de CLI grava na mesma
-        pasta (timestamp fixado em __init__)."""
-        if self._sessao_criada:
-            return
-        sessao_dir = mestre.RESULTS_DIR / f"sessao_{self._sessao_timestamp}"
+        """Cria uma pasta NOVA para CADA ``run`` (não no boot da CLI —
+        status/comm/trigger sem run não deixam pasta vazia).
+
+        Antes, todos os ``run`` de uma sessão de CLI compartilhavam a mesma
+        pasta e o segundo sobrescrevia o primeiro EM SILÊNCIO, mesmo com
+        flags diferentes: na sessão 1, um ``run 01`` com ``margin on`` e
+        ``diagnostico off`` foi apagado pelo ``run all`` seguinte (relatório
+        01 §3 P1 caminho #7). O primeiro run mantém o nome histórico
+        ``sessao_<timestamp>``; do segundo em diante, ``_run02``, ``_run03``...
+
+        Também anexa o log de execução e a transcrição SCPI à pasta — sem
+        isso nada do que foi enviado à fonte sobrevive ao fim do processo."""
+        self._runs_nesta_sessao += 1
+        sufixo = "" if self._runs_nesta_sessao == 1 else f"_run{self._runs_nesta_sessao:02d}"
+        sessao_dir = mestre.RESULTS_DIR / f"sessao_{self._sessao_timestamp}{sufixo}"
         sessao_dir.mkdir(parents=True, exist_ok=True)
         mestre.SESSION_RESULTS_DIR = sessao_dir
-        self._sessao_criada = True
+        mestre.configurar_log_de_sessao(sessao_dir)
         print(f"Sessão gravando em: {sessao_dir}")
 
     @staticmethod
