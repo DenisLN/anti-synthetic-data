@@ -19,7 +19,7 @@ import numpy as np
 from ametek_orm import (
     AmetekMX30, CommunicationError, FalhaFatalDeInstrumento, ParameterOutOfBoundsError,
 )
-from sinais import ruido_awgn, snr_medida, tempo
+from sinais import comparar_fisicamente, ruido_awgn, snr_medida, tempo
 
 
 logging.basicConfig(
@@ -166,6 +166,23 @@ def validate_bench_configuration(require_output: bool = True) -> None:
         raise RuntimeError(
             "Saída física bloqueada. Após o preflight e a inspeção da bancada, defina ARM_OUTPUT=YES"
         )
+
+
+class ValidacaoFisicaError(ValueError):
+    """A captura saiu do instrumento, mas não corresponde ao que a classe
+    pediu (nível base, profundidade do evento ou conteúdo harmônico).
+
+    Determinística por natureza: repetir a mesma classe com a mesma
+    configuração produziria o mesmo desvio — por isso entra em
+    ``Bancada.ERROS_DETERMINISTICOS`` e não é retentada. As capturas
+    suspeitas continuam GRAVADAS, com ``validacao_fisica.ok=false`` no
+    metadata: dado marcado é melhor que dado apagado, e é o que permite
+    diagnosticar o problema depois."""
+
+
+VALIDACAO_FISICA = env_bool("VALIDACAO_FISICA", default=True)
+VALIDACAO_TOL_ENVELOPE = env_float("VALIDACAO_TOL_ENVELOPE", 0.15)
+VALIDACAO_TOL_THD = env_float("VALIDACAO_TOL_THD", 0.20)
 
 
 @dataclass(frozen=True)
@@ -416,7 +433,7 @@ class Bancada:
     # relatório 01 §3 P1 caminho #4). A lista é DELIBERADAMENTE estreita:
     # ``ValueError`` em geral (ex.: contagem de pontos da captura) pode ser
     # intermitente e continua ganhando as 3 tentativas.
-    ERROS_DETERMINISTICOS = (ParameterOutOfBoundsError,)
+    ERROS_DETERMINISTICOS = (ParameterOutOfBoundsError, ValidacaoFisicaError)
 
     def executar_bateria(self, scripts: List[Path]) -> List[ResultadoClasse]:
         """Roda cada classe isoladamente: uma falha de EXPERIMENTO (RMS fora
@@ -661,6 +678,49 @@ class ExperimentoBase(ABC):
     def _preparar_acquisicao_real(self) -> None:
         """Hook opcional, chamado uma vez antes do laço de capturas (bancada
         real), para ajustes que não mudam entre capturas."""
+
+    def forma_esperada_para_validacao(
+        self, capture_index: int, t: np.ndarray, seed: int
+    ) -> Optional[np.ndarray]:
+        """Forma de onda que a classe PEDIU nesta captura, em pu, para a
+        validação física pós-captura.
+
+        Padrão: reexecuta ``gerar()`` com um rng novo da MESMA seed (mesma
+        técnica de ``analisar_sessao.py``). ``ExperimentoWaveform`` devolve a
+        forma REALMENTE programada (já escalada por
+        ``limite_pico_bancada_pu``), que pode diferir de ``gerar()``."""
+        try:
+            voltage_pu, _ = self.gerar(
+                t, self.config.grid_frequency_hz, capture_index, np.random.default_rng(seed),
+            )
+        except Exception:  # noqa: BLE001 - validação nunca derruba a captura
+            logger.warning("[%s] não foi possível reconstruir a forma esperada", self.id, exc_info=True)
+            return None
+        return np.asarray(voltage_pu, dtype=np.float64)
+
+    def _validar_fisicamente(
+        self, capture_index: int, t: np.ndarray, seed: int, medido_pu: np.ndarray
+    ) -> Optional[dict]:
+        """Compara o que saiu do instrumento com o que a classe pediu.
+
+        Complemento do readback SCPI de ``arm()``: aquele confere o que a
+        fonte DIZ ter programado, este confere o que ela FEZ. H-NATIVO
+        (relatório 01 §1.2) passou em silêncio por não existir nenhum dos
+        dois."""
+        if not VALIDACAO_FISICA:
+            return None
+        esperado = self.forma_esperada_para_validacao(capture_index, t, seed)
+        if esperado is None:
+            return None
+        try:
+            return comparar_fisicamente(
+                esperado, medido_pu,
+                fs_hz=self.config.fs_hz, f0=self.config.grid_frequency_hz,
+                tol_envelope=VALIDACAO_TOL_ENVELOPE, tol_thd=VALIDACAO_TOL_THD,
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning("[%s] validação física não pôde ser calculada", self.id, exc_info=True)
+            return None
 
     def tensao_rms_programada(self, capture_index: int) -> Optional[float]:
         """Tensão rms que ESTA captura vai pedir à fonte, quando ela é
@@ -1115,6 +1175,7 @@ class ExperimentoBase(ABC):
         )
         ids: List[str] = []
         metadados: List[dict] = []
+        capturas_invalidas: List[Tuple[str, List[str]]] = []
         tempo_ms_eixo = None
         if not simulated:
             # Gravação incremental: cada captura vai para o disco assim que
@@ -1175,6 +1236,17 @@ class ExperimentoBase(ABC):
                     metadados[-1]["margem_amostras_depois"] = margem_amostras
                     metadados[-1]["amostras_totais"] = pontos_efetivos
                 if not simulated:
+                    validacao = self._validar_fisicamente(
+                        capture_index, t, seed, measured_voltage_pu,
+                    )
+                    if validacao is not None:
+                        metadados[-1]["validacao_fisica"] = validacao
+                        if not validacao["ok"]:
+                            capturas_invalidas.append((capture_id, validacao["motivos"]))
+                            logger.error(
+                                "[%s] captura %s NÃO corresponde ao que foi programado: %s",
+                                self.id, capture_id, "; ".join(validacao["motivos"]),
+                            )
                     self._salvar_captura(
                         tempo_ms=tempo_ms_eixo,
                         tensao_limpa_captura=tensao_limpa[posicao],
@@ -1208,6 +1280,15 @@ class ExperimentoBase(ABC):
             # as nativas, não.
             self.fonte.restaurar_forma_e_modo_padrao()
             self._finalizar_gravacao(parcial=False)
+            if capturas_invalidas:
+                # Os dados já estão no disco, marcados. A exceção existe para
+                # o operador SABER — silêncio aqui seria exatamente o que
+                # deixou duas sessões inteiras com rótulo errado.
+                raise ValidacaoFisicaError(
+                    f"[{self.id}] {len(capturas_invalidas)} de {total} capturas não "
+                    f"correspondem ao programado: {capturas_invalidas}. Os arquivos foram "
+                    "GRAVADOS com validacao_fisica.ok=false no metadata."
+                )
         else:
             self._salvar_classe(
                 tempo_ms=tempo_ms_eixo, tensao_limpa=tensao_limpa,
@@ -1287,6 +1368,12 @@ class ExperimentoWaveform(ExperimentoBase):
     """Classes que precisam de forma de onda arbitrária (TRACe/LIST) — sempre
     ``gerar()`` + ``program_capture``/``arm_transient``, também na bancada real."""
 
+    def forma_esperada_para_validacao(self, capture_index, t, seed):
+        forma = getattr(self, "_forma_programada_pu", None)
+        if forma is not None:
+            return np.asarray(forma, dtype=np.float64)
+        return super().forma_esperada_para_validacao(capture_index, t, seed)
+
     def limite_pico_bancada_pu(self) -> Optional[float]:
         """Override para classes cujo pico especificado em ``gerar()`` pode
         exceder o range físico da fonte na tensão de comissionamento (ex.:
@@ -1319,6 +1406,10 @@ class ExperimentoWaveform(ExperimentoBase):
                     self.id, pico_atual_pu, limite_pico_pu, fator,
                 )
                 voltage_pu = voltage_pu * fator
+        # Forma REALMENTE programada (já escalada): é contra ela, e não
+        # contra gerar(), que a validação física deve comparar — a classe 08
+        # é reduzida por limite_pico_bancada_pu() só na captura física.
+        self._forma_programada_pu = voltage_pu
         expected_peak_v = float(np.max(np.abs(voltage_pu))) * self.config.base_voltage_rms * math.sqrt(2.0)
         self.fonte.program_capture(
             voltage_pu,
