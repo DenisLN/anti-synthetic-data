@@ -59,10 +59,12 @@ HELP_TEXT = """
 Comandos disponíveis (nenhum energiza a saída sem pedir confirmação própria):
 
   status              O que está configurado (porta, Keysight, ARM_OUTPUT,
-                       tensão/frequência base) e o resultado da última
-                       execução de cada classe nesta sessão.              [OFF]
-  list                Lista as 20 classes com id, nome e status da última
-                       execução (OK / FALHOU / nunca rodou).               [OFF]
+                       tensão/frequência base, seed, capturas efetivas por
+                       classe) e o resultado da última execução de cada
+                       classe nesta sessão.                                 [OFF]
+  list                Lista as 20 classes com id, nome, capturas efetivas
+                       (e o padrão da classe) e status da última execução
+                       (OK / FALHOU / nunca rodou).                         [OFF]
   comm                Identifica AMETEK e Keysight (*IDN?), confirma
                        protocolo/porta. Equivale à antiga etapa
                        "Communication".                                    [OFF]
@@ -82,8 +84,10 @@ Comandos disponíveis (nenhum energiza a saída sem pedir confirmação própria
   run all             Roda a bateria completa das 20 classes, sequencialmente,
                        sem parar numa falha isolada (ver Prioridade 1 do
                        CHANGELOG). Pede EXECUTAR-20-CLASSES.                [ON]
-                       Pula as classes de BATERIA_EXCLUIR (padrão: 08, pico
-                       medido no teto da fonte); rode-as com "run <NN>".
+                       Pula as classes de BATERIA_EXCLUIR (padrão: nenhuma
+                       desde a v1.12); rode-as com "run <NN>". Mostra as
+                       capturas planejadas e a estimativa de gravações de
+                       TRACe antes de pedir a confirmação.
   set diagnostico on|off
                        Liga/desliga log extra de STATus:OPERation:CONDition?/
                        OUTPut:STATe?/tensão imediata em pontos-chave de

@@ -67,6 +67,8 @@ logica/                     Todo o código Python "de motor" do projeto
     cli.py                     REPL interativo do operador (status/list/comm/trigger/lowvoltage/native/run) —
                                  ver seção 5.3
     visualizador.py             CLI: gera um PNG de inspeção de um .npz de resultados/ e abre no visualizador do SO
+    analisar_sessao.py          Análise offline de uma pasta de sessão (gerar() + seed do metadata x captura)
+    calibracao_extremos.json    Fatores (extremo medido / pico programado) por classe da pré-validação de pico
 
 scripts/                    Todo o PowerShell/CMD que o operador roda no Windows
     bench_config.ps1           ÚNICA fonte de variáveis de ambiente da bancada física
@@ -76,6 +78,9 @@ scripts/                    Todo o PowerShell/CMD que o operador roda no Windows
     setup_windows.ps1          Cria/atualiza o venv (env/) e instala requirements.txt
     package_windows.ps1        Empacota o repositório em .zip para transporte
     visualizar_npz.ps1         Wrapper de logica/visualizador.py
+    relatorio_limites_bancada.py  Offline: o que cabe a uma tensão base (pico/extremo previsto, limite de bancada)
+    recalibrar_extremos.py     Offline: recalcula calibracao_extremos.json a partir do VMAX/VMIN do metadata
+    diag_nativo_output_off.py  Diagnóstico da AMETEK com OUTPUT OFF (ver CHANGELOG/v1.12.md)
 
 experimentos_nativos/       Classes cujo distúrbio é um recurso NATIVO da AMETEK (PULSe/LIST/CSINe)
     01.py .. 19.py           NORMAL, SAG, SWELL, INTERRUPTION, HARMONICS, FREQUENCY_DRIFT, DC_OFFSET
@@ -243,14 +248,20 @@ valores viram constantes de módulo assim que o processo Python inicia, então
 mudá-los exige reiniciar o `START_BENCH.cmd`, não só um comando) e entrega o
 resto da sessão para a **CLI interativa** (`logica/cli.py`).
 
+A tensão pedida é **fase-neutro**, no máximo **270 V** (127 e 220 V são os
+casos de uso). **380 V não é aceito** (v1.13): a MX30-3Pi gera até 300 Vrms
+por fase (425 Vp) e a bancada mede uma fase L-N; num sistema 220/380 V, 380 V
+é a tensão de linha e cada fase tem 219,4 V — digite 220. Ver 5.6 e
+`CHANGELOG/v1.13.md` (opção A, fase-fase, documentada e não implementada).
+
 A partir daí, o operador digita comandos explícitos em vez de seguir um fluxo
 fixo. `help` (ou `?`) dentro da CLI imprime a referência completa a qualquer
 momento; resumo:
 
 | Comando | Energiza a saída? | Equivale a |
 |---|---|---|
-| `status` | não | — mostra o que está configurado e o resultado da última execução de cada classe nesta sessão |
-| `list` | não | lista as 20 classes com id/nome e status (OK/FALHOU/nunca rodou) |
+| `status` | não | — mostra o que está configurado (inclusive seed e capturas efetivas por classe, com a estimativa de gravações de TRACe) e o resultado da última execução de cada classe nesta sessão |
+| `list` | não | lista as 20 classes com id/nome, capturas efetivas (e o padrão da classe) e status (OK/FALHOU/nunca rodou) |
 | `comm` | não | antiga etapa "Comunicação" — identifica AMETEK e Keysight (`*IDN?`) |
 | `trigger` | não | antiga etapa "Trigger" — força aquisição do Keysight (BNC ainda não testado aqui) |
 | `lowvoltage` | **sim, 5 Vrms** | antiga etapa "Baixa tensão" — recomissionamento (BNC + trigger real + RMS). **Opcional**: só rode quando precisar recomissionar a bancada depois de mexer em fiação/probe, não a cada sessão — reprograma ~12 TRACe na Flash (~40-50s) |
@@ -258,7 +269,9 @@ momento; resumo:
 | `run <NN\|nome>` | **sim** | roda UMA classe isolada (ex.: `run 02` ou `run SAG`) |
 | `run all` | **sim** | bateria completa das 20 classes, sequencial, resiliente por classe (ver 5.5) |
 | `set diagnostico on\|off` | não | liga/desliga log extra de `STATus:OPERation:CONDition?`/`OUTPut:STATe?`/tensão imediata em pontos-chave de `run`/`run all`, para testar as hipóteses de timing do `CHANGELOG/v1.7.md` (`OFF` por padrão); com `on`, também abre um terminal extra acompanhando a transcrição SCPI da sessão em tempo real |
-| `set capturas <N>` | não | quantas capturas por classe na bancada real (default `1`); em classes com níveis discretos (SAG/SWELL/HARMONICS), `N` por nível, cobertura determinística em vez de sorteio |
+| `set capturas <N>` | não | mínimo de capturas por classe na bancada real: cada classe roda **max(N, padrão da classe)** (ver 5.3.1); em classes com níveis discretos (SAG/SWELL/HARMONICS), por nível; com ele, 04/06/09/19 cobrem o intervalo do parâmetro e a 08 entra em caracterização (rampa de amplitude). A CLI avisa onde o padrão vence |
+| `set capturas padrao` | não | desfaz o `set capturas`: só o padrão de cada classe, com sorteio |
+| `set seed <N>` | não | seed base dos próximos `run` (inteiro ≥ 0; `set seed padrao` volta à do início). Mesma seed → mesmas formas, parâmetros e plano de capturas. Gravada no metadata (`base_seed`) |
 | `quit` / `exit` | não | sai da CLI |
 
 Ordem recomendada para uma sessão do zero: `comm` → `trigger` → `native` →
@@ -276,6 +289,29 @@ on|off` (v1.8–v1.10) foi **descontinuado**: não existe mais um modo "sem
 margem" para captura real, e digitá-lo na CLI só imprime um aviso. Ajustável
 só por variável de ambiente antes de iniciar a sessão, nunca em runtime. Ver
 `CHANGELOG/v1.11.md`.
+
+### 5.3.1 Capturas por classe e seed (v1.13)
+
+Cada classe tem um número **padrão** de capturas na bancada
+(`capturas_padrao` no `NN.py`; o dataset simulado não muda). O número que
+roda é `max(set capturas N` — ou `REAL_CAPTURES_PER_CLASS` sem ele —
+`, padrão da classe)`, por nível nas classes com `NIVEIS`; a pré-validação
+de pico/rms ainda pode pular capturas (sempre logado e contado no resumo).
+
+| Classe | Padrão | Por quê |
+|---|---|---|
+| 01 NORMAL, 02 SAG, 03 SWELL, 05 HARMONICS, 10–16 (composições), 18 FREQUENCY_DRIFT | 1 | determinísticas (nível fixo, `NIVEIS` ou alternância por índice) |
+| 04 INTERRUPTION, 06 FLICKER, 07 NOTCH, 08 TRANSIENT, 09 OSCILLATORY_TRANSIENT, 17 NOTCH_OSC, 19 DC_OFFSET, 20 INTERHARMONICS | 3 | `gerar()` sorteia parâmetros (pedido do dono, 2026-10-07) |
+
+Sem `set capturas`, as capturas padrão **sorteiam** (a 08 aplica o impulso
+máximo seguro em todas). Com `set capturas` (qualquer N), 04/06/09/19 cobrem
+o intervalo do parâmetro e a 08 faz a **rampa de caracterização** sobre o
+total efetivo. Com os padrões, um `run all` faz até ~300 gravações de TRACe
+numa conexão (a fonte travou na ~280.ª em 2026-09-16): a CLI mostra a
+estimativa antes de confirmar.
+
+Seed de cada captura = `seed base + id × 1 000 000 + índice`; a seed base vem
+de `BASE_SEED` (env, padrão 20 260 827) ou de `set seed N`.
 
 ### 5.4 Confirmações interativas — não são automatizáveis
 
@@ -360,6 +396,30 @@ frequência, THD ou offset DC é validado de novo contra `max_voltage_rms` /
 `max_peak_v` no momento da chamada — é uma segunda barreira, independente da
 validação de configuração acima.
 
+**Pré-validação de pico e tensões de teste (v1.12/v1.13).** Antes de
+qualquer comando SCPI, cada captura é avaliada (`avaliar_captura_na_bancada`):
+rms programado ≤ 300 Vrms e extremo PREVISTO (pico programado × fator medido
+em `logica/calibracao_extremos.json` × 1,10) ≤ `max_peak_v` (415,8 V; 0,9 ×
+isso na 08). Depois de cada captura, VMAX/VMIN do Keysight são conferidos
+contra o mesmo teto.
+
+- **127 V**: tudo cabe.
+- **220 V**: nas classes **waveform** cujo extremo previsto não cabe, a
+  captura física reduz só o distúrbio (`senoide + k × (gerar() − senoide)`,
+  maior k que cabe; "limite de bancada", opção b do dono) e grava
+  `fator_disturbio_bancada` e os parâmetros aplicados `*_bancada` no
+  metadata — com a calibração da v1.13: 10 (88%), 11 (78%), 14 (48%), 16
+  (37%), 17 (98%). Abaixo de `LIMITE_BANCADA_FRACAO_MINIMA` (0,25) a captura é
+  pulada; `LIMITE_BANCADA_DISTURBIO=0` volta a pular sempre. Nativas não
+  reduzem: a 03 roda só 1,1 pu (1,2 pu: extremo previsto acima do teto; ≥ 1,4 pu:
+  > 300 Vrms). Relatório completo, offline:
+  `python scripts\relatorio_limites_bancada.py --tensao 127 --tensao 220`.
+- **380 V**: recusado (ver 5.3).
+
+Para recalibrar os fatores com sessões novas:
+`python scripts\recalibrar_extremos.py resultados\sessao_A ... [--gravar]`
+(com `--gravar`, nenhum fator diminui sem `--substituir`).
+
 **Captura de corrente vem desligada por padrão** (`CAPTURE_CURRENT=0`).
 **Não ative sem o fator da probe de corrente e a corrente-base fornecidos
 pelo usuário** — sem esses dois valores a leitura de corrente não tem
@@ -384,7 +444,9 @@ fluxo PowerShell). Campos que o operador tipicamente revisa:
 | `SOURCE_VOLTAGE_RANGE_RMS` / `EUT_MAX_VOLTAGE_RMS` / `EUT_MAX_PEAK_V` | Limites físicos derivados da tensão escolhida | Calculados pelo script — não sobrescrever manualmente |
 | `CURRENT_LIMIT_A` / `CURRENT_PROTECTION_DELAY_S` | Proteção de corrente da fonte | |
 | `CAPTURE_CURRENT` | Liga captura de corrente | Ver 5.6 — requer `CURRENT_PROBE_ATTENUATION` e `CURRENT_BASE_A` |
-| `REAL_CAPTURES_PER_CLASS` | Capturas físicas por classe | `1` em comissionamento |
+| `REAL_CAPTURES_PER_CLASS` | Piso global de capturas físicas por classe | `1`; cada classe roda max(isto, padrão da classe) — ver 5.3.1 |
+| `BASE_SEED` | Seed base das capturas (inteiro ≥ 0) | Vazio = 20260827; também `set seed N` na CLI |
+| `LIMITE_BANCADA_DISTURBIO` / `LIMITE_BANCADA_FRACAO_MINIMA` | Limite de bancada (220 V): reduzir o distúrbio das waveform para caber / menor fração aceita | `1` / `0.25`; `0` = só pular (comportamento da v1.12) |
 | `SNR_LEVELS_DB` | Níveis de SNR para o AWGN aplicado, separados por vírgula | Ex.: `20,30,40,50` |
 
 ### 5.8 Onde os dados caem
@@ -565,7 +627,13 @@ resultado de execuções anteriores.
   osciloscópio, bloqueio prévio de pico calibrado, `VOLTage:HIGH` como RMS;
   de 2/20 para 20/20 classes a 127 V.
 - [`docs/TAREFAS_NUVEM_2026-10-07.md`](docs/TAREFAS_NUVEM_2026-10-07.md) —
-  próximas tarefas (capturas padrão por classe, seed na CLI, 220/380 V).
+  tarefas da sessão de 2026-10-07 (capturas padrão por classe, seed na CLI,
+  220/380 V), implementadas na v1.13.
+- [`CHANGELOG/v1.13.md`](CHANGELOG/v1.13.md) — capturas padrão por classe
+  (3 nas que sorteiam), `set seed`, capturas = max(`set capturas`, padrão),
+  220 V com limite de bancada (distúrbio reduzido só na captura física),
+  380 V recusado com explicação, relatório de limites e script de
+  recalibração dos fatores de extremo; checklist de bancada.
 - `docs/AMETEK_MX_SCPI_Programming_Manual.pdf` e
   `docs/Keysight_4000X_Programmers_Guide.pdf` — manuais SCPI originais dos
   dois instrumentos.
