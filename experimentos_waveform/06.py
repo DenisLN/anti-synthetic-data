@@ -9,6 +9,9 @@ from mestre import ExperimentoWaveform
 class Experimento(ExperimentoWaveform):
     id = "06"
     nome = "FLICKER"
+    # Parâmetro SORTEADO em gerar(): 3 capturas por padrão na bancada (pedido
+    # do dono, 2026-10-07; CHANGELOG/v1.13.md). Não muda o dataset simulado.
+    capturas_padrao = 3
 
     def gerar(self, t, f0, capture_index, rng):
         simulado = self.osc is None

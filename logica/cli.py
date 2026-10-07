@@ -90,9 +90,14 @@ Comandos disponíveis (nenhum energiza a saída sem pedir confirmação própria
                        run/run all — para testar as hipóteses do v1.7. Com
                        "on", também abre um terminal extra acompanhando a
                        transcrição SCPI da sessão em tempo real (tail -f).   [OFF]
-  set capturas <N>    Quantas capturas por classe na bancada real (default
-                       1). Em classes com níveis discretos (SAG/SWELL/
-                       HARMONICS), N por nível.                             [OFF]
+  set capturas <N>    Mínimo de capturas por classe na bancada real: cada
+                       classe roda max(N, padrão da classe) — ver "list".
+                       Em classes com níveis discretos (SAG/SWELL/
+                       HARMONICS), N por nível. Com "set capturas" ativo,
+                       04/06/09/19 cobrem o intervalo do parâmetro e a 08
+                       entra em CARACTERIZAÇÃO (rampa de amplitude).        [OFF]
+  set capturas padrao Volta a usar só o padrão de cada classe (sorteio,
+                       sem cobertura/caracterização).                       [OFF]
   help / ?            Mostra esta referência.                              [OFF]
   quit / exit         Sai da CLI (não desliga nada por si só — a saída já
                        deve estar OFF entre comandos; ver "status").       [OFF]
@@ -230,9 +235,11 @@ class SessaoCLI:
             f"{mestre.ExperimentoBase.MARGEM_DEPOIS_S * 1000:.0f}ms depois (fixo, "
             f"não é mais opt-in)   "
             f"diagnostico: {'ON' if mestre.DIAGNOSTICO_MODE else 'OFF'}   "
-            f"capturas: {mestre.CAPTURAS_OVERRIDE or mestre.REAL_CAPTURES_PER_CLASS}"
+            f"set capturas: "
+            f"{mestre.CAPTURAS_OVERRIDE if mestre.CAPTURAS_OVERRIDE is not None else 'não (padrão das classes)'}"
         )
-        if self._sessao_criada:
+        self._imprimir_capturas_por_classe()
+        if mestre.SESSION_RESULTS_DIR is not None:
             print(f"Sessão: {mestre.SESSION_RESULTS_DIR}")
         if not self.ultimo_resultado:
             print("Nenhuma classe rodada nesta sessão ainda (use 'list' para ver as 20 classes).")
@@ -242,18 +249,57 @@ class SessaoCLI:
             print(f"  [{resultado.id}] {resultado.nome}: {estado}")
         return 0
 
-    def cmd_list(self, _args: List[str]) -> int:
-        for script_path in mestre._experiment_scripts():
+    @staticmethod
+    def _capturas_das_classes(scripts: Optional[List[Path]] = None) -> List[tuple]:
+        """(id, nome, capturas_efetivas_da_classe) de cada classe, com a
+        configuração ATUAL (set capturas, padrão da classe)."""
+        linhas = []
+        for script_path in scripts if scripts is not None else mestre._experiment_scripts():
             experimento_cls = mestre.Bancada._carregar_classe_experimento(script_path)
             nome = getattr(experimento_cls, "nome", script_path.stem)
-            resultado = self.ultimo_resultado.get(script_path.stem)
+            linhas.append((script_path.stem, nome, mestre.capturas_efetivas_da_classe(experimento_cls)))
+        return linhas
+
+    @staticmethod
+    def _descrever_capturas(info: dict) -> str:
+        if info["niveis"] > 1:
+            return f"{info['total']} ({info['niveis']} níveis x {info['por_nivel']})"
+        return str(info["total"])
+
+    @staticmethod
+    def _aviso_escritas_trace(linhas: List[tuple]) -> str:
+        escritas = sum(info["escritas_trace"] for _, _, info in linhas)
+        texto = (
+            f"TRACe: até {escritas} gravações na Flash da AMETEK nesta bateria "
+            f"(referência: a fonte travou na ~{mestre.ESCRITAS_TRACE_REFERENCIA_TRAVA}.ª "
+            "gravação de uma conexão em 2026-09-16)."
+        )
+        if escritas > mestre.ESCRITAS_TRACE_REFERENCIA_TRAVA:
+            texto = "ATENÇÃO — " + texto + " Considere 'run <NN>' por partes."
+        return texto
+
+    def _imprimir_capturas_por_classe(self) -> None:
+        linhas = self._capturas_das_classes()
+        print(
+            "Capturas por classe na bancada (efetivas; a pré-validação de pico/rms "
+            "ainda pode pular algumas, sempre logado):"
+        )
+        itens = [f"{classe_id}={self._descrever_capturas(info)}" for classe_id, _, info in linhas]
+        for inicio in range(0, len(itens), 5):
+            print("  " + "  ".join(itens[inicio : inicio + 5]))
+        print("  " + self._aviso_escritas_trace(linhas))
+
+    def cmd_list(self, _args: List[str]) -> int:
+        for classe_id, nome, info in self._capturas_das_classes():
+            resultado = self.ultimo_resultado.get(classe_id)
             if resultado is None:
                 estado = "nunca rodou"
             elif resultado.ok:
                 estado = "OK"
             else:
                 estado = f"FALHOU: {resultado.motivo}"
-            print(f"  {script_path.stem}  {nome:30s} {estado}")
+            capturas = f"capturas {self._descrever_capturas(info)} (padrão {info['padrao']})"
+            print(f"  {classe_id}  {nome:30s} {capturas:34s} {estado}")
         return 0
 
     def cmd_help(self, _args: List[str]) -> int:
@@ -262,7 +308,7 @@ class SessaoCLI:
 
     def cmd_set(self, args: List[str]) -> int:
         if len(args) < 2:
-            print("Uso: set diagnostico on|off   |   set capturas <N>")
+            print("Uso: set diagnostico on|off   |   set capturas <N>|padrao")
             return 1
         chave, valor = args[0].lower(), args[1].lower()
         if chave == "margin":
@@ -282,16 +328,23 @@ class SessaoCLI:
             print(f"diagnostico: {'ON' if mestre.DIAGNOSTICO_MODE else 'OFF'}")
             return 0
         if chave == "capturas":
+            if valor in ("padrao", "padrão", "off"):
+                mestre.CAPTURAS_OVERRIDE = None
+                print("capturas: padrão de cada classe (sem set capturas; sorteio, sem caracterização da 08)")
+                self._imprimir_capturas_por_classe()
+                return 0
             try:
                 n = int(args[1])
             except ValueError:
-                print("Uso: set capturas <N> (inteiro positivo)")
+                print("Uso: set capturas <N> (inteiro positivo) ou set capturas padrao")
                 return 1
             if n < 1:
-                print(f"capturas: valor inválido ({n}); mantendo {mestre.CAPTURAS_OVERRIDE or mestre.REAL_CAPTURES_PER_CLASS}")
+                atual = mestre.CAPTURAS_OVERRIDE if mestre.CAPTURAS_OVERRIDE is not None else "padrão das classes"
+                print(f"capturas: valor inválido ({n}); mantendo {atual}")
                 return 1
             mestre.CAPTURAS_OVERRIDE = n
             print(f"capturas: {n} por classe (por nível, nas classes que têm níveis discretos)")
+            self._imprimir_capturas_por_classe()
             return 0
         print(f"Chave desconhecida: {chave!r}. Use margin, diagnostico ou capturas.")
         return 1
@@ -382,9 +435,12 @@ class SessaoCLI:
             "isoladas com 'run <NN>' se precisar)."
             if mestre.BATERIA_EXCLUIR else ""
         )
+        linhas = self._capturas_das_classes(mestre.scripts_da_bateria_fisica())
+        total_capturas = sum(info["total"] for _, _, info in linhas)
         if not self.confirmar(
             "Bateria completa das 20 classes, sequencial, sem parar numa falha isolada"
             f"{excluidas or '.'} "
+            f"Planejadas: {total_capturas} capturas. {self._aviso_escritas_trace(linhas)} "
             "Confirme que comm/trigger/native já passaram e que probe, cabos, E-stop e "
             "EUT estão conferidos.",
             "EXECUTAR-20-CLASSES",

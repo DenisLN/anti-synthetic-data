@@ -10,7 +10,7 @@ import os
 import sys
 import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
@@ -360,13 +360,27 @@ class Config:
     disturbance_start_s: float
     capturas_override: Optional[int] = None
     diagnostico_mode: bool = False
+    # ``capturas_padrao`` da classe em execução (atributo de classe de
+    # ``ExperimentoBase``), preenchido por ``ExperimentoBase.__init__`` com
+    # ``dataclasses.replace`` — a ``Config`` da ``Bancada`` continua sem
+    # classe nenhuma (1). Assim ``capturas()`` já devolve o número EFETIVO
+    # da classe para quem chama de dentro dela (``executar()``, e
+    # ``gerar()``/``configurar()`` de 04/06/08/09/19), sem cada script
+    # precisar repassar o próprio padrão.
+    capturas_padrao_classe: int = 1
 
     def capturas(self, simulated: bool) -> int:
+        """Capturas desta classe (por nível, nas classes com ``NIVEIS``).
+
+        Simulado: ``SIM_CAPTURES_PER_CLASS``, sempre — o dataset não depende
+        de padrão de bancada nem da CLI. Bancada: ``set capturas N`` quando
+        o operador digitou; senão o MAIOR entre ``REAL_CAPTURES_PER_CLASS``
+        (global, padrão 1) e o padrão da classe."""
         if simulated:
             return self.sim_captures_per_class
         if self.capturas_override is not None:
             return self.capturas_override
-        return self.real_captures_per_class
+        return max(self.real_captures_per_class, self.capturas_padrao_classe)
 
 
 @dataclass
@@ -828,10 +842,30 @@ class ExperimentoBase(ABC):
     id: str
     nome: str
     pre_trigger_s: float = 0.0
+    # Capturas PADRÃO desta classe na bancada real — por nível nas classes
+    # com ``NIVEIS`` (02/03/05), como ``set capturas N``. 1 = comportamento
+    # até a v1.12. Pedido do dono (2026-10-07): 3 nas classes que SORTEIAM
+    # parâmetros em ``gerar()`` (04, 06, 07, 08, 09, 17, 19, 20), 1 nas
+    # determinísticas. Não afeta o dataset simulado (``SIM_CAPTURES_PER_CLASS``)
+    # nem a regra de cobertura determinística/caracterização da 08, que
+    # continua exigindo ``set capturas`` digitado pelo operador
+    # (``capturas_override``). Tabela completa: README, seção "Capturas por
+    # classe".
+    capturas_padrao: int = 1
 
     def __init__(self, bancada: Bancada):
+        padrao = self.capturas_padrao
+        if isinstance(padrao, bool) or not isinstance(padrao, int) or padrao < 1:
+            raise ValueError(
+                f"[{getattr(self, 'id', '?')}] capturas_padrao deve ser inteiro >= 1; recebido {padrao!r}"
+            )
         self.bancada = bancada
-        self.config = bancada.config
+        config = bancada.config
+        # Só a Config de verdade carrega o padrão; substitutos mínimos (ex.:
+        # _ConfigOffline de analisar_sessao.py) seguem como vieram.
+        if isinstance(config, Config):
+            config = replace(config, capturas_padrao_classe=padrao)
+        self.config = config
         self.fonte = bancada.fonte
         self.osc = bancada.osc
 
@@ -851,6 +885,40 @@ class ExperimentoBase(ABC):
         ``set capturas N`` está ativo (ver Task 4)."""
         niveis = getattr(self, "NIVEIS", None)
         return len(niveis) if niveis is not None else 1
+
+    def dimensionar_capturas(self, simulated: bool) -> Tuple[bool, int, int]:
+        """(agrupa por nível?, capturas por nível, total planejado) — ANTES
+        da poda de ``_indices_viaveis``.
+
+        Classe com ``NIVEIS`` agrupa N capturas por nível quando o operador
+        digitou ``set capturas`` OU quando o número efetivo passa de 1 (padrão
+        da classe/``REAL_CAPTURES_PER_CLASS``). Com 1 e sem ``set capturas``,
+        roda só o nível 0, exatamente como até a v1.12. Usado também pela CLI
+        (``status``/``list``) para mostrar o número efetivo por classe."""
+        niveis_count = self.total_niveis()
+        capturas = self.config.capturas(simulated)
+        por_nivel = (
+            not simulated and niveis_count > 1
+            and (self.config.capturas_override is not None or capturas > 1)
+        )
+        if por_nivel:
+            return True, capturas, niveis_count * capturas
+        return False, 1, capturas
+
+    def plano_de_capturas(self, simulated: bool) -> List[Tuple[int, int]]:
+        """Plano ``(indice_global, capture_index)`` de ``executar()``, ANTES
+        da poda de ``_indices_viaveis``. ``indice_global`` entra na seed;
+        ``capture_index`` escolhe o nível (``indice // N`` quando agrupado)."""
+        por_nivel, capturas_por_nivel, total = self.dimensionar_capturas(simulated)
+        return [
+            (indice, indice // capturas_por_nivel if por_nivel else indice)
+            for indice in range(total)
+        ]
+
+    def grava_trace(self, capture_index: int) -> bool:
+        """Esta captura grava TRACEs na Flash da fonte (``program_capture``)?
+        Waveform: sempre. Nativa: só os índices de ``usar_trace`` (05 a 30%)."""
+        return False
 
     @abstractmethod
     def _capturar_real(
@@ -1481,16 +1549,7 @@ class ExperimentoBase(ABC):
 
     def executar(self) -> None:
         simulated = self.osc is None
-        niveis_count = self.total_niveis()
-        cobertura_por_nivel_ativa = (
-            not simulated and self.config.capturas_override is not None and niveis_count > 1
-        )
-        if cobertura_por_nivel_ativa:
-            capturas_por_nivel = self.config.capturas(False)
-            total = niveis_count * capturas_por_nivel
-        else:
-            capturas_por_nivel = 1
-            total = self.config.capturas(simulated)
+        cobertura_por_nivel_ativa, capturas_por_nivel, total = self.dimensionar_capturas(simulated)
         logger.info(
             "[%s] %s: %d capturas, SNR=%s dB, modo=%s",
             self.id, self.nome, total, self.config.snr_levels_db,
@@ -1499,10 +1558,7 @@ class ExperimentoBase(ABC):
         # Plano de capturas: (indice_global, capture_index). A pré-validação
         # de níveis roda ANTES de qualquer comando SCPI e pode encurtar este
         # plano (ver _indices_viaveis).
-        plano = [
-            (indice, indice // capturas_por_nivel if cobertura_por_nivel_ativa else indice)
-            for indice in range(total)
-        ]
+        plano = self.plano_de_capturas(simulated)
         if not simulated:
             plano = self._indices_viaveis(plano)
             total = len(plano)
@@ -1732,6 +1788,9 @@ class ExperimentoNativo(ExperimentoBase):
         (``program_capture``/``arm_transient``) em vez de ``configurar()``."""
         return False
 
+    def grava_trace(self, capture_index: int) -> bool:
+        return bool(self.usar_trace(capture_index))
+
     def scope_scale_v(self) -> Optional[float]:
         """Override para fixar a escala vertical do osciloscópio antes do
         laço de capturas, quando o pico não muda entre capturas."""
@@ -1796,6 +1855,9 @@ class ExperimentoNativo(ExperimentoBase):
 class ExperimentoWaveform(ExperimentoBase):
     """Classes que precisam de forma de onda arbitrária (TRACe/LIST) — sempre
     ``gerar()`` + ``program_capture``/``arm_transient``, também na bancada real."""
+
+    def grava_trace(self, capture_index: int) -> bool:
+        return True
 
     def forma_esperada_para_validacao(self, capture_index, t, seed):
         forma = getattr(self, "_forma_programada_pu", None)
@@ -1914,6 +1976,36 @@ def _experiment_scripts() -> List[Path]:
     if missing:
         raise FileNotFoundError(f"Experimentos ausentes ou duplicados: {missing}")
     return scripts
+
+
+# Gravações de TRACe:DATA numa mesma conexão: a fonte travou na ~280.ª em
+# 2026-09-16 (``AmetekMX30.escritas_trace``). Não é limite do manual, é a
+# única referência medida — a CLI só AVISA quando a estimativa passa dela.
+ESCRITAS_TRACE_REFERENCIA_TRAVA = 280
+
+
+def capturas_efetivas_da_classe(experimento_cls: type, config: Optional[Config] = None) -> Dict[str, int]:
+    """Número de capturas que ``run`` faria desta classe NA BANCADA com a
+    configuração atual (``set capturas``/``REAL_CAPTURES_PER_CLASS``/padrão
+    da classe), sem abrir instrumento nenhum. ``total`` é o planejado ANTES
+    da pré-validação de pico/rms, que ainda pode pular capturas (logado)."""
+    config = config or _build_config()
+    experimento = experimento_cls(Bancada(None, None, config))
+    por_nivel, capturas_por_nivel, total = experimento.dimensionar_capturas(False)
+    ciclos = int(round(config.duration_s * config.grid_frequency_hz))
+    com_trace = sum(
+        1 for _, capture_index in experimento.plano_de_capturas(False)
+        if experimento.grava_trace(capture_index)
+    )
+    return {
+        "padrao": int(experimento.capturas_padrao),
+        "niveis": experimento.total_niveis() if por_nivel else 1,
+        "por_nivel": capturas_por_nivel,
+        "total": total,
+        # Teto: o cache de program_capture (forma idêntica na mesma conexão)
+        # e a poda de _indices_viaveis só podem diminuir.
+        "escritas_trace": com_trace * ciclos,
+    }
 
 
 def scripts_da_bateria_fisica() -> List[Path]:

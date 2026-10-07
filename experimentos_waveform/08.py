@@ -13,6 +13,12 @@ logger = logging.getLogger("MestreExperimentos")
 class Experimento(ExperimentoWaveform):
     id = "08"
     nome = "TRANSIENT"
+    # Parâmetro SORTEADO em gerar(): 3 capturas por padrão na bancada (pedido
+    # do dono, 2026-10-07; CHANGELOG/v1.13.md). Não muda o dataset simulado.
+    # O padrão NÃO liga a caracterização: sem "set capturas" as 3 capturas
+    # sorteiam o modelo e aplicam o impulso máximo seguro; a rampa de
+    # amplitude continua exigindo "set capturas N" digitado pelo operador.
+    capturas_padrao = 3
 
     INICIO_IMPULSO_S = 0.080
     DURACAO_IMPULSO_S = 0.00005

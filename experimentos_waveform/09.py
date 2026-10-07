@@ -10,6 +10,9 @@ from sinais import oscilacao_amortecida
 class Experimento(ExperimentoWaveform):
     id = "09"
     nome = "OSCILLATORY_TRANSIENT"
+    # Parâmetro SORTEADO em gerar(): 3 capturas por padrão na bancada (pedido
+    # do dono, 2026-10-07; CHANGELOG/v1.13.md). Não muda o dataset simulado.
+    capturas_padrao = 3
 
     def gerar(self, t, f0, capture_index, rng):
         voltage = np.sin(2.0 * np.pi * f0 * t)

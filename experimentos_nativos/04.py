@@ -10,6 +10,9 @@ from sinais import janela
 class Experimento(ExperimentoNativo):
     id = "04"
     nome = "INTERRUPTION"
+    # Parâmetro SORTEADO em gerar(): 3 capturas por padrão na bancada (pedido
+    # do dono, 2026-10-07; CHANGELOG/v1.13.md). Não muda o dataset simulado.
+    capturas_padrao = 3
     pre_trigger_s = 0.060
 
     INICIO_S = 0.060

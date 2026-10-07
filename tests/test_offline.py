@@ -3657,5 +3657,213 @@ class CapturaDescartavelTests(unittest.TestCase):
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
+def _carregar_classe(experiment_id: str):
+    """Classe Experimento de um NN.py, sem instanciar (ver _load_experimento)."""
+    name = f"{experiment_id}.py"
+    candidates = [directory / name for directory in EXPERIMENT_DIRS if (directory / name).is_file()]
+    assert len(candidates) == 1, f"{name}: encontrado em {candidates}"
+    return mestre.Bancada._carregar_classe_experimento(candidates[0])
+
+
+def _config_bancada(results_dir, **overrides):
+    base = dict(
+        fs_hz=30_000.0, points=6_000, duration_s=0.2, grid_frequency_hz=60.0,
+        base_voltage_rms=127.0, snr_levels_db=(), base_seed=20_260_827,
+        capture_current=False, current_base_a=None, results_dir=results_dir,
+        sim_captures_per_class=1, real_captures_per_class=1, disturbance_start_s=0.06,
+    )
+    base.update(overrides)
+    return mestre.Config(**base)
+
+
+def _executar_classe_real_com_stub(experiment_id, config, *, max_peak_v=415.8):
+    """Roda ``executar()`` de uma classe REAL no caminho de BANCADA (osc
+    não-None) sem instrumento: fonte simulada com os limites da bancada
+    (300 Vrms / ``max_peak_v``) e ``_capturar_real`` trocado por um stub que
+    devolve a forma que a classe programaria (``forma_prevista_para_bancada``
+    com a MESMA seed). Devolve (metadados gravados, formas programadas)."""
+    experimento_cls = _carregar_classe(experiment_id)
+    fonte = mestre.AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=max_peak_v)
+    osc = mock.Mock()
+    osc.medir_extremos = lambda canal: (100.0, -100.0)
+    bancada = mestre.Bancada(fonte, osc, config)
+    experimento = experimento_cls(bancada)
+    experimento._calcular_margem = lambda **kw: (0, 0, kw["config_points"])
+    experimento._preparar_acquisicao_real = lambda: None
+    formas = []
+
+    def _stub(capture_index, t, rng):
+        # A seed do rng recebido é a de executar(); reproduzimos a forma pela
+        # mesma seed (o rng ainda não foi consumido aqui).
+        seed = int(rng.bit_generator.seed_seq.entropy)
+        voltage_pu, parametros = experimento.gerar(
+            t, config.grid_frequency_hz, capture_index, np.random.default_rng(seed),
+        )
+        forma = np.asarray(voltage_pu, dtype=np.float64)
+        if isinstance(experimento, mestre.ExperimentoWaveform):
+            forma = np.asarray(experimento.forma_para_bancada(forma, parametros, capture_index))
+            experimento._forma_programada_pu = forma
+        formas.append(forma)
+        return t, forma, None, parametros
+
+    experimento._capturar_real = _stub
+    experimento.executar()
+    metadata_path = config.results_dir / "metadata" / f"{experimento.id}_{experimento.nome.lower()}.jsonl"
+    registros = [json.loads(linha) for linha in metadata_path.read_text(encoding="utf-8").splitlines()]
+    return registros, formas
+
+
+class CapturasPadraoPorClasseTests(unittest.TestCase):
+    """v1.13, Tarefa 1 — cada classe tem um número PADRÃO de capturas na
+    bancada (``capturas_padrao``). Pedido do dono (2026-10-07): 3 nas classes
+    que sorteiam parâmetros em ``gerar()``, 1 nas determinísticas."""
+
+    COM_SORTEIO = {"04", "06", "07", "08", "09", "17", "19", "20"}
+
+    def setUp(self):
+        self.tmp_dir = Path(tempfile.mkdtemp())
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp_dir, ignore_errors=True)
+
+    def test_tabela_de_padroes_e_a_pedida_pelo_dono(self):
+        for indice in range(1, 21):
+            classe_id = f"{indice:02d}"
+            esperado = 3 if classe_id in self.COM_SORTEIO else 1
+            self.assertEqual(_carregar_classe(classe_id).capturas_padrao, esperado, classe_id)
+
+    def test_padrao_da_base_e_1(self):
+        self.assertEqual(mestre.ExperimentoBase.capturas_padrao, 1)
+
+    def test_config_sem_override_usa_o_maior_entre_global_e_padrao(self):
+        config = _config_bancada(self.tmp_dir, capturas_padrao_classe=3)
+        self.assertEqual(config.capturas(simulated=False), 3)
+        self.assertEqual(replace_config(config, real_captures_per_class=5).capturas(False), 5)
+
+    def test_padrao_nao_muda_o_dataset_simulado(self):
+        config = _config_bancada(self.tmp_dir, sim_captures_per_class=2000, capturas_padrao_classe=3)
+        self.assertEqual(config.capturas(simulated=True), 2000)
+
+    def test_init_injeta_o_padrao_sem_mexer_na_config_da_bancada(self):
+        config = _config_bancada(self.tmp_dir)
+        bancada = mestre.Bancada(None, None, config)
+        experimento = _carregar_classe("04")(bancada)
+        self.assertEqual(experimento.config.capturas_padrao_classe, 3)
+        self.assertEqual(bancada.config.capturas_padrao_classe, 1)
+        self.assertEqual(experimento.config.capturas(False), 3)
+
+    def test_padrao_invalido_e_recusado(self):
+        class _Invalida(mestre.ExperimentoWaveform):
+            id = "96"
+            nome = "INVALIDA"
+            capturas_padrao = 0
+
+            def gerar(self, t, f0, capture_index, rng):
+                return np.sin(2.0 * np.pi * f0 * t), {}
+
+        with self.assertRaises(ValueError):
+            _Invalida(mestre.Bancada(None, None, _config_bancada(self.tmp_dir)))
+
+    def test_classe_com_sorteio_roda_3_capturas_sorteadas_sem_set_capturas(self):
+        registros, _ = _executar_classe_real_com_stub("04", _config_bancada(self.tmp_dir))
+        self.assertEqual(len(registros), 3)
+        niveis = [registro["parametros"]["interruption_pu"] for registro in registros]
+        # Sorteio (não cobertura): não bate nas pontas 0 / 0,09 do linspace.
+        self.assertEqual(len(set(niveis)), 3)
+        self.assertNotIn(0.0, niveis)
+        self.assertNotIn(0.09, niveis)
+
+    def test_classe_deterministica_continua_com_1(self):
+        registros, _ = _executar_classe_real_com_stub("10", _config_bancada(self.tmp_dir))
+        self.assertEqual(len(registros), 1)
+
+    def test_classe_com_niveis_e_padrao_maior_que_1_agrupa_por_nivel(self):
+        class _ComNiveis(mestre.ExperimentoNativo):
+            id = "97"
+            nome = "TESTE_NIVEIS"
+            NIVEIS = (0.1, 0.3, 0.5, 0.7, 0.9)
+            capturas_padrao = 2
+
+            def gerar(self, t, f0, capture_index, rng):
+                return np.sin(2.0 * np.pi * f0 * t), {}
+
+            def configurar(self, capture_index):
+                return {}
+
+        experimento = _ComNiveis(mestre.Bancada(None, None, _config_bancada(self.tmp_dir)))
+        self.assertEqual(experimento.dimensionar_capturas(False), (True, 2, 10))
+        self.assertEqual(
+            [nivel for _, nivel in experimento.plano_de_capturas(False)],
+            [0, 0, 1, 1, 2, 2, 3, 3, 4, 4],
+        )
+
+    def test_classe_com_niveis_e_padrao_1_roda_so_o_nivel_0_como_antes(self):
+        experimento = _carregar_classe("02")(mestre.Bancada(None, None, _config_bancada(self.tmp_dir)))
+        self.assertEqual(experimento.plano_de_capturas(False), [(0, 0)])
+
+    def test_08_com_padrao_3_sem_set_capturas_nao_caracteriza(self):
+        registros, _ = _executar_classe_real_com_stub("08", _config_bancada(self.tmp_dir))
+        self.assertEqual(len(registros), 3)
+        amplitudes = {round(registro["parametros"]["amplitude_bancada_pu"], 9) for registro in registros}
+        self.assertEqual(len(amplitudes), 1)  # todas no máximo seguro, sem rampa
+        self.assertTrue(all(registro["parametros"]["caracterizacao"] == 0.0 for registro in registros))
+
+    def test_capturas_efetivas_da_classe_e_escritas_de_trace(self):
+        config = _config_bancada(self.tmp_dir)
+        info = mestre.capturas_efetivas_da_classe(_carregar_classe("06"), config)
+        self.assertEqual((info["padrao"], info["total"], info["escritas_trace"]), (3, 3, 36))
+        info = mestre.capturas_efetivas_da_classe(_carregar_classe("04"), config)
+        self.assertEqual((info["total"], info["escritas_trace"]), (3, 0))
+        # 05 só grava TRACe no nível de 30% (usar_trace), que só roda agrupado por nível.
+        info = mestre.capturas_efetivas_da_classe(_carregar_classe("05"), replace_config(config, capturas_override=1))
+        self.assertEqual((info["niveis"], info["total"], info["escritas_trace"]), (5, 5, 12))
+
+
+def replace_config(config, **campos):
+    import dataclasses
+    return dataclasses.replace(config, **campos)
+
+
+class CliCapturasTests(unittest.TestCase):
+    def setUp(self):
+        import cli
+        self.cli = cli
+        self._override = mock.patch.object(mestre, "CAPTURAS_OVERRIDE", None)
+        self._override.start()
+
+    def tearDown(self):
+        self._override.stop()
+
+    def _rodar(self, metodo, args):
+        import io
+        from contextlib import redirect_stdout
+        saida = io.StringIO()
+        with redirect_stdout(saida):
+            codigo = metodo(args)
+        return codigo, saida.getvalue()
+
+    def test_list_mostra_capturas_efetivas_e_padrao(self):
+        codigo, saida = self._rodar(self.cli.SessaoCLI().cmd_list, [])
+        self.assertEqual(codigo, 0)
+        linha_04 = next(linha for linha in saida.splitlines() if linha.strip().startswith("04"))
+        self.assertIn("capturas 3 (padrão 3)", linha_04)
+        linha_01 = next(linha for linha in saida.splitlines() if linha.strip().startswith("01"))
+        self.assertIn("capturas 1 (padrão 1)", linha_01)
+
+    def test_status_mostra_capturas_por_classe_e_nao_quebra(self):
+        codigo, saida = self._rodar(self.cli.SessaoCLI().cmd_status, [])
+        self.assertEqual(codigo, 0)
+        self.assertIn("04=3", saida)
+        self.assertIn("TRACe: até", saida)
+
+    def test_set_capturas_padrao_desfaz_o_override(self):
+        sessao = self.cli.SessaoCLI()
+        self._rodar(sessao.cmd_set, ["capturas", "4"])
+        self.assertEqual(mestre.CAPTURAS_OVERRIDE, 4)
+        codigo, _ = self._rodar(sessao.cmd_set, ["capturas", "padrao"])
+        self.assertEqual(codigo, 0)
+        self.assertIsNone(mestre.CAPTURAS_OVERRIDE)
+
+
 if __name__ == "__main__":
     unittest.main()
