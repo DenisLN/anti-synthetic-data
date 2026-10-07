@@ -180,7 +180,9 @@ class SessaoCLI:
         try:
             self._processo_terminal_diagnostico = subprocess.Popen(
                 comando_terminal_diagnostico(caminho_log),
-                creationflags=subprocess.CREATE_NEW_CONSOLE,
+                # CREATE_NEW_CONSOLE só existe no Windows (a bancada); fora dele
+                # (testes offline no Linux) cai para 0 em vez de AttributeError.
+                creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0),
             )
         except Exception:  # noqa: BLE001 - conveniência, nunca pode derrubar a sessão
             logger.warning(
