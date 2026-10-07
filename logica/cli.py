@@ -98,6 +98,11 @@ Comandos disponíveis (nenhum energiza a saída sem pedir confirmação própria
                        entra em CARACTERIZAÇÃO (rampa de amplitude).        [OFF]
   set capturas padrao Volta a usar só o padrão de cada classe (sorteio,
                        sem cobertura/caracterização).                       [OFF]
+  set seed <N>        Seed base dos próximos run (inteiro >= 0). Seed de
+                       cada captura = N + id x 1 000 000 + índice; mesma
+                       seed => mesmas formas, parâmetros e plano de
+                       capturas (testes reprodutíveis). Gravada no metadata
+                       (base_seed). "set seed padrao" volta à do início.    [OFF]
   help / ?            Mostra esta referência.                              [OFF]
   quit / exit         Sai da CLI (não desliga nada por si só — a saída já
                        deve estar OFF entre comandos; ver "status").       [OFF]
@@ -121,6 +126,9 @@ class SessaoCLI:
     def __init__(self) -> None:
         self.ultimo_resultado: dict[str, "mestre.ResultadoClasse"] = {}
         self._sessao_timestamp = _dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        # Seed com que a CLI começou (env BASE_SEED ou o padrão): destino de
+        # "set seed padrao".
+        self._seed_inicial = mestre.BASE_SEED
         self._runs_nesta_sessao = 0
         # Janela de "tail -f" da transcrição SCPI (ver
         # _abrir_terminal_de_diagnostico) — no máximo uma por vez; a do run
@@ -238,6 +246,9 @@ class SessaoCLI:
             f"set capturas: "
             f"{mestre.CAPTURAS_OVERRIDE if mestre.CAPTURAS_OVERRIDE is not None else 'não (padrão das classes)'}"
         )
+        print(f"seed base: {mestre.BASE_SEED}" + (
+            "" if mestre.BASE_SEED == self._seed_inicial else f" (início da sessão: {self._seed_inicial})"
+        ))
         self._imprimir_capturas_por_classe()
         if mestre.SESSION_RESULTS_DIR is not None:
             print(f"Sessão: {mestre.SESSION_RESULTS_DIR}")
@@ -308,7 +319,7 @@ class SessaoCLI:
 
     def cmd_set(self, args: List[str]) -> int:
         if len(args) < 2:
-            print("Uso: set diagnostico on|off   |   set capturas <N>|padrao")
+            print("Uso: set diagnostico on|off   |   set capturas <N>|padrao   |   set seed <N>|padrao")
             return 1
         chave, valor = args[0].lower(), args[1].lower()
         if chave == "margin":
@@ -346,7 +357,23 @@ class SessaoCLI:
             print(f"capturas: {n} por classe (por nível, nas classes que têm níveis discretos)")
             self._imprimir_capturas_por_classe()
             return 0
-        print(f"Chave desconhecida: {chave!r}. Use margin, diagnostico ou capturas.")
+        if chave == "seed":
+            if valor in ("padrao", "padrão"):
+                mestre.BASE_SEED = self._seed_inicial
+                print(f"seed base: {mestre.BASE_SEED} (a do início da sessão)")
+                return 0
+            try:
+                seed = int(args[1])
+            except ValueError:
+                print("Uso: set seed <N> (inteiro >= 0) ou set seed padrao")
+                return 1
+            if seed < 0:
+                print(f"seed: valor inválido ({seed}); mantendo {mestre.BASE_SEED}")
+                return 1
+            mestre.BASE_SEED = seed
+            print(f"seed base: {seed} (vale a partir do próximo run; gravada no metadata como base_seed)")
+            return 0
+        print(f"Chave desconhecida: {chave!r}. Use diagnostico, capturas ou seed.")
         return 1
 
     # -- preflights (energizam conforme o comando) -----------------------

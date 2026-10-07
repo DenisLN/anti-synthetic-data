@@ -3865,5 +3865,110 @@ class CliCapturasTests(unittest.TestCase):
         self.assertIsNone(mestre.CAPTURAS_OVERRIDE)
 
 
+
+class SeedReprodutivelTests(unittest.TestCase):
+    """v1.13, Tarefa 2 — ``set seed N`` na CLI: mesma seed => mesmas formas
+    programadas, mesmos parâmetros e mesmo plano; seed diferente =>
+    parâmetros diferentes nas classes com sorteio."""
+
+    def setUp(self):
+        self.tmp_dir = Path(tempfile.mkdtemp())
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp_dir, ignore_errors=True)
+
+    def _rodar(self, classe_id, seed, pasta, **overrides):
+        config = _config_bancada(self.tmp_dir / pasta, base_seed=seed, **overrides)
+        return _executar_classe_real_com_stub(classe_id, config)
+
+    def test_mesma_seed_reproduz_formas_parametros_e_plano(self):
+        for classe_id in ("04", "06", "07", "09", "17", "19", "20"):
+            registros_a, formas_a = self._rodar(classe_id, 1234, f"a{classe_id}")
+            registros_b, formas_b = self._rodar(classe_id, 1234, f"b{classe_id}")
+            self.assertEqual(
+                [(r["id_captura"], r["seed"], r["nivel_indice"]) for r in registros_a],
+                [(r["id_captura"], r["seed"], r["nivel_indice"]) for r in registros_b],
+                classe_id,
+            )
+            self.assertEqual([r["parametros"] for r in registros_a], [r["parametros"] for r in registros_b])
+            for forma_a, forma_b in zip(formas_a, formas_b):
+                np.testing.assert_array_equal(forma_a, forma_b)
+
+    def test_seed_diferente_muda_os_parametros_sorteados(self):
+        for classe_id in ("04", "06", "09", "19", "20"):
+            registros_a, _ = self._rodar(classe_id, 1234, f"a{classe_id}")
+            registros_b, _ = self._rodar(classe_id, 98765, f"b{classe_id}")
+            self.assertNotEqual(
+                [r["parametros"] for r in registros_a], [r["parametros"] for r in registros_b], classe_id,
+            )
+
+    def test_seed_da_captura_e_a_formula_documentada(self):
+        registros, _ = self._rodar("06", 1000, "f")
+        self.assertEqual([r["seed"] for r in registros], [1000 + 6_000_000 + k for k in range(3)])
+
+    def test_seed_zero_e_aceita(self):
+        registros, _ = self._rodar("01", 0, "zero")
+        self.assertEqual(registros[0]["seed"], 1_000_000)
+
+    def test_metadata_grava_a_seed_base_e_o_modo_de_capturas(self):
+        registros, _ = self._rodar("04", 4321, "m", capturas_override=2)
+        self.assertEqual(registros[0]["base_seed"], 4321)
+        self.assertEqual(registros[0]["capturas_override"], 2)
+        self.assertEqual(registros[0]["capturas_padrao_classe"], 3)
+
+    def test_env_base_seed_aceita_zero_e_vazio_e_recusa_negativo(self):
+        with mock.patch.dict("os.environ", {"BASE_SEED": "0"}):
+            self.assertEqual(mestre.env_int_nao_negativo("BASE_SEED", 7), 0)
+        with mock.patch.dict("os.environ", {"BASE_SEED": "  "}):
+            self.assertEqual(mestre.env_int_nao_negativo("BASE_SEED", 7), 7)
+        with mock.patch.dict("os.environ", {"BASE_SEED": "-3"}):
+            with self.assertRaises(ValueError):
+                mestre.env_int_nao_negativo("BASE_SEED", 7)
+
+
+class CliSeedTests(unittest.TestCase):
+    def setUp(self):
+        import cli
+        self.cli = cli
+        self._seed = mock.patch.object(mestre, "BASE_SEED", 20_260_827)
+        self._seed.start()
+
+    def tearDown(self):
+        self._seed.stop()
+
+    def _rodar(self, metodo, args):
+        import io
+        from contextlib import redirect_stdout
+        saida = io.StringIO()
+        with redirect_stdout(saida):
+            codigo = metodo(args)
+        return codigo, saida.getvalue()
+
+    def test_set_seed_vale_no_proximo_build_config(self):
+        sessao = self.cli.SessaoCLI()
+        codigo, _ = self._rodar(sessao.cmd_set, ["seed", "42"])
+        self.assertEqual(codigo, 0)
+        self.assertEqual(mestre.BASE_SEED, 42)
+        self.assertEqual(mestre._build_config().base_seed, 42)
+        _, saida = self._rodar(sessao.cmd_status, [])
+        self.assertIn("seed base: 42", saida)
+
+    def test_set_seed_recusa_negativo_e_texto(self):
+        sessao = self.cli.SessaoCLI()
+        for valor in ("-1", "abc"):
+            codigo, _ = self._rodar(sessao.cmd_set, ["seed", valor])
+            self.assertEqual(codigo, 1, valor)
+        self.assertEqual(mestre.BASE_SEED, 20_260_827)
+
+    def test_set_seed_padrao_volta_a_seed_do_inicio(self):
+        sessao = self.cli.SessaoCLI()
+        self._rodar(sessao.cmd_set, ["seed", "5"])
+        self._rodar(sessao.cmd_set, ["seed", "padrao"])
+        self.assertEqual(mestre.BASE_SEED, 20_260_827)
+
+    def test_help_documenta_set_seed(self):
+        self.assertIn("set seed <N>", self.cli.HELP_TEXT)
+
+
 if __name__ == "__main__":
     unittest.main()

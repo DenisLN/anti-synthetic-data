@@ -58,6 +58,19 @@ if (-not [double]::TryParse(
 $env:BASE_VOLTAGE_RMS = "$vrms"
 $env:GRID_FREQUENCY_HZ = "$freq"
 
+# Seed base (v1.13): opcional, pela variável BASE_SEED (inteiro >= 0) antes de
+# rodar START_BENCH, ou por "set seed N" dentro da CLI. Sem ela, o padrão do
+# código (20260827). Nada a digitar aqui.
+if (-not [string]::IsNullOrWhiteSpace($env:BASE_SEED)) {
+    $parsedSeed = [long]0
+    if (-not [long]::TryParse($env:BASE_SEED.Trim(), [ref]$parsedSeed) -or $parsedSeed -lt 0) {
+        throw "BASE_SEED inválida ($env:BASE_SEED): use um inteiro >= 0."
+    }
+    $seedTexto = "$parsedSeed (variável BASE_SEED)"
+} else {
+    $seedTexto = "padrão do código (mude com 'set seed N' na CLI)"
+}
+
 # Range sempre 300 Vrms; todos os limites iguais ao teto do hardware.
 if ($vrms -le 270.0) {
     $sourceRange = 300.0
@@ -78,6 +91,7 @@ Write-Host "  -> Tensão RMS: $env:BASE_VOLTAGE_RMS Vrms"
 Write-Host "  -> Limite EUT: $env:EUT_MAX_VOLTAGE_RMS Vrms | Pico Máx: $env:EUT_MAX_PEAK_V Vp | Range Fonte: $env:SOURCE_VOLTAGE_RANGE_RMS Vrms"
 Write-Host "  -> Frequência: $env:GRID_FREQUENCY_HZ Hz"
 Write-Host "  -> Probe Tensão: $env:VOLTAGE_PROBE_ATTENUATION x"
+Write-Host "  -> Seed base: $seedTexto"
 
 New-Item -ItemType Directory -Force -Path logs | Out-Null
 

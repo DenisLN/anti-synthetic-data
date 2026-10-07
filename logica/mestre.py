@@ -145,6 +145,17 @@ def env_int(name: str, default: int) -> int:
     return value
 
 
+def env_int_nao_negativo(name: str, default: int) -> int:
+    """Inteiro >= 0; variável ausente OU vazia usa ``default``."""
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    value = int(raw)
+    if value < 0:
+        raise ValueError(f"{name} deve ser inteiro >= 0; recebido {value!r}")
+    return value
+
+
 def env_float_tuple(name: str, default: Iterable[float]) -> Tuple[float, ...]:
     raw = os.getenv(name)
     values = tuple(default) if raw is None else tuple(float(item.strip()) for item in raw.split(","))
@@ -169,7 +180,13 @@ POINTS = 6_000
 SNR_LEVELS_DB = env_float_tuple("SNR_LEVELS_DB", (30.0,))
 SIM_CAPTURES_PER_CLASS = env_int("SIM_CAPTURES_PER_CLASS", 2_000)
 REAL_CAPTURES_PER_CLASS = env_int("REAL_CAPTURES_PER_CLASS", 1)
-BASE_SEED = env_int("BASE_SEED", 20_260_827)
+# Seed base da sessão. Seed de cada captura = BASE_SEED + int(id) × 1 000 000
+# + índice global da captura (ExperimentoBase.seed_da_captura); o ruído AWGN
+# deriva dela. Mesma seed => mesmas formas, parâmetros e plano de capturas.
+# Mutável em runtime pela CLI ("set seed N", v1.13); vale na próxima
+# Bancada.from_env, como CAPTURAS_OVERRIDE.
+BASE_SEED_PADRAO = 20_260_827
+BASE_SEED = env_int_nao_negativo("BASE_SEED", BASE_SEED_PADRAO)
 # Início do distúrbio dentro da janela de 200 ms para as classes que têm um
 # período "normal" antes e depois (SAG/SWELL/INTERRUPTION e a maioria das
 # TRACe com início/duração). Usado como pré-trigger do osciloscópio.
@@ -905,6 +922,12 @@ class ExperimentoBase(ABC):
             return True, capturas, niveis_count * capturas
         return False, 1, capturas
 
+    def seed_da_captura(self, indice_global: int) -> int:
+        """Seed da captura ``indice_global`` desta classe — a ÚNICA fórmula
+        (``executar()`` e a pré-validação de pico usam esta; 04/19 a repetem
+        em ``configurar()`` com o id fixo). Gravada no metadata (``seed``)."""
+        return int(self.config.base_seed) + int(self.id) * 1_000_000 + int(indice_global)
+
     def plano_de_capturas(self, simulated: bool) -> List[Tuple[int, int]]:
         """Plano ``(indice_global, capture_index)`` de ``executar()``, ANTES
         da poda de ``_indices_viaveis``. ``indice_global`` entra na seed;
@@ -953,6 +976,11 @@ class ExperimentoBase(ABC):
             "margem_antes_s": ExperimentoBase.MARGEM_ANTES_S,
             "margem_depois_s": ExperimentoBase.MARGEM_DEPOIS_S,
             "diagnostico_mode": bool(self.config.diagnostico_mode),
+            # Seed base da sessão (``set seed``): com ela + ``nivel_indice``
+            # + ``capturas_override`` qualquer captura é reproduzível.
+            "base_seed": int(self.config.base_seed),
+            "capturas_override": self.config.capturas_override,
+            "capturas_padrao_classe": int(getattr(self.config, "capturas_padrao_classe", 1)),
             "versao_codigo": versao_do_codigo(),
             "idn_fonte": str(getattr(self.fonte, "idn", "")),
             "idn_osciloscopio": str(getattr(osc, "idn", "")),
@@ -1160,7 +1188,7 @@ class ExperimentoBase(ABC):
             if rms is not None and rms * math.sqrt(2.0) > teto_pico + 1e-9:
                 recusados[capture_index] = f"{rms * math.sqrt(2.0):.1f} Vp > {teto_pico:.1f} Vp"
                 continue
-            seed = self.config.base_seed + int(self.id) * 1_000_000 + indice_global
+            seed = self.seed_da_captura(indice_global)
             try:
                 extremo = self.extremo_fisico_previsto_v(capture_index, t, seed)
             except Exception as exc:  # noqa: BLE001 - sem previsão não há prova de que cabe
@@ -1551,9 +1579,9 @@ class ExperimentoBase(ABC):
         simulated = self.osc is None
         cobertura_por_nivel_ativa, capturas_por_nivel, total = self.dimensionar_capturas(simulated)
         logger.info(
-            "[%s] %s: %d capturas, SNR=%s dB, modo=%s",
+            "[%s] %s: %d capturas, SNR=%s dB, modo=%s, seed base=%d",
             self.id, self.nome, total, self.config.snr_levels_db,
-            "SIMULADO" if simulated else "BANCADA",
+            "SIMULADO" if simulated else "BANCADA", self.config.base_seed,
         )
         # Plano de capturas: (indice_global, capture_index). A pré-validação
         # de níveis roda ANTES de qualquer comando SCPI e pode encurtar este
@@ -1602,7 +1630,7 @@ class ExperimentoBase(ABC):
             self._iniciar_gravacao_incremental()
         try:
             for posicao, (indice_global, capture_index) in enumerate(plano):
-                seed = self.config.base_seed + int(self.id) * 1_000_000 + indice_global
+                seed = self.seed_da_captura(indice_global)
                 rng = np.random.default_rng(seed)
                 capture_id = f"{self.id}-{indice_global + 1:04d}"
 
