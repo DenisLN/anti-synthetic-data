@@ -156,7 +156,14 @@ def _reconstruir_esperado(class_id: str, metadado: dict) -> np.ndarray:
     # depende do parâmetro de distúrbio e não é afetada.
     capture_index = metadado.get("nivel_indice", 0)
     voltage_pu, _ = instancia.gerar(t, f0_hz, capture_index, rng)
-    return np.asarray(voltage_pu, dtype=np.float64)
+    voltage_pu = np.asarray(voltage_pu, dtype=np.float64)
+    # Limite de bancada (v1.13): a captura física programou senoide + fração ×
+    # (modelo - senoide); é contra ESSA forma que a análise compara.
+    fracao = (metadado.get("parametros") or {}).get("fator_disturbio_bancada")
+    if fracao is not None:
+        senoide = np.sin(2.0 * np.pi * f0_hz * t)
+        voltage_pu = senoide + float(fracao) * (voltage_pu - senoide)
+    return voltage_pu
 
 
 def analisar_sessao(sessao_dir: Path, *, gerar_imagens: bool = True) -> List[Dict]:

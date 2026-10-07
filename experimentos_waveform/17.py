@@ -1,5 +1,7 @@
 """Classe 17: NOTCH + OSCILLATORY_TRANSIENT — forma de onda arbitrária."""
 
+import inspect
+
 import numpy as np
 
 from mestre import ExperimentoWaveform
@@ -18,3 +20,14 @@ class Experimento(ExperimentoWaveform):
         pulsos = aplicar_entalhes(voltage, t, rng, frequencia_hz=f0, inicio_s=0.060, duracao_s=0.060)
         voltage = voltage + oscilacao_amortecida(t, inicio_s=0.060, duracao_s=0.060, frequencia_hz=300.0)
         return voltage, {"notch_pulses": float(pulsos), "oscillation_hz": 300.0}
+
+    def parametros_com_disturbio_reduzido(self, parametros, fracao):
+        # Gancho de bancada (limite de bancada, v1.13): forma física =
+        # senoide + fracao x (gerar() - senoide). gerar() não muda.
+        amplitude = inspect.signature(oscilacao_amortecida).parameters["amplitude_pu"].default
+        # Entalhe: o modelo zera a tensão nos pontos; reduzido, desce só
+        # "fracao" do valor instantâneo.
+        return {
+            "notch_profundidade_pu_bancada": fracao,
+            "oscillation_amplitude_pu_bancada": fracao * amplitude,
+        }

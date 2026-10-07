@@ -1,5 +1,7 @@
 """Classe 09: OSCILLATORY_TRANSIENT (transitório oscilatório) — forma de onda arbitrária."""
 
+import inspect
+
 import numpy as np
 
 import sinais
@@ -25,3 +27,9 @@ class Experimento(ExperimentoWaveform):
             t, inicio_s=0.080, duracao_s=duracao, frequencia_hz=frequencia,
         )
         return voltage, {"oscillation_hz": frequencia, "duration_s": duracao}
+
+    def parametros_com_disturbio_reduzido(self, parametros, fracao):
+        # Gancho de bancada (limite de bancada, v1.13): forma física =
+        # senoide + fracao x (gerar() - senoide). gerar() não muda.
+        amplitude = inspect.signature(oscilacao_amortecida).parameters["amplitude_pu"].default
+        return {"oscillation_amplitude_pu_bancada": fracao * amplitude}

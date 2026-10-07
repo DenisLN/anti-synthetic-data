@@ -299,6 +299,62 @@ def fator_extremo_da_classe(classe_id: str, fatores: Dict[str, float]) -> float:
     return max(1.0, float(fator))
 
 
+# Classe cuja calibração é a de uma senoide PURA (01/NORMAL): a parte do
+# extremo que existe mesmo sem distúrbio. O resto do fator de cada classe é
+# atribuído ao distúrbio (ver extremo_previsto_com_disturbio_v).
+CLASSE_REFERENCIA_EXTREMO = "01"
+
+
+def fator_referencia_extremo(fator_da_classe: float, fatores: Dict[str, float]) -> float:
+    """Fator da senoide pura, nunca acima do da classe. Sem a 01 na
+    calibração, usa o próprio fator da classe — o caso mais conservador (o
+    distúrbio reduzido não ganha nada no extremo previsto)."""
+    referencia = fatores.get(CLASSE_REFERENCIA_EXTREMO)
+    if referencia is None:
+        return float(fator_da_classe)
+    return min(float(fator_da_classe), max(1.0, float(referencia)))
+
+
+def extremo_previsto_com_disturbio_v(
+    pico_v: float, pico_modelo_v: float, fracao: float, *,
+    fator: float, fator_referencia: float, margem: Optional[float] = None,
+) -> float:
+    """Extremo físico previsto de uma captura com o distúrbio reduzido a
+    ``fracao`` (forma = senoide + fracao × (modelo - senoide)).
+
+    margem × (fator_ref × pico + fracao × (fator - fator_ref) × pico_modelo)
+
+    - ``fator_ref × pico``: a parte que a saída faz mesmo sem distúrbio
+      (senoide pura, classe 01: 1,063), sobre o pico da forma REDUZIDA;
+    - o excesso que o distúrbio do MODELO produziu na calibração
+      ((fator - fator_ref) × pico_modelo) escala com a fração: a oscilação
+      da saída é proporcional ao degrau que a excita — 08 caracterizada em
+      2026-09-30 (T8-4): sobressinal ~0,38 e subsinal ~0,58 do degrau,
+      constantes de 104 V a 339 V.
+    Com ``fracao`` = 1 (pico = pico_modelo) reduz-se exatamente à fórmula da
+    v1.12, pico × fator × margem. Convexa em ``fracao`` (máximo de |·| de
+    funções afins + termo linear): a bissecção do limite de bancada acha o
+    maior valor que cabe."""
+    margem = MARGEM_FATOR_EXTREMO if margem is None else margem
+    return margem * (fator_referencia * pico_v + fracao * (fator - fator_referencia) * pico_modelo_v)
+
+
+# Limite de bancada (v1.13, decisão do dono para 220 V: opção b). Nas classes
+# WAVEFORM cujo extremo previsto passa do teto, a captura FÍSICA reduz só a
+# amplitude do distúrbio (forma = senoide + fração × (gerar() - senoide)) até
+# o extremo previsto caber, grava a fração e os parâmetros aplicados no
+# metadata e valida contra a forma realmente programada. gerar()/dataset
+# simulado não mudam. Abaixo de LIMITE_BANCADA_FRACAO_MINIMA a captura é
+# PULADA (a forma já não representaria a classe). LIMITE_BANCADA_DISTURBIO=0
+# volta ao comportamento da v1.12 (opção a: pular). Nativas (PULSe/LIST/
+# CSINe) não reduzem: o nível É o parâmetro discreto da classe e um nível
+# reduzido coincidiria com o anterior.
+LIMITE_BANCADA_DISTURBIO = env_bool("LIMITE_BANCADA_DISTURBIO", default=True)
+LIMITE_BANCADA_FRACAO_MINIMA = env_float("LIMITE_BANCADA_FRACAO_MINIMA", 0.25)
+if LIMITE_BANCADA_FRACAO_MINIMA > 1.0:
+    raise ValueError("LIMITE_BANCADA_FRACAO_MINIMA deve estar em (0, 1]")
+
+
 class PicoFisicoExcedidoError(RuntimeError):
     """O osciloscópio mediu (taxa cheia, ``:MEASure:VMAX?/VMIN?``) um extremo
     acima do teto da classe, ou a classe exige essa medida e ela não veio.
@@ -1133,44 +1189,129 @@ class ExperimentoBase(ABC):
                 "retry. CONFIRME NO PAINEL que a fonte está bem."
             )
 
+    def forma_e_parametros_para_bancada(
+        self, capture_index: int, t: np.ndarray, seed: int,
+    ) -> Tuple[np.ndarray, Dict[str, float]]:
+        """Forma (pu) e parâmetros que ESTA captura vai programar, calculados
+        sem tocar a fonte — mesma seed que ``executar()`` usa.
+        ``ExperimentoWaveform`` sobrescreve para aplicar ``forma_para_bancada``
+        (limite de bancada; 08)."""
+        voltage_pu, parametros = self.gerar(
+            t, self.config.grid_frequency_hz, capture_index, np.random.default_rng(seed),
+        )
+        return np.asarray(voltage_pu, dtype=np.float64), dict(parametros)
+
     def forma_prevista_para_bancada(
         self, capture_index: int, t: np.ndarray, seed: int,
     ) -> np.ndarray:
-        """Forma (pu) que ESTA captura vai programar, calculada sem tocar a
-        fonte — mesma seed que ``executar()`` usa. ``ExperimentoWaveform``
-        sobrescreve para aplicar ``forma_para_bancada``."""
-        voltage_pu, _ = self.gerar(t, self.config.grid_frequency_hz, capture_index, np.random.default_rng(seed))
-        return np.asarray(voltage_pu, dtype=np.float64)
+        return self.forma_e_parametros_para_bancada(capture_index, t, seed)[0]
 
-    def pico_programado_v(self, capture_index: int, t: np.ndarray, seed: int) -> float:
-        """Pico que a captura PROGRAMA — a definição usada para medir os fatores
-        de ``calibracao_extremos.json`` (mudar aqui exige recalibrar)."""
+    def _pico_da_forma_v(self, forma_pu: np.ndarray, capture_index: int) -> float:
         nominal_v = self.config.base_voltage_rms * math.sqrt(2.0)
-        pico = float(np.max(np.abs(self.forma_prevista_para_bancada(capture_index, t, seed)))) * nominal_v
+        pico = float(np.max(np.abs(forma_pu))) * nominal_v
         rms = self.tensao_rms_programada(capture_index)
         if rms is not None:
             pico = max(pico, float(rms) * math.sqrt(2.0))
         return pico
 
-    def extremo_fisico_previsto_v(self, capture_index: int, t: np.ndarray, seed: int) -> float:
-        """|Extremo| que a SAÍDA deve atingir: o pico programado não basta —
-        sessão 2026-09-30 15:26 mediu até 1,46× o programado (volta de
-        interrupção da 16) por causa da oscilação da saída. Classes com modelo
-        próprio da resposta (08, ``excursao_fisica_prevista_v``) usam o delas."""
-        pico = self.pico_programado_v(capture_index, t, seed)
+    def pico_programado_v(self, capture_index: int, t: np.ndarray, seed: int) -> float:
+        """Pico que a captura PROGRAMA — a definição usada para medir os fatores
+        de ``calibracao_extremos.json`` (mudar aqui exige recalibrar)."""
+        return self._pico_da_forma_v(self.forma_prevista_para_bancada(capture_index, t, seed), capture_index)
+
+    def _extremo_previsto_da_forma_v(self, pico_v: float, parametros: Dict[str, float]) -> float:
+        """Modelo do extremo físico a partir do pico programado e dos
+        parâmetros de bancada da captura (ver ``extremo_fisico_previsto_v``)."""
         proprio = getattr(self, "excursao_fisica_prevista_v", None)
         if callable(proprio):
             excursao = proprio()
             if excursao is not None:
                 return float(excursao)
-        fator = fator_extremo_da_classe(self.id, carregar_fatores_extremo())
-        return pico * fator * MARGEM_FATOR_EXTREMO
+        fatores = carregar_fatores_extremo()
+        fator = fator_extremo_da_classe(self.id, fatores)
+        k = float(parametros.get("fator_disturbio_bancada", 1.0))
+        if k >= 1.0:
+            return pico_v * fator * MARGEM_FATOR_EXTREMO
+        return extremo_previsto_com_disturbio_v(
+            pico_v, float(parametros["pico_programado_modelo_v"]), k,
+            fator=fator, fator_referencia=fator_referencia_extremo(fator, fatores),
+        )
+
+    def extremo_fisico_previsto_v(self, capture_index: int, t: np.ndarray, seed: int) -> float:
+        """|Extremo| que a SAÍDA deve atingir: o pico programado não basta —
+        sessão 2026-09-30 15:26 mediu até 1,46× o programado (volta de
+        interrupção da 16) por causa da oscilação da saída. Classes com modelo
+        próprio da resposta (08, ``excursao_fisica_prevista_v``) usam o delas.
+        Captura com o distúrbio reduzido pelo limite de bancada (v1.13) usa
+        ``extremo_previsto_com_disturbio_v``; sem redução, a fórmula é a da
+        v1.12 (pico × fator × margem)."""
+        forma, parametros = self.forma_e_parametros_para_bancada(capture_index, t, seed)
+        return self._extremo_previsto_da_forma_v(self._pico_da_forma_v(forma, capture_index), parametros)
 
     def tensao_rms_programada(self, capture_index: int) -> Optional[float]:
         """Tensão rms que ESTA captura vai pedir à fonte, quando ela é
         conhecida antes de programar nada. ``None`` = desconhecida (a
         pré-validação não opina). Ver ``_indices_viaveis``."""
         return None
+
+    def avaliar_captura_na_bancada(
+        self, indice_global: Optional[int], capture_index: int, *,
+        t: Optional[np.ndarray] = None, seed: Optional[int] = None,
+    ) -> Dict[str, object]:
+        """Tudo o que a pré-validação sabe de UMA captura, sem tocar a fonte:
+        rms e pico programados, extremo previsto, teto, se cabe e por quê, e
+        o fator de redução do distúrbio (limite de bancada, v1.13). Fonte
+        única de ``_indices_viaveis``, do metadata (``pico_programado_v``/
+        ``extremo_previsto_v``) e de ``scripts/relatorio_limites_bancada.py``."""
+        fonte = self.fonte
+        teto_rms = float(getattr(fonte, "max_voltage_rms", float("inf")))
+        teto_pico = float(getattr(fonte, "max_peak_v", float("inf")))
+        # Teto do extremo PREVISTO = o mesmo teto do extremo MEDIDO
+        # (_conferir_extremos_fisicos): 1,0 × max_peak_v; 0,9 na 08.
+        teto_extremo = self.fracao_teto_pico_medido * teto_pico
+        info: Dict[str, object] = {
+            "indice_global": indice_global, "capture_index": capture_index,
+            "teto_rms_v": teto_rms, "teto_extremo_v": teto_extremo, "cabe": False,
+        }
+        rms = self.tensao_rms_programada(capture_index)
+        if rms is not None:
+            info["rms_programado_v"] = float(rms)
+            if rms > teto_rms + 1e-9:
+                info["motivo"] = f"{rms:.1f} Vrms > {teto_rms:.1f} Vrms (limite rms da fonte)"
+                return info
+            if rms * math.sqrt(2.0) > teto_pico + 1e-9:
+                info["motivo"] = f"{rms * math.sqrt(2.0):.1f} Vp > {teto_pico:.1f} Vp"
+                return info
+        if seed is None:
+            seed = self.seed_da_captura(int(indice_global or 0))
+        t = tempo(self.config) if t is None else t
+        try:
+            # Ordem importa: a forma primeiro (a 08 calcula a excursão nela).
+            forma, parametros = self.forma_e_parametros_para_bancada(capture_index, t, seed)
+            pico = self._pico_da_forma_v(forma, capture_index)
+            extremo = self._extremo_previsto_da_forma_v(pico, parametros)
+        except Exception as exc:  # noqa: BLE001 - sem previsão não há prova de que cabe
+            info["motivo"] = f"extremo previsto incalculável ({type(exc).__name__}: {exc})"
+            return info
+        info.update(pico_programado_v=pico, extremo_previsto_v=extremo, parametros=parametros)
+        if "fator_disturbio_bancada" in parametros:
+            info["fator_disturbio_bancada"] = float(parametros["fator_disturbio_bancada"])
+        if extremo > teto_extremo + 1e-9:
+            motivo = (
+                f"extremo PREVISTO {extremo:.1f} V > teto {teto_extremo:.1f} V "
+                f"(pico programado × fator medido × margem {MARGEM_FATOR_EXTREMO:.2f})"
+            )
+            necessario = parametros.get("fator_disturbio_necessario")
+            if necessario is not None:
+                motivo += (
+                    f"; o limite de bancada precisaria reduzir o distúrbio a "
+                    f"{100.0 * float(necessario):.0f}% (mínimo aceito: "
+                    f"{100.0 * LIMITE_BANCADA_FRACAO_MINIMA:.0f}%)"
+                )
+            info["motivo"] = motivo
+            return info
+        info["cabe"] = True
+        return info
 
     def _indices_viaveis(self, indices: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
         """Filtra, ANTES da primeira captura, os índices cujo nível não cabe
@@ -1184,52 +1325,36 @@ class ExperimentoBase(ABC):
 
         Um nível inviável é PULADO com log claro (os demais continuam
         valendo); se nenhum for viável, levanta ``ParameterOutOfBoundsError``
-        — determinístico, portanto sem retry (ver ``Bancada.ERROS_DETERMINISTICOS``)."""
+        — determinístico, portanto sem retry (ver ``Bancada.ERROS_DETERMINISTICOS``).
+        Nas classes waveform, o limite de bancada (v1.13) já reduziu o
+        distúrbio quando isso bastava para caber — aqui só chega como
+        inviável o que nem reduzido cabe."""
         fonte = self.fonte
         if fonte is None:
             return indices
-        teto_rms = float(getattr(fonte, "max_voltage_rms", float("inf")))
-        teto_pico = float(getattr(fonte, "max_peak_v", float("inf")))
-        # Teto do extremo PREVISTO = o mesmo teto do extremo MEDIDO
-        # (_conferir_extremos_fisicos): 1,0 × max_peak_v; 0,9 na 08.
-        teto_extremo = self.fracao_teto_pico_medido * teto_pico
         t = tempo(self.config)
-        self._extremos_previstos: Dict[int, float] = {}
+        self._avaliacoes_bancada: Dict[int, Dict[str, object]] = {}
         viaveis: List[Tuple[int, int]] = []
-        recusados: Dict[int, str] = {}
+        recusados: Dict[Tuple[int, int], str] = {}
         for indice_global, capture_index in indices:
-            rms = self.tensao_rms_programada(capture_index)
-            if rms is not None and rms > teto_rms + 1e-9:
-                recusados[capture_index] = f"{rms:.1f} Vrms > {teto_rms:.1f} Vrms"
+            info = self.avaliar_captura_na_bancada(indice_global, capture_index, t=t)
+            if not info["cabe"]:
+                recusados[(indice_global, capture_index)] = str(info["motivo"])
                 continue
-            if rms is not None and rms * math.sqrt(2.0) > teto_pico + 1e-9:
-                recusados[capture_index] = f"{rms * math.sqrt(2.0):.1f} Vp > {teto_pico:.1f} Vp"
-                continue
-            seed = self.seed_da_captura(indice_global)
-            try:
-                extremo = self.extremo_fisico_previsto_v(capture_index, t, seed)
-            except Exception as exc:  # noqa: BLE001 - sem previsão não há prova de que cabe
-                recusados[capture_index] = f"extremo previsto incalculável ({type(exc).__name__}: {exc})"
-                continue
-            if extremo > teto_extremo + 1e-9:
-                recusados[capture_index] = (
-                    f"extremo PREVISTO {extremo:.1f} V > teto {teto_extremo:.1f} V "
-                    f"(pico programado × fator medido × margem {MARGEM_FATOR_EXTREMO:.2f})"
-                )
-                continue
-            self._extremos_previstos[capture_index] = extremo
+            self._avaliacoes_bancada[indice_global] = info
             viaveis.append((indice_global, capture_index))
-        for capture_index, motivo in sorted(recusados.items()):
+        for (indice_global, capture_index), motivo in sorted(recusados.items()):
             logger.warning(
-                "[%s] nível %d PULADO ANTES de programar: %s (limite rms/pico da fonte, "
-                "manual §4.14 p. 84, ou extremo previsto pela calibração). A classe roda com "
-                "os níveis restantes em vez de falhar na captura %d.",
-                self.id, capture_index, motivo, capture_index + 1,
+                "[%s] captura %d (nível %d) PULADA ANTES de programar: %s (limite rms/pico da "
+                "fonte, manual §4.14 p. 84, ou extremo previsto pela calibração). A classe roda "
+                "com as capturas restantes.",
+                self.id, indice_global + 1, capture_index, motivo,
             )
         if not viaveis:
             raise ParameterOutOfBoundsError(
                 f"[{self.id}] nenhum nível desta classe cabe nos limites da fonte a "
-                f"{self.config.base_voltage_rms:.1f} Vrms de base: {recusados}. "
+                f"{self.config.base_voltage_rms:.1f} Vrms de base: "
+                f"{ {chave[1]: motivo for chave, motivo in recusados.items()} }. "
                 "Baixe a tensão base ou ajuste os níveis da classe."
             )
         return viaveis
@@ -1725,9 +1850,10 @@ class ExperimentoBase(ABC):
                     # ao osciloscópio: a medida é sobre o registro que ele tem.
                     extremos = self._medir_extremos_fisicos()
                     metadados[-1].update(extremos)
-                    previsto = getattr(self, "_extremos_previstos", {}).get(capture_index)
-                    if previsto is not None:
-                        metadados[-1]["extremo_previsto_v"] = previsto
+                    avaliacao = getattr(self, "_avaliacoes_bancada", {}).get(indice_global)
+                    if avaliacao is not None:
+                        metadados[-1]["extremo_previsto_v"] = avaliacao["extremo_previsto_v"]
+                        metadados[-1]["pico_programado_v"] = avaliacao["pico_programado_v"]
                 if margem_antes or margem_depois:
                     metadados[-1]["margem_amostras_antes"] = margem_antes
                     metadados[-1]["margem_amostras_depois"] = margem_depois
@@ -1938,9 +2064,15 @@ class ExperimentoWaveform(ExperimentoBase):
     ) -> np.ndarray:
         """Adapta a forma de ``gerar()`` ao que a bancada pode programar.
         Padrão: se o pico passa de ``limite_pico_bancada_pu()``, escala a forma
-        INTEIRA. A 08 sobrescreve (escalar tudo derrubava a base de 127 V para
-        43 Vrms — ANALISE.md, T8-1). Pode acrescentar chaves a ``parametros``
-        (vão para o metadata)."""
+        INTEIRA; depois aplica o limite de bancada do distúrbio
+        (``_limitar_disturbio_para_bancada``, v1.13). A 08 sobrescreve
+        (escalar tudo derrubava a base de 127 V para 43 Vrms — ANALISE.md,
+        T8-1 — e ela tem modelo próprio do impulso). Pode acrescentar chaves a
+        ``parametros`` (vão para o metadata)."""
+        voltage_pu = self._limitar_pico_da_forma(voltage_pu)
+        return self._limitar_disturbio_para_bancada(voltage_pu, parametros, capture_index)
+
+    def _limitar_pico_da_forma(self, voltage_pu: np.ndarray) -> np.ndarray:
         limite_pico_pu = self.limite_pico_bancada_pu()
         if limite_pico_pu is not None:
             pico_atual_pu = float(np.max(np.abs(voltage_pu)))
@@ -1955,14 +2087,79 @@ class ExperimentoWaveform(ExperimentoBase):
                 voltage_pu = voltage_pu * fator
         return voltage_pu
 
-    def forma_prevista_para_bancada(self, capture_index, t, seed):
+    def parametros_com_disturbio_reduzido(
+        self, parametros: Dict[str, float], fracao: float,
+    ) -> Dict[str, float]:
+        """Gancho de bancada: tradução da ``fracao`` do limite de bancada
+        para os parâmetros físicos da classe (chaves ``*_bancada``, vão para
+        o metadata ao lado dos do modelo). Padrão: nada — a forma aplicada
+        continua definida por ``fator_disturbio_bancada`` (senoide + fração ×
+        (modelo - senoide))."""
+        return {}
+
+    def _limitar_disturbio_para_bancada(
+        self, voltage_pu: np.ndarray, parametros: Dict[str, float], capture_index: int,
+    ) -> np.ndarray:
+        """Opção (b) do dono para 220 V: se o extremo previsto da forma do
+        modelo passa do teto, reduz SÓ o distúrbio (a senoide base fica em
+        1 pu) à maior fração que cabe pelo modelo de
+        ``extremo_previsto_com_disturbio_v``. Nunca sobe nada; nunca toca
+        ``max_peak_v``. Fração < ``LIMITE_BANCADA_FRACAO_MINIMA``: devolve a
+        forma do modelo (que a pré-validação pula), anotando a fração
+        necessária para o log."""
+        fonte = self.fonte
+        if not LIMITE_BANCADA_DISTURBIO or fonte is None:
+            return voltage_pu
+        teto = self.fracao_teto_pico_medido * float(getattr(fonte, "max_peak_v", float("inf")))
+        if not math.isfinite(teto):
+            return voltage_pu
+        nominal_v = self.config.base_voltage_rms * math.sqrt(2.0)
+        fatores = carregar_fatores_extremo()
+        fator = fator_extremo_da_classe(self.id, fatores)
+        fator_ref = fator_referencia_extremo(fator, fatores)
+        voltage_pu = np.asarray(voltage_pu, dtype=np.float64)
+        pico_modelo_v = float(np.max(np.abs(voltage_pu))) * nominal_v
+        if pico_modelo_v * fator * MARGEM_FATOR_EXTREMO <= teto + 1e-9:
+            return voltage_pu
+        n = voltage_pu.size
+        t = np.arange(n, dtype=np.float64) / self.config.fs_hz
+        senoide = np.sin(2.0 * np.pi * self.config.grid_frequency_hz * t)
+        disturbio = voltage_pu - senoide
+
+        def extremo(fracao: float) -> float:
+            pico_v = float(np.max(np.abs(senoide + fracao * disturbio))) * nominal_v
+            return extremo_previsto_com_disturbio_v(
+                pico_v, pico_modelo_v, fracao, fator=fator, fator_referencia=fator_ref,
+            )
+
+        if extremo(0.0) > teto + 1e-9:
+            parametros["fator_disturbio_necessario"] = 0.0
+            return voltage_pu
+        cabe, nao_cabe = 0.0, 1.0
+        for _ in range(40):
+            meio = 0.5 * (cabe + nao_cabe)
+            if extremo(meio) <= teto:
+                cabe = meio
+            else:
+                nao_cabe = meio
+        if cabe < LIMITE_BANCADA_FRACAO_MINIMA:
+            parametros["fator_disturbio_necessario"] = cabe
+            return voltage_pu
+        parametros.update({
+            "fator_disturbio_bancada": cabe,
+            "pico_programado_modelo_v": pico_modelo_v,
+            "extremo_previsto_modelo_v": pico_modelo_v * fator * MARGEM_FATOR_EXTREMO,
+        })
+        parametros.update(self.parametros_com_disturbio_reduzido(parametros, cabe))
+        return senoide + cabe * disturbio
+
+    def forma_e_parametros_para_bancada(self, capture_index, t, seed):
         voltage_pu, parametros = self.gerar(
             t, self.config.grid_frequency_hz, capture_index, np.random.default_rng(seed),
         )
-        return np.asarray(
-            self.forma_para_bancada(np.asarray(voltage_pu, dtype=np.float64), dict(parametros), capture_index),
-            dtype=np.float64,
-        )
+        parametros = dict(parametros)
+        forma = self.forma_para_bancada(np.asarray(voltage_pu, dtype=np.float64), parametros, capture_index)
+        return np.asarray(forma, dtype=np.float64), parametros
 
     def excursao_fisica_prevista_v(self) -> Optional[float]:
         """|extremo| físico previsto para a captura atual (inclui a resposta da
@@ -1978,6 +2175,15 @@ class ExperimentoWaveform(ExperimentoBase):
         voltage_pu = np.asarray(self.forma_para_bancada(voltage_pu, parametros, capture_index), dtype=np.float64)
         if voltage_pu.shape != (self.config.points,) or not np.all(np.isfinite(voltage_pu)):
             raise RuntimeError(f"forma_para_bancada() do experimento {self.id} produziu forma inválida")
+        if "fator_disturbio_bancada" in parametros:
+            logger.warning(
+                "[%s] LIMITE DE BANCADA: distúrbio FÍSICO reduzido a %.0f%% do modelo para o "
+                "extremo previsto caber no teto (modelo: %.0f V previstos); gerar()/dataset "
+                "simulado não mudam. Parâmetros aplicados no metadata (fator_disturbio_bancada, *_bancada).",
+                self.id, 100.0 * float(parametros["fator_disturbio_bancada"]),
+                float(parametros["extremo_previsto_modelo_v"]),
+            )
+        parametros.pop("fator_disturbio_necessario", None)
         # Forma REALMENTE programada (já escalada): é contra ela, e não
         # contra gerar(), que a validação física deve comparar — a classe 08
         # é reduzida por limite_pico_bancada_pu() só na captura física.
@@ -2001,7 +2207,13 @@ class ExperimentoWaveform(ExperimentoBase):
             programmed_peak_v = max(programmed_peak_v, float(excursao))
         nominal_peak_v = self.config.base_voltage_rms * math.sqrt(2.0)
         headroom = 1.60 if programmed_peak_v > 3.0 * nominal_peak_v else 1.25
-        self.osc.set_vertical_scale(1, max(programmed_peak_v * headroom, self.config.base_voltage_rms * 0.1))
+        # A escala também cobre o extremo PREVISTO pela calibração (até 1,6×
+        # o programado; a 220 V perto do teto): set_vertical_scale põe o pico
+        # pedido em 3 das 4 divisões, então a tela vai a 4/3 dele (v1.13).
+        previsto_v = self._extremo_previsto_da_forma_v(self._pico_da_forma_v(voltage_pu, capture_index), parametros)
+        self.osc.set_vertical_scale(
+            1, max(programmed_peak_v * headroom, previsto_v, self.config.base_voltage_rms * 0.1),
+        )
 
         self.osc.arm()
         self.osc.wait_for_armed()

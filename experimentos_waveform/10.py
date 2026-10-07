@@ -20,3 +20,12 @@ class Experimento(ExperimentoWaveform):
         mask = janela(t, 0.060, 0.060)
         voltage[mask] = 0.5 * onda_com_harmonicos(t[mask], 0.20, frequencia_hz=f0)
         return voltage, {"sag_pu": 0.5, "thd": 0.20}
+
+    def parametros_com_disturbio_reduzido(self, parametros, fracao):
+        # Gancho de bancada (limite de bancada, v1.13): forma física =
+        # senoide + fracao x (gerar() - senoide). gerar() não muda.
+        nivel = 1.0 + fracao * (parametros["sag_pu"] - 1.0)
+        return {
+            "sag_pu_bancada": nivel,
+            "thd_bancada": fracao * parametros["sag_pu"] * parametros["thd"] / nivel,
+        }

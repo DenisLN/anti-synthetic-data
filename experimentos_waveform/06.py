@@ -21,3 +21,8 @@ class Experimento(ExperimentoWaveform):
         profundidade = float(rng.uniform(0.05, 0.15))
         voltage = np.sin(2.0 * np.pi * f0 * t) * (1.0 + profundidade * np.sin(2.0 * np.pi * flicker_hz * t))
         return voltage, {"flicker_hz": flicker_hz, "flicker_depth": profundidade}
+
+    def parametros_com_disturbio_reduzido(self, parametros, fracao):
+        # Gancho de bancada (limite de bancada, v1.13): forma física =
+        # senoide + fracao x (gerar() - senoide). gerar() não muda.
+        return {"flicker_depth_bancada": fracao * parametros["flicker_depth"]}

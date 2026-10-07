@@ -33,7 +33,7 @@ if ([string]::IsNullOrWhiteSpace($env:VOLTAGE_PROBE_ATTENUATION)) {
 # derivados são lidos como constantes de módulo no processo Python assim que
 # ele inicia (logica/mestre.py) — reiniciar essa escolha exigiria reiniciar o
 # processo, não só um comando da CLI.
-$vrmsInput = Read-Host "Digite a TENSÃO RMS desejada para o teste em V (ex.: 127, 220, 380)"
+$vrmsInput = Read-Host "Digite a TENSÃO RMS FASE-NEUTRO do teste em V (ex.: 127 ou 220; máximo 270)"
 $vrms = 0.0
 if (-not [double]::TryParse(
     $vrmsInput,
@@ -72,10 +72,24 @@ if (-not [string]::IsNullOrWhiteSpace($env:BASE_SEED)) {
 }
 
 # Range sempre 300 Vrms; todos os limites iguais ao teto do hardware.
+# 380 V (v1.13, decisão do dono: opção B — não suportado): a MX30-3Pi gera no
+# máximo 300 Vrms POR FASE (fase-neutro) e 425 Vp (manual §4.14 p. 84), e a
+# bancada mede UMA fase, L-N. 380 Vrms L-N (537 Vp) é impossível nesta fonte.
+# Num sistema 220/380 V, 380 V é a tensão de LINHA (fase-fase) e cada fase tem
+# 380/√3 = 219,4 V — teste com 220. Medir 380 V fase-fase (fases a 0/120/240°,
+# sonda diferencial ou CH1-CH2) é a opção A, documentada em CHANGELOG/v1.13.md
+# e NÃO implementada. Os 270 V deixam ~10% de folga para os swells até o
+# limite rms por fase.
 if ($vrms -le 270.0) {
     $sourceRange = 300.0
 } else {
-    throw "Tensão $vrms Vrms excede o range máximo da AMETEK MX30 (300 Vrms)."
+    $porFase = [math]::Round($vrms / [math]::Sqrt(3), 1)
+    throw ("Tensão $vrms Vrms recusada: a bancada aceita no máximo 270 Vrms FASE-NEUTRO. " +
+        "A AMETEK MX30-3Pi gera até 300 Vrms por fase (425 Vp), e a bancada mede uma fase L-N. " +
+        "Se $vrms V for a tensão de LINHA (fase-fase) de um sistema trifásico, cada fase tem " +
+        "$vrms / raiz(3) = $porFase V: rode de novo e digite essa tensão por fase, se for ate 270 " +
+        "(ex.: sistema 220/380 V -> digite 220). " +
+        "Medir fase-fase exige modo trifásico e outra fiação (opção A, CHANGELOG/v1.13.md, não implementada).")
 }
 $eutMaxRms = $sourceRange   # = 300 — sem restrição abaixo do range físico
 

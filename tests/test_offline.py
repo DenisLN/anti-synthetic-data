@@ -4080,5 +4080,213 @@ class CapturasMaxCliPadraoTests(unittest.TestCase):
         self.assertNotIn("01 (", texto)
 
 
+
+def _carregar_script(nome):
+    caminho = PROJECT_ROOT / "scripts" / f"{nome}.py"
+    spec = importlib.util.spec_from_file_location(f"teste_script_{nome}", caminho)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class LimiteDeBancada220VTests(unittest.TestCase):
+    """v1.13, Tarefa 4 — opção (b) do dono para 220 V: nas classes waveform
+    cujo extremo previsto passa do teto, a captura FÍSICA reduz só o
+    distúrbio até caber; gerar()/dataset não mudam; nativas continuam
+    puladas."""
+
+    TETO = 415.8
+
+    def setUp(self):
+        self.tmp_dir = Path(tempfile.mkdtemp())
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp_dir, ignore_errors=True)
+
+    def _instancia(self, classe_id, base_v=220.0, **overrides):
+        config = _config_bancada(self.tmp_dir, base_voltage_rms=base_v, **overrides)
+        fonte = mestre.AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=self.TETO)
+        return _carregar_classe(classe_id)(mestre.Bancada(fonte, mock.Mock(), config))
+
+    def _avaliar_classe(self, classe_id, base_v=220.0, **overrides):
+        experimento = self._instancia(classe_id, base_v, **overrides)
+        return [experimento.avaliar_captura_na_bancada(ig, ci) for ig, ci in experimento.plano_de_capturas(False)]
+
+    def test_formula_com_fracao_1_e_a_da_v1_12(self):
+        self.assertAlmostEqual(
+            mestre.extremo_previsto_com_disturbio_v(300.0, 300.0, 1.0, fator=1.459, fator_referencia=1.063),
+            300.0 * 1.459 * mestre.MARGEM_FATOR_EXTREMO,
+        )
+        # Sem distúrbio sobra só a parte da senoide pura.
+        self.assertAlmostEqual(
+            mestre.extremo_previsto_com_disturbio_v(311.0, 311.0, 0.0, fator=1.459, fator_referencia=1.063),
+            311.0 * 1.063 * mestre.MARGEM_FATOR_EXTREMO,
+        )
+
+    def test_fator_de_referencia_nunca_passa_do_da_classe(self):
+        fatores = {"01": 1.063, "14": 0.977}
+        self.assertEqual(mestre.fator_referencia_extremo(1.459, fatores), 1.063)
+        self.assertEqual(mestre.fator_referencia_extremo(1.0, fatores), 1.0)
+        self.assertEqual(mestre.fator_referencia_extremo(1.3, {"16": 1.3}), 1.3)  # sem a 01: conservador
+
+    def test_127v_nada_e_reduzido_nem_pulado_e_extremo_e_o_da_v1_12(self):
+        fatores = mestre.carregar_fatores_extremo()
+        for indice in range(1, 21):
+            classe_id = f"{indice:02d}"
+            for info in self._avaliar_classe(classe_id, base_v=127.0):
+                self.assertTrue(info["cabe"], (classe_id, info.get("motivo")))
+                self.assertNotIn("fator_disturbio_bancada", info, classe_id)
+                if classe_id != "08":
+                    esperado = (
+                        info["pico_programado_v"] * mestre.fator_extremo_da_classe(classe_id, fatores)
+                        * mestre.MARGEM_FATOR_EXTREMO
+                    )
+                    self.assertAlmostEqual(info["extremo_previsto_v"], esperado, places=9, msg=classe_id)
+
+    def test_220v_reduz_10_11_14_16_17_e_tudo_cabe_no_padrao(self):
+        reduzidas = set()
+        for indice in range(1, 21):
+            classe_id = f"{indice:02d}"
+            for info in self._avaliar_classe(classe_id):
+                self.assertTrue(info["cabe"], (classe_id, info.get("motivo")))
+                self.assertLessEqual(info["extremo_previsto_v"], self.TETO + 1e-6, classe_id)
+                if "fator_disturbio_bancada" in info:
+                    reduzidas.add(classe_id)
+                    fracao = info["fator_disturbio_bancada"]
+                    self.assertGreaterEqual(fracao, mestre.LIMITE_BANCADA_FRACAO_MINIMA)
+                    self.assertLess(fracao, 1.0)
+                    # Bissecção: justo no teto, não muito abaixo.
+                    self.assertGreater(info["extremo_previsto_v"], self.TETO - 1.0, classe_id)
+        # 17: só na seed padrão (pico de 368 V × 1,031 × 1,10 = 417 V, 1 V acima).
+        self.assertEqual(reduzidas, {"10", "11", "14", "16", "17"})
+
+    def test_reducao_mantem_a_senoide_fora_do_disturbio_e_nao_muda_gerar(self):
+        experimento = self._instancia("16")
+        t = mestre.tempo(experimento.config)
+        modelo_antes, parametros_modelo = experimento.gerar(t, 60.0, 0, np.random.default_rng(5))
+        forma, parametros = experimento.forma_e_parametros_para_bancada(0, t, 5)
+        modelo_depois, _ = experimento.gerar(t, 60.0, 0, np.random.default_rng(5))
+        np.testing.assert_array_equal(modelo_antes, modelo_depois)
+        janela = sinais.janela(t, 0.060, 0.060)
+        senoide = np.sin(2.0 * np.pi * 60.0 * t)
+        np.testing.assert_allclose(forma[~janela], senoide[~janela], atol=1e-12)
+        fracao = parametros["fator_disturbio_bancada"]
+        np.testing.assert_allclose(forma, senoide + fracao * (modelo_antes - senoide), atol=1e-12)
+        self.assertEqual(parametros["interruption_pu"], parametros_modelo["interruption_pu"])  # rótulo do modelo
+        self.assertAlmostEqual(parametros["interruption_pu_bancada"], 1.0 - fracao * 0.95)
+
+    def test_parametros_bancada_batem_com_a_forma_aplicada(self):
+        """Nível e THD na janela do distúrbio, medidos por FFT na forma
+        reduzida, conferem com o que o gancho grava no metadata."""
+        t = np.arange(6000, dtype=np.float64) / 30_000.0
+        senoide = np.sin(2.0 * np.pi * 60.0 * t)
+        trecho = slice(1800, 3300)  # 3 ciclos inteiros dentro de 60-120 ms
+        for classe_id, chave_nivel in (("10", "sag_pu"), ("13", "swell_pu"), ("16", "interruption_pu")):
+            experimento = self._instancia(classe_id)
+            modelo, parametros = experimento.gerar(t, 60.0, 0, np.random.default_rng(0))
+            fracao = 0.6
+            forma = senoide + fracao * (np.asarray(modelo) - senoide)
+            esperado = experimento.parametros_com_disturbio_reduzido(dict(parametros), fracao)
+            espectro = np.abs(np.fft.rfft(forma[trecho])) * 2.0 / 1500
+            fundamental = espectro[3]
+            thd = math.sqrt(sum(espectro[3 * ordem] ** 2 for ordem in (3, 5, 7))) / fundamental
+            self.assertAlmostEqual(fundamental, esperado[f"{chave_nivel}_bancada"], places=6, msg=classe_id)
+            self.assertAlmostEqual(thd, esperado["thd_bancada"], places=6, msg=classe_id)
+
+    def test_opcao_a_continua_disponivel_por_variavel(self):
+        with mock.patch.object(mestre, "LIMITE_BANCADA_DISTURBIO", False):
+            for classe_id in ("10", "11", "14", "16"):
+                infos = self._avaliar_classe(classe_id)
+                self.assertFalse(infos[0]["cabe"], classe_id)
+                self.assertIn("extremo PREVISTO", infos[0]["motivo"])
+
+    def test_fracao_abaixo_do_minimo_e_pulada_com_motivo(self):
+        with mock.patch.object(mestre, "LIMITE_BANCADA_FRACAO_MINIMA", 0.5):
+            info = self._avaliar_classe("16")[0]
+        self.assertFalse(info["cabe"])
+        self.assertIn("precisaria reduzir o distúrbio", info["motivo"])
+
+    def test_nativas_nao_reduzem_03_continua_pulando_niveis(self):
+        infos = self._avaliar_classe("03", capturas_override=1)
+        self.assertEqual([info["cabe"] for info in infos], [True, False, False, False, False])
+        self.assertTrue(all("fator_disturbio_bancada" not in info for info in infos))
+
+    def test_captura_reduzida_grava_metadata_e_valida_contra_a_forma_programada(self):
+        registros, formas = _executar_classe_real_com_stub("16", _config_bancada(self.tmp_dir, base_voltage_rms=220.0))
+        registro = registros[0]
+        self.assertIn("fator_disturbio_bancada", registro["parametros"])
+        self.assertIn("interruption_pu_bancada", registro["parametros"])
+        self.assertNotIn("fator_disturbio_necessario", registro["parametros"])
+        self.assertLessEqual(registro["extremo_previsto_v"], self.TETO + 1e-6)
+        self.assertAlmostEqual(registro["pico_programado_v"], 220.0 * math.sqrt(2.0), places=6)
+        self.assertTrue(registro["validacao_fisica"]["ok"], registro["validacao_fisica"]["motivos"])
+        # A validação comparou com a forma REDUZIDA (mínimo do envelope ~0,45 pu, não ~0,04 do modelo).
+        self.assertGreater(registro["validacao_fisica"]["envelope_minimo_esperado"], 0.3)
+
+    def test_escala_do_ch1_cobre_o_extremo_previsto(self):
+        experimento = self._instancia("16")
+        experimento.fonte = mock.Mock(max_peak_v=self.TETO, max_voltage_rms=300.0, last_programmed_peak_v=0.0)
+        t = mestre.tempo(experimento.config)
+        experimento.osc.get_waveform.return_value = (t, np.zeros_like(t))
+        experimento._pontos_efetivos_captura_atual = t.size
+        experimento._capturar_real(0, t, np.random.default_rng(1))
+        pedido = experimento.osc.set_vertical_scale.call_args[0][1]
+        previsto = experimento.avaliar_captura_na_bancada(0, 0, seed=1)["extremo_previsto_v"]
+        self.assertGreaterEqual(pedido, previsto - 1e-6)
+
+    def test_analisar_sessao_reconstroi_a_forma_reduzida(self):
+        import analisar_sessao
+        metadado = {
+            "fs_hz": 30_000.0, "pontos": 6000, "seed": 1, "nivel_indice": 0, "f0_hz": 60.0,
+            "tensao_base_rms": 220.0, "parametros": {"fator_disturbio_bancada": 0.4},
+        }
+        esperado = analisar_sessao._reconstruir_esperado("16", metadado)
+        t = np.arange(6000) / 30_000.0
+        senoide = np.sin(2.0 * np.pi * 60.0 * t)
+        modelo, _ = _load_gerar("16")(t, 60.0, 0, np.random.default_rng(1))
+        np.testing.assert_allclose(esperado, senoide + 0.4 * (modelo - senoide), atol=1e-12)
+
+
+class RelatorioERecalibracaoTests(unittest.TestCase):
+    def test_relatorio_lista_todas_as_classes_e_recusa_380(self):
+        import io
+        from contextlib import redirect_stdout
+        relatorio = _carregar_script("relatorio_limites_bancada")
+        saida = io.StringIO()
+        with redirect_stdout(saida):
+            relatorio.main(["--tensao", "220", "--tensao", "380"])
+        texto = saida.getvalue()
+        for indice in range(1, 21):
+            self.assertIn(f"| {indice:02d} ", texto)
+        self.assertIn("16: 1/1 rodam, 1 com distúrbio reduzido", texto)
+        self.assertIn("380 Vrms — RECUSADA", texto)
+        self.assertNotIn("CLIPA", texto)
+
+    def test_recalibracao_reproduz_os_fatores_da_sessao_de_origem(self):
+        """A sessão 15-26-05 é a origem da calibração da v1.12: reconstruir o
+        pico programado pelo código e dividir pelo VMAX/VMIN gravado devolve
+        os mesmos fatores (o JSON da v1.12)."""
+        recalibrar = _carregar_script("recalibrar_extremos")
+        sessao = PROJECT_ROOT / "docs" / "analise-2026-09-30" / "dados" / "sessao_2026-09-30_15-26-05"
+        medidos, ignoradas = recalibrar.coletar([sessao])
+        v1_12 = {
+            "01": 1.063, "02": 1.164, "03": 1.038, "04": 1.164, "05": 0.998, "06": 1.018, "07": 1.180,
+            "09": 1.002, "10": 1.236, "11": 1.258, "12": 1.030, "13": 1.034, "14": 0.977, "15": 1.017,
+            "16": 1.459, "17": 1.017, "18": 1.036, "19": 0.972, "20": 1.022,
+        }
+        self.assertEqual(set(medidos), set(v1_12))
+        for classe_id, fator in v1_12.items():
+            self.assertAlmostEqual(max(medidos[classe_id]), fator, places=3, msg=classe_id)
+        self.assertEqual(ignoradas["08 (modelo próprio)"], 1)
+
+    def test_calibracao_atual_nunca_ficou_abaixo_da_v1_12(self):
+        recalibrar = _carregar_script("recalibrar_extremos")
+        sessao = PROJECT_ROOT / "docs" / "analise-2026-09-30" / "dados" / "sessao_2026-09-30_15-26-05"
+        medidos, _ = recalibrar.coletar([sessao])
+        atuais = mestre.carregar_fatores_extremo()
+        for classe_id, valores in medidos.items():
+            self.assertGreaterEqual(atuais[classe_id], round(max(valores), 3), classe_id)
+
+
 if __name__ == "__main__":
     unittest.main()

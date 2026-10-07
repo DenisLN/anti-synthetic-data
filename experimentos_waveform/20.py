@@ -27,3 +27,12 @@ class Experimento(ExperimentoWaveform):
             "interharmonic_210_pu": float(amplitudes[1]),
             "interharmonic_330_pu": float(amplitudes[2]),
         }
+
+    def parametros_com_disturbio_reduzido(self, parametros, fracao):
+        # Gancho de bancada (limite de bancada, v1.13): forma física =
+        # senoide + fracao x (gerar() - senoide). gerar() não muda.
+        return {
+            f"{chave}_bancada": fracao * valor
+            for chave, valor in parametros.items()
+            if chave.startswith("interharmonic_")
+        }
