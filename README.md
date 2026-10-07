@@ -558,6 +558,14 @@ resultado de execuções anteriores.
   corrigida (H-REF10), margem fixa de 20/50ms (`set margin` descontinuado),
   captura com erro descartável não aborta mais a bateria, terminal de
   `tail -f` da transcrição SCPI com `diagnostico on`.
+- [`CHANGELOG/v1.12.md`](CHANGELOG/v1.12.md) — comissionamento de
+  2026-09-30 (`docs/analise-2026-09-30/`): writes sincronizados (a causa real
+  do H-NATIVO eram comandos em rajada perdidos), fase de disparo das nativas,
+  frequência restaurada após a 18, classe 08 caracterizada com VMAX/VMIN do
+  osciloscópio, bloqueio prévio de pico calibrado, `VOLTage:HIGH` como RMS;
+  de 2/20 para 20/20 classes a 127 V.
+- [`docs/TAREFAS_NUVEM_2026-10-07.md`](docs/TAREFAS_NUVEM_2026-10-07.md) —
+  próximas tarefas (capturas padrão por classe, seed na CLI, 220/380 V).
 - `docs/AMETEK_MX_SCPI_Programming_Manual.pdf` e
   `docs/Keysight_4000X_Programmers_Guide.pdf` — manuais SCPI originais dos
   dois instrumentos.

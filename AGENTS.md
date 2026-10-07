@@ -75,6 +75,25 @@ em 2026-09-09, ver `CHANGELOG/v1.7.md`):
 Nenhuma outra restrição foi suspensa. Em especial, os limites físicos abaixo
 continuam absolutos.
 
+### Autorização de 2026-10-07 (tarefas em `docs/TAREFAS_NUVEM_2026-10-07.md`)
+
+O dono autorizou, para cumprir essas tarefas (capturas padrão por classe,
+seed na CLI, capturas = max(CLI, padrão), 220/380 V), editar também:
+
+- `logica/sinais.py`, `logica/oscilloscope_orm.py`,
+  `logica/calibracao_extremos.json` e `logica/analisar_sessao.py`;
+- `experimentos_nativos/NN.py` e `experimentos_waveform/NN.py` **só** para
+  atributos de classe (ex. `capturas_padrao`) e ganchos de bancada
+  (`forma_para_bancada`, `ciclos_excluidos_da_validacao` etc.) — **nunca**
+  mudando o que `gerar()` produz para uma dada seed (é o dataset).
+
+Os limites inegociáveis abaixo continuam valendo integralmente: 220 V ou
+380 V não autorizam subir `max_voltage_rms`/`max_peak_v` acima do hardware
+(300 Vrms por fase, 425 Vp). Ver CHANGELOG/v1.12.md para o que mudou na
+v1.12 (writes sincronizados por `*ESR?`, bloqueio prévio de pico,
+`VOLTage:HIGH` = limite RMS, e o achado de segurança: nunca consultar a
+fonte logo após `TRACe:DATA`).
+
 ## Limites inegociáveis (não mudar em nenhuma hipótese)
 
 - `AMETEK_PORT=COM10` e `AMETEK_BAUDRATE=115200` continuam fixos e validados
