@@ -174,6 +174,38 @@ class KeysightDSOX4034A(SCPIMixin, Instrument):
         self.ultima_escala_vertical_v = actual_scale
         return actual_scale
 
+    # [KS] p. 614: "If a measurement cannot be made ... the value +9.9E+37 is
+    # returned for that measurement."
+    _MEDIDA_INVALIDA = 9.0e37
+
+    def medir_extremos(self, channel: int = 1) -> Tuple[float, float]:
+        """Máximo e mínimo da última aquisição, medidos PELO osciloscópio
+        (``:MEASure:VMAX?``/``:MEASure:VMIN?``, [KS] p. 677-678).
+
+        O array devolvido por ``get_waveform()`` é reamostrado a 30 kSa/s a
+        partir do registro bruto (~116,7 kSa/s na sessão 2026-09-30): um pico
+        estreito cai ENTRE amostras e o valor lido do array é só um limite
+        inferior do pico físico (classe 08: 415,3 V medidos no array com o teto
+        em 415,8 V). A medida do osciloscópio usa o registro dele, não o nosso.
+        Medida inválida levanta — nunca devolve 9.9E+37 como se fosse tensão."""
+        if channel not in self.channels:
+            raise ValueError(f"Canal inválido: {channel}")
+        valores = []
+        for nome in ("VMAX", "VMIN"):
+            bruto = str(self.ask(f":MEASure:{nome}? CHANnel{channel}")).strip()
+            try:
+                valor = float(bruto)
+            except ValueError as exc:
+                raise OscilloscopeError(f":MEASure:{nome}? CH{channel} devolveu {bruto!r}") from exc
+            if not np.isfinite(valor) or abs(valor) >= self._MEDIDA_INVALIDA:
+                raise OscilloscopeError(
+                    f":MEASure:{nome}? CH{channel} devolveu medida inválida ({bruto}); "
+                    "a forma de onda está na tela?"
+                )
+            valores.append(valor)
+        self.assert_no_errors(f"medida de extremos do CH{channel}")
+        return valores[0], valores[1]
+
     def configure_acquisition(
         self,
         *,
@@ -452,9 +484,14 @@ class KeysightDSOX4034A(SCPIMixin, Instrument):
         # mudar nem o formato do .npz nem _validar_captura().
         self.ultimo_x_origin = float(x_origin)
         self.ultimo_x_increment = float(x_increment)
-        self.ultimo_indice_trigger = int(round(-x_origin / x_increment))
         time_axis -= time_axis[0]
         target_time = np.arange(expected_points, dtype=np.float64) / 30_000.0
+        # Índice na grade de 30 kSa/s DEVOLVIDA (target_time, que começa na
+        # primeira amostra bruta), não na grade bruta do osciloscópio: com
+        # x_increment bruto (~116,7 kSa/s na sessão 2026-09-30) saía 2333 onde
+        # o trigger estava na amostra 600 do .npz. -x_origin é o tempo do
+        # trigger medido a partir da primeira amostra.
+        self.ultimo_indice_trigger = int(round(-x_origin * 30_000.0))
         cobertura_minima = expected_points / 30_000.0
         if time_axis[-1] + x_increment < cobertura_minima - (0.5 / 30_000.0):
             raise OscilloscopeError(

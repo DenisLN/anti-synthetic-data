@@ -82,6 +82,8 @@ Comandos disponíveis (nenhum energiza a saída sem pedir confirmação própria
   run all             Roda a bateria completa das 20 classes, sequencialmente,
                        sem parar numa falha isolada (ver Prioridade 1 do
                        CHANGELOG). Pede EXECUTAR-20-CLASSES.                [ON]
+                       Pula as classes de BATERIA_EXCLUIR (padrão: 08, pico
+                       medido no teto da fonte); rode-as com "run <NN>".
   set diagnostico on|off
                        Liga/desliga log extra de STATus:OPERation:CONDition?/
                        OUTPut:STATe?/tensão imediata em pontos-chave de
@@ -373,8 +375,14 @@ class SessaoCLI:
         return 0 if resultado.ok else 1
 
     def _run_all(self) -> int:
+        excluidas = (
+            f" SEM as classes {', '.join(mestre.BATERIA_EXCLUIR)} (BATERIA_EXCLUIR; rode-as "
+            "isoladas com 'run <NN>' se precisar)."
+            if mestre.BATERIA_EXCLUIR else ""
+        )
         if not self.confirmar(
-            "Bateria completa das 20 classes, sequencial, sem parar numa falha isolada. "
+            "Bateria completa das 20 classes, sequencial, sem parar numa falha isolada"
+            f"{excluidas or '.'} "
             "Confirme que comm/trigger/native já passaram e que probe, cabos, E-stop e "
             "EUT estão conferidos.",
             "EXECUTAR-20-CLASSES",
@@ -383,7 +391,7 @@ class SessaoCLI:
         self._garantir_pasta_sessao()
         self.autorizar_saida(True)
         try:
-            scripts = mestre._experiment_scripts()
+            scripts = mestre.scripts_da_bateria_fisica()
             with mestre.Bancada.from_env(require_output=True) as bancada:
                 resultados = bancada.executar_bateria(scripts)
         except Exception as exc:

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import math
+import os
 import re
 import threading
 import time
@@ -90,6 +91,25 @@ class AmetekMX30:
     # arredondamento e apertado o bastante para pegar um valor PRESO de
     # outra classe (242 V contra 220 V = 10%).
     TOLERANCIA_READBACK = 0.005
+    # Resolução de programação de VOLTage:TRIGgered medida na bancada
+    # (scripts/diag_nativo_output_off.py, 2026-09-30): a Rev. 5.53 TRUNCA
+    # para 0,1 V (2,76 -> 2,7; 4,999 -> 4,9). O manual SCPI não documenta.
+    RESOLUCAO_TENSAO_V = 0.1
+    # Sincronismo por comando (ver write()). Prazo para a fonte voltar a
+    # responder depois de um comando que a deixa muda (troca de forma/modo).
+    PRAZO_SINCRONISMO_S = 20.0
+    # Comandos que gravam na Flash têm espera própria, e clear_all_traces()
+    # documenta que a fonte NÃO deve ser consultada durante a gravação.
+    _SEM_SINCRONISMO = ("TRACE:DATA", "TRACE:DEFINE", "TRACE:DELETE")
+    # Bits de erro do Standard Event Status (manual p. 169): QYE, DDE, EXE, CME.
+    _ESR_BITS_DE_ERRO = 0x04 | 0x08 | 0x10 | 0x20
+    # Consulta de sincronismo de write(): "ESR" (padrão — 20/20 na bancada em
+    # 2026-09-30) ou "OPC". Bancada 15:48 (T15, scripts/diag_nativo_output_off.py
+    # --so opc): a Rev. 5.53 NÃO segura a resposta do *OPC? como o IEEE 488.2
+    # manda — responde na hora "1" (nada pendente) ou "0" (ex.: STEP armado
+    # após INITiate). Não trava, mas não sincroniza mais que o *ESR? e todo
+    # arm() logaria "devolveu '0'": ESR fica como padrão.
+    SINCRONISMO = os.environ.get("AMETEK_SINCRONISMO", "ESR").strip().upper()
 
     def __init__(
         self,
@@ -147,6 +167,10 @@ class AmetekMX30:
         # (01/NORMAL), que nunca tocou offset nenhum.
         self._modo_saida = "AC"
         self._forma_atual = "SINusoid"
+        # Frequência base da conexão (configure_safe_baseline) e se uma lista de
+        # frequência a deixou em outro valor — ver restaurar_frequencia_base().
+        self._frequencia_base_hz: Optional[float] = None
+        self._frequencia_alterada = False
         # Assinatura (bytes da forma + nomes de TRACE + tensão base + frequência
         # + offset DC) do último program_capture() bem-sucedido NESTA conexão —
         # ver program_capture(). Atributo de instância: uma nova conexão (novo
@@ -294,8 +318,61 @@ class AmetekMX30:
             raise CommunicationError(f"Falha escrevendo {command!r}: {exc}") from exc
 
     def write(self, command: str) -> None:
+        """Envia um comando e só retorna depois que a fonte o CONSUMIU.
+
+        A USB virtual serial da MX30 não tem controle de fluxo
+        (``VI_ASRL_FLOW_NONE``). Comandos enviados em rajada, sem nada que
+        espere a fonte processar o anterior, são perdidos em silêncio ou
+        chegam colados (``-113 "Undefined header"``) — medido na bancada em
+        2026-09-30 (docs/analise-2026-09-30/ANALISE.md, N1): a rajada
+        ``FUNCtion:MODE FIXed; SOURce:FREQuency:MODE FIXed; VOLTage:MODE STEP;
+        VOLTage:TRIGgered 5`` pegou 0/3 vezes sem prelúdio e 0-1/3 depois de
+        ACDC/CSINe; a mesma sequência com uma consulta após cada write pegou
+        9/9. Era a causa de H-NATIVO (VOLTage:MODE lido FIX, PULSe:WIDTh preso
+        em 0,0167) nas sessões de 16/09 e 30/09.
+
+        O sincronismo é uma consulta ``*ESR?`` (sem efeito no instrumento além
+        de zerar o próprio registrador de eventos): a fonte só responde depois
+        de processar tudo o que veio antes, então o próximo comando nunca é
+        enviado com o anterior pendente. Também torna efetivo o ``*WAI`` —
+        manual p. 142: "*WAI can be aborted by sending any other command after
+        the *WAI command"; agora nada é enviado antes de a espera terminar.
+        Bits de erro do ESR são logados com o comando que os causou (a fila
+        SYSTem:ERRor? fica intacta para quem a confere depois)."""
         with self._lock:
             self._raw_write(command)
+            if self.simulated or command.strip().upper().startswith(self._SEM_SINCRONISMO):
+                return
+            self._sincronizar_apos(command)
+
+    def _sincronizar_apos(self, command: str) -> None:
+        if self.SINCRONISMO not in {"ESR", "OPC"}:
+            raise ValueError(f"AMETEK_SINCRONISMO deve ser ESR ou OPC; recebido {self.SINCRONISMO!r}")
+        consulta = "*OPC?" if self.SINCRONISMO == "OPC" else "*ESR?"
+        deadline = time.monotonic() + self.PRAZO_SINCRONISMO_S
+        while True:
+            try:
+                resposta = self.query(consulta)
+                break
+            except CommunicationError as exc:
+                # Mudez transitória depois de troca de forma/modo (ver
+                # _query_tolerante); só vira falha real depois do prazo.
+                if time.monotonic() >= deadline:
+                    raise CommunicationError(
+                        f"AMETEK não voltou a responder {self.PRAZO_SINCRONISMO_S:.0f} s depois "
+                        f"de {command!r}: {exc}"
+                    ) from exc
+        if consulta == "*OPC?":
+            if resposta.strip() != "1":
+                logger.warning("*OPC? devolveu %r após %r (esperado '1')", resposta, command)
+            return
+        try:
+            esr = int(float(resposta))
+        except ValueError:
+            logger.warning("*ESR? devolveu %r após %r", resposta, command)
+            return
+        if esr & self._ESR_BITS_DE_ERRO:
+            logger.warning("*ESR?=%d (bit de erro) logo após %r", esr, command)
 
     def query(self, command: str) -> str:
         command = command.strip()
@@ -317,6 +394,9 @@ class AmetekMX30:
                     f"Timeout aguardando resposta a {command!r} em {self.port}; "
                     "confirme COM10, driver USB virtual, 115200 baud e cabo USB da fonte"
                 )
+            # Sem a resposta, a transcrição da sessão 2026-09-30 não mostrava o
+            # que VOLTage:MODE?/PULSe:WIDTh? devolveram — só que foram enviados.
+            _transcrever("R", f"{command} -> {str(response).strip()}")
             return str(response).strip()
 
     # Comandos SOURce:LIST:* usados neste driver, mapeados para um eixo
@@ -653,6 +733,32 @@ class AmetekMX30:
         self.write("FUNCtion:MODE FIXed")
         self.write("SOURce:FREQuency:MODE FIXed")
 
+    def definir_fase_de_disparo(self, graus: float) -> None:
+        """Fase da saída em que o *TRG aplica o transiente (e em que sai o
+        pulso BOT que dispara o osciloscópio) — ``TRIGger:SYNChronize:PHASe``,
+        com ``TRIGger:SYNChronize:SOURce PHASe`` já programado pela baseline.
+
+        Sem readback: ``TRIGger:SYNChronize:PHASe?`` nunca foi testado na
+        Rev. 5.53 e um cabeçalho de query não implementado deixa ``-113`` na
+        fila (ver ``aguardar_resposta``). Quem confirma a fase é a validação
+        física (correlação/THD contra ``gerar()``)."""
+        graus = float(graus) % 360.0
+        self.write(f"TRIGger:SYNChronize:PHASe {graus:.1f}")
+        self.assert_no_errors(f"TRIGger:SYNChronize:PHASe {graus:.1f}")
+
+    def _na_resolucao_da_fonte(self, voltage_rms: float) -> float:
+        """Arredonda para o múltiplo de ``RESOLUCAO_TENSAO_V`` mais próximo.
+
+        A Rev. 5.53 TRUNCA ``VOLTage:TRIGgered`` a 0,1 V: 2,7367 V (classe 04)
+        era aplicado como 2,7 V e o readback de ``arm()`` (tolerância de 0,5%)
+        recusava a captura. Escrevendo já o valor representável, o que está
+        no metadata/readback é o que a fonte REALMENTE aplica — nenhuma
+        tolerância é afrouxada. Nunca arredonda para cima do teto de software."""
+        quantizado = round(round(voltage_rms / self.RESOLUCAO_TENSAO_V) * self.RESOLUCAO_TENSAO_V, 1)
+        if quantizado > self.max_voltage_rms:
+            quantizado = round(quantizado - self.RESOLUCAO_TENSAO_V, 1)
+        return quantizado
+
     def trigger_step(self, voltage_rms: float) -> None:
         """Programa um STEP para ``voltage_rms`` no próximo *TRG.
 
@@ -665,6 +771,7 @@ class AmetekMX30:
             raise ParameterOutOfBoundsError(
                 f"Tensão {voltage_rms} Vrms fora do limite de software 0..{self.max_voltage_rms}"
             )
+        voltage_rms = self._na_resolucao_da_fonte(voltage_rms)
         self.aguardar_idle()
         # FREQuency:MODE e FUNCtion:MODE são eixos independentes de
         # VOLTage:MODE (cap. 4.13/4.17 do manual SCPI): um LIST de frequência
@@ -673,7 +780,7 @@ class AmetekMX30:
         # _neutralizar_transientes_residuais().
         self._neutralizar_transientes_residuais()
         self.write("VOLTage:MODE STEP")
-        self.write(f"VOLTage:TRIGgered {voltage_rms:.8g}")
+        self.write(f"VOLTage:TRIGgered {voltage_rms:.1f}")
         self._transiente_esperado = {
             "VOLTage:MODE?": "STEP",
             "VOLTage:TRIGgered?": voltage_rms,
@@ -696,12 +803,13 @@ class AmetekMX30:
             )
         if not width_s > 0:
             raise ParameterOutOfBoundsError(f"Duração do pulso deve ser positiva; recebido {width_s}")
+        voltage_rms = self._na_resolucao_da_fonte(voltage_rms)
         self.aguardar_idle()
         # Ver comentário equivalente em trigger_step(): neutraliza listas de
         # frequência E de forma residuais antes de armar este PULSe.
         self._neutralizar_transientes_residuais()
         self.write("VOLTage:MODE PULSe")
-        self.write(f"VOLTage:TRIGgered {voltage_rms:.8g}")
+        self.write(f"VOLTage:TRIGgered {voltage_rms:.1f}")
         self.write(f"PULSe:WIDTh {width_s:.8g}")
         self._transiente_esperado = {
             "VOLTage:MODE?": "PULS",
@@ -823,6 +931,23 @@ class AmetekMX30:
         captura); as nativas, não."""
         self.select_sine_shape()
         self.disable_dc_offset()
+        self.restaurar_frequencia_base()
+
+    def restaurar_frequencia_base(self) -> None:
+        """Volta a frequência imediata ao valor base da conexão depois de uma
+        lista de frequência (classe 18).
+
+        Ao fim de um LIST a saída FICA no último ponto da lista:
+        ``FREQuency:MODE FIXed`` troca o modo, não o valor. Sessão 2026-09-30
+        14:44: a 18 terminou em 63 Hz e a 19 (DC_OFFSET) rodou inteira a
+        63,03 Hz (THD por FFT 5,00% contra 0,00%); a 20 só voltou a 60 Hz
+        porque ``program_capture()`` reescreve ``SOURce:FREQuency``."""
+        if not self._frequencia_alterada or self._frequencia_base_hz is None:
+            return
+        self.write("SOURce:FREQuency:MODE FIXed")
+        self.write(f"SOURce:FREQuency {self._frequencia_base_hz:.8g}")
+        self.assert_no_errors(f"restaurar SOURce:FREQuency {self._frequencia_base_hz:.8g}")
+        self._frequencia_alterada = False
 
     def frequency_drift_list(
         self, start_hz: float, end_hz: float, *, voltage_rms: float, dwell_s: float,
@@ -851,6 +976,7 @@ class AmetekMX30:
         # de FREQuência com 2. O remédio é o Passo 1 do §6.4.2 (p. 152).
         self._neutralizar_transientes_residuais()
         self.write("VOLTage:MODE FIXed")
+        self._frequencia_alterada = True
         self.write("FREQuency:MODE LIST")
         self.write(f"LIST:FREQuency {start_hz:.8g},{end_hz:.8g}")
         self.write(f"LIST:VOLTage {voltage_rms:.8g},{voltage_rms:.8g}")
@@ -978,9 +1104,21 @@ class AmetekMX30:
         protection_delay_s: float,
         frequency_hz: float,
     ) -> None:
-        # VOLTage:HIGH na AMETEK MX30 é um limite de PICO em Vp — não Vrms.
-        # O firmware rejeita (erro 14) qualquer saída cujo pico exceda esse valor.
+        # ``voltage_high_vp`` é o limite de PICO do software (validado abaixo,
+        # como sempre). Mas VOLTage:HIGH NA FONTE é limite de RMS — manual SCPI
+        # ("programs the maximum rms voltage that the power source will
+        # accept", unidade V rms) e bancada 2026-09-30 (T12: com HIGH=4, 3,5 Vrms
+        # = 4,95 Vp foi ACEITO e 4,5 Vrms deu -222). O comentário antigo ("limite
+        # de PICO; o firmware rejeita qualquer saída cujo pico exceda") estava
+        # errado: escrever 415,8 ali era um limite de 415,8 Vrms, que não
+        # protegia pico nenhum. Por isso o HIGH é programado com o limite RMS do
+        # software (``max_voltage_rms``) — nunca mais permissivo que antes.
         range_peak_v = voltage_range_rms * math.sqrt(2.0)
+        if self.max_voltage_rms > voltage_range_rms + 1e-6:
+            raise ParameterOutOfBoundsError(
+                f"Limite rms do software {self.max_voltage_rms:.3f} Vrms excede o range "
+                f"{voltage_range_rms} Vrms"
+            )
         if voltage_high_vp > self.max_peak_v + 1e-6:
             raise ParameterOutOfBoundsError(
                 f"VOLTage:HIGH {voltage_high_vp:.3f} Vp excede o limite de pico do software "
@@ -1007,7 +1145,7 @@ class AmetekMX30:
             "INSTrument:COUPle ALL",
             "SOURce:MODE AC",
             f"SOURce:VOLTage:RANGe {voltage_range_rms:.8g}",
-            f"SOURce:VOLTage:HIGH {voltage_high_vp:.8g}",
+            f"SOURce:VOLTage:HIGH {self.max_voltage_rms:.8g}",
             f"SOURce:CURRent {current_limit_a:.8g}",
             "SOURce:CURRent:PROTection:STATe ON",
             f"SOURce:CURRent:PROTection:DELay {protection_delay_s:.8g}",
@@ -1045,6 +1183,8 @@ class AmetekMX30:
         # select_sine_shape()/disable_dc_offset()).
         self._modo_saida = "AC"
         self._forma_atual = "SINusoid"
+        self._frequencia_base_hz = float(frequency_hz)
+        self._frequencia_alterada = False
 
     def clear_all_traces(self) -> None:
         """Apaga todas as TRACEs de usuário. Só pode ser chamada com OUTPUT OFF,

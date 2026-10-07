@@ -276,6 +276,84 @@ class AmetekTests(unittest.TestCase):
         self.assertEqual(resource.writes[-2:], [b"*IDN?\n", b"\x04"])
         source.disconnect()
 
+    def test_write_espera_a_fonte_consumir_antes_do_proximo_comando(self):
+        """Bancada 2026-09-30 (docs/analise-2026-09-30, N1): sem controle de
+        fluxo, writes em rajada eram perdidos em silêncio ou colados (-113).
+        Cada write agora é seguido de uma consulta de sincronismo antes que
+        qualquer outro comando saia."""
+        resource = ScriptedSerialVisaResource()
+        resource.response = "0\n"
+        source = AmetekMX30(simulated=False, visa_resource=resource)
+        source.write("VOLTage:MODE STEP")
+        source.write("VOLTage:TRIGgered 5.0")
+        enviados = [w for w in resource.writes if w != b"\x04"]
+        self.assertEqual(
+            enviados,
+            [b"VOLTage:MODE STEP\n", b"*ESR?\n", b"VOLTage:TRIGgered 5.0\n", b"*ESR?\n"],
+        )
+
+    def test_sincronismo_por_opc_quando_configurado(self):
+        resource = ScriptedSerialVisaResource()
+        resource.response = "1\n"
+        source = AmetekMX30(simulated=False, visa_resource=resource)
+        source.SINCRONISMO = "OPC"
+        source.write("VOLTage:MODE STEP")
+        enviados = [w for w in resource.writes if w != b"\x04"]
+        self.assertEqual(enviados, [b"VOLTage:MODE STEP\n", b"*OPC?\n"])
+
+    def test_sincronismo_invalido_e_recusado(self):
+        resource = ScriptedSerialVisaResource()
+        source = AmetekMX30(simulated=False, visa_resource=resource)
+        source.SINCRONISMO = "NADA"
+        with self.assertRaises(ValueError):
+            source.write("VOLTage:MODE STEP")
+
+    def test_write_nao_consulta_a_fonte_durante_gravacao_na_flash(self):
+        """clear_all_traces(): não consultar durante a gravação da Flash —
+        TRACe:DATA/DEFine/DELete têm espera própria."""
+        resource = ScriptedSerialVisaResource()
+        resource.response = "0\n"
+        source = AmetekMX30(simulated=False, visa_resource=resource)
+        for comando in ("TRACe:DATA TCC00,0,1", "TRACe:DEFine TCC00", "TRACe:DELete:ALL"):
+            source.write(comando)
+        self.assertNotIn(b"*ESR?\n", resource.writes)
+
+    def test_sincronismo_tolera_mudez_ate_o_prazo(self):
+        resource = ScriptedSerialVisaResource()
+        respostas = iter(["", "", "0\n"])  # duas consultas sem resposta, depois volta
+        resource.read = lambda: next(respostas)
+        source = AmetekMX30(simulated=False, visa_resource=resource)
+        source.write("SOURce:FUNCtion:SHAPe CSINusoid")
+        self.assertEqual(resource.writes.count(b"*ESR?\n"), 3)
+
+    def test_sincronismo_vira_falha_de_comunicacao_depois_do_prazo(self):
+        resource = ScriptedSerialVisaResource()
+        resource.response = ""
+        source = AmetekMX30(simulated=False, visa_resource=resource)
+        source.PRAZO_SINCRONISMO_S = 0.0
+        with self.assertRaises(CommunicationError):
+            source.write("SOURce:MODE ACDC")
+
+    def test_tensao_disparada_e_escrita_na_resolucao_de_0v1(self):
+        """A Rev. 5.53 TRUNCA VOLTage:TRIGgered a 0,1 V (2,7367 -> 2,7): a
+        classe 04 era recusada pelo readback. Escreve-se o valor representável
+        e o readback compara contra ELE, com a mesma tolerância de sempre."""
+        source = AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=425.0)
+        source.trigger_pulse(2.7367107, width_s=0.060)
+        self.assertIn("VOLTage:TRIGgered 2.7", source.command_log)
+        self.assertEqual(source._transiente_esperado["VOLTage:TRIGgered?"], 2.7)
+        source.trigger_step(139.7)
+        self.assertIn("VOLTage:TRIGgered 139.7", source.command_log)
+        source.trigger_step(4.96)
+        self.assertEqual(source._transiente_esperado["VOLTage:TRIGgered?"], 5.0)
+
+    def test_quantizacao_nunca_passa_do_teto_de_software(self):
+        source = AmetekMX30(simulated=True, max_voltage_rms=10.0, max_peak_v=100.0)
+        source.trigger_step(9.99)
+        self.assertLessEqual(source._transiente_esperado["VOLTage:TRIGgered?"], 10.0)
+        source.trigger_step(9.97)
+        self.assertEqual(source._transiente_esperado["VOLTage:TRIGgered?"], 10.0)
+
     def test_output_requires_authorization(self):
         source = AmetekMX30(simulated=True)
         with self.assertRaises(PermissionError):
@@ -432,13 +510,15 @@ class AmetekTests(unittest.TestCase):
         )
         source.configure_safe_baseline(
             voltage_range_rms=150.0,
-            # VOLTage:HIGH é um limite de PICO em Vp na AMETEK MX30.
-            # Passamos 100.0 Vp diretamente (pico máximo autorizado).
+            # Limite de PICO do software (validado). O VOLTage:HIGH da fonte é
+            # RMS e recebe max_voltage_rms (T12, docs/analise-2026-09-30).
             voltage_high_vp=100.0,
             current_limit_a=0.5,
             protection_delay_s=0.1,
             frequency_hz=50.0,
         )
+        self.assertIn("SOURce:VOLTage:HIGH 10", source.command_log)
+        self.assertNotIn("SOURce:VOLTage:HIGH 100", source.command_log)
         t = np.arange(6000, dtype=np.float64) / 30000.0
         voltage = np.sin(2.0 * np.pi * 50.0 * t)
         source.program_capture(voltage, base_voltage_rms=5.0, frequency_hz=50.0)
@@ -1211,7 +1291,12 @@ class RemapeamentoNivelTests(unittest.TestCase):
         tmp_dir = Path(tempfile.mkdtemp())
         try:
             config = self._config(tmp_dir / "resultados", capturas_override=3)
-            bancada = mestre.Bancada(mestre.AmetekMX30(simulated=True), mock.Mock(), config)
+            # Limites coerentes com 127 V de base (o padrão do simulador, 100 Vp,
+            # fica abaixo do pico nominal e a pré-validação de pico pularia tudo).
+            bancada = mestre.Bancada(
+                mestre.AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=425.0),
+                mock.Mock(), config,
+            )
 
             class _SemNiveis(mestre.ExperimentoNativo):
                 id = "95"
@@ -2135,7 +2220,11 @@ class SalvamentoIncrementalTests(unittest.TestCase):
         return mestre.Config(**base)
 
     def _experimento(self, config, falhar_em=None, observador=None):
-        bancada = mestre.Bancada(mestre.AmetekMX30(simulated=True), mock.Mock(), config)
+        # Limites coerentes com 127 V de base (ver pré-validação de pico).
+        bancada = mestre.Bancada(
+            mestre.AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=425.0),
+            mock.Mock(), config,
+        )
 
         class _Classe(mestre.ExperimentoNativo):
             id = "96"
@@ -2285,7 +2374,31 @@ class ErroDeterministicoEPreValidacaoTests(unittest.TestCase):
         experimento._capturar_real = _stub
         experimento._preparar_acquisicao_real = lambda: None
 
+    def test_extremo_previsto_pela_calibracao_pula_nivel_que_cabe_em_rms(self):
+        """Com a calibração REAL (swell 1,038 × margem 1,10), 1,2 pu a 220 V
+        (264 Vrms, 373 Vp — cabe no rms e no pico programado) prevê 426 V de
+        extremo: acima dos 415,8 V da bancada, pulado ANTES de programar."""
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            tentativas = []
+            bancada = self._bancada(tmp_dir / "resultados")
+            bancada.fonte.max_peak_v = 415.8
+            experimento = self._classe_swell(tentativas)(bancada)
+            experimento.osc = mock.Mock()
+            self._preparar(experimento)
+            with self.assertLogs("MestreExperimentos", level="WARNING") as logs:
+                experimento.executar()
+            self.assertEqual(tentativas, [1.1])
+            self.assertTrue(any("extremo PREVISTO" in linha for linha in logs.output), logs.output)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
     def test_nivel_acima_do_teto_e_pulado_antes_de_qualquer_captura(self):
+        # Isola a regra de RMS da P04: fator de extremo neutro (1,0 × 1,0).
+        fatores = mock.patch.object(mestre, "carregar_fatores_extremo", return_value={"03": 1.0})
+        margem = mock.patch.object(mestre, "MARGEM_FATOR_EXTREMO", 1.0)
+        fatores.start(); margem.start()
+        self.addCleanup(fatores.stop); self.addCleanup(margem.stop)
         tmp_dir = Path(tempfile.mkdtemp())
         try:
             tentativas = []
@@ -2380,6 +2493,266 @@ class ErroDeterministicoEPreValidacaoTests(unittest.TestCase):
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
+class FaseDeDisparoTests(unittest.TestCase):
+    """Sessão 2026-09-30 14:44: 02/03/04 saíram defasadas 216° de gerar()
+    (pré-trigger 60 ms = 3,6 ciclos, disparo sempre em 0°)."""
+
+    def _experimento(self, pre_trigger_s, f0=60.0):
+        config = mock.Mock(grid_frequency_hz=f0)
+        experimento = mock.Mock(spec=mestre.ExperimentoNativo)
+        experimento.pre_trigger_s = pre_trigger_s
+        experimento.config = config
+        return experimento
+
+    def test_fase_e_a_de_gerar_no_instante_do_trigger(self):
+        fase = mestre.ExperimentoNativo.fase_de_disparo_graus
+        self.assertAlmostEqual(fase(self._experimento(0.060)), 216.0)
+        self.assertAlmostEqual(fase(self._experimento(0.060, f0=50.0)), 0.0)
+        self.assertAlmostEqual(fase(self._experimento(0.0)), 0.0)
+
+    def test_caminho_nativo_programa_a_fase_antes_do_transiente(self):
+        fonte = AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=425.0)
+        experimento = mock.Mock(spec=mestre.ExperimentoNativo)
+        experimento.pre_trigger_s = 0.060
+        experimento.config = mock.Mock(grid_frequency_hz=60.0)
+        experimento.fonte = fonte
+        experimento.osc = mock.Mock()
+        experimento.usar_trace.return_value = False
+        experimento.fase_de_disparo_graus = lambda: mestre.ExperimentoNativo.fase_de_disparo_graus(experimento)
+        experimento.configurar.side_effect = lambda ci: (fonte.trigger_pulse(2.7, width_s=0.06), {})[1]
+        experimento._ler_captura.return_value = "ok"
+        self.assertEqual(mestre.ExperimentoNativo._capturar_real(experimento, 0, None, None), "ok")
+        log = fonte.command_log
+        fase = log.index("TRIGger:SYNChronize:PHASe 216.0")
+        self.assertLess(fase, log.index("VOLTage:MODE PULSe"))
+
+
+class FrequenciaBaseTests(unittest.TestCase):
+    """Sessão 2026-09-30 14:44: a lista de frequência da 18 terminou em 63 Hz
+    e a 19 rodou inteira a 63,03 Hz."""
+
+    def test_fim_de_classe_volta_a_frequencia_base_depois_de_lista(self):
+        fonte = AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=425.0)
+        fonte._frequencia_base_hz = 60.0
+        fonte.frequency_drift_list(57.0, 63.0, voltage_rms=127.0, dwell_s=0.1)
+        fonte.command_log.clear()
+        fonte.restaurar_forma_e_modo_padrao()
+        self.assertIn("SOURce:FREQuency 60", fonte.command_log)
+        fonte.command_log.clear()
+        fonte.restaurar_forma_e_modo_padrao()  # já restaurada: no-op
+        self.assertNotIn("SOURce:FREQuency 60", fonte.command_log)
+
+    def test_classe_sem_lista_de_frequencia_nao_reescreve_frequencia(self):
+        fonte = AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=425.0)
+        fonte._frequencia_base_hz = 60.0
+        fonte.trigger_step(127.0)
+        fonte.command_log.clear()
+        fonte.restaurar_forma_e_modo_padrao()
+        self.assertEqual([c for c in fonte.command_log if "FREQuency" in c], [])
+
+
+class Classe08BancadaTests(unittest.TestCase):
+    """ANALISE.md T8-1/T8-2: o limite de pico escalava a forma inteira (base a
+    43 Vrms) e a oscilação da saída após o impulso (vale ~45% do degrau abaixo
+    da partida) não era prevista."""
+
+    T = np.arange(6000, dtype=np.float64) / 30_000.0
+
+    def _experimento(self, capturas_override=None, base_v=127.0):
+        experimento = _load_experimento("08")
+        experimento.fonte = mock.Mock(max_peak_v=415.8)
+        experimento.osc = mock.Mock()
+        campos = dict(_BancadaFake.config.__dict__)
+        campos.update(base_voltage_rms=base_v, capturas_override=capturas_override)
+        experimento.config = mestre.Config(**campos)
+        return experimento
+
+    def _forma(self, experimento, capture_index=0):
+        onda, parametros = experimento.gerar(self.T, 60.0, capture_index, np.random.default_rng(3))
+        forma = experimento.forma_para_bancada(onda, parametros, capture_index)
+        return forma, parametros
+
+    def test_base_fica_em_1pu_e_so_o_impulso_e_limitado(self):
+        forma, parametros = self._forma(self._experimento())
+        fora = np.ones(6000, dtype=bool)
+        fora[[2400, 2401]] = False
+        np.testing.assert_allclose(forma[fora], np.sin(2 * np.pi * 60 * self.T)[fora])
+        self.assertLess(parametros["amplitude_bancada_pu"], parametros["transient_amplitude_pu"])
+        self.assertGreater(parametros["amplitude_bancada_pu"], 0.0)
+
+    def test_pico_e_vale_previstos_cabem_no_teto(self):
+        for base_v in (127.0, 220.0):
+            experimento = self._experimento(base_v=base_v)
+            _, parametros = self._forma(experimento)
+            teto_v = 0.9 * 415.8
+            self.assertLessEqual(parametros["pico_previsto_v"], teto_v + 1e-6)
+            self.assertGreaterEqual(parametros["vale_previsto_v"], -teto_v - 1e-6)
+            self.assertAlmostEqual(experimento.excursao_fisica_prevista_v(), teto_v, delta=1.0)
+
+    def test_caracterizacao_sobe_em_rampa_a_partir_de_amplitude_pequena(self):
+        experimento = self._experimento(capturas_override=5)
+        amplitudes = [self._forma(experimento, k)[1]["amplitude_bancada_pu"] for k in range(5)]
+        self.assertAlmostEqual(amplitudes[0], experimento.AMPLITUDE_MIN_CARACTERIZACAO_PU)
+        self.assertTrue(all(b > a for a, b in zip(amplitudes, amplitudes[1:])), amplitudes)
+        self.assertAlmostEqual(amplitudes[-1], self._forma(self._experimento())[1]["amplitude_bancada_pu"])
+
+    def test_exige_medida_de_pico_e_exclui_ciclos_do_impulso(self):
+        experimento = self._experimento()
+        self.assertTrue(experimento.exige_medida_de_pico)
+        self.assertEqual(experimento.fracao_teto_pico_medido, 0.9)
+        self.assertEqual(tuple(experimento.ciclos_excluidos_da_validacao(0)), (4, 5))
+
+
+class ExtremosFisicosTests(unittest.TestCase):
+    """VMAX/VMIN medidos pelo osciloscópio na taxa cheia (o array de 30 kSa/s
+    subestima picos estreitos) e parada da classe acima do teto."""
+
+    class _AdapterComMedidas(ScriptedAdapter):
+        vmax = "3.8E+02"
+        vmin = "-3.2E+02"
+
+        def read(self):
+            comando = self.last_command.upper()
+            if comando.startswith(":MEASURE:VMAX?"):
+                return self.vmax
+            if comando.startswith(":MEASURE:VMIN?"):
+                return self.vmin
+            return super().read()
+
+    def test_medir_extremos_le_vmax_e_vmin_do_canal(self):
+        adapter = self._AdapterComMedidas()
+        scope = KeysightDSOX4034A(adapter)
+        self.assertEqual(scope.medir_extremos(1), (380.0, -320.0))
+        self.assertIn(":MEASure:VMAX? CHANnel1", adapter.commands)
+        self.assertIn(":MEASure:VMIN? CHANnel1", adapter.commands)
+
+    def test_medida_invalida_do_keysight_levanta(self):
+        adapter = self._AdapterComMedidas()
+        adapter.vmax = "9.9E+37"
+        scope = KeysightDSOX4034A(adapter)
+        with self.assertRaises(OscilloscopeError):
+            scope.medir_extremos(1)
+
+    def _executar(self, *, medida, exige=False, max_peak_v=200.0):
+        # Estes testes exercitam o extremo MEDIDO acima do teto (200 V, baixo
+        # de propósito); neutraliza a pré-validação do extremo PREVISTO, que
+        # pularia a captura antes (testada em ErroDeterministicoEPreValidacaoTests).
+        for alvo, valor in (("carregar_fatores_extremo", mock.Mock(return_value={"01": 1.0})),
+                            ("MARGEM_FATOR_EXTREMO", 1.0)):
+            patcher = mock.patch.object(mestre, alvo, valor)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        tmp_dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp_dir, ignore_errors=True)
+        config = mestre.Config(
+            fs_hz=30_000.0, points=6_000, duration_s=0.2, grid_frequency_hz=60.0,
+            base_voltage_rms=127.0, snr_levels_db=(), base_seed=1,
+            capture_current=False, current_base_a=None, results_dir=tmp_dir / "resultados",
+            sim_captures_per_class=1, real_captures_per_class=1, disturbance_start_s=0.06,
+            capturas_override=2,
+        )
+        fonte = mestre.AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=max_peak_v)
+        bancada = mestre.Bancada(fonte, mock.Mock(), config)
+
+        class _Classe(mestre.ExperimentoNativo):
+            id = "01"
+            nome = "NORMAL"
+            exige_medida_de_pico = exige
+
+            def gerar(self, t, f0, capture_index, rng):
+                return np.sin(2.0 * np.pi * f0 * t), {}
+
+            def configurar(self, capture_index):
+                return {}
+
+        experimento = _Classe(bancada)
+        experimento.osc = mock.Mock()
+        if isinstance(medida, Exception):
+            experimento.osc.medir_extremos.side_effect = medida
+        else:
+            experimento.osc.medir_extremos.return_value = medida
+        experimento._calcular_margem = lambda **kw: (0, 0, kw["config_points"])
+        tempo_s = np.arange(6000, dtype=np.float64) / 30_000.0
+        experimento._capturar_real = lambda ci, t, rng: (
+            tempo_s, np.sin(2.0 * np.pi * 60.0 * tempo_s), None, {},
+        )
+        experimento._preparar_acquisicao_real = lambda: None
+        metadata = config.results_dir / "metadata" / "01_normal.jsonl"
+        return experimento, metadata
+
+    def _registros(self, metadata):
+        return [json.loads(l) for l in metadata.read_text(encoding="utf-8").splitlines() if l.strip()]
+
+    def test_extremo_acima_do_teto_para_a_classe_sem_retry_mas_grava_a_captura(self):
+        experimento, metadata = self._executar(medida=(250.0, -180.0), max_peak_v=200.0)
+        with self.assertRaises(mestre.PicoFisicoExcedidoError):
+            experimento.executar()
+        registros = self._registros(metadata)
+        self.assertEqual(len(registros), 1, "parou na PRIMEIRA captura, depois de gravá-la")
+        self.assertEqual(registros[0]["pico_medido_v"], 250.0)
+        self.assertIn(mestre.PicoFisicoExcedidoError, mestre.Bancada.ERROS_DETERMINISTICOS)
+        self.assertFalse(issubclass(mestre.PicoFisicoExcedidoError, mestre.ERROS_CAPTURA_DESCARTAVEL))
+
+    def test_extremos_dentro_do_teto_vao_para_o_metadata(self):
+        experimento, metadata = self._executar(medida=(181.0, -179.0), max_peak_v=200.0)
+        experimento.executar()
+        registro = self._registros(metadata)[0]
+        self.assertEqual((registro["pico_medido_v"], registro["vale_medido_v"]), (181.0, -179.0))
+        self.assertEqual(registro["teto_extremos_v"], 200.0)
+
+    def test_classe_que_exige_medida_para_quando_ela_nao_vem(self):
+        experimento, _ = self._executar(medida=OscilloscopeError("9.9E+37"), exige=True)
+        with self.assertRaises(mestre.PicoFisicoExcedidoError):
+            experimento.executar()
+
+    def test_classe_comum_sem_medida_so_registra(self):
+        experimento, metadata = self._executar(medida=OscilloscopeError("9.9E+37"), exige=False)
+        experimento.executar()
+        self.assertIn("extremos_indisponiveis", self._registros(metadata)[0])
+
+
+class ValidacaoSemCiclosExcluidosTests(unittest.TestCase):
+    def test_ciclos_excluidos_nao_entram_na_comparacao(self):
+        class _Classe(mestre.ExperimentoNativo):
+            id = "97"
+            nome = "EXCLUI"
+            excluir = ()
+
+            def gerar(self, t, f0, capture_index, rng):
+                return np.sin(2.0 * np.pi * f0 * t), {}
+
+            def configurar(self, capture_index):
+                return {}
+
+            def ciclos_excluidos_da_validacao(self, capture_index):
+                return self.excluir
+
+        experimento = _Classe(_BancadaFake())
+        t = np.arange(6000, dtype=np.float64) / 30_000.0
+        medido = np.sin(2.0 * np.pi * 60.0 * t)
+        medido[2400:2410] = 3.0  # "oscilação" no ciclo 4
+        medido[2500:2510] = -2.0  # e no 5
+        self.assertFalse(experimento._validar_fisicamente(0, t, 1, medido)["ok"])
+        experimento.excluir = (4, 5)
+        self.assertTrue(experimento._validar_fisicamente(0, t, 1, medido)["ok"])
+
+
+class BateriaExcluirTests(unittest.TestCase):
+    """``BATERIA_EXCLUIR`` tira classes do run all físico (a 08 ficou fora de
+    14:44 a 15:25 de 2026-09-30); padrão vazio = as 20 classes."""
+
+    def test_padrao_roda_as_20_classes(self):
+        self.assertEqual(mestre.BATERIA_EXCLUIR, ())
+        self.assertEqual(len(mestre.scripts_da_bateria_fisica()), 20)
+
+    def test_classe_excluida_sai_so_do_run_all_fisico(self):
+        with mock.patch.object(mestre, "BATERIA_EXCLUIR", ("08",)):
+            ids = [script.stem for script in mestre.scripts_da_bateria_fisica()]
+        self.assertNotIn("08", ids)
+        self.assertEqual(len(ids), 19)
+        self.assertIn("08", [script.stem for script in mestre._experiment_scripts()])
+
+
 class ValidacaoFisicaTests(unittest.TestCase):
     """P05 — validação FÍSICA pós-captura, independente do mecanismo.
 
@@ -2455,6 +2828,36 @@ class ValidacaoFisicaTests(unittest.TestCase):
         resultado = sinais.comparar_fisicamente(esperado, capturado, fs_hz=self.FS, f0=self.F0)
         self.assertTrue(resultado["ok"], resultado)
 
+    def test_oscilacao_curta_nao_distorce_o_fator_de_crista(self):
+        """Sessão 2026-09-30 run04, classe 09: uma oscilação de 2 kHz de
+        poucos ms mal muda o rms do ciclo onde cai, então o "ciclo mediano"
+        escolhia justamente esse ciclo e media crista 1,62 contra 1,414. A
+        forma de onda grosseira é a de regime: mediana da crista de todos os
+        ciclos."""
+        # 25 meios ciclos com amplitudes ligeiramente diferentes (como o
+        # ruído/ondulação real): o meio ciclo 12, que recebe a oscilação,
+        # fica exatamente na mediana do envelope — o caso da 09 no run04.
+        t = self._t(6250)
+        amplitude = np.repeat([0.95] * 12 + [1.0] + [1.05] * 12, 250)
+        esperado = amplitude * np.sin(2.0 * np.pi * self.F0 * t)
+        capturado = esperado.copy()
+        janela_osc = sinais.janela(t, 0.1032, 0.002)
+        capturado[janela_osc] += 0.35 * np.sin(2.0 * np.pi * 2000.0 * t[janela_osc])
+        resultado = sinais.comparar_fisicamente(esperado, capturado, fs_hz=self.FS, f0=self.F0)
+        self.assertTrue(resultado["ok"], resultado)
+
+    def test_senoide_clipada_em_todos_os_ciclos_muda_o_fator_de_crista(self):
+        """A razão de existir da sonda: CSINe aplicada dá crista ~1,34 em
+        TODO ciclo; a mediana por ciclo tem de continuar vendo isso."""
+        t = self._t()
+        limpa = np.sin(2.0 * np.pi * self.F0 * t)
+        clipada = np.clip(limpa, -0.85, 0.85)
+        crista = sinais.fator_de_crista_do_ciclo_mediano(clipada, fs_hz=self.FS, f0=self.F0)
+        self.assertLess(crista, 1.30)
+        self.assertAlmostEqual(
+            sinais.fator_de_crista_do_ciclo_mediano(limpa, fs_hz=self.FS, f0=self.F0), math.sqrt(2.0), places=2,
+        )
+
     def test_margem_extra_no_registro_nao_reprova(self):
         """A captura real tem margem de senoide nominal antes/depois do
         evento; a comparação não pode depender de recorte nem alinhamento."""
@@ -2466,6 +2869,54 @@ class ValidacaoFisicaTests(unittest.TestCase):
         capturado[sinais.janela(t_longo, 0.0805, 0.060)] *= 0.5
         resultado = sinais.comparar_fisicamente(esperado, capturado, fs_hz=self.FS, f0=self.F0)
         self.assertTrue(resultado["ok"], resultado)
+
+    def test_classe_valida_so_a_janela_alinhada_ignorando_margem_em_zero(self):
+        """Sessão 2026-09-30 run04: a saída fica em 0 V antes do trigger (por
+        projeto), então os 20 ms de margem ANTES são ~0 pu. Comparando o
+        registro inteiro, TODA captura das classes 05-20 foi reprovada com
+        mínimo do envelope 0,01 pu. Só a janela alinhada com a forma esperada
+        (margem_antes .. margem_antes+pontos) deve ser comparada."""
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            config = mestre.Config(
+                fs_hz=30_000.0, points=6_000, duration_s=0.2, grid_frequency_hz=60.0,
+                base_voltage_rms=127.0, snr_levels_db=(), base_seed=1,
+                capture_current=False, current_base_a=None, results_dir=tmp_dir / "resultados",
+                sim_captures_per_class=1, real_captures_per_class=1, disturbance_start_s=0.06,
+                capturas_override=1,
+            )
+            fonte = mestre.AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=425.0)
+            bancada = mestre.Bancada(fonte, mock.Mock(), config)
+
+            class _Classe(mestre.ExperimentoNativo):
+                id = "10"
+                nome = "SAG_TESTE"
+
+                def gerar(self, t, f0, capture_index, rng):
+                    onda = np.sin(2.0 * np.pi * f0 * t)
+                    onda[sinais.janela(t, 0.060, 0.060)] *= 0.5
+                    return onda, {}
+
+                def configurar(self, capture_index):
+                    return {}
+
+            experimento = _Classe(bancada)
+            experimento.osc = mock.Mock()
+            experimento._calcular_margem = lambda **kw: (600, 1500, kw["config_points"] + 2100)
+            tempo_s = np.arange(8100, dtype=np.float64) / 30_000.0
+            registro = np.zeros(8100)
+            t_janela = tempo_s[: 7500]
+            registro[600:] = np.sin(2.0 * np.pi * 60.0 * t_janela)
+            registro[600:][sinais.janela(t_janela, 0.060, 0.060)] *= 0.5
+            experimento._capturar_real = lambda ci, t, rng: (tempo_s, registro.copy(), None, {})
+            experimento._preparar_acquisicao_real = lambda: None
+            experimento.executar()
+            metadata = config.results_dir / "metadata" / "10_sag_teste.jsonl"
+            registro_meta = json.loads(metadata.read_text(encoding="utf-8").splitlines()[0])
+            self.assertTrue(registro_meta["validacao_fisica"]["ok"], registro_meta["validacao_fisica"])
+            self.assertAlmostEqual(registro_meta["validacao_fisica"]["envelope_minimo_medido"], 0.3536, places=2)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
     def test_classe_marca_metadata_e_falha_sem_retry_quando_invalida(self):
         tmp_dir = Path(tempfile.mkdtemp())
@@ -2834,6 +3285,21 @@ class PosicaoDoTriggerTests(unittest.TestCase):
         self.assertEqual(scope.ultimo_indice_trigger, 12000)
         self.assertAlmostEqual(scope.ultimo_x_origin, -0.4, places=9)
         self.assertEqual(tempo.shape, (30000,))
+
+    def test_indice_do_trigger_e_na_grade_de_30ksa_devolvida_nao_na_bruta(self):
+        """Sessão 2026-09-30: o Keysight amostrou a ~116,7 kSa/s e
+        ``indice_trigger`` saiu 2333 (amostras BRUTAS em 20 ms), mas o array
+        devolvido é reamostrado a 30 kSa/s, onde o trigger está na amostra
+        600 — o sinal real começava exatamente ali."""
+        adapter = ScriptedAdapter()
+        x_inc = 0.02 / 2333.0
+        adapter.preamble = f"0,0,31500,1,{x_inc!r},-0.02,0,0.01,0,128"
+        adapter.connection.pontos = 31500
+        scope = KeysightDSOX4034A(adapter)
+        scope.initialize_safe()
+        tempo, _ = scope.get_waveform(1, expected_points=8100)
+        self.assertEqual(tempo.shape, (8100,))
+        self.assertEqual(scope.ultimo_indice_trigger, 600)
 
     def test_cobertura_minima_acompanha_a_janela_pedida(self):
         """O teste antigo era chumbado em 0,2 s: com margin on (janela maior)

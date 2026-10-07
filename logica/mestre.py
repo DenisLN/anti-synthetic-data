@@ -12,7 +12,7 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Set, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 import numpy as np
 
@@ -258,9 +258,57 @@ class ValidacaoFisicaError(ValueError):
     diagnosticar o problema depois."""
 
 
+# Extremo físico previsto = pico programado × fator MEDIDO da classe × esta
+# margem. Fatores em logica/calibracao_extremos.json (origem e definição lá).
+MARGEM_FATOR_EXTREMO = env_float("MARGEM_FATOR_EXTREMO", 1.10)
+CALIBRACAO_EXTREMOS_PATH = Path(__file__).resolve().parent / "calibracao_extremos.json"
+
+
+def carregar_fatores_extremo(caminho: Path = CALIBRACAO_EXTREMOS_PATH) -> Dict[str, float]:
+    """Fatores (extremo medido / pico programado) por classe. Arquivo ausente
+    ou ilegível LEVANTA: sem ele a pré-validação de pico não tem base, e
+    seguir sem ela seria enfraquecer a proteção em silêncio."""
+    dados = json.loads(Path(caminho).read_text(encoding="utf-8"))
+    fatores = {str(k).zfill(2): float(v) for k, v in dados["fatores"].items()}
+    if not fatores or any(not math.isfinite(v) or v <= 0 for v in fatores.values()):
+        raise ValueError(f"Fatores de extremo inválidos em {caminho}: {fatores}")
+    return fatores
+
+
+def fator_extremo_da_classe(classe_id: str, fatores: Dict[str, float]) -> float:
+    """Nunca abaixo de 1 (não prever extremo menor que o programado); classe
+    sem medida usa o MAIOR fator conhecido."""
+    fator = fatores.get(str(classe_id).zfill(2), max(fatores.values()))
+    return max(1.0, float(fator))
+
+
+class PicoFisicoExcedidoError(RuntimeError):
+    """O osciloscópio mediu (taxa cheia, ``:MEASure:VMAX?/VMIN?``) um extremo
+    acima do teto da classe, ou a classe exige essa medida e ela não veio.
+
+    DE PROPÓSITO fora de ``ERROS_CAPTURA_DESCARTAVEL`` (não é ``ValueError``/
+    ``InstrumentHardwareError``/``TimeoutError``): descartar e seguir para a
+    próxima captura faria uma varredura de amplitude CRESCENTE (``run 08`` com
+    ``set capturas N``) continuar subindo depois de passar do teto. Está em
+    ``Bancada.ERROS_DETERMINISTICOS``: a classe para na hora, sem retry; a
+    captura que passou do teto é GRAVADA antes (é a evidência)."""
+
+
 VALIDACAO_FISICA = env_bool("VALIDACAO_FISICA", default=True)
 VALIDACAO_TOL_ENVELOPE = env_float("VALIDACAO_TOL_ENVELOPE", 0.15)
 VALIDACAO_TOL_THD = env_float("VALIDACAO_TOL_THD", 0.20)
+
+# Classes que o ``run all`` FÍSICO pula (ids separados por vírgula; vazio =
+# nenhuma, o padrão). ``run <NN>`` isolado continua possível, com a
+# confirmação digitada de sempre, e o dataset simulado não é afetado. A 08
+# ficou aqui de 14:44 a 15:25 de 2026-09-30 (pico de 415,3 V no teto de
+# 415,8 V) e voltou depois de redimensionada pelos extremos MEDIDOS
+# (docs/analise-2026-09-30/ANALISE.md, T8-4: VMAX 230 V / VMIN -334 V).
+BATERIA_EXCLUIR = tuple(
+    item.strip().zfill(2)
+    for item in os.environ.get("BATERIA_EXCLUIR", "").split(",")
+    if item.strip()
+)
 
 # Erros que invalidam só UMA captura: ExperimentoBase.executar() loga,
 # descarta a captura (não grava nada para ela) e segue para a PRÓXIMA
@@ -452,9 +500,10 @@ class Bancada:
             )
             fonte.configure_safe_baseline(
                 voltage_range_rms=SOURCE_VOLTAGE_RANGE_RMS,
-                # VOLTage:HIGH é um limite de pico em Vp. Passamos EUT_MAX_PEAK_V
-                # diretamente: o firmware rejeita (erro 14) qualquer saída cujo
-                # pico exceda esse valor.
+                # Limite de PICO do software, validado por configure_safe_baseline.
+                # O VOLTage:HIGH da fonte é RMS e recebe EUT_MAX_VOLTAGE_RMS (ver
+                # lá; T12 em docs/analise-2026-09-30). A proteção de pico é de
+                # software: _indices_viaveis (previsto) + medir_extremos (medido).
                 voltage_high_vp=EUT_MAX_PEAK_V,
                 current_limit_a=CURRENT_LIMIT_A,
                 protection_delay_s=CURRENT_PROTECTION_DELAY_S,
@@ -545,7 +594,7 @@ class Bancada:
     # relatório 01 §3 P1 caminho #4). A lista é DELIBERADAMENTE estreita:
     # ``ValueError`` em geral (ex.: contagem de pontos da captura) pode ser
     # intermitente e continua ganhando as 3 tentativas.
-    ERROS_DETERMINISTICOS = (ParameterOutOfBoundsError, ValidacaoFisicaError)
+    ERROS_DETERMINISTICOS = (ParameterOutOfBoundsError, ValidacaoFisicaError, PicoFisicoExcedidoError)
 
     def executar_bateria(self, scripts: List[Path]) -> List[ResultadoClasse]:
         """Roda cada classe isoladamente: uma falha de EXPERIMENTO (RMS fora
@@ -872,19 +921,44 @@ class ExperimentoBase(ABC):
         return np.asarray(voltage_pu, dtype=np.float64)
 
     def _validar_fisicamente(
-        self, capture_index: int, t: np.ndarray, seed: int, medido_pu: np.ndarray
+        self, capture_index: int, t: np.ndarray, seed: int, medido_pu: np.ndarray,
+        *, margem_antes: int = 0,
     ) -> Optional[dict]:
         """Compara o que saiu do instrumento com o que a classe pediu.
 
         Complemento do readback SCPI de ``arm()``: aquele confere o que a
         fonte DIZ ter programado, este confere o que ela FEZ. H-NATIVO
         (relatório 01 §1.2) passou em silêncio por não existir nenhum dos
-        dois."""
+        dois.
+
+        Compara só a janela do registro que corresponde à forma esperada
+        (``margem_antes`` .. ``margem_antes + len(esperado)``): o registro
+        físico tem 20 ms ANTES do trigger (saída em 0 V por projeto, antes do
+        transiente) e 50 ms DEPOIS que a forma esperada não tem. Com o
+        registro inteiro, os 20 ms em 0 V reprovavam o mínimo do envelope de
+        TODA captura (0,01 pu, sessão 2026-09-30 run04, classes 05-20) e os
+        50 ms extras quebravam o número inteiro de ciclos da THD (18: 1,60%
+        contra 0,28% na janela alinhada)."""
         if not VALIDACAO_FISICA:
             return None
         esperado = self.forma_esperada_para_validacao(capture_index, t, seed)
         if esperado is None:
             return None
+        medido_pu = np.asarray(medido_pu, dtype=np.float64)[margem_antes : margem_antes + len(esperado)]
+        if medido_pu.size != len(esperado):
+            logger.warning(
+                "[%s] registro tem %d amostras na janela alinhada; esperado %d — validação física não calculada",
+                self.id, medido_pu.size, len(esperado),
+            )
+            return None
+        excluidos = tuple(self.ciclos_excluidos_da_validacao(capture_index))
+        if excluidos:
+            # Remove ciclos INTEIROS dos dois lados: a concatenação continua
+            # contínua em fase, então envelope/THD/crista seguem válidos.
+            n = int(round(self.config.fs_hz / self.config.grid_frequency_hz))
+            manter = [k for k in range(len(esperado) // n) if k not in excluidos]
+            esperado = np.concatenate([np.asarray(esperado)[k * n : (k + 1) * n] for k in manter])
+            medido_pu = np.concatenate([medido_pu[k * n : (k + 1) * n] for k in manter])
         try:
             return comparar_fisicamente(
                 esperado, medido_pu,
@@ -894,6 +968,90 @@ class ExperimentoBase(ABC):
         except Exception:  # noqa: BLE001
             logger.warning("[%s] validação física não pôde ser calculada", self.id, exc_info=True)
             return None
+
+    def ciclos_excluidos_da_validacao(self, capture_index: int) -> Sequence[int]:
+        """Ciclos (índices na janela nominal) que a validação física ignora.
+        Padrão: nenhum. A 08 exclui o ciclo do impulso e o seguinte: a fonte
+        reproduz o impulso de 66 µs como uma oscilação limitada em banda, que
+        nunca coincide com o modelo nesse trecho (ANALISE.md, T8-3); o que
+        importa ali é o pico, conferido por ``medir_extremos``."""
+        return ()
+
+    # A medida de extremos na taxa cheia é OBRIGATÓRIA nesta classe? Sem ela
+    # não há prova de que a captura ficou dentro do teto (ver 08).
+    exige_medida_de_pico: bool = False
+    # Teto dos extremos MEDIDOS, como fração de ``fonte.max_peak_v``. 1,0 para
+    # todas as classes (é o limite configurado); a 08 usa menos (ver lá).
+    fracao_teto_pico_medido: float = 1.0
+
+    def _medir_extremos_fisicos(self) -> Dict[str, object]:
+        """Mede VMAX/VMIN da última aquisição no osciloscópio e devolve o que
+        vai para o metadata. Nunca levanta: quem decide abortar é
+        ``_conferir_extremos_fisicos`` — DEPOIS de a captura ser gravada."""
+        osc = self.osc
+        medir = getattr(osc, "medir_extremos", None)
+        if not callable(medir):
+            return {"extremos_indisponiveis": "osciloscópio sem medir_extremos"}
+        try:
+            vmax, vmin = medir(1)
+            vmax, vmin = float(vmax), float(vmin)
+        except Exception as exc:  # noqa: BLE001 - decisão fica para _conferir_extremos_fisicos
+            logger.warning("[%s] medida de extremos no osciloscópio falhou: %s", self.id, exc)
+            return {"extremos_indisponiveis": f"{type(exc).__name__}: {exc}"}
+        teto = self.fracao_teto_pico_medido * float(getattr(self.fonte, "max_peak_v", float("inf")))
+        return {"pico_medido_v": vmax, "vale_medido_v": vmin, "teto_extremos_v": teto}
+
+    def _conferir_extremos_fisicos(self, capture_id: str, extremos: Dict[str, object]) -> None:
+        if "extremos_indisponiveis" in extremos:
+            if self.exige_medida_de_pico:
+                raise PicoFisicoExcedidoError(
+                    f"[{self.id}] captura {capture_id}: a classe exige a medida de pico na taxa "
+                    f"cheia e ela não veio ({extremos['extremos_indisponiveis']}). Classe parada "
+                    "sem retry — sem essa medida não há prova de que a saída ficou no teto."
+                )
+            return
+        teto = float(extremos["teto_extremos_v"])
+        maior = max(abs(float(extremos["pico_medido_v"])), abs(float(extremos["vale_medido_v"])))
+        if maior > teto:
+            raise PicoFisicoExcedidoError(
+                f"[{self.id}] captura {capture_id}: extremo MEDIDO pelo osciloscópio "
+                f"{maior:.1f} V > teto {teto:.1f} V (pico {extremos['pico_medido_v']:.1f} V, "
+                f"vale {extremos['vale_medido_v']:.1f} V). Captura GRAVADA; classe parada sem "
+                "retry. CONFIRME NO PAINEL que a fonte está bem."
+            )
+
+    def forma_prevista_para_bancada(
+        self, capture_index: int, t: np.ndarray, seed: int,
+    ) -> np.ndarray:
+        """Forma (pu) que ESTA captura vai programar, calculada sem tocar a
+        fonte — mesma seed que ``executar()`` usa. ``ExperimentoWaveform``
+        sobrescreve para aplicar ``forma_para_bancada``."""
+        voltage_pu, _ = self.gerar(t, self.config.grid_frequency_hz, capture_index, np.random.default_rng(seed))
+        return np.asarray(voltage_pu, dtype=np.float64)
+
+    def pico_programado_v(self, capture_index: int, t: np.ndarray, seed: int) -> float:
+        """Pico que a captura PROGRAMA — a definição usada para medir os fatores
+        de ``calibracao_extremos.json`` (mudar aqui exige recalibrar)."""
+        nominal_v = self.config.base_voltage_rms * math.sqrt(2.0)
+        pico = float(np.max(np.abs(self.forma_prevista_para_bancada(capture_index, t, seed)))) * nominal_v
+        rms = self.tensao_rms_programada(capture_index)
+        if rms is not None:
+            pico = max(pico, float(rms) * math.sqrt(2.0))
+        return pico
+
+    def extremo_fisico_previsto_v(self, capture_index: int, t: np.ndarray, seed: int) -> float:
+        """|Extremo| que a SAÍDA deve atingir: o pico programado não basta —
+        sessão 2026-09-30 15:26 mediu até 1,46× o programado (volta de
+        interrupção da 16) por causa da oscilação da saída. Classes com modelo
+        próprio da resposta (08, ``excursao_fisica_prevista_v``) usam o delas."""
+        pico = self.pico_programado_v(capture_index, t, seed)
+        proprio = getattr(self, "excursao_fisica_prevista_v", None)
+        if callable(proprio):
+            excursao = proprio()
+            if excursao is not None:
+                return float(excursao)
+        fator = fator_extremo_da_classe(self.id, carregar_fatores_extremo())
+        return pico * fator * MARGEM_FATOR_EXTREMO
 
     def tensao_rms_programada(self, capture_index: int) -> Optional[float]:
         """Tensão rms que ESTA captura vai pedir à fonte, quando ela é
@@ -919,24 +1077,40 @@ class ExperimentoBase(ABC):
             return indices
         teto_rms = float(getattr(fonte, "max_voltage_rms", float("inf")))
         teto_pico = float(getattr(fonte, "max_peak_v", float("inf")))
+        # Teto do extremo PREVISTO = o mesmo teto do extremo MEDIDO
+        # (_conferir_extremos_fisicos): 1,0 × max_peak_v; 0,9 na 08.
+        teto_extremo = self.fracao_teto_pico_medido * teto_pico
+        t = tempo(self.config)
+        self._extremos_previstos: Dict[int, float] = {}
         viaveis: List[Tuple[int, int]] = []
         recusados: Dict[int, str] = {}
         for indice_global, capture_index in indices:
             rms = self.tensao_rms_programada(capture_index)
-            if rms is None:
-                viaveis.append((indice_global, capture_index))
-                continue
-            pico = rms * math.sqrt(2.0)
-            if rms > teto_rms + 1e-9:
+            if rms is not None and rms > teto_rms + 1e-9:
                 recusados[capture_index] = f"{rms:.1f} Vrms > {teto_rms:.1f} Vrms"
-            elif pico > teto_pico + 1e-9:
-                recusados[capture_index] = f"{pico:.1f} Vp > {teto_pico:.1f} Vp"
-            else:
-                viaveis.append((indice_global, capture_index))
+                continue
+            if rms is not None and rms * math.sqrt(2.0) > teto_pico + 1e-9:
+                recusados[capture_index] = f"{rms * math.sqrt(2.0):.1f} Vp > {teto_pico:.1f} Vp"
+                continue
+            seed = self.config.base_seed + int(self.id) * 1_000_000 + indice_global
+            try:
+                extremo = self.extremo_fisico_previsto_v(capture_index, t, seed)
+            except Exception as exc:  # noqa: BLE001 - sem previsão não há prova de que cabe
+                recusados[capture_index] = f"extremo previsto incalculável ({type(exc).__name__}: {exc})"
+                continue
+            if extremo > teto_extremo + 1e-9:
+                recusados[capture_index] = (
+                    f"extremo PREVISTO {extremo:.1f} V > teto {teto_extremo:.1f} V "
+                    f"(pico programado × fator medido × margem {MARGEM_FATOR_EXTREMO:.2f})"
+                )
+                continue
+            self._extremos_previstos[capture_index] = extremo
+            viaveis.append((indice_global, capture_index))
         for capture_index, motivo in sorted(recusados.items()):
             logger.warning(
-                "[%s] nível %d PULADO: %s (limite físico da fonte; manual §4.14 p. 84). "
-                "A classe roda com os níveis restantes em vez de falhar na captura %d.",
+                "[%s] nível %d PULADO ANTES de programar: %s (limite rms/pico da fonte, "
+                "manual §4.14 p. 84, ou extremo previsto pela calibração). A classe roda com "
+                "os níveis restantes em vez de falhar na captura %d.",
                 self.id, capture_index, motivo, capture_index + 1,
             )
         if not viaveis:
@@ -1435,8 +1609,16 @@ class ExperimentoBase(ABC):
                     "snr_medido_db": medidas_snr,
                     "nivel_indice": capture_index if (cobertura_por_nivel_ativa or not simulated) else 0,
                 })
+                extremos: Dict[str, object] = {}
                 if not simulated:
                     metadados[-1].update(self._contexto_da_sessao())
+                    # Logo depois da aquisição, antes de qualquer outro comando
+                    # ao osciloscópio: a medida é sobre o registro que ele tem.
+                    extremos = self._medir_extremos_fisicos()
+                    metadados[-1].update(extremos)
+                    previsto = getattr(self, "_extremos_previstos", {}).get(capture_index)
+                    if previsto is not None:
+                        metadados[-1]["extremo_previsto_v"] = previsto
                 if margem_antes or margem_depois:
                     metadados[-1]["margem_amostras_antes"] = margem_antes
                     metadados[-1]["margem_amostras_depois"] = margem_depois
@@ -1444,6 +1626,7 @@ class ExperimentoBase(ABC):
                 if not simulated:
                     validacao = self._validar_fisicamente(
                         capture_index, t, seed, measured_voltage_pu,
+                        margem_antes=margem_antes,
                     )
                     if validacao is not None:
                         metadados[-1]["validacao_fisica"] = validacao
@@ -1468,6 +1651,8 @@ class ExperimentoBase(ABC):
                         metadado=metadados[-1],
                     )
                     logger.info("[%s] captura %d/%d gravada", self.id, posicao + 1, total)
+                    # Só DEPOIS de gravada: a captura que passou do teto é a evidência.
+                    self._conferir_extremos_fisicos(capture_id, extremos)
 
         except BaseException:
             # Fecha a gravação incremental PRESERVANDO o que já foi para o
@@ -1567,6 +1752,20 @@ class ExperimentoNativo(ExperimentoBase):
         if scale is not None:
             self.osc.set_vertical_scale(1, scale)
 
+    def fase_de_disparo_graus(self) -> float:
+        """Fase que ``gerar()`` tem no instante do trigger.
+
+        ``gerar()`` põe fase 0 em t=0 da janela e o trigger cai em
+        ``pre_trigger_s``; a fonte dispara na fase de
+        ``TRIGger:SYNChronize:PHASe``. Com 0° fixo, 02/03/04 (pré-trigger de
+        60 ms = 3,6 ciclos a 60 Hz) saíam defasadas 216° do modelo — sessão
+        2026-09-30 14:44: correlação -0,78 contra ``gerar()``, 0,999 contra
+        o modelo com fase 0 no trigger, e a THD da 04 reprovada (3,38% contra
+        4,61%) porque o corte físico começava no zero e o do modelo num
+        degrau. Disparando na fase do modelo, a bancada reproduz o dataset."""
+        ciclos = float(self.pre_trigger_s) * float(self.config.grid_frequency_hz)
+        return round((ciclos % 1.0) * 360.0, 1) % 360.0
+
     def _capturar_real(self, capture_index, t, rng):
         if self.usar_trace(capture_index):
             voltage_pu, parametros = self.gerar(t, self.config.grid_frequency_hz, capture_index, rng)
@@ -1583,6 +1782,7 @@ class ExperimentoNativo(ExperimentoBase):
             self.osc.wait_for_armed()
             self.fonte.arm_transient()
         else:
+            self.fonte.definir_fase_de_disparo(self.fase_de_disparo_graus())
             parametros = self.configurar(capture_index)
             self.osc.arm()
             self.osc.wait_for_armed()
@@ -1618,11 +1818,14 @@ class ExperimentoWaveform(ExperimentoBase):
         dataset de treino."""
         return None
 
-    def _capturar_real(self, capture_index, t, rng):
-        voltage_pu, parametros = self.gerar(t, self.config.grid_frequency_hz, capture_index, rng)
-        voltage_pu = np.asarray(voltage_pu, dtype=np.float64)
-        if voltage_pu.shape != (self.config.points,) or not np.all(np.isfinite(voltage_pu)):
-            raise RuntimeError(f"gerar() do experimento {self.id} produziu forma inválida")
+    def forma_para_bancada(
+        self, voltage_pu: np.ndarray, parametros: Dict[str, float], capture_index: int,
+    ) -> np.ndarray:
+        """Adapta a forma de ``gerar()`` ao que a bancada pode programar.
+        Padrão: se o pico passa de ``limite_pico_bancada_pu()``, escala a forma
+        INTEIRA. A 08 sobrescreve (escalar tudo derrubava a base de 127 V para
+        43 Vrms — ANALISE.md, T8-1). Pode acrescentar chaves a ``parametros``
+        (vão para o metadata)."""
         limite_pico_pu = self.limite_pico_bancada_pu()
         if limite_pico_pu is not None:
             pico_atual_pu = float(np.max(np.abs(voltage_pu)))
@@ -1635,6 +1838,31 @@ class ExperimentoWaveform(ExperimentoBase):
                     self.id, pico_atual_pu, limite_pico_pu, fator,
                 )
                 voltage_pu = voltage_pu * fator
+        return voltage_pu
+
+    def forma_prevista_para_bancada(self, capture_index, t, seed):
+        voltage_pu, parametros = self.gerar(
+            t, self.config.grid_frequency_hz, capture_index, np.random.default_rng(seed),
+        )
+        return np.asarray(
+            self.forma_para_bancada(np.asarray(voltage_pu, dtype=np.float64), dict(parametros), capture_index),
+            dtype=np.float64,
+        )
+
+    def excursao_fisica_prevista_v(self) -> Optional[float]:
+        """|extremo| físico previsto para a captura atual (inclui a resposta da
+        fonte, que pode passar do programado — ver 08). ``None``: usa só o pico
+        programado para a escala do osciloscópio, como sempre."""
+        return None
+
+    def _capturar_real(self, capture_index, t, rng):
+        voltage_pu, parametros = self.gerar(t, self.config.grid_frequency_hz, capture_index, rng)
+        voltage_pu = np.asarray(voltage_pu, dtype=np.float64)
+        if voltage_pu.shape != (self.config.points,) or not np.all(np.isfinite(voltage_pu)):
+            raise RuntimeError(f"gerar() do experimento {self.id} produziu forma inválida")
+        voltage_pu = np.asarray(self.forma_para_bancada(voltage_pu, parametros, capture_index), dtype=np.float64)
+        if voltage_pu.shape != (self.config.points,) or not np.all(np.isfinite(voltage_pu)):
+            raise RuntimeError(f"forma_para_bancada() do experimento {self.id} produziu forma inválida")
         # Forma REALMENTE programada (já escalada): é contra ela, e não
         # contra gerar(), que a validação física deve comparar — a classe 08
         # é reduzida por limite_pico_bancada_pu() só na captura física.
@@ -1653,6 +1881,9 @@ class ExperimentoWaveform(ExperimentoBase):
         programmed_peak_v = max(
             expected_peak_v, float(getattr(self.fonte, "last_programmed_peak_v", expected_peak_v))
         )
+        excursao = self.excursao_fisica_prevista_v()
+        if excursao is not None:
+            programmed_peak_v = max(programmed_peak_v, float(excursao))
         nominal_peak_v = self.config.base_voltage_rms * math.sqrt(2.0)
         headroom = 1.60 if programmed_peak_v > 3.0 * nominal_peak_v else 1.25
         self.osc.set_vertical_scale(1, max(programmed_peak_v * headroom, self.config.base_voltage_rms * 0.1))
@@ -1685,9 +1916,23 @@ def _experiment_scripts() -> List[Path]:
     return scripts
 
 
+def scripts_da_bateria_fisica() -> List[Path]:
+    """Scripts do ``run all`` na bancada: todos menos ``BATERIA_EXCLUIR``
+    (logado, nunca em silêncio)."""
+    scripts = _experiment_scripts()
+    excluidos = [script for script in scripts if script.stem in BATERIA_EXCLUIR]
+    if excluidos:
+        logger.warning(
+            "run all FÍSICO sem as classes %s (BATERIA_EXCLUIR=%s). Rode-as isoladas com "
+            "'run <NN>' se precisar.",
+            ", ".join(script.stem for script in excluidos), ",".join(BATERIA_EXCLUIR),
+        )
+    return [script for script in scripts if script.stem not in BATERIA_EXCLUIR]
+
+
 def main() -> int:
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    scripts = _experiment_scripts()
+    scripts = scripts_da_bateria_fisica() if BENCH_MODE else _experiment_scripts()
     logger.info(
         "Modo=%s; fs=%.0f Hz; pontos=%d; fundamental=%.1f Hz; tensão-base=%.3f Vrms",
         "BANCADA" if BENCH_MODE else "SIMULADO",

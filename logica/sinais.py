@@ -136,27 +136,33 @@ def envelope_rms_meio_ciclo(x: np.ndarray, *, fs_hz: float, f0: float) -> np.nda
 
 
 def fator_de_crista_do_ciclo_mediano(x: np.ndarray, *, fs_hz: float, f0: float) -> float:
-    """Pico/rms de UM ciclo em regime (o ciclo cujo rms está mais perto da
-    mediana do envelope).
+    """Mediana, sobre todos os ciclos completos do registro, do pico/rms de
+    cada ciclo — o fator de crista da forma de onda em REGIME.
 
     É a sonda de FORMA de onda: uma senoide limpa dá 1,414; a senoide clipada
-    do CSINe dá menos. Medido no ciclo mediano e não no registro inteiro para
+    do CSINe dá menos em TODO ciclo. Não é medido no registro inteiro para
     não depender de quanto de margem/evento o registro carrega — a classe 05
     da sessão 1 mediu 1,459 (senoide limpa) onde a referência de 09/09 media
-    1,344 (clipada), diferença de 8,6% que este número pega."""
+    1,344 (clipada), diferença de 8,6% que este número pega.
+
+    Antes usava UM ciclo: o que começava no meio ciclo de rms mais perto da
+    mediana do envelope. Numa classe impulsiva esse ciclo pode ser justamente
+    o do evento (uma oscilação de 2 ms quase não muda o rms, mas muda o
+    pico): run04 de 2026-09-30 mediu 1,62 (09) e 1,71 (17) contra 1,414, e a
+    mediana por ciclo dá 1,43/1,44. Um evento curto afeta 1-2 ciclos e não
+    move a mediana; um clipping aplicado move todos."""
     x = np.asarray(x, dtype=np.float64)
-    envelope = envelope_rms_meio_ciclo(x, fs_hz=fs_hz, f0=f0)
-    n = int(round(fs_hz / (2.0 * f0)))
-    alvo = float(np.median(envelope))
-    bloco = int(np.argmin(np.abs(envelope - alvo)))
-    inicio = bloco * n
-    ciclo = x[inicio : inicio + 2 * n]
-    if ciclo.size < 2 * n:
-        ciclo = x[max(0, x.size - 2 * n):]
-    rms = float(np.sqrt(np.mean(np.square(ciclo))))
-    if rms <= 1e-12:
+    n = int(round(fs_hz / f0))
+    ciclos = x.size // n
+    if ciclos < 1:
+        raise ValueError(f"Registro curto demais para um ciclo ({x.size} amostras, n={n})")
+    blocos = x[: ciclos * n].reshape(ciclos, n)
+    rms = np.sqrt(np.mean(np.square(blocos), axis=1))
+    validos = rms > 1e-12
+    if not np.any(validos):
         return 0.0
-    return float(np.max(np.abs(ciclo))) / rms
+    cristas = np.max(np.abs(blocos[validos]), axis=1) / rms[validos]
+    return float(np.median(cristas))
 
 
 def thd_medida(x: np.ndarray, *, fs_hz: float, f0: float, max_harmonica: int = 40) -> float:
