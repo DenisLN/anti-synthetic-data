@@ -68,6 +68,9 @@ logica/                     Todo o código Python "de motor" do projeto
                                  ver seção 5.3
     visualizador.py             CLI: gera um PNG de inspeção de um .npz de resultados/ e abre no visualizador do SO
     analisar_sessao.py          Análise offline de uma pasta de sessão (gerar() + seed do metadata x captura)
+    recortar_margem.py          Recorta a folga de 20/50 ms das capturas físicas (janela nominal, sem tocar no original)
+    relatorio_html.py           HTML autocontido (figuras em base64) de uma sessão, para compartilhar
+    modelos/relatorio_capturas.html  Modelo HTML preenchido por relatorio_html.py
     calibracao_extremos.json    Fatores (extremo medido / pico programado) por classe da pré-validação de pico
 
 scripts/                    Todo o PowerShell/CMD que o operador roda no Windows
@@ -528,6 +531,48 @@ cross-correlação, razão de pico e comparação visual gerado-vs-capturado por
 arquivo — use `logica/analisar_sessao.py <pasta_da_sessao>` (offline, sem
 hardware; ver 8, `CHANGELOG/v1.8.md`).
 
+**Captura física = janela nominal + folga.** Cada `.npz` da bancada real tem
+8100 pontos: 20 ms antes + os 200 ms nominais + 50 ms depois (ver 5.3). Para
+ter só a janela nominal (a mesma base de tempo de `gerar()` e do dataset
+simulado):
+
+```powershell
+.\env\Scripts\python.exe logica\recortar_margem.py resultados\sessao_2026-09-30_15-26-05
+# --saida outra_pasta   (padrão: <sessao>\sem_margem\)
+# --empilhar            (também 1 .npz por classe com as capturas empilhadas, formato do simulado)
+```
+
+O recorte é o mesmo da validação física e de `analisar_sessao.py`
+(`sinais.janela_nominal()`, alinhado pelo `indice_trigger` real). A sessão
+original nunca é alterada; a pasta nova tem a mesma estrutura (`*.npz`,
+`snr_XXdb/`, `corrente/`, `metadata/`), cada linha do metadata ganha um bloco
+`recorte` (de onde saiu a janela) e as outras ferramentas rodam nela sem
+mudança. O terminal lista, por arquivo, a origem do recorte e o deslocamento do
+trigger em relação à margem; metadata sem `indice_trigger` (anterior à v1.11)
+cai em `margem_amostras_antes` e é sinalizado.
+
+**Relatório HTML para compartilhar.** Um único `.html`, com as figuras
+embutidas em base64 — abre offline em qualquer navegador, dá para mandar por
+e-mail:
+
+```powershell
+.\env\Scripts\python.exe logica\relatorio_html.py resultados\sessao_2026-09-30_15-26-05 `
+    --titulo "Bancada 30/09 — 127 V" --descricao "20 classes, 1 captura cada"
+# --classes 02,05,10   --max-capturas-por-classe 2   --snr 30   --dpi 80
+# --com-esperado       (sobrepõe a forma de gerar() + seed em tracejado)
+# --detalhes-manuais detalhes.json   ({"02_sag_sag_pu-0.1": [[50, 85], [105, 140]]}, tempos em ms)
+```
+
+Por captura: **1 visualização completa** (a folga sombreada em cinza, o eixo
+começa em 0 ms no início da janela nominal, linha do trigger, eixo secundário
+em volts) e **até 3 detalhes** — zooms de 2 ciclos onde o sinal mais muda
+(bordas de sag/swell/interrupção, notches, transitórios); sem nenhum evento,
+1 detalhe do regime. Os detalhes aparecem marcados (D1–D3) na completa.
+Também mostra parâmetros, seed e o resultado da validação física de cada
+captura. Clicar numa figura amplia. Funciona na sessão original, na pasta
+`sem_margem/` e no dataset simulado (aí só as 3 primeiras capturas de cada
+classe, salvo `--max-capturas-por-classe`). Acima de 20 MB o script avisa.
+
 Logs de cada execução do fluxo guiado ficam em `logs\startup-bench-*.log`,
 nomeados com a etapa e o timestamp.
 
@@ -662,7 +707,10 @@ resultado de execuções anteriores.
   (disjuntor aberto; 230 V/50 Hz mediu 444 V): fatores de extremo por
   condição (tensão/frequência) com regra conservadora sem calibração,
   checagem fonte × CH1 antes da primeira classe, Ctrl+C que de fato para a
-  bateria, log de tentativas correto; checklist de bancada.
+  bateria, 08 a 50 Hz, log de tentativas correto; checklist de bancada.
+  Mais `logica/recortar_margem.py` (tira a folga de 20/50 ms das capturas
+  físicas) e `logica/relatorio_html.py` (relatório HTML autocontido para
+  compartilhar).
 - `docs/AMETEK_MX_SCPI_Programming_Manual.pdf` e
   `docs/Keysight_4000X_Programmers_Guide.pdf` — manuais SCPI originais dos
   dois instrumentos.
