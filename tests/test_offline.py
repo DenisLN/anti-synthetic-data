@@ -4391,6 +4391,29 @@ class RecorteMargemERelatorioHtmlTests(unittest.TestCase):
         self.assertLessEqual(len(janelas), relatorio_html.MAX_DETALHES)
         for borda_ms in (60.0, 120.0):
             self.assertTrue(any(a <= borda_ms <= b for a, b in janelas), (borda_ms, janelas))
+        # Sessão real 2026-10-07 (17, notch): o rms de meio ciclo alterna
+        # ~0,72/0,70 entre semiciclos (offset da bancada). Esse "salto" de
+        # fundo não pode puxar um detalhe para um trecho sem evento.
+        t = np.arange(6000) / self.FS
+        assimetrico = np.sin(2 * np.pi * self.F0 * t) + 0.012
+        for inicio_ms in (64.0, 72.0, 81.0, 97.0, 105.0, 114.0, 122.0):
+            i = int(inicio_ms * self.FS / 1000.0)
+            assimetrico[i:i + 10] -= 0.2 * np.sign(assimetrico[i:i + 10])
+        janelas = relatorio_html.escolher_detalhes(assimetrico, fs_hz=self.FS, f0_hz=self.F0, quantidade=3, largura_ms=33.3)
+        self.assertTrue(janelas)
+        for a, b in janelas:
+            self.assertTrue(any(a <= n_ms <= b for n_ms in (64.0, 72.0, 81.0, 97.0, 105.0, 114.0, 122.0)), (a, b))
+        # Eventos colados no fim: janelas empurradas para dentro do registro
+        # não podem se sobrepor (sessão 2026-10-07, classe 20).
+        no_fim = np.sin(2 * np.pi * self.F0 * t)
+        for inicio_ms in (150.0, 172.0, 195.0):
+            i = int(inicio_ms * self.FS / 1000.0)
+            no_fim[i:i + 10] -= 0.5 * np.sign(no_fim[i:i + 10])
+        janelas = relatorio_html.escolher_detalhes(no_fim, fs_hz=self.FS, f0_hz=self.F0, quantidade=3, largura_ms=33.3)
+        for (_, b1), (a2, _) in zip(janelas, janelas[1:]):
+            self.assertLessEqual(b1, a2 + 1e-9, janelas)
+        for evento_ms in (150.0, 172.0, 195.0):  # deslizar, não descartar
+            self.assertTrue(any(a <= evento_ms <= b for a, b in janelas), (evento_ms, janelas))
         regime = relatorio_html.escolher_detalhes(self.nominais["01"], fs_hz=self.FS, f0_hz=self.F0, quantidade=3, largura_ms=20.0)
         self.assertEqual(len(regime), 1)
         self.assertEqual(relatorio_html.escolher_detalhes(nominal, fs_hz=self.FS, f0_hz=self.F0, quantidade=0, largura_ms=20.0), [])

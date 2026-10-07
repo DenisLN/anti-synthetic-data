@@ -146,9 +146,16 @@ def escolher_detalhes(
     diferencas = np.abs(np.diff(rms))
     salto[1:] = np.maximum(salto[1:], diferencas)
     salto[:-1] = np.maximum(salto[:-1], diferencas)
-    pontuacao = (
-        2.0 * salto + np.abs(rms - referencia) + np.clip(residuo - np.median(residuo), 0.0, None)
-    ) / referencia
+    desvio = np.abs(rms - referencia)
+
+    def _excesso(x: np.ndarray) -> np.ndarray:
+        # Só o que passa do típico DESTE registro: na bancada o rms alterna
+        # ~3% entre semiciclos positivo e negativo (offset), um "salto" de
+        # fundo em todo meio ciclo que, sem isto, puxava detalhes para
+        # trechos sem evento (sessão 2026-10-07, classe 17).
+        return np.clip(x - np.median(x), 0.0, None)
+
+    pontuacao = (2.0 * _excesso(salto) + _excesso(desvio) + _excesso(residuo)) / referencia
 
     centro_ms = (np.arange(m) * n + n / 2.0) / fs_hz * 1000.0
     meia = largura_ms / 2.0
@@ -160,13 +167,29 @@ def escolher_detalhes(
     if float(pontuacao.max()) < 0.05:
         return [_janela(duracao_ms / 2.0)]
 
-    escolhidos: List[float] = []
+    # Sobreposição testada nas janelas JÁ ajustadas às bordas: perto do fim do
+    # registro, centros distantes viram janelas sobrepostas (sessão
+    # 2026-10-07, classe 20).
+    # Uma janela que sobrepõe outra ainda pode deslizar e encostar nela,
+    # desde que o meio ciclo que a motivou continue dentro.
+    escolhidas: List[Tuple[float, float]] = []
+
+    def _livre(a: float, b: float) -> bool:
+        return (a >= -1e-9 and b <= duracao_ms + 1e-9
+                and all(b <= a2 + 1e-9 or a >= b2 - 1e-9 for a2, b2 in escolhidas))
+
     for k in np.argsort(-pontuacao, kind="stable"):
-        if pontuacao[k] < 0.25 * pontuacao.max() or len(escolhidos) == quantidade:
+        if pontuacao[k] < 0.25 * pontuacao.max() or len(escolhidas) == quantidade:
             break
-        if all(abs(centro_ms[k] - c) >= largura_ms for c in escolhidos):
-            escolhidos.append(float(centro_ms[k]))
-    return sorted(_janela(c) for c in escolhidos)
+        centro = float(centro_ms[k])
+        candidatas = [_janela(centro)]
+        for a2, b2 in escolhidas:
+            candidatas += [(a2 - largura_ms, a2), (b2, b2 + largura_ms)]
+        for a, b in candidatas:
+            if a <= centro <= b and _livre(a, b):
+                escolhidas.append((a, b))
+                break
+    return sorted(escolhidas)
 
 
 def carregar_detalhes_manuais(caminho: Optional[Path]) -> Dict[str, List[Tuple[float, float]]]:
