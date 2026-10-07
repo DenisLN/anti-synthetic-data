@@ -390,14 +390,18 @@ class Config:
         """Capturas desta classe (por nível, nas classes com ``NIVEIS``).
 
         Simulado: ``SIM_CAPTURES_PER_CLASS``, sempre — o dataset não depende
-        de padrão de bancada nem da CLI. Bancada: ``set capturas N`` quando
-        o operador digitou; senão o MAIOR entre ``REAL_CAPTURES_PER_CLASS``
-        (global, padrão 1) e o padrão da classe."""
+        de padrão de bancada nem da CLI. Bancada: o MAIOR entre o valor
+        global (``set capturas N`` quando o operador digitou, senão
+        ``REAL_CAPTURES_PER_CLASS``, padrão 1) e o padrão da classe — pedido
+        do dono (2026-10-07): ``set capturas 3`` numa classe de padrão 6 roda
+        6; numa de padrão 1, 3. A CLI avisa quando o padrão vence."""
         if simulated:
             return self.sim_captures_per_class
-        if self.capturas_override is not None:
-            return self.capturas_override
-        return max(self.real_captures_per_class, self.capturas_padrao_classe)
+        global_ = (
+            self.capturas_override if self.capturas_override is not None
+            else self.real_captures_per_class
+        )
+        return max(global_, self.capturas_padrao_classe)
 
 
 @dataclass
@@ -414,6 +418,10 @@ class ResultadoClasse:
     # gravada, mas a validação física (P05) reprovou o conteúdo.
     descartadas: int = 0
     invalidas: int = 0
+    # Capturas do plano que a pré-validação (``_indices_viaveis``) pulou ANTES
+    # de programar (rms/pico/extremo previsto acima do teto) — nada foi
+    # enviado à fonte para elas. Não é falha: é o limite da bancada.
+    puladas: int = 0
 
     @property
     def pasta_esperada(self) -> Path:
@@ -657,6 +665,7 @@ class Bancada:
             ultimo_erro: Optional[str] = None
             descartadas = 0
             invalidas = 0
+            puladas = 0
             for tentativa in range(1, self.MAX_TENTATIVAS_POR_CLASSE + 1):
                 if tentativa > 1:
                     logger.warning(
@@ -672,6 +681,7 @@ class Bancada:
                     sucesso = True
                     descartadas = getattr(experimento, "_capturas_descartadas_count", 0)
                     invalidas = getattr(experimento, "_capturas_invalidas_count", 0)
+                    puladas = getattr(experimento, "_capturas_puladas_count", 0)
                     break
                 except (CommunicationError, FalhaFatalDeInstrumento):
                     logger.error(
@@ -699,6 +709,7 @@ class Bancada:
             if sucesso:
                 resultados.append(ResultadoClasse(
                     class_id, nome, ok=True, descartadas=descartadas, invalidas=invalidas,
+                    puladas=puladas,
                 ))
             else:
                 logger.error(
@@ -721,6 +732,12 @@ class Bancada:
                     "%d marcada(s) inválida(s) na validação física (gravadas mesmo assim, "
                     "ver 'validacao_fisica' no metadata)",
                     resultado.id, resultado.nome, resultado.descartadas, resultado.invalidas,
+                )
+            if resultado.ok and resultado.puladas:
+                logger.warning(
+                    "  [%s] %s: %d captura(s) do plano PULADA(S) pela pré-validação (limite "
+                    "rms/pico da fonte ou extremo previsto) — nada programado para elas",
+                    resultado.id, resultado.nome, resultado.puladas,
                 )
         return resultados
 
@@ -1587,9 +1604,17 @@ class ExperimentoBase(ABC):
         # de níveis roda ANTES de qualquer comando SCPI e pode encurtar este
         # plano (ver _indices_viaveis).
         plano = self.plano_de_capturas(simulated)
+        self._capturas_puladas_count = 0
         if not simulated:
+            planejadas = len(plano)
             plano = self._indices_viaveis(plano)
             total = len(plano)
+            self._capturas_puladas_count = planejadas - total
+            if self._capturas_puladas_count:
+                logger.warning(
+                    "[%s] plano: %d capturas; %d PULADA(S) pela pré-validação; roda %d.",
+                    self.id, planejadas, self._capturas_puladas_count, total,
+                )
         t = tempo(self.config)
         margem_antes, margem_depois, pontos_efetivos = self._calcular_margem(
             captura_fisica=not simulated,

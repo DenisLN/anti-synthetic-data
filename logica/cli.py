@@ -355,6 +355,21 @@ class SessaoCLI:
                 return 1
             mestre.CAPTURAS_OVERRIDE = n
             print(f"capturas: {n} por classe (por nível, nas classes que têm níveis discretos)")
+            vence = [
+                f"{classe_id} ({info['padrao']})"
+                for classe_id, _, info in self._capturas_das_classes()
+                if info["padrao"] > n
+            ]
+            if vence:
+                print(
+                    f"AVISO: o padrão da classe é maior que {n} e vence (capturas = max(set "
+                    f"capturas, padrão)) em: {', '.join(vence)}."
+                )
+            print(
+                "Com set capturas ativo, 04/06/09/19 cobrem o intervalo do parâmetro e a 08 "
+                "entra em CARACTERIZAÇÃO (rampa de amplitude) quando roda mais de 1 captura. "
+                "'set capturas padrao' desfaz."
+            )
             self._imprimir_capturas_por_classe()
             return 0
         if chave == "seed":
@@ -444,9 +459,15 @@ class SessaoCLI:
                 # INTERRUPTION mediriam baseline no nível de segurança (0 V)
                 # em vez de BASE_VOLTAGE_RMS (ver Bancada.assegurar_tensao_base).
                 bancada.assegurar_tensao_base()
-                experimento_cls(bancada).executar()
-            resultado = mestre.ResultadoClasse(script_path.stem, nome, ok=True)
-            print(f"OK: [{resultado.id}] {resultado.nome} -> {resultado.pasta_esperada}")
+                experimento = experimento_cls(bancada)
+                experimento.executar()
+            resultado = mestre.ResultadoClasse(
+                script_path.stem, nome, ok=True,
+                descartadas=getattr(experimento, "_capturas_descartadas_count", 0),
+                invalidas=getattr(experimento, "_capturas_invalidas_count", 0),
+                puladas=getattr(experimento, "_capturas_puladas_count", 0),
+            )
+            print(f"OK: [{resultado.id}] {resultado.nome} -> {resultado.pasta_esperada}{self._ressalvas(resultado)}")
         except Exception as exc:
             resultado = mestre.ResultadoClasse(script_path.stem, nome, ok=False, motivo=str(exc))
             print(f"FALHOU: [{resultado.id}] {resultado.nome}: {exc}")
@@ -492,10 +513,24 @@ class SessaoCLI:
         print(f"\nResumo final: {ok}/{len(resultados)} classes OK")
         for resultado in resultados:
             if resultado.ok:
-                print(f"  OK     [{resultado.id}] {resultado.nome} -> {resultado.pasta_esperada}")
+                print(
+                    f"  OK     [{resultado.id}] {resultado.nome} -> {resultado.pasta_esperada}"
+                    f"{self._ressalvas(resultado)}"
+                )
             else:
                 print(f"  FALHOU [{resultado.id}] {resultado.nome}: {resultado.motivo}")
         return 0 if ok == len(resultados) else 1
+
+    @staticmethod
+    def _ressalvas(resultado: "mestre.ResultadoClasse") -> str:
+        partes = []
+        if resultado.puladas:
+            partes.append(f"{resultado.puladas} pulada(s) pela pré-validação de pico/rms")
+        if resultado.descartadas:
+            partes.append(f"{resultado.descartadas} descartada(s) por erro")
+        if resultado.invalidas:
+            partes.append(f"{resultado.invalidas} inválida(s) na validação física")
+        return f"  ({'; '.join(partes)})" if partes else ""
 
     # -- laço principal ----------------------------------------------------
 

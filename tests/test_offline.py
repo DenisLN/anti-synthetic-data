@@ -3970,5 +3970,115 @@ class CliSeedTests(unittest.TestCase):
         self.assertIn("set seed <N>", self.cli.HELP_TEXT)
 
 
+
+class CapturasMaxCliPadraoTests(unittest.TestCase):
+    """v1.13, Tarefa 3 — capturas efetivas = max(set capturas, padrão da
+    classe), por nível nas classes com NIVEIS; capturas podadas pela
+    pré-validação entram no log e no resumo."""
+
+    def setUp(self):
+        self.tmp_dir = Path(tempfile.mkdtemp())
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp_dir, ignore_errors=True)
+
+    def _instancia(self, classe_id, **overrides):
+        return _carregar_classe(classe_id)(mestre.Bancada(None, None, _config_bancada(self.tmp_dir, **overrides)))
+
+    def test_config_max_entre_cli_e_padrao(self):
+        config = _config_bancada(self.tmp_dir, capturas_padrao_classe=6, capturas_override=3)
+        self.assertEqual(config.capturas(False), 6)
+        self.assertEqual(replace_config(config, capturas_padrao_classe=1).capturas(False), 3)
+        self.assertEqual(replace_config(config, capturas_override=None).capturas(False), 6)
+        self.assertEqual(config.capturas(True), 1)  # simulado: SIM_CAPTURES_PER_CLASS
+
+    def test_sem_override_vale_o_padrao(self):
+        self.assertEqual(self._instancia("04").dimensionar_capturas(False), (False, 1, 3))
+        self.assertEqual(self._instancia("01").dimensionar_capturas(False), (False, 1, 1))
+
+    def test_override_menor_que_o_padrao_perde_e_cobertura_usa_o_total_efetivo(self):
+        registros, _ = _executar_classe_real_com_stub("04", _config_bancada(self.tmp_dir, capturas_override=2))
+        niveis = [registro["parametros"]["interruption_pu"] for registro in registros]
+        np.testing.assert_allclose(niveis, [0.0, 0.045, 0.09])
+
+    def test_override_maior_que_o_padrao_vence(self):
+        self.assertEqual(self._instancia("04", capturas_override=5).dimensionar_capturas(False), (False, 1, 5))
+        self.assertEqual(self._instancia("10", capturas_override=4).dimensionar_capturas(False), (False, 1, 4))
+
+    def test_classe_com_niveis_aplica_o_max_por_nivel(self):
+        self.assertEqual(self._instancia("02", capturas_override=2).dimensionar_capturas(False), (True, 2, 10))
+
+        class _ComNiveis(mestre.ExperimentoNativo):
+            id = "97"
+            nome = "TESTE_NIVEIS"
+            NIVEIS = (0.1, 0.3, 0.5, 0.7, 0.9)
+            capturas_padrao = 3
+
+            def gerar(self, t, f0, capture_index, rng):
+                return np.sin(2.0 * np.pi * f0 * t), {}
+
+            def configurar(self, capture_index):
+                return {}
+
+        experimento = _ComNiveis(mestre.Bancada(None, None, _config_bancada(self.tmp_dir, capturas_override=2)))
+        self.assertEqual(experimento.dimensionar_capturas(False), (True, 3, 15))
+
+    def test_08_com_set_capturas_menor_que_o_padrao_caracteriza_no_total_efetivo(self):
+        registros, _ = _executar_classe_real_com_stub("08", _config_bancada(self.tmp_dir, capturas_override=2))
+        amplitudes = [registro["parametros"]["amplitude_bancada_pu"] for registro in registros]
+        self.assertEqual(len(amplitudes), 3)
+        self.assertTrue(all(registro["parametros"]["caracterizacao"] == 1.0 for registro in registros))
+        self.assertAlmostEqual(amplitudes[0], 0.25)
+        self.assertTrue(amplitudes[0] < amplitudes[1] < amplitudes[2], amplitudes)
+
+    def test_08_sem_set_capturas_nunca_caracteriza(self):
+        registros, _ = _executar_classe_real_com_stub("08", _config_bancada(self.tmp_dir))
+        self.assertTrue(all(registro["parametros"]["caracterizacao"] == 0.0 for registro in registros))
+
+    def test_capturas_puladas_pela_pre_validacao_vao_para_o_resultado(self):
+        """03 a 220 V com set capturas 1: 1,4/1,6/1,8 pu passam de 300 Vrms e
+        1,2 pu passa do extremo previsto — 4 das 5 puladas, logado e contado."""
+        config = _config_bancada(self.tmp_dir, base_voltage_rms=220.0, capturas_override=1)
+        fonte = mestre.AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=415.8)
+        osc = mock.Mock()
+        osc.medir_extremos = lambda canal: (100.0, -100.0)
+        bancada = mestre.Bancada(fonte, osc, config)
+        experimento_cls = _carregar_classe("03")
+
+        def _instanciar(_self, cls):
+            experimento = cls(bancada)
+            experimento._calcular_margem = lambda **kw: (0, 0, kw["config_points"])
+            experimento._preparar_acquisicao_real = lambda: None
+
+            def _stub(capture_index, t, rng):
+                parametros = experimento.configurar(capture_index)
+                forma, _ = experimento.gerar(t, 60.0, capture_index, rng)
+                return t, forma, None, parametros
+
+            experimento._capturar_real = _stub
+            return experimento
+
+        with mock.patch.object(mestre.Bancada, "_carregar_classe_experimento", staticmethod(lambda p: experimento_cls)), \
+             mock.patch.object(mestre.Bancada, "_instanciar_experimento", _instanciar), \
+             self.assertLogs("MestreExperimentos", level="WARNING") as logs:
+            resultados = bancada.executar_bateria([Path("03.py")])
+        self.assertTrue(resultados[0].ok)
+        self.assertEqual(resultados[0].puladas, 4)
+        self.assertTrue(any("PULADA(S) pela pré-validação" in linha for linha in logs.output), logs.output)
+
+    def test_cli_avisa_quando_o_padrao_vence(self):
+        import io
+        from contextlib import redirect_stdout
+        import cli
+        saida = io.StringIO()
+        with mock.patch.object(mestre, "CAPTURAS_OVERRIDE", None), redirect_stdout(saida):
+            cli.SessaoCLI().cmd_set(["capturas", "2"])
+        texto = saida.getvalue()
+        self.assertIn("AVISO", texto)
+        self.assertIn("04 (3)", texto)
+        self.assertIn("CARACTERIZAÇÃO", texto)
+        self.assertNotIn("01 (", texto)
+
+
 if __name__ == "__main__":
     unittest.main()
