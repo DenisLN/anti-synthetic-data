@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>$titulo</title>
+<!--
+  Modelo preenchido por logica/relatorio_html.py (string.Template).
+  Marcadores (cada um precedido de cifrão): titulo, descricao, gerado_em,
+  resumo_sessao, sumario, capturas. Cifrão literal neste arquivo: escreva dois.
+  O arquivo final é autocontido: as figuras vão embutidas em base64, sem
+  nenhuma dependência externa — pode ser enviado por e-mail e aberto offline.
+-->
+<style>
+  :root {
+    --fundo: #f7f7f5; --cartao: #ffffff; --texto: #1d1d1b; --suave: #5f5f5a;
+    --borda: #dcdcd6; --destaque: #1f5fa8; --ok: #2e7d32; --falha: #b3261e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--fundo); color: var(--texto);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 64px; }
+  header h1 { margin: 0 0 4px; font-size: 1.6rem; }
+  header .gerado { color: var(--suave); font-size: .9rem; }
+  .descricao { margin: 16px 0; white-space: pre-wrap; }
+  .resumo, .sumario, .captura {
+    background: var(--cartao); border: 1px solid var(--borda); border-radius: 8px;
+    padding: 16px; margin: 16px 0;
+  }
+  .resumo dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0; }
+  .resumo dt { color: var(--suave); }
+  .resumo dd { margin: 0; overflow-wrap: anywhere; }
+  .sumario h2, .captura h2 { margin: 0 0 8px; font-size: 1.15rem; }
+  .sumario ol { margin: 0; padding-left: 1.4em; columns: 2 320px; }
+  .sumario a { color: var(--destaque); text-decoration: none; }
+  .sumario a:hover { text-decoration: underline; }
+  .classe-titulo { margin: 32px 0 0; font-size: 1.3rem; border-bottom: 2px solid var(--borda); padding-bottom: 4px; }
+  .captura h2 code { font-size: .95rem; }
+  table.meta { border-collapse: collapse; font-size: .88rem; margin: 8px 0 12px; width: 100%; }
+  table.meta th, table.meta td { text-align: left; padding: 3px 8px; border-bottom: 1px solid var(--borda); vertical-align: top; }
+  table.meta th { color: var(--suave); font-weight: 500; white-space: nowrap; width: 1%; }
+  .ok { color: var(--ok); font-weight: 600; }
+  .falha { color: var(--falha); font-weight: 600; }
+  figure { margin: 0; }
+  figure img { width: 100%; height: auto; display: block; cursor: zoom-in; border: 1px solid var(--borda); border-radius: 4px; background: #fff; }
+  figcaption { color: var(--suave); font-size: .85rem; margin-top: 4px; }
+  /* auto-fill (não auto-fit): 1 detalhe sozinho ocupa 1/3, não a largura toda. */
+  .detalhes { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; margin-top: 12px; }
+  #ampliada {
+    position: fixed; inset: 0; background: rgba(0,0,0,.85); display: none;
+    align-items: center; justify-content: center; padding: 16px; cursor: zoom-out; z-index: 10;
+  }
+  #ampliada img { max-width: 100%; max-height: 100%; background: #fff; border-radius: 4px; }
+  @media print {
+    body { background: #fff; }
+    .captura { break-inside: avoid; }
+    #ampliada { display: none !important; }
+  }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>$titulo</h1>
+  <div class="gerado">Gerado em $gerado_em por <code>logica/relatorio_html.py</code></div>
+</header>
+$descricao
+$resumo_sessao
+$sumario
+$capturas
+</main>
+<div id="ampliada" title="Clique para fechar"><img alt=""></div>
+<script>
+  (function () {
+    var caixa = document.getElementById("ampliada");
+    var grande = caixa.querySelector("img");
+    document.addEventListener("click", function (evento) {
+      var alvo = evento.target;
+      if (alvo.tagName === "IMG" && alvo.closest("figure")) {
+        grande.src = alvo.src;
+        grande.alt = alvo.alt;
+        caixa.style.display = "flex";
+      } else if (caixa.contains(alvo)) {
+        caixa.style.display = "none";
+      }
+    });
+    document.addEventListener("keydown", function (evento) {
+      if (evento.key === "Escape") { caixa.style.display = "none"; }
+    });
+  })();
+</script>
+</body>
+</html>

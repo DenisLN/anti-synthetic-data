@@ -4288,5 +4288,153 @@ class RelatorioERecalibracaoTests(unittest.TestCase):
             self.assertGreaterEqual(atuais[classe_id], round(max(valores), 3), classe_id)
 
 
+class RecorteMargemERelatorioHtmlTests(unittest.TestCase):
+    """recortar_margem.py e relatorio_html.py sobre uma sessão sintética no
+    formato da bancada real: 8100 pontos (600 antes + 6000 + 1500 depois),
+    1 .npz por captura, snr_XXdb/ e metadata/*.jsonl com indice_trigger."""
+
+    FS = 30_000.0
+    F0 = 60.0
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.sessao = self.tmp / "sessao_teste"
+        (self.sessao / "metadata").mkdir(parents=True)
+        (self.sessao / "snr_30db").mkdir()
+        self.nominais = {}
+        # 01: trigger 5 amostras antes da margem (como na sessão real de
+        # 2026-09-30); 02: pre_trigger 60 ms (PULSe); 05: sem indice_trigger
+        # (metadata antigo, cai na margem_amostras_antes).
+        self._captura("01", "NORMAL", {}, pre_s=0.0, indice_trigger=595, sag=None)
+        self._captura("02", "SAG", {"sag_pu": 0.5}, pre_s=0.060, indice_trigger=2405, sag=(0.060, 0.120))
+        self._captura("05", "HARMONICS", {"thd": 0.1}, pre_s=0.0, indice_trigger=None, sag=None)
+
+    def _captura(self, cid, nome, parametros, *, pre_s, indice_trigger, sag):
+        t_nom = np.arange(6000) / self.FS
+        nominal = np.sin(2 * np.pi * self.F0 * t_nom)
+        if sag is not None:
+            nominal[(t_nom >= sag[0]) & (t_nom < sag[1])] *= 0.5
+        inicio = 600 if indice_trigger is None else indice_trigger - int(round(pre_s * self.FS))
+        registro = np.zeros(8100)
+        registro[inicio:inicio + 6000] = nominal
+        registro[inicio + 6000:] = 0.123  # marcador da folga depois
+        self.nominais[cid] = nominal
+        md = {
+            "id_captura": f"{cid}-0001", "classe": nome, "seed": 1, "simulado": False,
+            "fs_hz": self.FS, "pontos": 6000, "parametros": parametros, "nivel_indice": 0,
+            "f0_hz": self.F0, "tensao_base_rms": 127.0, "pre_trigger_s": pre_s,
+            "margem_amostras_antes": 600, "margem_amostras_depois": 1500, "amostras_totais": 8100,
+            "validacao_fisica": {"ok": cid != "05", "motivos": [] if cid != "05" else ["THD <fora>"]},
+        }
+        if indice_trigger is not None:
+            md["indice_trigger"] = indice_trigger
+        nome_arquivo = f"{cid}_{nome.lower()}_cap01.npz"
+        for pasta, ruido in ((self.sessao, 0.0), (self.sessao / "snr_30db", 0.01)):
+            np.savez(
+                pasta / nome_arquivo, classe=nome, id_captura=np.array([md["id_captura"]], dtype=object),
+                tempo_ms=np.arange(8100) / self.FS * 1000.0, tensao_pu=(registro + ruido)[np.newaxis, :],
+            )
+        (self.sessao / "metadata" / f"{cid}_{nome.lower()}.jsonl").write_text(json.dumps(md) + "\n", encoding="utf-8")
+
+    def test_recorte_devolve_exatamente_a_janela_nominal(self):
+        import recortar_margem
+
+        saida = self.tmp / "sem_margem"
+        relatorio = recortar_margem.recortar_sessao(self.sessao, saida, empilhar=True)
+        self.assertEqual(len(relatorio), 6)  # 3 capturas x (puro + snr_30db)
+        for cid, nome in (("01", "normal"), ("02", "sag"), ("05", "harmonics")):
+            with np.load(saida / f"{cid}_{nome}_cap01.npz", allow_pickle=True) as dados:
+                self.assertEqual(dados["tensao_pu"].shape, (1, 6000))
+                np.testing.assert_allclose(dados["tensao_pu"][0], self.nominais[cid])
+                self.assertEqual(dados["tempo_ms"][0], 0.0)
+            with np.load(saida / "snr_30db" / f"{cid}_{nome}_cap01.npz", allow_pickle=True) as dados:
+                np.testing.assert_allclose(dados["tensao_pu"][0], self.nominais[cid] + 0.01)
+        origens = {linha["id_captura"]: linha["origem"] for linha in relatorio}
+        self.assertEqual(origens["01-0001"], "indice_trigger")
+        self.assertEqual(origens["05-0001"], "margem_amostras_antes")
+
+        md = json.loads((saida / "metadata" / "02_sag.jsonl").read_text(encoding="utf-8"))
+        self.assertEqual(md["recorte"]["inicio_amostra"], 605)
+        self.assertEqual(md["margem_amostras_antes"], 0)
+        self.assertEqual(md["amostras_totais"], 6000)
+        self.assertEqual(md["indice_trigger"], 1800)  # 60 ms dentro da janela nominal
+
+        with np.load(saida / "empilhado" / "02_sag.npz", allow_pickle=True) as dados:
+            self.assertEqual(dados["tensao_pu"].shape, (1, 6000))
+            self.assertEqual(list(dados["id_captura"]), ["02-0001"])
+
+    def test_recorte_nunca_escreve_na_propria_sessao(self):
+        import recortar_margem
+
+        with self.assertRaises(ValueError):
+            recortar_margem.recortar_sessao(self.sessao, self.sessao)
+
+    def test_recorte_bate_com_janela_nominal_de_sinais(self):
+        """Mesmo recorte da validação física/analisar_sessao, não uma conta paralela."""
+        import recortar_margem
+
+        md = json.loads((self.sessao / "metadata" / "02_sag.jsonl").read_text(encoding="utf-8"))
+        registro = np.arange(8100, dtype=np.float64)
+        inicio, pontos, _ = recortar_margem.calcular_recorte(8100, md)
+        esperado = sinais.janela_nominal(
+            registro, indice_trigger=md["indice_trigger"], pre_trigger_s=md["pre_trigger_s"],
+            pontos=6000, fs_hz=self.FS,
+        )
+        np.testing.assert_array_equal(registro[inicio:inicio + pontos], esperado)
+
+    def test_detalhes_no_maximo_tres_e_nas_bordas_do_sag(self):
+        import relatorio_html
+
+        nominal = self.nominais["02"]
+        janelas = relatorio_html.escolher_detalhes(nominal, fs_hz=self.FS, f0_hz=self.F0, quantidade=9, largura_ms=20.0)
+        self.assertLessEqual(len(janelas), relatorio_html.MAX_DETALHES)
+        for borda_ms in (60.0, 120.0):
+            self.assertTrue(any(a <= borda_ms <= b for a, b in janelas), (borda_ms, janelas))
+        regime = relatorio_html.escolher_detalhes(self.nominais["01"], fs_hz=self.FS, f0_hz=self.F0, quantidade=3, largura_ms=20.0)
+        self.assertEqual(len(regime), 1)
+        self.assertEqual(relatorio_html.escolher_detalhes(nominal, fs_hz=self.FS, f0_hz=self.F0, quantidade=0, largura_ms=20.0), [])
+
+    def test_html_autocontido_com_no_maximo_1_completa_e_3_detalhes(self):
+        import re
+        import relatorio_html
+
+        saida = self.tmp / "relatorio.html"
+        manuais = self.tmp / "detalhes.json"
+        manuais.write_text(json.dumps({"05_harmonics_cap01": [[1, 2], [3, 4], [5, 6], [7, 8]]}), encoding="utf-8")
+        relatorio_html.main([
+            str(self.sessao), "--saida", str(saida), "--titulo", "Teste <&>",
+            "--detalhes-manuais", str(manuais), "--dpi", "40",
+        ])
+        texto = saida.read_text(encoding="utf-8")
+        self.assertNotIn("$", texto)  # todo marcador do modelo preenchido
+        self.assertIn("Teste &lt;&amp;&gt;", texto)
+        self.assertIn("THD &lt;fora&gt;", texto)
+        self.assertNotRegex(texto, r'src="(?!data:)')  # nenhuma imagem/arquivo externo
+        secoes = re.findall(r'<section class="captura".*?</section>', texto, flags=re.S)
+        self.assertEqual(len(secoes), 3)
+        for secao in secoes:
+            imagens = secao.count('src="data:image/png;base64,')
+            self.assertGreaterEqual(imagens, 1)
+            self.assertLessEqual(imagens, 1 + relatorio_html.MAX_DETALHES)
+            self.assertEqual(secao.count("visualização completa"), 1)
+        # 4 janelas manuais -> só 3 entram
+        self.assertEqual(secoes[2].count("definidos manualmente"), 3)
+
+    def test_html_roda_na_pasta_recortada_e_no_snr(self):
+        import recortar_margem
+        import relatorio_html
+
+        recortado = self.tmp / "sem_margem"
+        recortar_margem.recortar_sessao(self.sessao, recortado)
+        caminho, total = relatorio_html.gerar_relatorio(
+            recortado, self.tmp / "r.html", snr="30", classes=["02"], dpi=40,
+        )
+        self.assertEqual(total, 1)
+        self.assertIn("snr_30db", caminho.read_text(encoding="utf-8"))
+        capturas = relatorio_html.ler_capturas(recortado, recortar_margem.carregar_metadados(recortado))
+        self.assertTrue(all(not c.tem_margem for c in capturas))
+
+
 if __name__ == "__main__":
     unittest.main()
