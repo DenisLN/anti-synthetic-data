@@ -378,6 +378,27 @@ class KeysightDSOX4034A(SCPIMixin, Instrument):
         """Força uma aquisição no scope; não testa o caminho BNC externo."""
         self.write(":TRIGger:FORCe")
 
+    def medir_vrms_forcado(self, channel: int = 1, timeout_s: float = 5.0) -> float:
+        """Vrms (AC, janela inteira) do canal numa aquisição SINGLE com trigger
+        FORÇADO — mede a saída em regime sem depender do trigger externo e sem
+        mudar o modo de trigger da bateria (``:MEASure:VRMS?``, [KS] p. 700).
+        Medida inválida levanta."""
+        if channel not in self.channels:
+            raise ValueError(f"Canal inválido: {channel}")
+        self.arm()
+        self.wait_for_armed(timeout_s=timeout_s)
+        self.force_trigger()
+        self.wait_for_trigger_complete(timeout_s=timeout_s)
+        bruto = str(self.ask(f":MEASure:VRMS? DISPlay,AC,CHANnel{channel}")).strip()
+        try:
+            valor = float(bruto)
+        except ValueError as exc:
+            raise OscilloscopeError(f":MEASure:VRMS? CH{channel} devolveu {bruto!r}") from exc
+        if not np.isfinite(valor) or abs(valor) >= self._MEDIDA_INVALIDA:
+            raise OscilloscopeError(f":MEASure:VRMS? CH{channel} devolveu medida inválida ({bruto})")
+        self.assert_no_errors(f"medida de Vrms do CH{channel}")
+        return valor
+
     def is_armed(self) -> bool:
         condition = int(float(self.ask(":OPERegister:CONDition?")))
         return bool(condition & 32)

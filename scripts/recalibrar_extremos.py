@@ -8,10 +8,27 @@ nominal, ou rms programado × √2 se maior). Sessões a partir da v1.13 gravam
 ``pico_programado_v`` no metadata; nas anteriores ele é reconstruído pelo
 próprio código da classe com a ``seed`` e o ``nivel_indice`` gravados.
 
+Os fatores são separados por CONDIÇÃO de bancada (tensão base e frequência
+do metadata, v1.14): cada condição tem a sua tabela em
+``calibracao_extremos.json`` (``por_condicao``), porque a resposta da saída
+muda com elas (2026-10-07: a 17 foi de 1,03 a 127 V/60 Hz para 1,24 a
+230 V/50 Hz).
+
+Capturas com o distúrbio reduzido pelo limite de bancada
+(``fator_disturbio_bancada`` = k) entram invertendo o modelo da previsão
+(``mestre.extremo_previsto_com_disturbio_v``, sem a margem):
+
+    extremo = f_ref × pico + k × (fator - f_ref) × pico_modelo
+    fator   = f_ref + (extremo - f_ref × pico) / (k × pico_modelo)
+
+com f_ref = fator da 01 NA MESMA condição (medido nestas sessões ou, sem
+isso, o da tabela). Vale o maior entre esse e extremo/pico (conservador).
+Sem isso, numa condição alta quase toda classe roda reduzida e não haveria
+como calibrá-la.
+
 Fora do cálculo (e contadas no relatório):
 - a 08 (modelo próprio do impulso, ``SOBRESSINAL/SUBSINAL_DO_DEGRAU``);
-- capturas com o distúrbio reduzido pelo limite de bancada
-  (``fator_disturbio_bancada``): o fator é definido com o distúrbio inteiro;
+- capturas reduzidas sem f_ref da 01 nessa condição;
 - capturas sem VMAX/VMIN (``extremos_indisponiveis``) ou simuladas.
 
 Fator proposto por classe = o MAIOR medido nas sessões dadas. Sem
@@ -76,10 +93,40 @@ def pico_programado_reconstruido_v(registro: dict, script_path: Path) -> float:
     return experimento.pico_programado_v(int(registro.get("nivel_indice", 0)), t, int(registro["seed"]))
 
 
-def coletar(sessoes: List[Path]) -> Tuple[Dict[str, List[float]], Dict[str, int]]:
+def condicao_do_registro(registro: dict) -> Tuple[str, float, float]:
+    tensao = float(registro.get("tensao_base_rms", 127.0))
+    frequencia = float(registro.get("f0_hz", 60.0))
+    return mestre.chave_condicao(tensao, frequencia), tensao, frequencia
+
+
+def fator_de_captura_reduzida(registro: dict, extremo_v: float, fator_referencia: float) -> float:
+    """Fator equivalente ao distúrbio INTEIRO de uma captura que rodou com o
+    distúrbio reduzido a k (ver docstring do módulo)."""
+    parametros = registro["parametros"]
+    k = float(parametros["fator_disturbio_bancada"])
+    pico_modelo = float(parametros["pico_programado_modelo_v"])
+    pico = float(registro["pico_programado_v"])
+    invertido = fator_referencia + (extremo_v - fator_referencia * pico) / (k * pico_modelo)
+    return max(invertido, extremo_v / pico)
+
+
+Fatores = Dict[str, Dict[str, List[float]]]
+
+
+def coletar(
+    sessoes: List[Path], tabelas_atuais: Optional[Dict[str, Dict[str, object]]] = None,
+) -> Tuple[Fatores, Dict[str, int], Dict[str, Tuple[float, float]]]:
+    """{condição: {classe: [fatores]}}, contagem de ignoradas e
+    {condição: (tensão, frequência)}. ``tabelas_atuais`` (de
+    ``mestre.carregar_calibracao_extremos``) só dá o f_ref da 01 quando as
+    sessões não têm a 01 na condição."""
     scripts = _scripts_por_id()
-    fatores: Dict[str, List[float]] = {}
-    ignoradas = {"08 (modelo próprio)": 0, "distúrbio reduzido": 0, "sem VMAX/VMIN": 0, "simulada": 0}
+    fatores: Fatores = {}
+    condicoes: Dict[str, Tuple[float, float]] = {}
+    reduzidas: List[Tuple[str, str, dict, float]] = []
+    ignoradas = {
+        "08 (modelo próprio)": 0, "reduzida sem referência 01": 0, "sem VMAX/VMIN": 0, "simulada": 0,
+    }
     # Reconstrução sempre com o distúrbio inteiro (definição do fator).
     limite_original = mestre.LIMITE_BANCADA_DISTURBIO
     mestre.LIMITE_BANCADA_DISTURBIO = False
@@ -103,20 +150,37 @@ def coletar(sessoes: List[Path]) -> Tuple[Dict[str, List[float]], Dict[str, int]
                     if classe_id == "08":
                         ignoradas["08 (modelo próprio)"] += 1
                         continue
-                    if "fator_disturbio_bancada" in (registro.get("parametros") or {}):
-                        ignoradas["distúrbio reduzido"] += 1
-                        continue
                     if "pico_medido_v" not in registro or "vale_medido_v" not in registro:
                         ignoradas["sem VMAX/VMIN"] += 1
+                        continue
+                    chave, tensao, frequencia = condicao_do_registro(registro)
+                    condicoes[chave] = (tensao, frequencia)
+                    extremo = max(abs(float(registro["pico_medido_v"])), abs(float(registro["vale_medido_v"])))
+                    if "fator_disturbio_bancada" in (registro.get("parametros") or {}):
+                        reduzidas.append((chave, classe_id, registro, extremo))
                         continue
                     pico = registro.get("pico_programado_v")
                     if pico is None:
                         pico = pico_programado_reconstruido_v(registro, scripts[classe_id])
-                    extremo = max(abs(float(registro["pico_medido_v"])), abs(float(registro["vale_medido_v"])))
-                    fatores.setdefault(classe_id, []).append(extremo / float(pico))
+                    fatores.setdefault(chave, {}).setdefault(classe_id, []).append(extremo / float(pico))
     finally:
         mestre.LIMITE_BANCADA_DISTURBIO = limite_original
-    return fatores, ignoradas
+
+    referencia = mestre.CLASSE_REFERENCIA_EXTREMO
+    for chave, classe_id, registro, extremo in reduzidas:
+        medidos_01 = fatores.get(chave, {}).get(referencia)
+        if medidos_01:
+            fator_01: Optional[float] = max(medidos_01)
+        else:
+            tensao, frequencia = condicoes[chave]
+            atual = mestre.condicao_calibrada(tabelas_atuais or {}, tensao, frequencia)
+            fator_01 = (tabelas_atuais or {}).get(atual, {}).get("fatores", {}).get(referencia) if atual else None  # type: ignore[union-attr]
+        if fator_01 is None:
+            ignoradas["reduzida sem referência 01"] += 1
+            continue
+        fator = fator_de_captura_reduzida(registro, extremo, max(1.0, float(fator_01)))
+        fatores.setdefault(chave, {}).setdefault(classe_id, []).append(fator)
+    return fatores, ignoradas, condicoes
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -132,36 +196,54 @@ def main(argv: Optional[List[str]] = None) -> int:
     logging.getLogger("MestreExperimentos").setLevel(logging.ERROR)
 
     dados = json.loads(args.arquivo.read_text(encoding="utf-8"))
-    atuais = {str(k).zfill(2): float(v) for k, v in dados["fatores"].items()}
-    medidos, ignoradas = coletar(args.sessoes)
+    tabelas = mestre.carregar_calibracao_extremos(args.arquivo)
+    if "por_condicao" not in dados:  # formato da v1.13: migra
+        dados["por_condicao"] = {
+            chave: {"tensao_rms": t["tensao_rms"], "frequencia_hz": t["frequencia_hz"],
+                    "origem": dados.pop("origem", ""), "fatores": dados.pop("fatores")}
+            for chave, t in tabelas.items()
+        }
+    medidos, ignoradas, condicoes = coletar(args.sessoes, tabelas)
 
-    print("| Classe | Capturas | Fator mín. | Mediana | Máx. (proposto) | Atual | Gravaria |")
-    print("|---|---|---|---|---|---|---|")
-    novos = dict(atuais)
-    for classe_id in sorted(set(atuais) | set(medidos)):
-        valores = medidos.get(classe_id, [])
-        atual = atuais.get(classe_id)
-        if not valores:
-            print(f"| {classe_id} | 0 | — | — | — | {atual if atual is not None else '—'} | {atual} (sem dado) |")
-            continue
-        proposto = round(max(valores), 3)
-        gravaria = proposto if (args.substituir or atual is None) else max(proposto, atual)
-        novos[classe_id] = gravaria
-        print(
-            f"| {classe_id} | {len(valores)} | {min(valores):.3f} | {statistics.median(valores):.3f} "
-            f"| {proposto:.3f} | {'—' if atual is None else f'{atual:.3f}'} | {gravaria:.3f} |"
-        )
+    gravacoes: Dict[str, Dict[str, float]] = {}
+    for chave in sorted(medidos):
+        tensao, frequencia = condicoes[chave]
+        existente = mestre.condicao_calibrada(tabelas, tensao, frequencia)
+        atuais = dict(tabelas[existente]["fatores"]) if existente else {}  # type: ignore[arg-type]
+        destino = existente or chave
+        print(f"\n## {chave} -> tabela {destino}" + ("" if existente else " (NOVA)"))
+        print("| Classe | Capturas | Fator mín. | Mediana | Máx. (proposto) | Atual | Gravaria |")
+        print("|---|---|---|---|---|---|---|")
+        novos = dict(atuais)
+        for classe_id in sorted(set(atuais) | set(medidos[chave])):
+            valores = medidos[chave].get(classe_id, [])
+            atual = atuais.get(classe_id)
+            if not valores:
+                print(f"| {classe_id} | 0 | — | — | — | {atual if atual is not None else '—'} | {atual} (sem dado) |")
+                continue
+            proposto = round(max(valores), 3)
+            gravaria = proposto if (args.substituir or atual is None) else max(proposto, atual)
+            novos[classe_id] = gravaria
+            print(
+                f"| {classe_id} | {len(valores)} | {min(valores):.3f} | {statistics.median(valores):.3f} "
+                f"| {proposto:.3f} | {'—' if atual is None else f'{atual:.3f}'} | {gravaria:.3f} |"
+            )
+        if any(not math.isfinite(v) or v <= 0 for v in novos.values()):
+            raise SystemExit(f"Fator inválido calculado em {chave} — nada gravado.")
+        gravacoes[destino] = novos
     print()
     print("Ignoradas: " + ", ".join(f"{motivo}: {n}" for motivo, n in ignoradas.items()))
-    if any(not math.isfinite(v) or v <= 0 for v in novos.values()):
-        raise SystemExit("Fator inválido calculado — nada gravado.")
-    if args.gravar:
-        dados["fatores"] = {k: novos[k] for k in sorted(novos)}
-        dados["origem"] = (
-            "scripts/recalibrar_extremos.py sobre: " + ", ".join(str(s) for s in args.sessoes)
-            + (" (substituindo)" if args.substituir else " (nenhum fator diminuiu)")
-            + f"; antes: {dados.get('origem', '')}"
-        )
+    if args.gravar and gravacoes:
+        for destino, novos in gravacoes.items():
+            tabela = dados["por_condicao"].setdefault(destino, {})
+            if "tensao_rms" not in tabela:
+                tabela["tensao_rms"], tabela["frequencia_hz"] = condicoes[destino]
+            tabela["origem"] = (
+                "scripts/recalibrar_extremos.py sobre: " + ", ".join(str(s) for s in args.sessoes)
+                + (" (substituindo)" if args.substituir else " (nenhum fator diminuiu)")
+                + (f"; antes: {tabela['origem']}" if tabela.get("origem") else "")
+            )
+            tabela["fatores"] = {k: novos[k] for k in sorted(novos)}
         args.arquivo.write_text(json.dumps(dados, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         print(f"Gravado em {args.arquivo}. Confira com 'git diff' e rode tests/test_offline.py.")
     else:

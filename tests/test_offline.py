@@ -27,6 +27,40 @@ import sinais  # noqa: E402
 import mestre  # noqa: E402
 import preflight_new  # noqa: E402
 
+# Calibração de extremos REAL (testes de CalibracaoPorCondicaoTests e da
+# recalibração a leem explicitamente).
+CALIBRACAO_REAL = mestre.CALIBRACAO_EXTREMOS_PATH
+_calibracao_de_teste = None
+
+
+def setUpModule():
+    """Os testes de mecânica (limite de bancada, pré-validação, metadata)
+    rodam a 220 V/60 Hz, que a bancada nunca mediu — sem tabela própria a
+    previsão é conservadora (v1.14) e quase tudo seria pulado. Aqui 220 V/
+    60 Hz é declarado calibrado com a tabela REAL de 127 V/60 Hz, que é o que
+    esses testes assumiam; a 230 V/50 Hz real fica de fora para as
+    expectativas não mudarem a cada recalibração. O comportamento sem
+    calibração é testado à parte, com o arquivo real."""
+    global _calibracao_de_teste
+    real = json.loads(CALIBRACAO_REAL.read_text(encoding="utf-8"))
+    tabela = real["por_condicao"]["127V_60Hz"]
+    dados = {"por_condicao": {
+        "127V_60Hz": tabela,
+        "220V_60Hz": dict(tabela, tensao_rms=220.0),
+        "220V_50Hz": dict(tabela, tensao_rms=220.0, frequencia_hz=50.0),
+    }}
+    pasta = Path(tempfile.mkdtemp())
+    caminho = pasta / "calibracao_extremos_teste.json"
+    caminho.write_text(json.dumps(dados), encoding="utf-8")
+    _calibracao_de_teste = (pasta, mock.patch.object(mestre, "CALIBRACAO_EXTREMOS_PATH", caminho))
+    _calibracao_de_teste[1].start()
+
+
+def tearDownModule():
+    pasta, patch = _calibracao_de_teste
+    patch.stop()
+    shutil.rmtree(pasta, ignore_errors=True)
+
 
 class _BancadaFake:
     """Suficiente para instanciar um Experimento sem abrir instrumento nenhum:
@@ -2452,10 +2486,15 @@ class ErroDeterministicoEPreValidacaoTests(unittest.TestCase):
             with mock.patch.object(
                 mestre.Bancada, "_carregar_classe_experimento",
                 staticmethod(lambda script_path: _Determinista),
-            ), mock.patch.object(mestre.Bancada, "recuperar_estado_seguro", lambda self: None):
+            ), mock.patch.object(mestre.Bancada, "recuperar_estado_seguro", lambda self: None), \
+                    self.assertLogs("MestreExperimentos", level="ERROR") as logs:
                 resultados = bancada.executar_bateria([Path("03.py")])
             self.assertEqual(chamadas["n"], 1, "erro determinístico não pode ser retentado 3x")
             self.assertFalse(resultados[0].ok)
+            # O log final conta as tentativas FEITAS (bancada 2026-10-07 dizia "após 3").
+            final = [r.getMessage() for r in logs.records if "definitivamente" in r.getMessage()]
+            self.assertEqual(len(final), 1)
+            self.assertIn("após 1 tentativa(s) (erro determinístico, sem retry)", final[0])
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
@@ -2588,6 +2627,24 @@ class Classe08BancadaTests(unittest.TestCase):
             self.assertLessEqual(parametros["pico_previsto_v"], teto_v + 1e-6)
             self.assertGreaterEqual(parametros["vale_previsto_v"], -teto_v - 1e-6)
             self.assertAlmostEqual(experimento.excursao_fisica_prevista_v(), teto_v, delta=1.0)
+
+    def test_50hz_pico_real_medido_cabe_no_teto_e_60hz_nao_muda(self):
+        """Bancada 2026-10-07: a 50 Hz o impulso parte do cruzamento por zero
+        e o PICO limita; a saída fez sobressinal de 0,457 e mediu 376 V contra
+        teto de 374,2 V (127 V e 230 V). Com o sobressinal REAL o pico tem de
+        caber; a 60 Hz (vale limita) a amplitude continua 1,618 pu a 127 V."""
+        teto_v = 0.9 * 415.8
+        for base_v in (127.0, 230.0):
+            experimento = self._experimento(base_v=base_v)
+            campos = dict(experimento.config.__dict__, grid_frequency_hz=50.0)
+            experimento.config = mestre.Config(**campos)
+            onda, parametros = experimento.gerar(self.T, 50.0, 0, np.random.default_rng(3))
+            experimento.forma_para_bancada(onda, parametros, 0)
+            partida = float(np.max(np.sin(2 * np.pi * 50 * self.T[[2400, 2401]])))
+            pico_real_v = (partida + parametros["amplitude_bancada_pu"] * 1.457) * base_v * math.sqrt(2.0)
+            self.assertLess(pico_real_v, teto_v, base_v)
+        _, parametros = self._forma(self._experimento())
+        self.assertAlmostEqual(parametros["amplitude_bancada_pu"], 1.618, places=3)
 
     def test_caracterizacao_sobe_em_rampa_a_partir_de_amplitude_pequena(self):
         experimento = self._experimento(capturas_override=5)
@@ -3842,6 +3899,28 @@ class CliCapturasTests(unittest.TestCase):
             codigo = metodo(args)
         return codigo, saida.getvalue()
 
+    def test_ctrl_c_num_comando_volta_ao_prompt(self):
+        """Bancada 2026-10-07: o Ctrl+C não parava a bateria (NI-VISA
+        descartava o evento; ver mestre.garantir_ctrl_c_no_windows). Agora
+        ele chega como KeyboardInterrupt — a CLI avisa e continua."""
+        chamadas = []
+
+        def _interrompido(_sessao, _args):
+            chamadas.append("run")
+            raise KeyboardInterrupt
+
+        def _status(_sessao, _args):
+            chamadas.append("status")
+
+        sessao = self.cli.SessaoCLI()
+        comandos = dict(self.cli.SessaoCLI.COMANDOS, run=_interrompido, status=_status)
+        with mock.patch.object(self.cli.SessaoCLI, "COMANDOS", comandos), \
+                mock.patch("builtins.input", side_effect=["run all", "status", EOFError]):
+            codigo, saida = self._rodar(lambda _args: sessao.loop(), [])
+        self.assertEqual(codigo, 0)
+        self.assertEqual(chamadas, ["run", "status"])
+        self.assertIn("INTERROMPIDO pelo operador", saida)
+
     def test_list_mostra_capturas_efetivas_e_padrao(self):
         codigo, saida = self._rodar(self.cli.SessaoCLI().cmd_list, [])
         self.assertEqual(codigo, 0)
@@ -4143,7 +4222,7 @@ class LimiteDeBancada220VTests(unittest.TestCase):
                     )
                     self.assertAlmostEqual(info["extremo_previsto_v"], esperado, places=9, msg=classe_id)
 
-    def test_220v_reduz_10_11_14_16_17_e_tudo_cabe_no_padrao(self):
+    def test_220v_reduz_09_10_11_14_16_17_e_tudo_cabe_no_padrao(self):
         reduzidas = set()
         for indice in range(1, 21):
             classe_id = f"{indice:02d}"
@@ -4158,7 +4237,8 @@ class LimiteDeBancada220VTests(unittest.TestCase):
                     # Bissecção: justo no teto, não muito abaixo.
                     self.assertGreater(info["extremo_previsto_v"], self.TETO - 1.0, classe_id)
         # 17: só na seed padrão (pico de 368 V × 1,031 × 1,10 = 417 V, 1 V acima).
-        self.assertEqual(reduzidas, {"10", "11", "14", "16", "17"})
+        # 09: desde a recalibração de 2026-10-07 (fator 1,002 -> 1,036 a 127 V).
+        self.assertEqual(reduzidas, {"09", "10", "11", "14", "16", "17"})
 
     def test_reducao_mantem_a_senoide_fora_do_disturbio_e_nao_muda_gerar(self):
         experimento = self._instancia("16")
@@ -4268,7 +4348,9 @@ class RelatorioERecalibracaoTests(unittest.TestCase):
         os mesmos fatores (o JSON da v1.12)."""
         recalibrar = _carregar_script("recalibrar_extremos")
         sessao = PROJECT_ROOT / "docs" / "analise-2026-09-30" / "dados" / "sessao_2026-09-30_15-26-05"
-        medidos, ignoradas = recalibrar.coletar([sessao])
+        por_condicao, ignoradas, _ = recalibrar.coletar([sessao])
+        self.assertEqual(set(por_condicao), {"127V_60Hz"})
+        medidos = por_condicao["127V_60Hz"]
         v1_12 = {
             "01": 1.063, "02": 1.164, "03": 1.038, "04": 1.164, "05": 0.998, "06": 1.018, "07": 1.180,
             "09": 1.002, "10": 1.236, "11": 1.258, "12": 1.030, "13": 1.034, "14": 0.977, "15": 1.017,
@@ -4282,10 +4364,162 @@ class RelatorioERecalibracaoTests(unittest.TestCase):
     def test_calibracao_atual_nunca_ficou_abaixo_da_v1_12(self):
         recalibrar = _carregar_script("recalibrar_extremos")
         sessao = PROJECT_ROOT / "docs" / "analise-2026-09-30" / "dados" / "sessao_2026-09-30_15-26-05"
-        medidos, _ = recalibrar.coletar([sessao])
-        atuais = mestre.carregar_fatores_extremo()
-        for classe_id, valores in medidos.items():
+        por_condicao, _, _ = recalibrar.coletar([sessao])
+        atuais = mestre.carregar_fatores_extremo(CALIBRACAO_REAL, tensao_rms=127.0, frequencia_hz=60.0)
+        for classe_id, valores in por_condicao["127V_60Hz"].items():
             self.assertGreaterEqual(atuais[classe_id], round(max(valores), 3), classe_id)
+
+    def test_inversao_de_captura_reduzida(self):
+        recalibrar = _carregar_script("recalibrar_extremos")
+        registro = {"pico_programado_v": 350.0,
+                    "parametros": {"fator_disturbio_bancada": 0.5, "pico_programado_modelo_v": 400.0}}
+        # 1,03 + (380 - 1,03 × 350) / (0,5 × 400) = 1,1275 (> 380/350).
+        self.assertAlmostEqual(recalibrar.fator_de_captura_reduzida(registro, 380.0, 1.03), 1.1275)
+        # Extremo que veio da senoide: a inversão daria < f_ref; vale extremo/pico.
+        self.assertAlmostEqual(recalibrar.fator_de_captura_reduzida(registro, 355.0, 1.03), 355.0 / 350.0)
+
+    def test_recalibracao_separa_condicoes(self):
+        recalibrar = _carregar_script("recalibrar_extremos")
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        for nome, tensao, frequencia, extremo in (("a", 127.0, 60.0, 190.0), ("b", 230.0, 50.0, 340.0)):
+            pasta = tmp / nome / "metadata"
+            pasta.mkdir(parents=True)
+            registro = {"id_captura": "05-0001", "tensao_base_rms": tensao, "f0_hz": frequencia,
+                        "pico_programado_v": tensao * math.sqrt(2.0), "pico_medido_v": extremo,
+                        "vale_medido_v": -extremo, "parametros": {}}
+            (pasta / "05_harmonics.jsonl").write_text(json.dumps(registro) + "\n", encoding="utf-8")
+        por_condicao, _, condicoes = recalibrar.coletar([tmp / "a", tmp / "b"])
+        self.assertEqual(set(por_condicao), {"127V_60Hz", "230V_50Hz"})
+        self.assertEqual(condicoes["230V_50Hz"], (230.0, 50.0))
+        self.assertAlmostEqual(por_condicao["230V_50Hz"]["05"][0], 340.0 / (230.0 * math.sqrt(2.0)))
+
+
+class CadeiaDeMedicaoTests(unittest.TestCase):
+    """v1.14: antes da primeira classe, fonte (medida dela) x CH1. Origem:
+    bancada 2026-10-07, disjuntor aberto entre fonte e probe — fonte
+    126,6 Vrms, CH1 ~50 Vrms, 20 classes reprovadas na validação física."""
+
+    def _bancada(self, medidas_fonte, osc_vrms):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        fonte = mock.Mock()
+        fonte.measure_voltage.side_effect = list(medidas_fonte)
+        osc = mock.Mock()
+        osc.medir_vrms_forcado.return_value = osc_vrms
+        bancada = mestre.Bancada(fonte, osc, _config_bancada(tmp, base_voltage_rms=127.0))
+        bancada.recuperar_estado_seguro = mock.Mock()
+        return bancada
+
+    def test_cadeia_ok(self):
+        bancada = self._bancada([126.6], 125.9)
+        leituras = bancada.verificar_cadeia_de_medicao()
+        bancada.recuperar_estado_seguro.assert_called_once()
+        self.assertAlmostEqual(leituras["razao_osc_fonte"], 125.9 / 126.6)
+
+    def test_disjuntor_aberto_aborta_antes_da_primeira_classe(self):
+        bancada = self._bancada([126.6], 52.0)  # números da bancada 2026-10-07
+        with self.assertRaises(mestre.CadeiaDeMedicaoError) as ctx:
+            bancada.verificar_cadeia_de_medicao()
+        self.assertIn("razão 0.411", str(ctx.exception))
+        # Infraestrutura: executar_bateria re-levanta, nada é retentado.
+        self.assertIsInstance(ctx.exception, mestre.FalhaFatalDeInstrumento)
+
+    def test_espera_a_fonte_subir_e_desiste_se_nao_chegar(self):
+        bancada = self._bancada([0.1, 60.0, 126.5], 126.0)
+        with mock.patch.object(mestre.time, "sleep"):
+            bancada.verificar_cadeia_de_medicao()
+        self.assertEqual(bancada.fonte.measure_voltage.call_count, 3)
+
+        bancada = self._bancada([60.0], 60.0)
+        with mock.patch.object(mestre.time, "sleep"), \
+                mock.patch.object(mestre.Bancada, "TIMEOUT_CADEIA_FONTE_S", 0.0):
+            with self.assertRaises(mestre.CadeiaDeMedicaoError) as ctx:
+                bancada.verificar_cadeia_de_medicao()
+        self.assertIn("A fonte mede 60.00 Vrms", str(ctx.exception))
+        bancada.osc.medir_vrms_forcado.assert_not_called()
+
+    def test_simulado_nao_verifica(self):
+        bancada = mestre.Bancada(mock.Mock(), None, _config_bancada(Path("."), base_voltage_rms=127.0))
+        self.assertEqual(bancada.verificar_cadeia_de_medicao(), {})
+
+    def test_osciloscopio_mede_vrms_com_trigger_forcado_e_valida(self):
+        osc = mock.Mock(spec=KeysightDSOX4034A)
+        osc.channels = {1: object()}
+        osc._MEDIDA_INVALIDA = KeysightDSOX4034A._MEDIDA_INVALIDA
+        osc.ask.return_value = "+1.2590E+02"
+        self.assertAlmostEqual(KeysightDSOX4034A.medir_vrms_forcado(osc, 1), 125.9)
+        nomes = [c[0] for c in osc.method_calls]
+        self.assertLess(nomes.index("arm"), nomes.index("force_trigger"))
+        self.assertLess(nomes.index("force_trigger"), nomes.index("wait_for_trigger_complete"))
+        osc.ask.assert_called_with(":MEASure:VRMS? DISPlay,AC,CHANnel1")
+        osc.ask.return_value = "9.9E+37"
+        with self.assertRaises(OscilloscopeError):
+            KeysightDSOX4034A.medir_vrms_forcado(osc, 1)
+
+
+class CalibracaoPorCondicaoTests(unittest.TestCase):
+    """v1.14: fatores de extremo por condição (tensão base, frequência).
+    Origem: 2026-10-07, 230 V/50 Hz com a tabela de 127 V/60 Hz — a 17
+    previu 405 V e mediu 444 V, acima dos 425 Vp do hardware."""
+
+    def setUp(self):
+        mestre._CONDICOES_SEM_CALIBRACAO_AVISADAS.clear()
+
+    def _fatores(self, tensao, frequencia):
+        return mestre.carregar_fatores_extremo(CALIBRACAO_REAL, tensao_rms=tensao, frequencia_hz=frequencia)
+
+    def test_condicao_calibrada_usa_o_maior_entre_condicoes(self):
+        condicoes = mestre.carregar_calibracao_extremos(CALIBRACAO_REAL)
+        fatores = self._fatores(230.0, 50.0)
+        for classe_id in condicoes["230V_50Hz"]["fatores"]:
+            esperado = max(t["fatores"][classe_id] for t in condicoes.values() if classe_id in t["fatores"])
+            self.assertEqual(fatores[classe_id], esperado, classe_id)
+        # 10 a 230 V só rodou reduzida (extremo da senoide): não pode cair para 1,03.
+        self.assertEqual(fatores["10"], condicoes["127V_60Hz"]["fatores"]["10"])
+
+    def test_classe_sem_medida_na_condicao_usa_o_maior_de_todos(self):
+        condicoes = mestre.carregar_calibracao_extremos(CALIBRACAO_REAL)
+        maior = max(max(t["fatores"].values()) for t in condicoes.values())
+        self.assertNotIn("02", condicoes["230V_50Hz"]["fatores"])
+        self.assertEqual(self._fatores(230.0, 50.0)["02"], maior)
+
+    def test_tolerancia_de_condicao(self):
+        self.assertEqual(self._fatores(129.0, 60.4), self._fatores(127.0, 60.0))  # 1,6% e 0,4 Hz
+        with self.assertLogs("MestreExperimentos", level="WARNING"):
+            self.assertNotEqual(self._fatores(130.0, 60.0), self._fatores(127.0, 60.0))  # 2,4%
+        with self.assertLogs("MestreExperimentos", level="WARNING"):
+            self.assertNotEqual(self._fatores(127.0, 61.0), self._fatores(127.0, 60.0))  # 1 Hz
+
+    def test_sem_calibracao_e_conservador_e_avisa_uma_vez(self):
+        condicoes = mestre.carregar_calibracao_extremos(CALIBRACAO_REAL)
+        maior = max(max(t["fatores"].values()) for t in condicoes.values())
+        maior_01 = max(t["fatores"]["01"] for t in condicoes.values())
+        with self.assertLogs("MestreExperimentos", level="WARNING") as logs:
+            fatores = self._fatores(220.0, 60.0)
+            self._fatores(220.0, 60.0)
+        self.assertEqual(len([r for r in logs.records if "SEM tabela para 220V_60Hz" in r.getMessage()]), 1)
+        self.assertEqual(fatores["01"], maior_01)
+        self.assertTrue(all(v == maior for k, v in fatores.items() if k != "01"))
+
+    def test_regressao_17_a_230v_50hz_nao_programa_mais_o_que_mediu_444v(self):
+        """Mesma classe/seed base/condição da sessão 2026-10-07_15-15-25: lá
+        as 3 capturas da 17 rodaram SEM redução (previsto 405 V) e uma mediu
+        444 V. Com a tabela de 230 V/50 Hz, toda captura que cabe tem o
+        distúrbio reduzido e o fator usado cobre os 444 V medidos."""
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        with mock.patch.object(mestre, "CALIBRACAO_EXTREMOS_PATH", CALIBRACAO_REAL):
+            config = _config_bancada(tmp, base_voltage_rms=230.0, grid_frequency_hz=50.0)
+            fonte = mestre.AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=415.8)
+            experimento = _carregar_classe("17")(mestre.Bancada(fonte, mock.Mock(), config))
+            infos = [experimento.avaliar_captura_na_bancada(ig, ci) for ig, ci in experimento.plano_de_capturas(False)]
+            fator = mestre.fator_extremo_da_classe("17", experimento._fatores_extremo())
+        self.assertGreaterEqual(fator * 357.5, 444.0)  # 357,5 V = pico programado na sessão
+        for info in infos:
+            if info["cabe"]:
+                self.assertLess(info["fator_disturbio_bancada"], 1.0)
+                self.assertLessEqual(info["extremo_previsto_v"], 415.8 + 1e-6)
 
 
 if __name__ == "__main__":

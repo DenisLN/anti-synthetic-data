@@ -30,7 +30,15 @@ class Experimento(ExperimentoWaveform):
     # ABAIXO do nível de partida, aproximadamente lineares no degrau. O array a
     # 30 kSa/s subestimava os dois (0,08 / 0,45). Usados com margem de ~1,2
     # (docs/analise-2026-09-30/ANALISE.md, T8-4).
-    SOBRESSINAL_DO_DEGRAU = 0.45
+    # v1.14: a 60 Hz o impulso (t = 80 ms) parte de -0,95 pu e quem limita a
+    # amplitude é o VALE — o pico nunca chegava perto do teto e o 0,45 nunca
+    # foi posto à prova. A 50 Hz ele parte do cruzamento por zero (maior
+    # inclinação da senoide), quem limita é o PICO, e a saída fez 0,437-0,457
+    # (127 V e 230 V, bancada 2026-10-07): com 0,45 o pico mediu 376 V contra
+    # teto de 374,2 V nas três sessões a 50 Hz. 0,55 = mesma margem de ~1,2,
+    # agora sobre o pior medido (0,457). A 60 Hz nada muda (vale continua
+    # limitando).
+    SOBRESSINAL_DO_DEGRAU = 0.55
     SUBSINAL_DO_DEGRAU = 0.70
     # Primeiro degrau da varredura de caracterização (0,25 pu ≈ 45 V a 127 V).
     AMPLITUDE_MIN_CARACTERIZACAO_PU = 0.25

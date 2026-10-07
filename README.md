@@ -79,8 +79,11 @@ scripts/                    Todo o PowerShell/CMD que o operador roda no Windows
     package_windows.ps1        Empacota o repositório em .zip para transporte
     visualizar_npz.ps1         Wrapper de logica/visualizador.py
     relatorio_limites_bancada.py  Offline: o que cabe a uma tensão base (pico/extremo previsto, limite de bancada)
-    recalibrar_extremos.py     Offline: recalcula calibracao_extremos.json a partir do VMAX/VMIN do metadata
+    recalibrar_extremos.py     Offline: recalcula calibracao_extremos.json (por condição) a partir do VMAX/VMIN do metadata
     diag_nativo_output_off.py  Diagnóstico da AMETEK com OUTPUT OFF (ver CHANGELOG/v1.12.md)
+    diag_saida_vs_medida.py    Energiza (confirmação digitada) e lê a medida da própria fonte nas 3 fases (v1.14)
+    diag_fonte_vs_osciloscopio.py  Fonte e CH1 lado a lado, direto e em degrau (v1.14)
+    diag_osciloscopio_canais.py    Estado dos 4 canais do Keysight, só leitura (v1.14)
 
 experimentos_nativos/       Classes cujo distúrbio é um recurso NATIVO da AMETEK (PULSe/LIST/CSINe)
     01.py .. 19.py           NORMAL, SAG, SWELL, INTERRUPTION, HARMONICS, FREQUENCY_DRIFT, DC_OFFSET
@@ -416,9 +419,30 @@ contra o mesmo teto.
   `python scripts\relatorio_limites_bancada.py --tensao 127 --tensao 220`.
 - **380 V**: recusado (ver 5.3).
 
-Para recalibrar os fatores com sessões novas:
+**Calibração por condição (v1.14).** Os fatores ficam por condição de bancada
+(tensão base ±2%, frequência ±0,5 Hz) em `por_condicao`; hoje há
+**127 V/60 Hz** e **230 V/50 Hz**. Numa condição calibrada, cada classe usa o
+maior entre o fator dela ali e nas outras condições. **Numa condição sem
+tabela** (ex.: 220 V/60 Hz, nunca medida), toda classe usa o maior fator já
+medido — o log avisa e muito mais capturas são reduzidas/puladas até a
+condição ser calibrada. Motivo: a 230 V/50 Hz, com a tabela de 127 V, a 17
+previu 405 V e mediu **444 V** (acima dos 425 Vp do hardware). Para calibrar
+uma condição: rode a bateria nela e depois
 `python scripts\recalibrar_extremos.py resultados\sessao_A ... [--gravar]`
-(com `--gravar`, nenhum fator diminui sem `--substituir`).
+(separa por condição; capturas com distúrbio reduzido entram invertendo a
+fórmula do limite de bancada; com `--gravar`, nenhum fator diminui sem
+`--substituir`).
+
+**Checagem da cadeia de medição (v1.14).** Antes da primeira classe de todo
+`run`, a bancada põe a senoide base, espera a MEDIDA da fonte confirmar a base
+(±5%) e compara com o Vrms do CH1 numa aquisição forçada (±10%). Fora disso
+aborta com a leitura dos dois — pega disjuntor aberto, probe no lugar errado
+ou fator de probe errado antes de gastar a bateria.
+
+**Ctrl+C (v1.14).** Com as sessões VISA abertas, o NI-VISA descartava o
+Ctrl+C. Agora ele interrompe o comando assim que a chamada VISA em curso
+termina (até ~15 s), a saída é desligada ao fechar a conexão e a CLI volta ao
+prompt. Em emergência continua valendo OUTPUT OFF / E-stop na fonte.
 
 **Captura de corrente vem desligada por padrão** (`CAPTURE_CURRENT=0`).
 **Não ative sem o fator da probe de corrente e a corrente-base fornecidos
@@ -634,6 +658,11 @@ resultado de execuções anteriores.
   220 V com limite de bancada (distúrbio reduzido só na captura física),
   380 V recusado com explicação, relatório de limites e script de
   recalibração dos fatores de extremo; checklist de bancada.
+- [`CHANGELOG/v1.14.md`](CHANGELOG/v1.14.md) — validação de 2026-10-07
+  (disjuntor aberto; 230 V/50 Hz mediu 444 V): fatores de extremo por
+  condição (tensão/frequência) com regra conservadora sem calibração,
+  checagem fonte × CH1 antes da primeira classe, Ctrl+C que de fato para a
+  bateria, log de tentativas correto; checklist de bancada.
 - `docs/AMETEK_MX_SCPI_Programming_Manual.pdf` e
   `docs/Keysight_4000X_Programmers_Guide.pdf` — manuais SCPI originais dos
   dois instrumentos.

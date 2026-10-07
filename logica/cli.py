@@ -573,6 +573,13 @@ class SessaoCLI:
                 continue
             try:
                 handler(self, args)
+            except KeyboardInterrupt:
+                # Ctrl+C durante um comando (mestre.garantir_ctrl_c_no_windows):
+                # o ``with Bancada`` já desligou a saída ao sair; volta ao prompt.
+                print(
+                    "\nINTERROMPIDO pelo operador (Ctrl+C). A saída foi desligada ao encerrar "
+                    "a conexão — confira OUTPUT OFF no painel da AMETEK."
+                )
             except Exception as exc:  # nunca deixa a CLI cair por uma falha de comando
                 print(f"ERRO: {exc}")
                 traceback.print_exc()

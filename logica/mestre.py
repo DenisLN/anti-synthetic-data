@@ -263,6 +263,54 @@ def validate_bench_configuration(require_output: bool = True) -> None:
         )
 
 
+_CTRL_C_HANDLER = None
+
+
+def garantir_ctrl_c_no_windows() -> None:
+    """Faz o Ctrl+C voltar a interromper a bateria no Windows.
+
+    Com as sessões VISA da bancada abertas (COM10 + USB do Keysight), o
+    NI-VISA instala um tratador de console que DESCARTA o CTRL_C_EVENT: o
+    Python nunca recebia KeyboardInterrupt (bancada 2026-10-07; reproduzido
+    sem enviar comando nenhum, com um read() bloqueante na serial). O Windows
+    chama o tratador registrado por ÚLTIMO primeiro; este repassa Ctrl+C/
+    Ctrl+Break ao Python (``_thread.interrupt_main``), que levanta
+    KeyboardInterrupt assim que a chamada VISA em curso retorna (no máximo o
+    timeout dela) — e o ``with Bancada`` desliga a saída na saída.
+
+    Chamar DEPOIS de abrir os instrumentos. Remove e registra de novo (fica
+    uma vez só, no topo): registrado duas vezes, um Ctrl+C viraria dois
+    KeyboardInterrupt e o segundo poderia cortar o desligamento da saída."""
+    global _CTRL_C_HANDLER
+    if sys.platform != "win32":
+        return
+    import _thread
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.windll.kernel32
+    if _CTRL_C_HANDLER is None:
+        tipo = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.DWORD)
+
+        def _repassar(evento: int) -> bool:
+            if evento in (0, 1):  # CTRL_C_EVENT, CTRL_BREAK_EVENT
+                _thread.interrupt_main()
+                return True
+            return False
+
+        _CTRL_C_HANDLER = tipo(_repassar)
+    else:
+        kernel32.SetConsoleCtrlHandler(_CTRL_C_HANDLER, False)
+    if not kernel32.SetConsoleCtrlHandler(_CTRL_C_HANDLER, True):
+        logger.warning("Não foi possível registrar o tratador de Ctrl+C; use OUTPUT OFF no painel para parar.")
+
+
+class CadeiaDeMedicaoError(FalhaFatalDeInstrumento):
+    """A fonte não entrega a base, ou o CH1 não vê o que a fonte mede (ver
+    ``Bancada.verificar_cadeia_de_medicao``). Infraestrutura: nenhuma classe
+    roda, nada é retentado."""
+
+
 class ValidacaoFisicaError(ValueError):
     """A captura saiu do instrumento, mas não corresponde ao que a classe
     pediu (nível base, profundidade do evento ou conteúdo harmônico).
@@ -281,15 +329,113 @@ MARGEM_FATOR_EXTREMO = env_float("MARGEM_FATOR_EXTREMO", 1.10)
 CALIBRACAO_EXTREMOS_PATH = Path(__file__).resolve().parent / "calibracao_extremos.json"
 
 
-def carregar_fatores_extremo(caminho: Path = CALIBRACAO_EXTREMOS_PATH) -> Dict[str, float]:
-    """Fatores (extremo medido / pico programado) por classe. Arquivo ausente
-    ou ilegível LEVANTA: sem ele a pré-validação de pico não tem base, e
-    seguir sem ela seria enfraquecer a proteção em silêncio."""
+def chave_condicao(tensao_rms: float, frequencia_hz: float) -> str:
+    """Rótulo da condição de bancada de uma tabela de fatores: "127V_60Hz"."""
+    return f"{float(tensao_rms):g}V_{float(frequencia_hz):g}Hz"
+
+
+# Duas condições são a MESMA calibração se a tensão base difere até 2% e a
+# frequência até 0,5 Hz. Fora disso a resposta da saída pode mudar: em
+# 2026-10-07 a 17 mediu 1,24× o programado a 230 V/50 Hz contra 1,03× a
+# 127 V/60 Hz (444 V, acima dos 425 Vp do hardware, com a pré-validação
+# prevendo 405 V pela tabela de 127 V).
+TOLERANCIA_CONDICAO_TENSAO = 0.02
+TOLERANCIA_CONDICAO_FREQUENCIA_HZ = 0.5
+
+
+def carregar_calibracao_extremos(caminho: Optional[Path] = None) -> Dict[str, Dict[str, object]]:
+    """Tabelas de fatores por condição: {chave: {"tensao_rms", "frequencia_hz",
+    "fatores"}}. Arquivo ausente, ilegível ou com fator inválido LEVANTA: sem
+    ele a pré-validação de pico não tem base, e seguir sem ela seria
+    enfraquecer a proteção em silêncio. Aceita o formato da v1.12/v1.13 (só
+    ``fatores``, medidos a 127 V/60 Hz)."""
+    caminho = CALIBRACAO_EXTREMOS_PATH if caminho is None else caminho
     dados = json.loads(Path(caminho).read_text(encoding="utf-8"))
-    fatores = {str(k).zfill(2): float(v) for k, v in dados["fatores"].items()}
-    if not fatores or any(not math.isfinite(v) or v <= 0 for v in fatores.values()):
-        raise ValueError(f"Fatores de extremo inválidos em {caminho}: {fatores}")
-    return fatores
+    brutas = dados.get("por_condicao")
+    if brutas is None:
+        brutas = {chave_condicao(127.0, 60.0): {"tensao_rms": 127.0, "frequencia_hz": 60.0, "fatores": dados["fatores"]}}
+    condicoes: Dict[str, Dict[str, object]] = {}
+    for chave, tabela in brutas.items():
+        fatores = {str(k).zfill(2): float(v) for k, v in tabela["fatores"].items()}
+        if not fatores or any(not math.isfinite(v) or v <= 0 for v in fatores.values()):
+            raise ValueError(f"Fatores de extremo inválidos em {caminho} ({chave}): {fatores}")
+        condicoes[chave] = {
+            "tensao_rms": float(tabela["tensao_rms"]),
+            "frequencia_hz": float(tabela["frequencia_hz"]),
+            "fatores": fatores,
+        }
+    if not condicoes:
+        raise ValueError(f"Nenhuma tabela de fatores de extremo em {caminho}")
+    return condicoes
+
+
+def condicao_calibrada(
+    condicoes: Dict[str, Dict[str, object]], tensao_rms: float, frequencia_hz: float,
+) -> Optional[str]:
+    """Chave da tabela medida nesta condição (tensão e frequência dentro das
+    tolerâncias), ou ``None``."""
+    for chave, tabela in condicoes.items():
+        v, f = float(tabela["tensao_rms"]), float(tabela["frequencia_hz"])
+        if (
+            abs(float(tensao_rms) - v) <= TOLERANCIA_CONDICAO_TENSAO * v
+            and abs(float(frequencia_hz) - f) <= TOLERANCIA_CONDICAO_FREQUENCIA_HZ
+        ):
+            return chave
+    return None
+
+
+_CONDICOES_SEM_CALIBRACAO_AVISADAS: set = set()
+
+
+def carregar_fatores_extremo(
+    caminho: Optional[Path] = None, *,
+    tensao_rms: Optional[float] = None, frequencia_hz: Optional[float] = None,
+) -> Dict[str, float]:
+    """Fatores (extremo medido / pico programado) por classe para ESTA
+    condição (padrão: BASE_VOLTAGE_RMS / GRID_FREQUENCY_HZ). O JSON guarda o
+    MEDIDO em cada condição; a regra conservadora é esta:
+
+    - condição calibrada: cada classe usa o maior entre o fator dela nesta
+      condição e o dela em qualquer outra condição medida. Não há evidência
+      de que a tensão/frequência maior REDUZA o sobressinal (2026-10-07: 07 e
+      17 subiram de 127 V/60 Hz para 230 V/50 Hz) e uma captura com o
+      distúrbio reduzido só dá limite INFERIOR do fator (o extremo pode ter
+      vindo da senoide: 10 e 11 a 230 V deram exatamente o fator da 01).
+      Classe sem medida nesta condição: o MAIOR fator de todas as tabelas;
+    - condição sem tabela própria: toda classe usa o MAIOR fator já medido
+      em qualquer condição, exceto a 01 (senoide pura, referência de
+      ``fator_referencia_extremo``), que usa o maior fator da 01 entre as
+      condições — sem isso a parte da senoide também iria ao máximo e nada
+      caberia (a 01 a 230 V/50 Hz mediu 0,97× o de 127 V/60 Hz). Avisa uma
+      vez por condição."""
+    condicoes = carregar_calibracao_extremos(caminho)
+    tensao_rms = BASE_VOLTAGE_RMS if tensao_rms is None else float(tensao_rms)
+    frequencia_hz = GRID_FREQUENCY_HZ if frequencia_hz is None else float(frequencia_hz)
+    todas = [tabela["fatores"] for tabela in condicoes.values()]
+    maior = max(max(fatores.values()) for fatores in todas)  # type: ignore[union-attr]
+    classes = sorted({classe for fatores in todas for classe in fatores})  # type: ignore[union-attr]
+    maior_da_classe = {classe: max(f[classe] for f in todas if classe in f) for classe in classes}  # type: ignore[operator,index]
+    chave = condicao_calibrada(condicoes, tensao_rms, frequencia_hz)
+    if chave is not None:
+        desta = condicoes[chave]["fatores"]
+        return {
+            classe: (maior_da_classe[classe] if classe in desta else maior)  # type: ignore[operator]
+            for classe in classes
+        }
+    conservadores = {classe: maior for classe in classes}
+    if CLASSE_REFERENCIA_EXTREMO in maior_da_classe:
+        conservadores[CLASSE_REFERENCIA_EXTREMO] = maior_da_classe[CLASSE_REFERENCIA_EXTREMO]
+    alvo = chave_condicao(tensao_rms, frequencia_hz)
+    if alvo not in _CONDICOES_SEM_CALIBRACAO_AVISADAS:
+        _CONDICOES_SEM_CALIBRACAO_AVISADAS.add(alvo)
+        logger.warning(
+            "Calibração de extremos SEM tabela para %s (há: %s). Previsão de pico CONSERVADORA: "
+            "distúrbio de toda classe com o maior fator já medido (%.3f), senoide pura com %.3f. "
+            "Mais capturas serão reduzidas/puladas. Para calibrar esta condição: rode a bateria "
+            "nela e depois scripts/recalibrar_extremos.py <sessao> --gravar.",
+            alvo, ", ".join(sorted(condicoes)), maior, conservadores.get(CLASSE_REFERENCIA_EXTREMO, maior),
+        )
+    return conservadores
 
 
 def fator_extremo_da_classe(classe_id: str, fatores: Dict[str, float]) -> float:
@@ -622,6 +768,7 @@ class Bancada:
             osc = KeysightDSOX4034A(adapter)
             logger.info("Keysight identificado: %s", osc.verify_identity(KEYSIGHT_EXPECTED_MODEL))
             osc.initialize_safe()
+            garantir_ctrl_c_no_windows()  # depois das duas sessões VISA abertas
 
             voltage_scale = EUT_MAX_PEAK_V / 3.0
             osc.configure_channel(
@@ -667,7 +814,10 @@ class Bancada:
                 osc.idn,
                 "ON" if CAPTURE_CURRENT else "OFF",
             )
-            return cls(fonte, osc, config)
+            bancada = cls(fonte, osc, config)
+            if require_output and OUTPUT_ARMED:
+                bancada.verificar_cadeia_de_medicao()
+            return bancada
         except BaseException:
             if fonte is not None:
                 fonte.disconnect()
@@ -722,7 +872,9 @@ class Bancada:
             descartadas = 0
             invalidas = 0
             puladas = 0
+            tentativas_feitas = 0
             for tentativa in range(1, self.MAX_TENTATIVAS_POR_CLASSE + 1):
+                tentativas_feitas = tentativa
                 if tentativa > 1:
                     logger.warning(
                         "[%s] tentativa %d/%d depois de falha: %s",
@@ -769,8 +921,9 @@ class Bancada:
                 ))
             else:
                 logger.error(
-                    "[%s] FALHOU definitivamente após %d tentativas — classe abortada, "
-                    "bateria continua", class_id, self.MAX_TENTATIVAS_POR_CLASSE,
+                    "[%s] FALHOU definitivamente após %d tentativa(s)%s — classe abortada, "
+                    "bateria continua", class_id, tentativas_feitas,
+                    " (erro determinístico, sem retry)" if tentativas_feitas < self.MAX_TENTATIVAS_POR_CLASSE else "",
                 )
                 resultados.append(ResultadoClasse(class_id, nome, ok=False, motivo=ultimo_erro))
                 self.recuperar_estado_seguro()
@@ -911,6 +1064,55 @@ class Bancada:
             "Estado seguro restaurado: %.3f Vrms, senoide, OUTPUT %s",
             self.config.base_voltage_rms, "ON" if fonte.output_enabled else "OFF",
         )
+
+    # A fonte tem de entregar a base (medida dela) e o CH1 tem de ver o mesmo
+    # que ela mede, dentro destas tolerâncias. A razão CH1/fonte pega o que a
+    # validação física de cada classe só denuncia depois de capturar: probe
+    # com fator errado (2x, 10x), probe no ponto errado, ou — bancada
+    # 2026-10-07 — disjuntor aberto entre a fonte e a probe (CH1 ~0,45 da
+    # fonte + 8 Vrms induzidos: 20 classes reprovadas antes de alguém ver).
+    TOL_CADEIA_FONTE_BASE = 0.05
+    TOL_CADEIA_OSC_FONTE = 0.10
+    TIMEOUT_CADEIA_FONTE_S = 5.0
+
+    def verificar_cadeia_de_medicao(self) -> Dict[str, float]:
+        """Com a saída ligada, põe a fonte na senoide base
+        (``recuperar_estado_seguro``), espera a MEDIDA dela confirmar a base e
+        compara com o Vrms do CH1 numa aquisição forçada. Fora das tolerâncias
+        levanta ``CadeiaDeMedicaoError`` (infraestrutura: aborta a bateria
+        antes da primeira classe). Devolve as leituras."""
+        if self.osc is None:
+            return {}
+        self.recuperar_estado_seguro()
+        base = float(self.config.base_voltage_rms)
+        fonte_v = float("nan")
+        deadline = time.monotonic() + self.TIMEOUT_CADEIA_FONTE_S
+        while True:
+            fonte_v = float(self.fonte.measure_voltage())
+            if abs(fonte_v - base) <= self.TOL_CADEIA_FONTE_BASE * base:
+                break
+            if time.monotonic() >= deadline:
+                raise CadeiaDeMedicaoError(
+                    f"A fonte mede {fonte_v:.2f} Vrms na própria saída {self.TIMEOUT_CADEIA_FONTE_S:.0f} s "
+                    f"depois de programada em {base:.2f} Vrms (tolerância "
+                    f"{100 * self.TOL_CADEIA_FONTE_BASE:.0f}%). Confira o painel da AMETEK."
+                )
+            time.sleep(0.25)
+        osc_v = float(self.osc.medir_vrms_forcado(1))
+        razao = osc_v / fonte_v
+        leituras = {"fonte_vrms": fonte_v, "osc_ch1_vrms": osc_v, "razao_osc_fonte": razao}
+        if abs(razao - 1.0) > self.TOL_CADEIA_OSC_FONTE:
+            raise CadeiaDeMedicaoError(
+                f"Cadeia de medição NÃO confere: a fonte mede {fonte_v:.2f} Vrms e o CH1 do "
+                f"osciloscópio mede {osc_v:.2f} Vrms (razão {razao:.3f}, tolerância "
+                f"±{100 * self.TOL_CADEIA_OSC_FONTE:.0f}%). Confira, com a saída DESLIGADA: "
+                f"disjuntores/bornes entre a fonte e a probe, probe no CH1 entre fase A e N, e o "
+                f"fator da probe ({VOLTAGE_PROBE_ATTENUATION}) igual à chave dela."
+            )
+        logger.info(
+            "Cadeia de medição OK: fonte %.2f Vrms, CH1 %.2f Vrms (razão %.3f)", fonte_v, osc_v, razao,
+        )
+        return leituras
 
 
 # ---------------------------------------------------------------------------
@@ -1219,6 +1421,13 @@ class ExperimentoBase(ABC):
         de ``calibracao_extremos.json`` (mudar aqui exige recalibrar)."""
         return self._pico_da_forma_v(self.forma_prevista_para_bancada(capture_index, t, seed), capture_index)
 
+    def _fatores_extremo(self) -> Dict[str, float]:
+        """Tabela de fatores da condição DESTA bancada (tensão base e
+        frequência da config), não a do ambiente do processo."""
+        return carregar_fatores_extremo(
+            tensao_rms=self.config.base_voltage_rms, frequencia_hz=self.config.grid_frequency_hz,
+        )
+
     def _extremo_previsto_da_forma_v(self, pico_v: float, parametros: Dict[str, float]) -> float:
         """Modelo do extremo físico a partir do pico programado e dos
         parâmetros de bancada da captura (ver ``extremo_fisico_previsto_v``)."""
@@ -1227,7 +1436,7 @@ class ExperimentoBase(ABC):
             excursao = proprio()
             if excursao is not None:
                 return float(excursao)
-        fatores = carregar_fatores_extremo()
+        fatores = self._fatores_extremo()
         fator = fator_extremo_da_classe(self.id, fatores)
         k = float(parametros.get("fator_disturbio_bancada", 1.0))
         if k >= 1.0:
@@ -2114,7 +2323,7 @@ class ExperimentoWaveform(ExperimentoBase):
         if not math.isfinite(teto):
             return voltage_pu
         nominal_v = self.config.base_voltage_rms * math.sqrt(2.0)
-        fatores = carregar_fatores_extremo()
+        fatores = self._fatores_extremo()
         fator = fator_extremo_da_classe(self.id, fatores)
         fator_ref = fator_referencia_extremo(fator, fatores)
         voltage_pu = np.asarray(voltage_pu, dtype=np.float64)

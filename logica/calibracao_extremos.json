@@ -1,27 +1,82 @@
 {
-  "descricao": "Fator = max(|VMAX|,|VMIN|) MEDIDO pelo Keysight na taxa cheia / pico PROGRAMADO, por classe. Pico programado = max(max|forma prevista para a bancada| x pico nominal, tensao_rms_programada x sqrt(2)) — exatamente o que ExperimentoBase.pico_programado_v() calcula. Usado por _indices_viaveis() para pular, ANTES de qualquer comando SCPI, capturas cujo extremo previsto (programado x fator x MARGEM_FATOR_EXTREMO) passaria do teto. Fator < 1 vira 1 (nunca prever abaixo do programado). Classe sem fator usa o maior da tabela.",
-  "origem": "scripts/recalibrar_extremos.py sobre: docs/analise-2026-09-30/dados/sessao_2026-09-30_15-26-05, docs/analise-2026-09-30/dados/sessao_2026-09-30_15-58-51 (nenhum fator diminuiu); antes: resultados/sessao_2026-09-30_15-26-05 (run all, 20/20 OK, 127 Vrms, 60 Hz, 1 captura por classe); docs/analise-2026-09-30/ANALISE.md",
-  "fatores": {
-    "01": 1.063,
-    "02": 1.164,
-    "03": 1.058,
-    "04": 1.192,
-    "05": 0.998,
-    "06": 1.018,
-    "07": 1.18,
-    "09": 1.002,
-    "10": 1.236,
-    "11": 1.258,
-    "12": 1.03,
-    "13": 1.034,
-    "14": 0.977,
-    "15": 1.017,
-    "16": 1.475,
-    "17": 1.031,
-    "18": 1.036,
-    "19": 0.972,
-    "20": 1.022
+  "descricao": "Fator = max(|VMAX|,|VMIN|) MEDIDO pelo Keysight na taxa cheia / pico PROGRAMADO, por classe e por CONDICAO de bancada (tensao base e frequencia). Pico programado = max(max|forma prevista para a bancada| x pico nominal, tensao_rms_programada x sqrt(2)) — exatamente o que ExperimentoBase.pico_programado_v() calcula. Usado por _indices_viaveis() para pular, ANTES de qualquer comando SCPI, capturas cujo extremo previsto (programado x fator x MARGEM_FATOR_EXTREMO) passaria do teto. Fator < 1 vira 1 (nunca prever abaixo do programado). Cada tabela guarda o MEDIDO naquela condicao; a regra de uso esta em mestre.carregar_fatores_extremo.",
+  "condicao_sem_calibracao": "v1.14: a tabela vale para tensao base a ate 2% e frequencia a ate 0,5 Hz da condicao medida (mestre.condicao_calibrada). Condicao calibrada: cada classe usa o MAIOR entre o fator dela nesta condicao e nas outras (captura com disturbio reduzido so da limite inferior); classe sem medida nela usa o maior fator de todas as tabelas. Fora de todas as condicoes, toda classe usa o MAIOR fator ja medido, e a 01 (senoide pura) o maior fator da 01 — previsao conservadora, com aviso no log. Motivo: 2026-10-07, 230 V/50 Hz com a tabela de 127 V/60 Hz, a 17 previu 405 V e mediu 444 V (acima dos 425 Vp do hardware).",
+  "por_condicao": {
+    "127V_60Hz": {
+      "tensao_rms": 127.0,
+      "frequencia_hz": 60.0,
+      "origem": "scripts/recalibrar_extremos.py sobre: resultados\\sessao_2026-10-07_15-15-25, resultados\\sessao_2026-10-07_14-59-54_run02 (nenhum fator diminuiu); antes: scripts/recalibrar_extremos.py sobre: docs/analise-2026-09-30/dados/sessao_2026-09-30_15-26-05, docs/analise-2026-09-30/dados/sessao_2026-09-30_15-58-51 (nenhum fator diminuiu); antes: resultados/sessao_2026-09-30_15-26-05 (run all, 20/20 OK, 127 Vrms, 60 Hz, 1 captura por classe); docs/analise-2026-09-30/ANALISE.md",
+      "fatores": {
+        "01": 1.063,
+        "02": 1.164,
+        "03": 1.058,
+        "04": 1.192,
+        "05": 0.998,
+        "06": 1.034,
+        "07": 1.186,
+        "09": 1.036,
+        "10": 1.242,
+        "11": 1.258,
+        "12": 1.03,
+        "13": 1.034,
+        "14": 0.977,
+        "15": 1.017,
+        "16": 1.475,
+        "17": 1.031,
+        "18": 1.036,
+        "19": 0.988,
+        "20": 1.041
+      }
+    },
+    "230V_50Hz": {
+      "tensao_rms": 230.0,
+      "frequencia_hz": 50.0,
+      "origem": "scripts/recalibrar_extremos.py sobre: resultados\\sessao_2026-10-07_15-15-25, resultados\\sessao_2026-10-07_14-59-54_run02 (nenhum fator diminuiu)",
+      "fatores": {
+        "01": 1.03,
+        "05": 1.001,
+        "06": 1.021,
+        "07": 1.317,
+        "09": 1.017,
+        "10": 1.03,
+        "11": 1.03,
+        "12": 1.036,
+        "13": 1.047,
+        "14": 1.021,
+        "15": 1.028,
+        "17": 1.242,
+        "18": 1.042,
+        "19": 0.971,
+        "20": 1.032
+      }
+    },
+    "127V_50Hz": {
+      "tensao_rms": 127.0,
+      "frequencia_hz": 50.0,
+      "origem": "scripts/recalibrar_extremos.py sobre: resultados\\sessao_2026-10-07_15-56-39 (nenhum fator diminuiu)",
+      "fatores": {
+        "01": 1.063,
+        "02": 1.063,
+        "03": 1.058,
+        "04": 1.063,
+        "05": 0.998,
+        "06": 1.057,
+        "07": 1.375,
+        "09": 1.051,
+        "10": 1.03,
+        "11": 1.03,
+        "12": 1.03,
+        "13": 1.063,
+        "14": 1.012,
+        "15": 1.034,
+        "16": 1.03,
+        "17": 1.307,
+        "18": 1.075,
+        "19": 1.007,
+        "20": 1.056
+      }
+    }
   },
   "observacao_08": "A 08 nao usa esta tabela: forma_para_bancada() dimensiona o impulso pelos fatores de sobressinal/subsinal caracterizados (T8-4) e expõe a excursao prevista em excursao_fisica_prevista_v().",
-  "uso_limite_bancada": "v1.13: nas classes waveform com o distúrbio reduzido a uma fração k (limite de bancada, opção b do dono para 220 V), extremo previsto = MARGEM x (fator_01 x pico da forma reduzida + k x (fator - fator_01) x pico do modelo) — mestre.extremo_previsto_com_disturbio_v. Com k = 1 é a fórmula acima. Recalcular: scripts/recalibrar_extremos.py <sessoes> [--gravar]."
+  "uso_limite_bancada": "v1.13: nas classes waveform com o distúrbio reduzido a uma fração k (limite de bancada, opção b do dono para 220 V), extremo previsto = MARGEM x (fator_01 x pico da forma reduzida + k x (fator - fator_01) x pico do modelo) — mestre.extremo_previsto_com_disturbio_v. Com k = 1 é a fórmula acima. Recalcular: scripts/recalibrar_extremos.py <sessoes> [--gravar]; desde a v1.14 capturas reduzidas também entram, invertendo esta fórmula."
 }
