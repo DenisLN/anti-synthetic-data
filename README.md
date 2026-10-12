@@ -426,8 +426,12 @@ contra o mesmo teto.
 
 **Calibração por condição (v1.14).** Os fatores ficam por condição de bancada
 (tensão base ±2%, frequência ±0,5 Hz) em `por_condicao`; hoje há
-**127 V/60 Hz** e **230 V/50 Hz**. Numa condição calibrada, cada classe usa o
-maior entre o fator dela ali e nas outras condições. **Numa condição sem
+**127 V/60 Hz**, **127 V/50 Hz** e **230 V/50 Hz**. Numa condição calibrada
+(regra por frequência, v1.15): só entram as tabelas de mesma frequência
+(±0,5 Hz); dentro delas a classe usa o maior fator dela; classe sem medida em
+nenhuma tabela dessa frequência usa o maior fator de todas as tabelas (1,475).
+Assim 02, 04 e 16 rodam a 230 V/50 Hz com os fatores de 127 V/50 Hz, e a 03
+(1,058 × 357,8 V × 1,10 = 416,4 V > 415,8 V) fica de fora pela margem. **Numa condição sem
 tabela** (ex.: 220 V/60 Hz, nunca medida), toda classe usa o maior fator já
 medido — o log avisa e muito mais capturas são reduzidas/puladas até a
 condição ser calibrada. Motivo: a 230 V/50 Hz, com a tabela de 127 V, a 17

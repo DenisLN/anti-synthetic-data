@@ -4601,20 +4601,59 @@ class CalibracaoPorCondicaoTests(unittest.TestCase):
     def _fatores(self, tensao, frequencia):
         return mestre.carregar_fatores_extremo(CALIBRACAO_REAL, tensao_rms=tensao, frequencia_hz=frequencia)
 
-    def test_condicao_calibrada_usa_o_maior_entre_condicoes(self):
+    def test_passo1_e_2_so_tabelas_de_mesma_frequencia_e_maior_da_classe(self):
+        """Regra por frequência (v1.15): 230 V/50 Hz usa só 127 V/50 Hz e
+        230 V/50 Hz entre si; 127 V/60 Hz não entra (sobressinal depende da
+        frequência, não da tensão)."""
         condicoes = mestre.carregar_calibracao_extremos(CALIBRACAO_REAL)
-        fatores = self._fatores(230.0, 50.0)
-        for classe_id in condicoes["230V_50Hz"]["fatores"]:
-            esperado = max(t["fatores"][classe_id] for t in condicoes.values() if classe_id in t["fatores"])
-            self.assertEqual(fatores[classe_id], esperado, classe_id)
-        # 10 a 230 V só rodou reduzida (extremo da senoide): não pode cair para 1,03.
-        self.assertEqual(fatores["10"], condicoes["127V_60Hz"]["fatores"]["10"])
+        a50 = [condicoes["230V_50Hz"]["fatores"], condicoes["127V_50Hz"]["fatores"]]
+        for tensao, frequencia, tabelas in ((230.0, 50.0, a50), (127.0, 50.0, a50),
+                                            (127.0, 60.0, [condicoes["127V_60Hz"]["fatores"]])):
+            fatores = self._fatores(tensao, frequencia)
+            for classe_id in {c for t in tabelas for c in t}:
+                esperado = max(t[classe_id] for t in tabelas if classe_id in t)
+                self.assertEqual(fatores[classe_id], esperado, (tensao, frequencia, classe_id))
+        # 10 a 230 V só rodou reduzida; a 127 V/50 Hz mediu 1,03 — e o 1,242 de 60 Hz não vale a 50 Hz.
+        self.assertEqual(self._fatores(230.0, 50.0)["10"], 1.03)
+        self.assertEqual(self._fatores(230.0, 50.0)["07"], condicoes["127V_50Hz"]["fatores"]["07"])
 
-    def test_classe_sem_medida_na_condicao_usa_o_maior_de_todos(self):
+    def test_passo3_classe_sem_medida_na_frequencia_usa_o_maior_de_todos(self):
         condicoes = mestre.carregar_calibracao_extremos(CALIBRACAO_REAL)
         maior = max(max(t["fatores"].values()) for t in condicoes.values())
+        # 02, 04 e 16 não têm medida a 230 V/50 Hz mas têm a 127 V/50 Hz: usam esta, não o 1,475.
+        fatores = self._fatores(230.0, 50.0)
         self.assertNotIn("02", condicoes["230V_50Hz"]["fatores"])
-        self.assertEqual(self._fatores(230.0, 50.0)["02"], maior)
+        for classe_id in ("02", "04", "16"):
+            self.assertEqual(fatores[classe_id], condicoes["127V_50Hz"]["fatores"][classe_id], classe_id)
+        self.assertLess(fatores["16"], maior)
+        # Classe só medida em outra frequência: conservador (maior de todas as tabelas).
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        caminho = tmp / "cal.json"
+        caminho.write_text(json.dumps({"por_condicao": {
+            "127V_60Hz": {"tensao_rms": 127.0, "frequencia_hz": 60.0, "fatores": {"01": 1.06, "16": 1.475}},
+            "127V_50Hz": {"tensao_rms": 127.0, "frequencia_hz": 50.0, "fatores": {"01": 1.06, "02": 1.1}},
+        }}), encoding="utf-8")
+        fatores = mestre.carregar_fatores_extremo(caminho, tensao_rms=127.0, frequencia_hz=50.0)
+        self.assertEqual(fatores["02"], 1.1)
+        self.assertEqual(fatores["16"], 1.475)
+
+    def test_03_a_230v_50hz_fica_de_fora_pela_margem_sem_excecao(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        with mock.patch.object(mestre, "CALIBRACAO_EXTREMOS_PATH", CALIBRACAO_REAL):
+            config = _config_bancada(tmp, base_voltage_rms=230.0, grid_frequency_hz=50.0)
+            fonte = mestre.AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=415.8)
+            infos = {}
+            for classe_id in ("02", "03", "04", "16"):
+                experimento = _carregar_classe(classe_id)(mestre.Bancada(fonte, mock.Mock(), config))
+                infos[classe_id] = experimento.avaliar_captura_na_bancada(0, 0)
+        for classe_id, previsto in (("02", 380.3), ("04", 380.3), ("16", 368.5)):
+            self.assertTrue(infos[classe_id]["cabe"], classe_id)
+            self.assertAlmostEqual(infos[classe_id]["extremo_previsto_v"], previsto, places=1)
+        self.assertFalse(infos["03"]["cabe"])
+        self.assertAlmostEqual(infos["03"]["extremo_previsto_v"], 416.4, places=1)
+        self.assertIn("1.058", infos["03"]["motivo"])  # fator e pico aparecem no motivo
 
     def test_tolerancia_de_condicao(self):
         self.assertEqual(self._fatores(129.0, 60.4), self._fatores(127.0, 60.0))  # 1,6% e 0,4 Hz

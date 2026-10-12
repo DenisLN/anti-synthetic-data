@@ -517,15 +517,18 @@ def carregar_fatores_extremo(
 ) -> Dict[str, float]:
     """Fatores (extremo medido / pico programado) por classe para ESTA
     condição (padrão: BASE_VOLTAGE_RMS / GRID_FREQUENCY_HZ). O JSON guarda o
-    MEDIDO em cada condição; a regra conservadora é esta:
+    MEDIDO em cada condição; a regra (v1.15, previsão por frequência) é esta:
 
-    - condição calibrada: cada classe usa o maior entre o fator dela nesta
-      condição e o dela em qualquer outra condição medida. Não há evidência
-      de que a tensão/frequência maior REDUZA o sobressinal (2026-10-07: 07 e
-      17 subiram de 127 V/60 Hz para 230 V/50 Hz) e uma captura com o
-      distúrbio reduzido só dá limite INFERIOR do fator (o extremo pode ter
-      vindo da senoide: 10 e 11 a 230 V deram exatamente o fator da 01).
-      Classe sem medida nesta condição: o MAIOR fator de todas as tabelas;
+    - condição calibrada: (1) só entram as tabelas de MESMA frequência (até
+      ``TOLERANCIA_CONDICAO_FREQUENCIA_HZ``), qualquer tensão — o sobressinal
+      depende da frequência, não da tensão (v1.14: 127 V e 230 V a 50 Hz
+      dão fatores próximos; a 60 Hz a 16 chega a 1,475 contra 1,03 a 50 Hz);
+      (2) dentro delas, cada classe usa o MAIOR fator da própria classe
+      (uma captura com o distúrbio reduzido só dá limite INFERIOR do fator:
+      10 e 11 a 230 V deram exatamente o fator da 01); (3) classe sem medida
+      em NENHUMA condição de mesma frequência: o MAIOR fator de todas as
+      tabelas (regra conservadora da v1.14). A 03 a 230 V/50 Hz continua
+      fora pelo teto (1,058 × 357,8 V × margem 1,10 = 416,4 V > 415,8 V);
     - condição sem tabela própria: toda classe usa o MAIOR fator já medido
       em qualquer condição, exceto a 01 (senoide pura, referência de
       ``fator_referencia_extremo``), que usa o maior fator da 01 entre as
@@ -541,9 +544,15 @@ def carregar_fatores_extremo(
     maior_da_classe = {classe: max(f[classe] for f in todas if classe in f) for classe in classes}  # type: ignore[operator,index]
     chave = condicao_calibrada(condicoes, tensao_rms, frequencia_hz)
     if chave is not None:
-        desta = condicoes[chave]["fatores"]
+        mesma_frequencia = [
+            tabela["fatores"] for tabela in condicoes.values()
+            if abs(float(tabela["frequencia_hz"]) - frequencia_hz) <= TOLERANCIA_CONDICAO_FREQUENCIA_HZ
+        ]
         return {
-            classe: (maior_da_classe[classe] if classe in desta else maior)  # type: ignore[operator]
+            classe: (  # type: ignore[operator]
+                max(f[classe] for f in mesma_frequencia if classe in f)  # type: ignore[operator,index]
+                if any(classe in f for f in mesma_frequencia) else maior
+            )
             for classe in classes
         }
     conservadores = {classe: maior for classe in classes}
@@ -1803,6 +1812,16 @@ class ExperimentoBase(ABC):
             fator=fator, fator_referencia=fator_referencia_extremo(fator, fatores),
         )
 
+    def _detalhe_fator_extremo(self, pico_v: float, parametros: Dict[str, float]) -> str:
+        """", pico X V × fator Y" para o motivo de pulo, quando a previsão é
+        pico × fator × margem (sem modelo próprio nem distúrbio reduzido)."""
+        if callable(getattr(self, "excursao_fisica_prevista_v", None)) or float(
+            parametros.get("fator_disturbio_bancada", 1.0)
+        ) < 1.0:
+            return ""
+        fator = fator_extremo_da_classe(self.id, self._fatores_extremo())
+        return f": {pico_v:.1f} V × {fator:.3f}"
+
     def extremo_fisico_previsto_v(self, capture_index: int, t: np.ndarray, seed: int) -> float:
         """|Extremo| que a SAÍDA deve atingir: o pico programado não basta —
         sessão 2026-09-30 15:26 mediu até 1,46× o programado (volta de
@@ -1865,7 +1884,8 @@ class ExperimentoBase(ABC):
         if extremo > teto_extremo + 1e-9:
             motivo = (
                 f"extremo PREVISTO {extremo:.1f} V > teto {teto_extremo:.1f} V "
-                f"(pico programado × fator medido × margem {MARGEM_FATOR_EXTREMO:.2f})"
+                f"(pico programado × fator medido × margem {MARGEM_FATOR_EXTREMO:.2f}"
+                f"{self._detalhe_fator_extremo(pico, parametros)})"
             )
             necessario = parametros.get("fator_disturbio_necessario")
             if necessario is not None:
