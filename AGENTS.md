@@ -22,7 +22,7 @@ scripts\START_BENCH.cmd
 
 Isso prepara o venv, pergunta o fator EXATO da probe de tensão e a
 tensão/frequência do teste (uma vez, no início do processo — ver por quê na
-seção 5.3 do README) e entrega o resto para a CLI interativa
+`docs/operacao.md`) e entrega o resto para a CLI interativa
 (`logica/cli.py`). Dentro da CLI, `help`/`?` imprime a referência completa;
 resumo:
 
@@ -35,6 +35,11 @@ resumo:
 | `native` | sim | antiga etapa NativeCommands (`preflight_new.py --native-commands`) |
 | `run <NN\|nome>` | sim | roda uma classe isolada |
 | `run all` | sim | bateria completa das 20 classes, resiliente por classe (ver abaixo) |
+
+> **Nota (conferida no código em 2026-10-12):** `lowvoltage` e `native` usam a
+> tensão base digitada no início (`BASE_VOLTAGE_RMS`), não 5 V; o rótulo
+> "5V"/`ENERGIZAR-5V` é herança do fluxo antigo. Para recomissionar a 5 V,
+> inicie o `START_BENCH` digitando 5 V. Ver `docs/operacao.md`.
 
 Todas as confirmações físicas (fator de probe, Vrms/Hz, e a string digitada
 antes de energizar — `ENERGIZAR-5V`, `ENERGIZAR-COMANDOS`,
@@ -49,6 +54,12 @@ serial caiu, impossível confirmar OUTPUT):
 2. não executar de novo automaticamente;
 3. entregar ao usuário o arquivo mais recente de `logs\startup-bench-*.log`
    (ou `logs\preflight_new-*.log` para falhas de `native`);
+   **Nota (conferida no código em 2026-10-12):** nenhum código gera mais
+   `logs\startup-bench-*.log`, e a CLI chama `native` sem criar
+   `logs\preflight_new-*.log` (esse só existe com `python logica\preflight_new.py`
+   direto). Hoje, entregue: para `run`/`run all`, `sessao.log` e
+   `scpi_transcricao.log` da pasta `resultados\sessao_<timestamp>[_runNN]` mais
+   recente; para `comm`/`trigger`/`lowvoltage`/`native`, a saída do terminal;
 4. não remover validações de IDN, timeout, tamanho de waveform ou SCPI.
 
 Uma falha isolada de EXPERIMENTO (RMS fora de tolerância, timeout de trigger,
@@ -160,3 +171,54 @@ byte o `gerar()` de 34a0d82. Limites e validações abaixo intactos.
 - Captura de corrente permanece desligada por padrão (`CAPTURE_CURRENT=0`);
   não ativar sem `CURRENT_PROBE_ATTENUATION` e `CURRENT_BASE_A` fornecidos
   pelo usuário.
+
+## Documentação (mapa)
+
+`README.md` é a porta de entrada e traz o mapa; os detalhes estão em `docs/`
+(`arquitetura`, `operacao`, `configuracao`, `limites_e_calibracao`, `classes`,
+`perfis`, `scpi`, `quirks`, `decisoes`, `dataset`, `metadata`, `tres_versoes`,
+`correlacao_disturbio`, `estender`, `diagnostico`, `testes`, `versionamento`,
+`glossario`). Arquivos `.md` são livres para editar, **mas todo fato sobre
+comportamento deve ser conferido no código (`arquivo:linha`)**; se o CHANGELOG
+divergir do código, vale o código e a divergência é documentada. Relatórios
+datados (`docs/analise-*/`, `docs/superpowers/`) e `CHANGELOG/vX.Y.md` fechados
+são registro histórico: não se reescrevem.
+
+## Como escrever sobre mudanças no código
+
+1. Uma mudança lógica por commit, mensagem `tipo: resumo em português`
+   (`feat`, `fix`, `docs`, `chore`, `merge`).
+2. Toda mudança registra-se em `CHANGELOG/vX.Y.md` da versão em andamento, com
+   as seções Por quê / O que mudou / O que não mudou / Testes / NÃO VERIFICADO
+   (modelo em `docs/versionamento.md` §4). Diga o que foi medido e o que é
+   hipótese; cite arquivo:linha, sessão e comando.
+3. Mudar o que `gerar()` produz para uma seed exige autorização do dono
+   registrada neste arquivo **antes**, fixtures byte a byte
+   (`tests/fixtures/`) e declaração no CHANGELOG. Os limites inegociáveis
+   abaixo nunca mudam.
+4. Documente na hora: `docs/classes.md`, `docs/scpi.md` (comando novo),
+   `docs/quirks.md` (comportamento novo do equipamento, com a fonte da medida),
+   `docs/configuracao.md` (variável nova), `docs/metadata.md` (campo novo, só
+   acrescentar).
+5. Comportamento que parece errado: diagnosticar primeiro (`set diagnostico on`
+   ou um script que chame as funções do projeto isoladamente, ver
+   `docs/diagnostico.md`), registrar em `docs/analise-AAAA-MM-DD/`, e só então
+   corrigir, com teste de regressão. Rode `tests.test_offline` antes de
+   commitar.
+
+## Como versionar
+
+- Versão corrente: **v1.15, em andamento (sem tag)**. Cada versão é um
+  `CHANGELOG/vX.Y.md`; ao congelar, tag git `vX.Y` anotada no commit com a
+  árvore limpa e a suíte verde (descrição em `docs/versionamento.md` §3; a
+  regra é descrita lá, tags só são criadas quando o dono mandar).
+- Release no GitHub + arquivamento no **Zenodo** (DOI da versão exata) quando o
+  dono congelar uma versão; o artigo cita esse DOI.
+- **Toda sessão de coleta sai de commit limpo** (idealmente o da tag): o
+  metadata grava `git_commit`, `git_sujo`, `versao_codigo`, `numpy_versao` e
+  uma cópia de `calibracao_extremos.json`. `git_sujo` ignora arquivos novos não
+  rastreados e é calculado uma vez por processo: commite tudo (inclusive
+  arquivos novos e a calibração recalibrada) e reinicie a CLI antes de coletar.
+- Trabalho pendente de bancada fica em branch/PR e é documentado como
+  **pendente** (hoje: `feat/passo-final-sin`, PR #3), nunca como existente na
+  `main`.

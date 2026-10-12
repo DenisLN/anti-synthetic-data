@@ -1,0 +1,67 @@
+# Quirks dos equipamentos e da bancada
+
+Comportamentos **medidos** na bancada (AMETEK MX30-3Pi Rev. 5.53, Keysight DSO-X 4034A firmware 07.30, Windows com NI-VISA) que contrariam o manual ou a intuição. Cada item: sintoma, causa, o que o código faz, fonte, e status (CONFIRMADO na bancada / PARCIAL / NÃO VERIFICADO). Linhas: commit `d37e403`. Antes de "corrigir" qualquer coisa desta lista, leia `docs/diagnostico.md`.
+
+## 1. AMETEK MX30 (Rev. 5.53)
+
+| # | Quirk | Efeito | O que o código faz | Fonte / status |
+|---|---|---|---|---|
+| A1 | **Writes em rajada se perdem** (USB serial virtual sem controle de fluxo) | comandos descartados em silêncio ou colados (`-113 Undefined header`); rajada de 4 comandos pegou 0/3, com consulta depois de cada um 9/9. Era a causa real do H-NATIVO (`VOLTage:MODE` lido FIX, `PULSe:WIDTh` "preso") | `write()` consulta `*ESR?` depois de cada comando (`ametek_orm.py:391-446`) | `CHANGELOG/v1.12.md` (N1/N2), `docs/analise-2026-09-30/ANALISE.md`. CONFIRMADO |
+| A2 | **Nunca consultar a fonte logo após `TRACe:DATA`** | a fonte fica muda até ser religada; reproduzível; forte candidato à trava de 16/09. `*ESR?` = 128 depois de religar, fila vazia | `TRACe:DATA/DEFine/DELete` fora do sincronismo (`:171`); `sleep(1.0)` + `*CLS` depois de cada `TRACe:DATA` (`:1503-1509`); `sleep(3.0)` depois de `TRACe:DEFine` (`:1311`); `TRACe:DELete:ALL` espera 15 s (`:1279`) | `CHANGELOG/v1.12.md` (achado de segurança). CONFIRMADO |
+| A3 | **Trava em ~280 gravações de TRACe numa conexão** (28.ª captura waveform em 2026-09-16) | fonte e painel frontal mortos | só avisa: `ESCRITAS_TRACE_REFERENCIA_TRAVA = 280` (`mestre.py:3003`), `escritas_trace_na_conexao` no metadata. Os padrões atuais passam disso (468 a 60 Hz) | `docs/analise-2026-09-21/RELATORIO_FINAL.md` §6. Causa NÃO VERIFICADA (hipótese: volume de gravações em memória não volátil) |
+| A4 | **`SOURce:LIST:REPeat 1` toca cada ciclo duas vezes** | NOTCH levou 516 ms em vez de ~200 ms; com `0` caiu para 438 ms (a causa completa dos 438 ms não foi explicada) | `repeats = "0,0,…"` (`:1526`) | `CHANGELOG/v1.9.md`, `v1.10.md`. PARCIAL |
+| A5 | **Sufixo `:COUNt` de `LIST:REPeat` rejeitado** (`-113`); o prefixo `SOURce:` é obrigatório | — | `SOURce:LIST:REPeat <lista>` e `SOURce:LIST:COUNt 1` (`:1558-1559`) | `CHANGELOG/v1.5.md`. CONFIRMADO. `REPeat:POINts?` devolve 1 mesmo com lista (`:1758-1761`) |
+| A6 | **`CSINe` rejeitado** (`-256 File name not found`); só `CSINusoid` | — | `SOURce:FUNCtion:SHAPe CSINusoid` (`:928`) | `CHANGELOG/v1.6.md`. CONFIRMADO |
+| A7 | **Trocar forma/modo deixa a fonte muda por segundos** | consulta seguinte estoura o timeout (5 s) e derrubava a bateria | `*WAI` depois do comando (`:938,948,972,994,1094`); laços de espera toleram mudez (`_query_tolerante`, `:1103`); `write()` tolera até 20 s | `CHANGELOG/v1.6.md`, `v1.7.md`. CONFIRMADO |
+| A8 | **`SOURce:FUNCtion:SHAPe?` e `SOURce:MODE?` não existem como consulta** | sem resposta (timeout inteiro) e `-113` preso à fila, atribuído ao comando seguinte | nunca consultados; esperas usam `*IDN?` (`aguardar_resposta`, `:1122`) | `CHANGELOG/v1.6.md`. CONFIRMADO |
+| A9 | **`FUNCtion:MODE LIST` residual** de uma classe waveform continua valendo no `*TRG` de uma nativa | valores errados em silêncio; `-226 Lists not same length` na 18 | `_neutralizar_transientes_residuais` antes de toda programação nativa (`:793-805`); manual §6.4.2 passo 1 (p. 152) | `CHANGELOG/v1.11.md`. CONFIRMADO |
+| A10 | **`SOURce:VOLTage:OFFSet` só em modo `ACDC`** (`-300` caso contrário) | `disable_dc_offset` falhava já na 1.ª classe | rastreia `_modo_saida`; no-op se já AC (`:976-996`) | `CHANGELOG/v1.7.md`. CONFIRMADO |
+| A11 | **Ao fim de um `LIST` a saída fica no último ponto** (63 Hz depois da 18); `FREQuency:MODE FIXed` troca o modo, não o valor | a 19 rodou inteira a 63,03 Hz | `restaurar_frequencia_base` (`:1013`) | `CHANGELOG/v1.12.md` (F2). CONFIRMADO |
+| A12 | **`VOLTage:TRIGgered` é truncado a 0,1 V** (2,76 → 2,7) | readback divergia | escreve o múltiplo de 0,1 V mais próximo, nunca acima do teto (`:820-837`) | `CHANGELOG/v1.12.md` (N3). CONFIRMADO |
+| A13 | **`SOURce:VOLTage:HIGH` é limite de tensão rms**, não de pico | com HIGH=4, 3,5 Vrms (4,95 Vp) foi aceito e 4,5 Vrms deu `-222` | programa `max_voltage_rms` (`:1225`); o limite de pico é só de software | `CHANGELOG/v1.12.md` (T12). CONFIRMADO |
+| A14 | **Escrever durante um transiente é aceito e ignorado** (erro 19 "Illegal during transient", manual p. 217); `TRIGger:STATe?` pode dar IDLE antes do fim ("falso IDLE", p. 132) | valor antigo permanece | `aguardar_idle` antes, readback de 5 parâmetros em `arm()`, erro 19 recusa a captura (`:737-791,1675-1714`) | `CHANGELOG/v1.11.md`. CONFIRMADO |
+| A15 | **`INITiate` fora de IDLE é ignorado** (`-220 Init ignored`, p. 129/214), sem erro no próprio comando | `arm()` esgota o prazo em IDLE | `_pista_de_init_ignorado` (`:1647`) enriquece a mensagem | manual. Não observado isolado |
+| A16 | **`ABORt` em `arm_transient` restaura FIX e OUTPUT OFF**, destruindo a lista preparada | — | `ABORt` só em `program_capture`, nunca em `arm_transient` (`:1717-1719`) | comentário do código. CONFIRMADO |
+| A17 | **`*OPC?` não segura a resposta** (responde "1" ou "0" na hora) | não sincroniza mais que `*ESR?` | `AMETEK_SINCRONISMO=ESR` por padrão (`:174-180`); `wait_ready` não usa `*OPC?` (`:1161`) | bancada 2026-09-30 (T15). CONFIRMADO |
+| A18 | **`*TRG` dispara na fase de `TRIGger:SYNChronize:PHASe`** (a baseline usa `SYNChronize:SOURce PHASe`), não no instante do comando | 02/03/04 saíam defasadas 216° do modelo; início do evento atrasa até 1 ciclo | `fase_de_disparo_graus` calcula a fase do modelo no instante do trigger (`mestre.py:2715`); `definir_fase_de_disparo` (`:807`) | `CHANGELOG/v1.6.md`, `v1.12.md` (F1). CONFIRMADO |
+| A19 | **No modo `ACDC` o CA sai 5 a 6 % menor** (classe 19: 0,938–0,951 pu) | amplitude da 19 abaixo do modelo | **nada** (investigação aberta; `diag_acdc_amplitude.py` pronto) | `docs/analise-2026-10-12/acdc_amplitude.md`. Causa NÃO VERIFICADA; correção proposta NÃO VERIFICADA |
+| A20 | **A saída oscila após degrau rápido** (~7,5–10 kHz, morre em < 0,5 ms): sobressinal 0,38 (60 Hz) a 0,457 (50 Hz) do degrau; subsinal 0,55–0,58 | pico real passa do programado em até 46 % (16: 262 V medidos com 180 V programados) | fatores de extremo (`calibracao_extremos.json`), `SOBRESSINAL_DO_DEGRAU = 0,55`, `SUBSINAL_DO_DEGRAU = 0,70` (`08.py:58-59`) | `CHANGELOG/v1.12.md`, `v1.14.md`. CONFIRMADO |
+| A21 | **O impulso de 50 µs da 08 não é reproduzido** (limite de banda: 200 µs de subida 10–90 %) | sai um impulso filtrado | amplitude dimensionada para o toque; ver `docs/classes.md` §3 | `CHANGELOG/v1.12.md`, `classe08_fronteira.md`. CONFIRMADO |
+| A22 | **A 50 Hz o impulso da 08 programado em 80 ms (fronteira de ciclo) saiu a 100 ms** (+20 ms) nas 3 capturas de 2026-10-07; a 60 Hz saiu no lugar | captura inválida, não percebida pela validação antiga | impulso a 90 ms com sorteio ligado e conferência de posição (`08.py:34,180`) | `classe08_fronteira.md`. Mecanismo NÃO VERIFICADO |
+| A23 | **A USB da MX30 exige EOT em transferência separada** | `OUTPUT ON/OFF` ficava no buffer até a próxima consulta | `_raw_write` (`:367-389`) | comentário do código. CONFIRMADO |
+| A24 | **`TRACe:DELete:ALL` só com OUTPUT OFF** | a fonte recusa com a saída ligada | `clear_all_traces` checa antes (`:1266`) | manual / código |
+
+## 2. Keysight DSO-X 4034A
+
+| # | Quirk | O que o código faz | Fonte / status |
+|---|---|---|---|
+| K1 | **`:TIMebase:REFerence LEFT` fica a 1 divisão (10 % do RANGe) da borda esquerda**, não na borda ([KS] p. 1335-1337). O "atraso de 20 ms" (v1.7) e de "100 ms" (v1.10) eram esse artefato (H-REF10) | usa `REFerence CUSTom` + `LOCation 0.0` com leitura de volta; se o firmware recusar, cai para `LEFT` compensando `RANGe/10` em `:TIMebase:POSition` (`oscilloscope_orm.py:295-354`). O sinal de `POSition` é **negativo** para sobrar baseline antes do trigger | `CHANGELOG/v1.6.md`, `v1.11.md` (P07). CONFIRMADO |
+| K2 | **O sinal de `:TIMebase:POSition` é `t_referência − t_trigger`**: positivo pula o distúrbio | `posição = −pré-trigger` | `CHANGELOG/v1.6.md`. CONFIRMADO |
+| K3 | **Modo automático entrega ~32,3–32,7 mil pontos por aquisição single, independente da janela pedida**; pontos ou taxa explícitos ligam o modo Digitizer, que exige `REFerence CENTer` e não entrega 36 000 pontos a 30 kSa/s (`-221`, `-222`) | mantém modo automático (`:ACQuire:...:AUTO ON`); margem limitada a 20/50 ms; Digitizer descartado | `CHANGELOG/v1.10.md`. CONFIRMADO. Não tentar de novo sem reler |
+| K4 | **A taxa bruta (~116,7 kSa/s) não é 30 kSa/s**: `get_waveform` reamostra por interpolação linear (sem anti-aliasing) | `np.interp` para a grade de 30 kHz (`:536`) | `CHANGELOG/v1.12.md` (pendência T3). Efeito NÃO quantificado |
+| K5 | **`:SINGle` precisa ser reenviado a cada captura** (`:TER?` continua em 1 do último armamento) | `arm()` limpa `:AER?`/`:TER?` e envia `:SINGle`; as nativas também armam o osciloscópio (v1.5) | `CHANGELOG/v1.5.md`. CONFIRMADO |
+| K6 | **Medida inválida = `9.9E+37`** ([KS] p. 614) | levanta `OscilloscopeError` (`:179,200`) | manual |
+| K7 | **A amostra do array a 30 kSa/s subestima picos estreitos**; a medida do osciloscópio usa o registro dele | `medir_extremos` por captura (`:181`) | `CHANGELOG/v1.12.md`. CONFIRMADO |
+| K8 | **O código BYTE reserva 0 = buraco, 1 = clipping baixo, 255 = clipping alto** | a captura é recusada (`:493-496`) | manual |
+| K9 | **`OscChannel.display` (getter) lançava `KeyError`** | só se escreve; se o getter ainda falha: NÃO VERIFICADO | `CHANGELOG/v1.10.md` (Bug C) |
+| K10 | **Resolução vertical limita o offset DC da 19** (≈ 2 LSB): `escala_vertical_v_div` no metadata permite saber | — | `ultima_escala_vertical_v` (`:174`) |
+
+## 3. Cadeia de medição, PC e bancada
+
+| # | Quirk | O que o código faz | Fonte |
+|---|---|---|---|
+| B1 | **Disjuntor da bancada aberto entre a fonte e a probe**: a fonte media 126,6 V nela mesma, o CH1 ~0,45 × V + 7,9 Vrms induzidos da rede; 0/20 classes nas duas sessões, sem erro SCPI | `verificar_cadeia_de_medicao` (`mestre.py:1329`) | `CHANGELOG/v1.14.md`. CONFIRMADO |
+| B2 | **NI-VISA descarta o Ctrl+C** com a COM10 e o Keysight abertos | tratador de console que chama `_thread.interrupt_main` (`mestre.py:393-429`); a interrupção chega quando a chamada VISA em curso retorna (≤ ~15 s) | `CHANGELOG/v1.14.md`. CONFIRMADO. Não cobre `native` (`preflight_new` abre instrumentos por outro caminho) |
+| B3 | **Fechar um `ResourceManager` do PyVISA no Windows invalidou a outra sessão VISA** | nenhum dos dois ORMs o fecha (`ametek_orm.py:355-358`, `oscilloscope_orm.py:547-550`) | comentários do código |
+| B4 | **O MX GUI e a CLI disputam a COM10** | fechar o MX GUI antes | cabeçalho dos `diag_*.py` |
+| B5 | **Sonda diferencial 500× e offset DC**: 9 V de DC na escala de 180 V de pico está no fundo de escala (erro de 4,35 V só do offset da probe) | a medida absoluta de DC não é confiável; usar a medida da fonte | `CHANGELOG/v1.6.md` |
+| B6 | **O ruído próprio da bancada já é 32–42 dB de SNR** | `snr_bancada_db`/`snr_efetivo_db` no metadata (o "40 dB" é o acrescentado) | `docs/analise-2026-10-12/snr_mudancas.md` |
+| B7 | **A 220/230 V a previsão com a tabela de 127 V/60 Hz subestimou**: a 17 mediu 444 V (acima de 425 Vp) | tabelas de fatores por condição | `CHANGELOG/v1.14.md` |
+| B8 | **`git_sujo` não conta arquivo novo não rastreado** (`--untracked-files=no`) e é calculado **uma vez por processo** (`_INFO_CODIGO_CACHE`, `mestre.py:129`) | commitar tudo (inclusive arquivos novos) antes da sessão e reiniciar a CLI depois de commitar; ver `docs/versionamento.md` | código |
+| B9 | **`lowvoltage`/`native` usam a tensão base digitada, não 5 V** (rótulo histórico) | ver `docs/operacao.md` §3 | código (`preflight.py:65-90`). Achado desta revisão |
+
+## 4. Armadilhas de código já documentadas
+- `gerar()` e `configurar()` precisam concordar na ordem do `rng` (04, 19): `valor_para_captura` sorteia **primeiro**; o sorteio de posição usa um sub-fluxo (`_rng_do_sorteio`, `mestre.py:797`) e não consome o `rng` da classe.
+- Mudar `pico_programado_v` exige recalibrar (`mestre.py:1811`).
+- Fator de extremo < 1 vira 1 (`fator_extremo_da_classe`, `:574`).
+- O cache de TRACe é por conexão e sempre reconfirmado em `TRACe:CATalog?` (`ametek_orm.py:1471-1475`); com `AMETEK_CLEAR_USER_WAVEFORMS=1` (padrão do `bench_config.ps1`) nada é reaproveitado entre conexões.

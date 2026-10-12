@@ -1,0 +1,108 @@
+# Operação na bancada física
+
+Para quem vai energizar a fonte. Leia tudo antes de conectar qualquer cabo. Regras de segurança invioláveis: `AGENTS.md`. Linhas citadas: commit `d37e403`.
+
+## 1. Ligação física obrigatória
+
+- **AMETEK MX30-3Pi** por **USB**, vista pelo Windows como `COM10` (PyVISA `ASRL10::INSTR`), **115200 baud**, 8N1, sem controle de fluxo. Fixo: `validate_bench_configuration()` (`mestre.py:366`) e `AmetekMX30.connect()` (`ametek_orm.py:318`) recusam outra porta/baud.
+- **Não** conectar o DB9 RS-232 ao mesmo tempo que a USB. **Não** deixar o MX GUI aberto (ele segura a COM10; os scripts `diag_*` avisam).
+- **Keysight DSO-X 4034A**: `USB0::0x0957::0x17A4::MY59240844::0::INSTR` (endereço desta unidade; `KEYSIGHT_RESOURCE=AUTO` ou vazio faz descoberta por `*IDN?`, `mestre.py:904-935,1013-1017`).
+- **Cabo BNC**: AMETEK *Trigger Out* → Keysight *EXT Trigger*. Sem ele o osciloscópio nunca dispara.
+- **Probe diferencial de tensão no CH1**, entre fase A e neutro. O fator digitado tem de ser **exatamente** o da chave da probe.
+- Instalar **Keysight IO Libraries Suite** ou **NI-VISA x64**.
+- Disjuntores entre a fonte e a probe **fechados**: em 2026-10-07 um disjuntor aberto fez 20 classes serem medidas a ~0,45 do esperado (ruído da rede), sem erro de software. A checagem da cadeia de medição (seção 5) existe por isso.
+
+## 2. Software
+
+```powershell
+cd C:\Users\denis\TCC\code          # ajuste ao caminho da máquina
+scripts\START_BENCH.cmd
+```
+
+`START_BENCH.cmd` → `start_bench_windows.ps1`:
+1. `setup_windows.ps1` cria/atualiza `env/` e instala `requirements.txt`.
+2. Carrega `bench_config.ps1` (variáveis; `ARM_OUTPUT=NO`).
+3. Pergunta o **fator da probe** (se `VOLTAGE_PROBE_ATTENUATION` vazio), a **tensão rms fase-neutro** e a **frequência** (`start_bench_windows.ps1:17-59`). Não invente o fator. Esses valores viram constantes do processo Python; mudar exige reiniciar.
+4. Tensão ≤ **270 V** (127 e 220 V são os casos de uso). Acima disso recusa: 380 V é tensão de **linha**; cada fase de um sistema 220/380 V tem 219,4 V, digite 220 (`:83-92`).
+5. Fixa `SOURCE_VOLTAGE_RANGE_RMS=300`, `EUT_MAX_VOLTAGE_RMS=300`, `EUT_MAX_PEAK_V=415,8` (98 % de 300·√2) (`:94-101`). Não sobrescrever.
+6. Abre `logica/cli.py`.
+
+Seed opcional: variável `BASE_SEED` antes do `START_BENCH`, ou `set seed N` na CLI.
+
+## 3. A CLI (`bancada>`)
+
+`help` ou `?` imprime a referência completa (`cli.py:59-164`). Todos os comandos abaixo foram conferidos no código.
+
+| Comando | Energiza? | O que faz |
+|---|---|---|
+| `status` | não | modo, porta, `ARM_OUTPUT`, tensão/frequência base, margem, `diagnostico`, `set capturas`, seed, perfil, sorteio, `recalibracao`/`html`, capturas por classe e estimativa de gravações de TRACe, pasta da sessão, último resultado por classe |
+| `list` | não | as 20 classes com capturas efetivas, padrão da classe e último status |
+| `comm` | não | `*IDN?` dos dois instrumentos, protocolo/porta, OUTPUT OFF (`preflight.run`) |
+| `trigger` | não | força uma aquisição do Keysight (valida download/decodificação; **não** testa o BNC) |
+| `lowvoltage` | **sim** | recomissionamento (BNC + trigger real + rms). Pede `ENERGIZAR-5V`. Opcional; reprograma TRACes na Flash (~40-50 s). **Ver aviso abaixo** |
+| `native` | **sim** | `preflight_new.run_native_commands`: STEP, PULSe, CSINe, `LIST:FREQuency`, ACDC, `MEASure:*`, canal 2. Pede `ENERGIZAR-COMANDOS` |
+| `run <NN\|nome>` | **sim** | uma classe (`run 02`, `run SAG`). Pede `EXECUTAR-CLASSE-<NN>` |
+| `run all` | **sim** | as 20 classes (menos `BATERIA_EXCLUIR`), resiliente por classe. Pede `EXECUTAR-20-CLASSES` e mostra capturas planejadas e gravações de TRACe |
+| `set diagnostico on\|off` | não | log extra de estado da fonte em pontos-chave; com `on` abre um terminal com `tail -f` da transcrição SCPI (opt-out: `DIAGNOSTICO_ABRIR_TERMINAL=0`) |
+| `set capturas <N>` / `set capturas padrao` | não | piso global de capturas: cada classe roda `max(N, padrão da classe)`, por nível nas classes com níveis (`Config.capturas`, `mestre.py:730`). Com `set capturas` ativo, 04/06/09/19 cobrem o intervalo do parâmetro e a 08 faz caracterização (rampa de amplitude). `padrao` (ou `off`) desfaz |
+| `set seed <N>` / `set seed padrao` | não | seed base (inteiro ≥ 0) dos próximos `run`; `padrao` volta à do início da CLI |
+| `set perfil norma\|literatura\|fronteira` | não | faixas do dataset (`docs/perfis.md`) |
+| `set sorteio on\|off` | não | sorteio de início/duração/fase (padrão `on`) |
+| `set recalibracao on\|off` | não | ao fim de cada run **físico** que terminou OK, recalcula e **grava** `logica/calibracao_extremos.json` (só sobe fator; condição nova não ganha tabela). Padrão `off` |
+| `set html on\|off` | não | ao fim de cada run, recorta a margem (`sem_margem/`) e gera `relatorio_<sessao>.html`. Padrão `off` |
+| `help`, `?`, `quit`, `exit` | não | — |
+| `set margin ...` | — | **descontinuado**: só imprime um aviso (a margem é sempre aplicada) |
+
+`set perfil`, `set sorteio`, `set seed` e `set capturas` valem a partir do **próximo** `run`.
+
+> **Aviso verificado no código — o rótulo "5 V" é histórico.** `lowvoltage` e `native` chamam `preflight.run(low_voltage=True)` / `preflight_new.run_native_commands()`, que usam `BASE_VOLTAGE_RMS` (a tensão digitada no início, `preflight.py:65-90`, `preflight_new.py:185-189`). Não há nenhum código que force 5 V. Com `START_BENCH` iniciado em 127 V, `lowvoltage` programa e mede **127 V**, apesar do texto `ENERGIZAR-5V`. Para um recomissionamento a 5 V de fato, inicie o `START_BENCH` digitando 5 V. Não foi testado no hardware; é leitura do código (achado registrado em `docs/analise-2026-10-12/apresentabilidade.md`).
+
+Sem hardware (`BENCH_MODE=0`): `status`, `list` e `run` funcionam em modo simulado; `comm`, `trigger`, `lowvoltage`, `native` exigem bancada.
+
+Ordem recomendada para uma sessão do zero: `comm` → `trigger` → `native` → (`lowvoltage`, só se mexeu em fiação/probe) → `run all`.
+
+## 4. Confirmações físicas (não automatizar)
+
+1. Fator da probe e tensão/frequência, perguntados pelo `start_bench_windows.ps1`.
+2. A string digitada, **case-sensitive**: `ENERGIZAR-5V`, `ENERGIZAR-COMANDOS`, `EXECUTAR-CLASSE-<NN>` (ex.: `EXECUTAR-CLASSE-02`), `EXECUTAR-20-CLASSES`. Antes de digitar confira probe, cabos, **E-stop** e EUT. A CLI põe `ARM_OUTPUT=YES` só durante o comando e revoga ao fim (`cli.py:186-197`).
+
+## 5. O que acontece em um `run` e como ler o resultado
+
+1. A CLI cria `resultados/sessao_<timestamp>/` (do segundo `run` da mesma CLI em diante, `_run02`, `_run03`, …; `cli.py:199-223`), liga `sessao.log` e `scpi_transcricao.log`, copia a calibração e grava `sessao.json`.
+2. **Árvore git suja** (alteração rastreada não commitada) em sessão de bancada: aviso em destaque (linhas de `!`), sem bloquear. Regra do projeto: toda sessão sai de commit limpo (`docs/versionamento.md`).
+3. `Bancada.from_env`: baseline, energiza, **checagem da cadeia** (log `Cadeia de medição OK: fonte X Vrms, CH1 Y Vrms (razão Z)`; razão fora de 1 ± 0,10 aborta antes da primeira classe).
+4. Por classe: pré-validação (capturas que não cabem são **puladas** e logadas), captura, validação física, gravação. Resumo final: quantas classes OK, quais falharam, capturas puladas/descartadas/inválidas.
+5. Saída desligada ao fechar. **Confira OUTPUT OFF no painel da AMETEK.**
+6. Com `set html on` / `set recalibracao on`, os ganchos rodam depois (falha só avisa).
+
+Tempo e TRACes: com os padrões, `run all` planeja **50 capturas** e **468 gravações de TRACe** a 60 Hz (**390** a 50 Hz; 13 classes × 3 capturas × ciclos da janela; medido rodando `capturas_efetivas_da_classe`). A fonte travou na ~280.ª gravação de TRACe de uma mesma conexão em 2026-09-16 (`ESCRITAS_TRACE_REFERENCIA_TRAVA`, `mestre.py:3003`); a CLI só **avisa**. Com sorteio ligado, cada captura TRACe regrava a Flash (não reaproveita o cache) e a estimativa é exata; cada TRACe leva ≥ 1 s de espera.
+
+## 6. Limites por tensão e frequência
+
+Resumo do que `scripts/relatorio_limites_bancada.py` informa (executado em 2026-10-12, seed padrão, perfil `literatura`, 3 capturas padrão, sorteio ligado). Detalhes e regra: `docs/limites_e_calibracao.md`.
+
+| Condição | Resultado |
+|---|---|
+| 127 V / 60 Hz e 127 V / 50 Hz | as 20 classes rodam todas as capturas, sem redução |
+| 230 V / 50 Hz | 03 pulada; 14 pulada (0/3); 13 roda 2/3; 06, 07, 09, 13, 17, 20 com distúrbio reduzido |
+| 220 V / 60 Hz (sem tabela de calibração) | previsão conservadora: 02, 03, 04, 05, 14, 18, 19 puladas; 06, 09, 13 parciais; várias reduzidas |
+
+Condição sem tabela mostra um aviso no log; calibrar rodando a bateria e depois `scripts\recalibrar_extremos.py <sessao> --gravar` (ou `set recalibracao on`).
+
+## 7. Se algo falhar
+
+- **Falha de UMA classe** (RMS fora de tolerância, timeout de trigger, exceção em `gerar()`): `executar_bateria` tenta até 3 vezes (`MAX_TENTATIVAS_POR_CLASSE`, `mestre.py:1084`) chamando `recuperar_estado_seguro()` entre as tentativas; erros determinísticos (`ParameterOutOfBoundsError`, `ValidacaoFisicaError`, `PicoFisicoExcedidoError`) não são retentados; depois registra `FALHOU` e segue. Não é motivo para parar.
+- **Falha de infraestrutura** (`CommunicationError`, `FalhaFatalDeInstrumento`, `CadeiaDeMedicaoError`): aborta tudo. Procedimento:
+  1. Confirmar fisicamente **OUTPUT OFF** no painel.
+  2. **Não** executar de novo automaticamente.
+  3. Entregar ao responsável os logs: para `run`/`run all`, `resultados\sessao_<timestamp>[_runNN]\sessao.log` e `scpi_transcricao.log` da pasta mais recente; para `comm`/`trigger`/`lowvoltage`/`native`, a saída do terminal (esses comandos não criam pasta de sessão); `logs\preflight_new-<etapa>-<timestamp>.log` só existe se o `preflight_new.py` foi rodado direto (`python logica\preflight_new.py --native-commands`). O arquivo `logs\startup-bench-*.log`, citado em documentos antigos, **não é mais gerado por nenhum código**.
+  4. Não remover validações de IDN, timeout, 6000 pontos ou SCPI para "fazer passar".
+- **Ctrl+C**: interrompe quando a chamada VISA em curso retorna (até ~15 s), a saída é desligada ao fechar a conexão, a CLI volta ao prompt (`mestre.py:393-429`, `cli.py:768-774`). Em emergência vale o E-stop.
+- Captura de corrente fica **desligada** (`CAPTURE_CURRENT=0`); não ativar sem fator da probe de corrente e corrente-base fornecidos.
+
+## 8. Depois da sessão
+
+- Revisar o resumo e `sessao.log`; capturas `validacao_fisica.ok=false` estão gravadas e marcadas.
+- Se `set recalibracao on` mudou `calibracao_extremos.json`: `git diff`, rodar `tests.test_offline`, commitar antes da próxima sessão (a árvore fica suja).
+- Ferramentas offline sobre a pasta: `docs/dataset.md`.
+- Empacotar para transporte: `scripts\package_windows.ps1`.

@@ -55,7 +55,7 @@ Nenhum campo existente foi removido. Campos novos:
 | `validacao_fisica.posicao_evento` (08) | só física | `inicio_previsto_amostra`, `pico_medido_amostra`, `desvio_amostras` (medido menos previsto), `tolerancia_amostras` (10) e `desvio_pico_pu`; fora da tolerância a captura é marcada inválida (`ok = false`, motivo "posição do impulso") |
 | `git_commit`, `git_sujo`, `numpy_versao` | só física | cópia da procedência (o `.jsonl` sobrevive sozinho se for copiado sem a pasta) |
 | `calibracao_extremos_sha256` | só física | SHA-256 da calibração usada na captura; deve bater com `sessao.json` |
-| `tres_versoes` | captura gravada pela v1.16 em diante | `{arquivo, programada}`: onde estão modelo/programada/medida desta captura e como a programada foi obtida (`docs/tres_versoes.md`) |
+| `tres_versoes` | captura gravada pela v1.15 (em andamento) em diante | `{arquivo, programada}`: onde estão modelo/programada/medida desta captura e como a programada foi obtida (`docs/tres_versoes.md`) |
 | `snr_medido_db` | toda captura | SNR **acrescentado** por nível (`"20.0"`, `"30.0"`, `"40.0"`): janela limpa contra ruído somado, medido só na janela rotulada |
 | `snr_bancada_db` | só física | SNR do ruído próprio da bancada nesta captura (potência da janela / ruído medido na margem anterior por segunda diferença); `null` no simulado |
 | `snr_efetivo_db` | toda captura | por nível: sinal / (ruído da bancada + ruído acrescentado); no simulado igual a `snr_medido_db` |
