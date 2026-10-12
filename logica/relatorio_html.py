@@ -474,8 +474,11 @@ def bloco_captura(captura: Captura, dpi: int) -> str:
 def resumo_sessao(sessao_dir: Path, dados_dir: Path, capturas: Sequence[Captura]) -> str:
     md = next((c.metadado for c in capturas if c.metadado), {}) or {}
     classes = sorted({c.arquivo.name.split("_", 1)[0] for c in capturas})
+    nome_da_sessao = sessao_dir.name
+    if nome_da_sessao == "sem_margem" and sessao_dir.parent.name:  # versão recortada: mostra a sessão de origem
+        nome_da_sessao = f"{sessao_dir.resolve().parent.name} (sem_margem)"
     itens: List[Tuple[str, str]] = [
-        ("Sessão", f"<code>{_e(sessao_dir.name)}</code>"),
+        ("Sessão", f"<code>{_e(nome_da_sessao)}</code>"),
         ("Dados", _e("sem ruído" if dados_dir == sessao_dir else dados_dir.name)),
         ("Capturas", _e(f"{len(capturas)} em {len(classes)} classe(s)")),
     ]
@@ -560,6 +563,29 @@ def gerar_relatorio(
     saida.parent.mkdir(parents=True, exist_ok=True)
     saida.write_text(documento, encoding="utf-8")
     return saida, len(capturas)
+
+
+def gerar_relatorio_recortado(
+    sessao_dir: Path, *, titulo: Optional[str] = None, descricao: str = "", dpi: int = 100,
+) -> Tuple[Path, int, float]:
+    """Relatório da versão RECORTADA da sessão (o que a CLI gera ao fim do
+    ``run`` com ``set html on``): recorta a margem para ``<sessao>/sem_margem/``
+    (``recortar_margem.recortar_sessao``, originais intocados) e gera
+    ``<sessao>/relatorio_<sessao>.html`` a partir dela, com os dados puros
+    (``snr_XXdb/`` fica para ``--snr`` na linha de comando). Devolve
+    ``(caminho, número de capturas, tamanho em MB)``."""
+    from recortar_margem import PASTA_SAIDA_PADRAO, recortar_sessao
+
+    sessao_dir = Path(sessao_dir)
+    recortada = sessao_dir / PASTA_SAIDA_PADRAO
+    recortar_sessao(sessao_dir, recortada)
+    caminho, total = gerar_relatorio(
+        recortada, sessao_dir / f"relatorio_{sessao_dir.resolve().name}.html",
+        titulo=titulo or f"Capturas — {sessao_dir.resolve().name}",
+        descricao=descricao or "Versão recortada: só a janela nominal de cada captura (sem a folga de captura).",
+        dpi=dpi,
+    )
+    return caminho, total, caminho.stat().st_size / (1024 * 1024)
 
 
 def main(argv: Optional[List[str]] = None) -> int:

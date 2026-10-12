@@ -51,7 +51,7 @@ import math
 import statistics
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, NamedTuple, Optional, Tuple
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "logica"))
@@ -185,6 +185,136 @@ def coletar(
     return fatores, ignoradas, condicoes
 
 
+class MudancaDeFator(NamedTuple):
+    """Um fator que a recalibração muda (ou criaria) em ``tabela``."""
+    tabela: str
+    classe: str
+    antes: Optional[float]
+    depois: float
+    capturas: int
+
+
+class ResultadoRecalibracao:
+    def __init__(self, arquivo: Optional[Path] = None) -> None:
+        self.arquivo = arquivo
+        self.mudancas: List[MudancaDeFator] = []
+        self.ignoradas: Dict[str, int] = {}
+        self.gravado = False
+        # Só no modo automático (ver ``recalibrar``): o que ficou de fora para
+        # nunca baixar o fator efetivo e o operador decidir à mão.
+        self.condicoes_sem_tabela: List[str] = []
+        self.classes_nao_gravadas: List[Tuple[str, str, float, float]] = []
+        self.capturas_medidas = 0
+
+
+def _nada(*_args, **_kwargs) -> None:
+    return None
+
+
+def recalibrar(
+    sessoes: List[Path], *, gravar: bool = False, substituir: bool = False,
+    arquivo: Optional[Path] = None, automatico: bool = False, saida=print,
+) -> ResultadoRecalibracao:
+    """O que ``main`` faz, como função: recalcula os fatores das ``sessoes``,
+    imprime as tabelas por ``saida`` (``None`` fica mudo) e, com ``gravar``,
+    atualiza ``arquivo`` (padrão: a calibração em uso).
+
+    ``automatico`` (chamado pela CLI ao fim de um ``run``, ``set
+    recalibracao on``) é o modo que NUNCA diminui o fator efetivo:
+    - ``substituir`` é recusado (``ValueError``);
+    - condição sem tabela própria NÃO é criada (uma tabela nova trocaria o
+      fator conservador da regra de fallback por um medido numa sessão só);
+      fica em ``condicoes_sem_tabela`` para rodar o script à mão;
+    - classe sem entrada na tabela só entra se o medido não ficar abaixo do
+      fator que a bateria efetivamente usou (``carregar_fatores_extremo``);
+    - só as tabelas em que algum fator mudou são regravadas."""
+    if automatico and substituir:
+        raise ValueError("A recalibração automática nunca usa --substituir")
+    saida = saida or _nada
+    arquivo = Path(mestre.CALIBRACAO_EXTREMOS_PATH if arquivo is None else arquivo)
+    resultado = ResultadoRecalibracao(arquivo=arquivo)
+    dados = json.loads(arquivo.read_text(encoding="utf-8"))
+    tabelas = mestre.carregar_calibracao_extremos(arquivo)
+    if "por_condicao" not in dados:  # formato da v1.13: migra
+        dados["por_condicao"] = {
+            chave: {"tensao_rms": t["tensao_rms"], "frequencia_hz": t["frequencia_hz"],
+                    "origem": dados.pop("origem", ""), "fatores": dados.pop("fatores")}
+            for chave, t in tabelas.items()
+        }
+    medidos, ignoradas, condicoes = coletar(sessoes, tabelas)
+    resultado.ignoradas = dict(ignoradas)
+    resultado.capturas_medidas = sum(len(v) for por_classe in medidos.values() for v in por_classe.values())
+
+    gravacoes: Dict[str, Dict[str, float]] = {}
+    for chave in sorted(medidos):
+        tensao, frequencia = condicoes[chave]
+        existente = mestre.condicao_calibrada(tabelas, tensao, frequencia)
+        if automatico and existente is None:
+            resultado.condicoes_sem_tabela.append(chave)
+            saida(f"\n## {chave}: sem tabela própria; não criada no modo automático")
+            continue
+        atuais = dict(tabelas[existente]["fatores"]) if existente else {}  # type: ignore[arg-type]
+        efetivos = (
+            mestre.carregar_fatores_extremo(arquivo, tensao_rms=tensao, frequencia_hz=frequencia)
+            if automatico else {}
+        )
+        destino = existente or chave
+        saida(f"\n## {chave} -> tabela {destino}" + ("" if existente else " (NOVA)"))
+        saida("| Classe | Capturas | Fator mín. | Mediana | Máx. (proposto) | Atual | Gravaria |")
+        saida("|---|---|---|---|---|---|---|")
+        novos = dict(atuais)
+        for classe_id in sorted(set(atuais) | set(medidos[chave])):
+            valores = medidos[chave].get(classe_id, [])
+            atual = atuais.get(classe_id)
+            if not valores:
+                saida(f"| {classe_id} | 0 | — | — | — | {atual if atual is not None else '—'} | {atual} (sem dado) |")
+                continue
+            proposto = round(max(valores), 3)
+            efetivo = mestre.fator_extremo_da_classe(classe_id, efetivos) if automatico else 0.0
+            if automatico and atual is None and proposto < efetivo:
+                resultado.classes_nao_gravadas.append((destino, classe_id, proposto, efetivo))
+                saida(
+                    f"| {classe_id} | {len(valores)} | {min(valores):.3f} | {statistics.median(valores):.3f} "
+                    f"| {proposto:.3f} | — | não gravado (abaixo do fator efetivo {efetivo:.3f}) |"
+                )
+                continue
+            gravaria = proposto if (substituir or atual is None) else max(proposto, atual)
+            novos[classe_id] = gravaria
+            saida(
+                f"| {classe_id} | {len(valores)} | {min(valores):.3f} | {statistics.median(valores):.3f} "
+                f"| {proposto:.3f} | {'—' if atual is None else f'{atual:.3f}'} | {gravaria:.3f} |"
+            )
+        if any(not math.isfinite(v) or v <= 0 for v in novos.values()):
+            raise SystemExit(f"Fator inválido calculado em {chave} — nada gravado.")
+        mudancas = [
+            MudancaDeFator(destino, classe_id, atuais.get(classe_id), valor, len(medidos[chave].get(classe_id, [])))
+            for classe_id, valor in sorted(novos.items()) if valor != atuais.get(classe_id)
+        ]
+        resultado.mudancas.extend(mudancas)
+        if mudancas or not automatico:
+            gravacoes[destino] = novos
+    saida("")
+    saida("Ignoradas: " + ", ".join(f"{motivo}: {n}" for motivo, n in ignoradas.items()))
+    if gravar and gravacoes:
+        for destino, novos in gravacoes.items():
+            tabela = dados["por_condicao"].setdefault(destino, {})
+            if "tensao_rms" not in tabela:
+                tabela["tensao_rms"], tabela["frequencia_hz"] = condicoes[destino]
+            tabela["origem"] = (
+                "scripts/recalibrar_extremos.py sobre: " + ", ".join(str(s) for s in sessoes)
+                + (" (substituindo)" if substituir else " (nenhum fator diminuiu)")
+                + (" [automático, CLI]" if automatico else "")
+                + (f"; antes: {tabela['origem']}" if tabela.get("origem") else "")
+            )
+            tabela["fatores"] = {k: novos[k] for k in sorted(novos)}
+        arquivo.write_text(json.dumps(dados, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        resultado.gravado = True
+        saida(f"Gravado em {arquivo}. Confira com 'git diff' e rode tests/test_offline.py.")
+    else:
+        saida("Nada gravado (use --gravar)." if not gravar else "Nada gravado (nenhum fator mudou).")
+    return resultado
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("sessoes", nargs="+", type=Path, help="pastas resultados/sessao_* (com metadata/)")
@@ -196,60 +326,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--arquivo", type=Path, default=mestre.CALIBRACAO_EXTREMOS_PATH)
     args = parser.parse_args(argv)
     logging.getLogger("MestreExperimentos").setLevel(logging.ERROR)
-
-    dados = json.loads(args.arquivo.read_text(encoding="utf-8"))
-    tabelas = mestre.carregar_calibracao_extremos(args.arquivo)
-    if "por_condicao" not in dados:  # formato da v1.13: migra
-        dados["por_condicao"] = {
-            chave: {"tensao_rms": t["tensao_rms"], "frequencia_hz": t["frequencia_hz"],
-                    "origem": dados.pop("origem", ""), "fatores": dados.pop("fatores")}
-            for chave, t in tabelas.items()
-        }
-    medidos, ignoradas, condicoes = coletar(args.sessoes, tabelas)
-
-    gravacoes: Dict[str, Dict[str, float]] = {}
-    for chave in sorted(medidos):
-        tensao, frequencia = condicoes[chave]
-        existente = mestre.condicao_calibrada(tabelas, tensao, frequencia)
-        atuais = dict(tabelas[existente]["fatores"]) if existente else {}  # type: ignore[arg-type]
-        destino = existente or chave
-        print(f"\n## {chave} -> tabela {destino}" + ("" if existente else " (NOVA)"))
-        print("| Classe | Capturas | Fator mín. | Mediana | Máx. (proposto) | Atual | Gravaria |")
-        print("|---|---|---|---|---|---|---|")
-        novos = dict(atuais)
-        for classe_id in sorted(set(atuais) | set(medidos[chave])):
-            valores = medidos[chave].get(classe_id, [])
-            atual = atuais.get(classe_id)
-            if not valores:
-                print(f"| {classe_id} | 0 | — | — | — | {atual if atual is not None else '—'} | {atual} (sem dado) |")
-                continue
-            proposto = round(max(valores), 3)
-            gravaria = proposto if (args.substituir or atual is None) else max(proposto, atual)
-            novos[classe_id] = gravaria
-            print(
-                f"| {classe_id} | {len(valores)} | {min(valores):.3f} | {statistics.median(valores):.3f} "
-                f"| {proposto:.3f} | {'—' if atual is None else f'{atual:.3f}'} | {gravaria:.3f} |"
-            )
-        if any(not math.isfinite(v) or v <= 0 for v in novos.values()):
-            raise SystemExit(f"Fator inválido calculado em {chave} — nada gravado.")
-        gravacoes[destino] = novos
-    print()
-    print("Ignoradas: " + ", ".join(f"{motivo}: {n}" for motivo, n in ignoradas.items()))
-    if args.gravar and gravacoes:
-        for destino, novos in gravacoes.items():
-            tabela = dados["por_condicao"].setdefault(destino, {})
-            if "tensao_rms" not in tabela:
-                tabela["tensao_rms"], tabela["frequencia_hz"] = condicoes[destino]
-            tabela["origem"] = (
-                "scripts/recalibrar_extremos.py sobre: " + ", ".join(str(s) for s in args.sessoes)
-                + (" (substituindo)" if args.substituir else " (nenhum fator diminuiu)")
-                + (f"; antes: {tabela['origem']}" if tabela.get("origem") else "")
-            )
-            tabela["fatores"] = {k: novos[k] for k in sorted(novos)}
-        args.arquivo.write_text(json.dumps(dados, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        print(f"Gravado em {args.arquivo}. Confira com 'git diff' e rode tests/test_offline.py.")
-    else:
-        print("Nada gravado (use --gravar).")
+    recalibrar(args.sessoes, gravar=args.gravar, substituir=args.substituir, arquivo=args.arquivo)
     return 0
 
 

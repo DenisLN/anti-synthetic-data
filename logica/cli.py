@@ -126,6 +126,25 @@ Comandos disponíveis (nenhum energiza a saída sem pedir confirmação própria
                        passa a ser exata). OFF: posições fixas de antes
                        (60/80 ms, fase 0). Gravado em "sorteio_posicao";
                        env SORTEIO=0 define o inicial.                      [OFF]
+  set recalibracao on|off
+                       Ao fim de cada run/run all FÍSICO, recalcula os fatores
+                       de extremo (scripts/recalibrar_extremos.py) só sobre a
+                       sessão que acabou de rodar e GRAVA em logica/
+                       calibracao_extremos.json. Nunca diminui um fator, nunca
+                       usa --substituir e não cria tabela para condição nova
+                       (avisa; rode o script à mão). Cada fator que mudou sai
+                       em destaque (antes -> depois, tabela, classe); a cópia
+                       anterior fica em <sessao>/calibracao_extremos.json. Os
+                       run seguintes desta CLI já usam os fatores novos. Em
+                       modo simulado não faz nada. Falha só avisa. Padrão
+                       OFF (ligada: altera o JSON do repositório).          [OFF]
+  set html on|off     Ao fim de cada run/run all, recorta a margem
+                       (<sessao>/sem_margem/) e gera o relatório HTML
+                       autocontido da versão recortada, dados puros
+                       (<sessao>/relatorio_<sessao>.html; logica/
+                       relatorio_html.py --snr para um nível de ruído). Pode
+                       levar minutos e passar de 20 MB numa bateria completa.
+                       Falha só avisa. Padrão OFF.                          [OFF]
   help / ?            Mostra esta referência.                              [OFF]
   quit / exit         Sai da CLI (não desliga nada por si só — a saída já
                        deve estar OFF entre comandos; ver "status").       [OFF]
@@ -157,6 +176,10 @@ class SessaoCLI:
         # _abrir_terminal_de_diagnostico) — no máximo uma por vez; a do run
         # anterior é fechada antes de abrir a do run atual.
         self._processo_terminal_diagnostico: Optional[subprocess.Popen] = None
+        # Ganchos de fim de run (set recalibracao / set html), ambos OFF por
+        # padrão; ver _fim_da_sessao().
+        self.recalibracao_ao_fim = False
+        self.html_ao_fim = False
 
     # -- infraestrutura ----------------------------------------------------
 
@@ -277,6 +300,10 @@ class SessaoCLI:
         ))
         print(f"perfil de faixas: {mestre.PERFIL}")
         print(f"sorteio de início/duração/fase: {'ON' if mestre.SORTEIO_POSICAO else 'OFF'}")
+        print(
+            f"recalibração automática ao fim do run: {'ON' if self.recalibracao_ao_fim else 'OFF'}   "
+            f"relatório HTML ao fim do run: {'ON' if self.html_ao_fim else 'OFF'}"
+        )
         self._imprimir_capturas_por_classe()
         if mestre.SESSION_RESULTS_DIR is not None:
             print(f"Sessão: {mestre.SESSION_RESULTS_DIR}")
@@ -358,7 +385,8 @@ class SessaoCLI:
     def cmd_set(self, args: List[str]) -> int:
         if len(args) < 2:
             print("Uso: set diagnostico on|off   |   set capturas <N>|padrao   |   set seed <N>|padrao   |   "
-                "set perfil norma|literatura|fronteira   |   set sorteio on|off")
+                "set perfil norma|literatura|fronteira   |   set sorteio on|off   |   "
+                "set recalibracao on|off   |   set html on|off")
             return 1
         chave, valor = args[0].lower(), args[1].lower()
         if chave == "margin":
@@ -446,7 +474,33 @@ class SessaoCLI:
             )
             self._imprimir_capturas_por_classe()
             return 0
-        print(f"Chave desconhecida: {chave!r}. Use diagnostico, capturas, seed, perfil ou sorteio.")
+        if chave in ("recalibracao", "recalibração"):
+            if valor not in ("on", "off"):
+                print("Uso: set recalibracao on|off")
+                return 1
+            self.recalibracao_ao_fim = valor == "on"
+            print(f"recalibração automática ao fim do run: {valor.upper()}")
+            if self.recalibracao_ao_fim:
+                print(
+                    "AVISO: ao fim de cada run FÍSICO logica/calibracao_extremos.json será ALTERADO "
+                    "(só sobe fator, nunca desce; condição nova não ganha tabela). A cópia anterior "
+                    "fica em <sessao>/calibracao_extremos.json e os run seguintes desta CLI já usam "
+                    "os fatores novos. Confira com 'git diff' antes de commitar."
+                )
+            return 0
+        if chave == "html":
+            if valor not in ("on", "off"):
+                print("Uso: set html on|off")
+                return 1
+            self.html_ao_fim = valor == "on"
+            print(f"relatório HTML ao fim do run: {valor.upper()}")
+            if self.html_ao_fim:
+                print(
+                    "AVISO: ao fim de cada run a margem é recortada para <sessao>/sem_margem/ e o HTML "
+                    "da versão recortada é gerado (pode levar minutos e passar de 20 MB numa bateria completa)."
+                )
+            return 0
+        print(f"Chave desconhecida: {chave!r}. Use diagnostico, capturas, seed, perfil, sorteio, recalibracao ou html.")
         return 1
 
     # -- preflights (energizam conforme o comando) -----------------------
@@ -526,13 +580,19 @@ class SessaoCLI:
                 puladas=getattr(experimento, "_capturas_puladas_count", 0),
             )
             print(f"OK: [{resultado.id}] {resultado.nome} -> {resultado.pasta_esperada}{self._ressalvas(resultado)}")
+            sucesso = True
         except Exception as exc:
+            sucesso = False
             resultado = mestre.ResultadoClasse(script_path.stem, nome, ok=False, motivo=str(exc))
             print(f"FALHOU: [{resultado.id}] {resultado.nome}: {exc}")
             traceback.print_exc()
         finally:
             self.autorizar_saida(False)
         self.ultimo_resultado[resultado.id] = resultado
+        # Saída já desligada e Bancada fechada. Classe que falhou pode ter sido
+        # falha de infraestrutura: só o run que terminou OK dispara os ganchos.
+        if sucesso:
+            self._fim_da_sessao(mestre.SESSION_RESULTS_DIR)
         return 0 if resultado.ok else 1
 
     def _run_all(self) -> int:
@@ -577,7 +637,85 @@ class SessaoCLI:
                 )
             else:
                 print(f"  FALHOU [{resultado.id}] {resultado.nome}: {resultado.motivo}")
+        # Falha de EXPERIMENTO não impede os ganchos (a bateria seguiu); a de
+        # infraestrutura saiu acima, sem eles.
+        self._fim_da_sessao(mestre.SESSION_RESULTS_DIR)
         return 0 if ok == len(resultados) else 1
+
+    # -- ganchos de fim de run (set recalibracao / set html) ----------------
+
+    def _fim_da_sessao(self, sessao_dir: Optional[Path]) -> None:
+        """Roda a recalibração e/ou o HTML da sessão que acabou. Offline, depois
+        de a saída estar OFF e a conexão fechada. NENHUMA falha aqui derruba a
+        CLI nem conta como falha de experimento: só avisa e segue (o resultado
+        das classes já foi registrado)."""
+        if sessao_dir is None:
+            return
+        if self.recalibracao_ao_fim:
+            try:
+                self._recalibrar_ao_fim(Path(sessao_dir))
+            except (Exception, SystemExit) as exc:  # noqa: BLE001 - SystemExit: coletar() usa
+                print(f"AVISO: recalibração automática FALHOU ({type(exc).__name__}: {exc}); nada foi "
+                      f"gravado por ela. A sessão segue normalmente; rode scripts/recalibrar_extremos.py "
+                      f"{sessao_dir} à mão se quiser.")
+                logger.warning("Recalibração automática falhou", exc_info=True)
+        if self.html_ao_fim:
+            try:
+                self._gerar_html_ao_fim(Path(sessao_dir))
+            except (Exception, SystemExit) as exc:  # noqa: BLE001
+                print(f"AVISO: relatório HTML FALHOU ({type(exc).__name__}: {exc}). A sessão segue "
+                      f"normalmente; rode logica/relatorio_html.py {sessao_dir} à mão se quiser.")
+                logger.warning("Relatório HTML falhou", exc_info=True)
+
+    @staticmethod
+    def _importar_recalibrador():
+        scripts = str(Path(__file__).resolve().parent.parent / "scripts")
+        if scripts not in sys.path:
+            sys.path.append(scripts)
+        import recalibrar_extremos
+        return recalibrar_extremos
+
+    def _recalibrar_ao_fim(self, sessao_dir: Path) -> None:
+        if not mestre.BENCH_MODE:
+            print("recalibração automática: modo SIMULADO, não recalibra (só capturas de bancada medem extremo).")
+            return
+        copia = sessao_dir / mestre.NOME_CALIBRACAO_NA_SESSAO
+        if not copia.is_file():
+            print(f"AVISO: recalibração automática NÃO rodou: falta a cópia da calibração anterior ({copia}); "
+                  "sem ela a mudança não ficaria reversível dentro da sessão.")
+            return
+        recalibrar = self._importar_recalibrador()
+        resultado = recalibrar.recalibrar([sessao_dir], gravar=True, automatico=True, saida=None)
+        barra = "=" * 78
+        if resultado.mudancas:
+            print("\n" + barra)
+            print(f"RECALIBRAÇÃO AUTOMÁTICA: {len(resultado.mudancas)} fator(es) de extremo MUDARAM em "
+                  f"{resultado.arquivo}")
+            for m in resultado.mudancas:
+                antes = "novo" if m.antes is None else f"{m.antes:.3f}"
+                print(f"  [{m.tabela}] classe {m.classe}: {antes} -> {m.depois:.3f}  ({m.capturas} captura(s))")
+            print(f"Calibração anterior (início do run): {copia}")
+            print("Os próximos run desta CLI já usam os fatores novos. Confira com 'git diff' e rode "
+                  "tests/test_offline.py antes de commitar.")
+            print(barra)
+        else:
+            print(f"Recalibração automática: nenhum fator mudou ({resultado.capturas_medidas} medida(s) de "
+                  "extremo nesta sessão).")
+        for chave in resultado.condicoes_sem_tabela:
+            print(f"AVISO: condição {chave} sem tabela própria: NÃO criada automaticamente (uma tabela "
+                  f"nova trocaria o fator conservador por um medido numa sessão só). Para calibrar: "
+                  f"scripts/recalibrar_extremos.py {sessao_dir} --gravar")
+        for tabela, classe, proposto, efetivo in resultado.classes_nao_gravadas:
+            print(f"AVISO: [{tabela}] classe {classe}: medido {proposto:.3f} abaixo do fator efetivo "
+                  f"{efetivo:.3f}; não gravado (nunca diminui).")
+
+    def _gerar_html_ao_fim(self, sessao_dir: Path) -> None:
+        import relatorio_html
+        caminho, total, tamanho_mb = relatorio_html.gerar_relatorio_recortado(sessao_dir)
+        print(f"Relatório HTML (versão recortada, {total} captura(s), {tamanho_mb:.1f} MB): {caminho}")
+        if tamanho_mb > relatorio_html.TAMANHO_EMAIL_MB:
+            print(f"AVISO: acima de {relatorio_html.TAMANHO_EMAIL_MB:.0f} MB — pode não passar como anexo de "
+                  "e-mail. Reduza com logica/relatorio_html.py --classes, --max-capturas-por-classe ou --dpi 80.")
 
     @staticmethod
     def _ressalvas(resultado: "mestre.ResultadoClasse") -> str:

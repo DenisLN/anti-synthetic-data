@@ -6583,5 +6583,261 @@ class RuidoNaJanelaTests(unittest.TestCase):
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
+class CliRecalibracaoEHtmlTests(unittest.TestCase):
+    """``set recalibracao`` / ``set html`` e os ganchos de fim de run da CLI."""
+
+    FS = RecorteMargemERelatorioHtmlTests.FS
+    F0 = RecorteMargemERelatorioHtmlTests.F0
+    _captura = RecorteMargemERelatorioHtmlTests._captura
+
+    def setUp(self):
+        import cli
+        self.cli = cli
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.sessao = self.tmp / "sessao_teste"
+        (self.sessao / "metadata").mkdir(parents=True)
+        (self.sessao / "snr_30db").mkdir()
+        self.nominais = {}
+        self._captura("01", "NORMAL", {}, pre_s=0.0, indice_trigger=595, sag=None)
+        self._captura("02", "SAG", {"sag_pu": 0.5}, pre_s=0.060, indice_trigger=2405, sag=(0.060, 0.120))
+        # Calibração de teste, no lugar da real: 127 V/60 Hz com 06 alto (o
+        # medido é menor) e sem a 09; 05 baixo (o medido é maior).
+        self.calibracao = self.tmp / "calibracao_extremos.json"
+        self.calibracao.write_text(json.dumps({"por_condicao": {"127V_60Hz": {
+            "tensao_rms": 127.0, "frequencia_hz": 60.0, "origem": "teste",
+            "fatores": {"01": 1.05, "05": 1.0, "06": 1.5},
+        }}}), encoding="utf-8")
+        patch = mock.patch.object(mestre, "CALIBRACAO_EXTREMOS_PATH", self.calibracao)
+        patch.start()
+        self.addCleanup(patch.stop)
+        self.sessao_cli = cli.SessaoCLI()
+
+    def _rodar(self, metodo, *args):
+        import io
+        from contextlib import redirect_stdout
+        saida = io.StringIO()
+        with redirect_stdout(saida):
+            codigo = metodo(*args)
+        return codigo, saida.getvalue()
+
+    def _metadata_de_bancada(self, classe_id, extremo, *, tensao=127.0, frequencia=60.0, pico=180.0):
+        registro = {"id_captura": f"{classe_id}-0001", "tensao_base_rms": tensao, "f0_hz": frequencia,
+                    "pico_programado_v": pico, "pico_medido_v": extremo, "vale_medido_v": -extremo,
+                    "parametros": {}}
+        with (self.sessao / "metadata" / f"{classe_id}_x.jsonl").open("a", encoding="utf-8") as arq:
+            arq.write(json.dumps(registro) + "\n")
+
+    def _preparar_copia(self):
+        shutil.copyfile(self.calibracao, self.sessao / mestre.NOME_CALIBRACAO_NA_SESSAO)
+
+    def _fatores(self):
+        return json.loads(self.calibracao.read_text(encoding="utf-8"))["por_condicao"]
+
+    # -- set / status / help ---------------------------------------------
+
+    def test_padrao_off_e_set_liga_e_desliga(self):
+        self.assertFalse(self.sessao_cli.recalibracao_ao_fim)
+        self.assertFalse(self.sessao_cli.html_ao_fim)
+        codigo, saida = self._rodar(self.sessao_cli.cmd_set, ["recalibracao", "on"])
+        self.assertEqual(codigo, 0)
+        self.assertTrue(self.sessao_cli.recalibracao_ao_fim)
+        self.assertIn("AVISO", saida)  # o operador é avisado de que o JSON será alterado
+        self._rodar(self.sessao_cli.cmd_set, ["html", "on"])
+        self.assertTrue(self.sessao_cli.html_ao_fim)
+        _, status = self._rodar(self.sessao_cli.cmd_status, [])
+        self.assertIn("recalibração automática ao fim do run: ON", status)
+        self.assertIn("relatório HTML ao fim do run: ON", status)
+        self._rodar(self.sessao_cli.cmd_set, ["recalibracao", "off"])
+        self._rodar(self.sessao_cli.cmd_set, ["html", "off"])
+        _, status = self._rodar(self.sessao_cli.cmd_status, [])
+        self.assertIn("recalibração automática ao fim do run: OFF", status)
+        self.assertIn("relatório HTML ao fim do run: OFF", status)
+
+    def test_set_recusa_valor_invalido_e_help_documenta(self):
+        for chave in ("recalibracao", "html"):
+            codigo, _ = self._rodar(self.sessao_cli.cmd_set, [chave, "talvez"])
+            self.assertEqual(codigo, 1, chave)
+        self.assertFalse(self.sessao_cli.recalibracao_ao_fim or self.sessao_cli.html_ao_fim)
+        self.assertIn("set recalibracao on|off", self.cli.HELP_TEXT)
+        self.assertIn("set html on|off", self.cli.HELP_TEXT)
+
+    # -- recalibração ------------------------------------------------------
+
+    def test_recalibracao_so_sobe_fator_e_guarda_a_copia_anterior(self):
+        self._metadata_de_bancada("05", 216.0)  # 216/180 = 1,2 > 1,0
+        self._metadata_de_bancada("06", 198.0)  # 1,1 < 1,5: não pode baixar
+        self._preparar_copia()
+        antes = self.calibracao.read_text(encoding="utf-8")
+        with mock.patch.object(mestre, "BENCH_MODE", True):
+            _, saida = self._rodar(self.sessao_cli._recalibrar_ao_fim, self.sessao)
+        fatores = self._fatores()["127V_60Hz"]["fatores"]
+        self.assertEqual(fatores["05"], 1.2)
+        self.assertEqual(fatores["06"], 1.5)
+        self.assertEqual(fatores["01"], 1.05)
+        self.assertIn("RECALIBRAÇÃO AUTOMÁTICA: 1 fator(es)", saida)
+        self.assertIn("[127V_60Hz] classe 05: 1.000 -> 1.200", saida)
+        self.assertNotIn("classe 06", saida)
+        # A cópia do início do run segue igual ao arquivo de antes.
+        self.assertEqual((self.sessao / mestre.NOME_CALIBRACAO_NA_SESSAO).read_text(encoding="utf-8"), antes)
+        self.assertIn("automático, CLI", self._fatores()["127V_60Hz"]["origem"])
+
+    def test_recalibracao_sem_mudanca_nao_reescreve_o_arquivo(self):
+        self._metadata_de_bancada("06", 198.0)
+        self._preparar_copia()
+        antes = self.calibracao.read_bytes()
+        with mock.patch.object(mestre, "BENCH_MODE", True):
+            _, saida = self._rodar(self.sessao_cli._recalibrar_ao_fim, self.sessao)
+        self.assertEqual(self.calibracao.read_bytes(), antes)
+        self.assertIn("nenhum fator mudou", saida)
+
+    def test_recalibracao_automatica_nao_cria_tabela_nem_baixa_o_efetivo(self):
+        self._metadata_de_bancada("05", 216.0, tensao=230.0, frequencia=50.0, pico=325.0)  # condição sem tabela
+        self._metadata_de_bancada("09", 200.0)  # classe sem entrada: efetivo = maior da tabela (1,5)
+        self._preparar_copia()
+        antes = self.calibracao.read_bytes()
+        with mock.patch.object(mestre, "BENCH_MODE", True):
+            _, saida = self._rodar(self.sessao_cli._recalibrar_ao_fim, self.sessao)
+        self.assertEqual(self.calibracao.read_bytes(), antes)
+        self.assertIn("condição 230V_50Hz sem tabela própria", saida)
+        self.assertIn("classe 09: medido 1.111 abaixo do fator efetivo 1.500", saida)
+
+    def test_recalibracao_automatica_recusa_substituir(self):
+        recalibrar = _carregar_script("recalibrar_extremos")
+        with self.assertRaises(ValueError):
+            recalibrar.recalibrar([self.sessao], gravar=True, substituir=True, automatico=True)
+
+    def test_recalibracao_em_modo_simulado_nao_faz_nada(self):
+        self._metadata_de_bancada("05", 216.0)
+        self._preparar_copia()
+        antes = self.calibracao.read_bytes()
+        with mock.patch.object(mestre, "BENCH_MODE", False):
+            _, saida = self._rodar(self.sessao_cli._recalibrar_ao_fim, self.sessao)
+        self.assertEqual(self.calibracao.read_bytes(), antes)
+        self.assertIn("SIMULADO", saida)
+
+    def test_recalibracao_sem_a_copia_da_calibracao_nao_grava(self):
+        self._metadata_de_bancada("05", 216.0)
+        antes = self.calibracao.read_bytes()
+        with mock.patch.object(mestre, "BENCH_MODE", True):
+            _, saida = self._rodar(self.sessao_cli._recalibrar_ao_fim, self.sessao)
+        self.assertEqual(self.calibracao.read_bytes(), antes)
+        self.assertIn("falta a cópia", saida)
+
+    def test_recalibrar_extremos_main_continua_igual(self):
+        """A linha de comando segue imprimindo e gravando como antes."""
+        recalibrar = _carregar_script("recalibrar_extremos")
+        # main() baixa o nível do logger do mestre (efeito global na CLI do script).
+        logger_mestre = logging.getLogger("MestreExperimentos")
+        self.addCleanup(logger_mestre.setLevel, logger_mestre.level)
+        self._metadata_de_bancada("05", 216.0)
+        self._metadata_de_bancada("06", 198.0)
+        codigo, saida = self._rodar(recalibrar.main, [str(self.sessao), "--arquivo", str(self.calibracao)])
+        self.assertEqual(codigo, 0)
+        self.assertIn("Nada gravado (use --gravar).", saida)
+        self.assertEqual(self._fatores()["127V_60Hz"]["fatores"]["05"], 1.0)
+        self._rodar(recalibrar.main, [str(self.sessao), "--arquivo", str(self.calibracao), "--gravar"])
+        self.assertEqual(self._fatores()["127V_60Hz"]["fatores"]["05"], 1.2)
+        self.assertEqual(self._fatores()["127V_60Hz"]["fatores"]["06"], 1.5)
+
+    # -- HTML --------------------------------------------------------------
+
+    def test_html_ao_fim_gera_a_versao_recortada_sem_tocar_nos_originais(self):
+        antes = {p.name: p.read_bytes() for p in self.sessao.glob("*.npz")}
+        _, saida = self._rodar(self.sessao_cli._gerar_html_ao_fim, self.sessao)
+        html = self.sessao / "relatorio_sessao_teste.html"
+        self.assertTrue(html.is_file())
+        self.assertIn(str(html), saida)
+        texto = html.read_text(encoding="utf-8")
+        self.assertIn("02_sag_cap01", texto)
+        self.assertIn("sessao_teste (sem_margem)", texto)
+        self.assertTrue((self.sessao / "sem_margem" / "02_sag_cap01.npz").is_file())
+        self.assertEqual({p.name: p.read_bytes() for p in self.sessao.glob("*.npz")}, antes)
+
+    # -- falha não derruba a sessão ---------------------------------------
+
+    def test_falha_da_recalibracao_e_do_html_so_avisa(self):
+        self.sessao_cli.recalibracao_ao_fim = True
+        self.sessao_cli.html_ao_fim = True
+        with mock.patch.object(mestre, "BENCH_MODE", True):
+            # Sem metadata/*.jsonl com extremos: coletar() usa SystemExit.
+            vazia = self.tmp / "vazia"
+            vazia.mkdir()
+            self._preparar_copia_em(vazia)
+            _, saida = self._rodar(self.sessao_cli._fim_da_sessao, vazia)
+        self.assertIn("recalibração automática FALHOU", saida)
+        self.assertIn("relatório HTML FALHOU", saida)
+        with mock.patch.object(self.sessao_cli, "_recalibrar_ao_fim", side_effect=RuntimeError("x")), \
+                mock.patch.object(self.sessao_cli, "_gerar_html_ao_fim", side_effect=RuntimeError("y")):
+            _, saida = self._rodar(self.sessao_cli._fim_da_sessao, self.sessao)
+        self.assertIn("RuntimeError: x", saida)
+        self.assertIn("RuntimeError: y", saida)
+
+    def _preparar_copia_em(self, pasta):
+        shutil.copyfile(self.calibracao, pasta / mestre.NOME_CALIBRACAO_NA_SESSAO)
+
+    # -- ganchos em run / run all -----------------------------------------
+
+    def _bancada_falsa(self, resultados=None, erro=None):
+        bancada = mock.MagicMock()
+        bancada.__enter__.return_value = bancada
+        if erro is not None:
+            bancada.executar_bateria.side_effect = erro
+        else:
+            bancada.executar_bateria.return_value = resultados
+        return bancada
+
+    def test_run_all_dispara_os_ganchos_so_quando_ligados_e_sem_abortar(self):
+        resultados = [mestre.ResultadoClasse("01", "NORMAL", ok=True),
+                      mestre.ResultadoClasse("02", "SAG", ok=False, motivo="RMS fora")]
+        for ligado in (False, True):
+            self.sessao_cli.recalibracao_ao_fim = ligado
+            self.sessao_cli.html_ao_fim = ligado
+            with mock.patch.object(self.sessao_cli, "confirmar", return_value=True), \
+                    mock.patch.object(self.sessao_cli, "_garantir_pasta_sessao"), \
+                    mock.patch.object(self.sessao_cli, "autorizar_saida"), \
+                    mock.patch.object(mestre, "SESSION_RESULTS_DIR", self.sessao), \
+                    mock.patch.object(mestre.Bancada, "from_env", return_value=self._bancada_falsa(resultados)), \
+                    mock.patch.object(self.sessao_cli, "_recalibrar_ao_fim") as recal, \
+                    mock.patch.object(self.sessao_cli, "_gerar_html_ao_fim") as html:
+                codigo, _ = self._rodar(self.sessao_cli._run_all)
+            self.assertEqual(codigo, 1)  # a falha de experimento continua contando
+            self.assertEqual(recal.called, ligado)
+            self.assertEqual(html.called, ligado)
+
+    def test_run_all_abortado_por_infraestrutura_nao_dispara_os_ganchos(self):
+        self.sessao_cli.recalibracao_ao_fim = True
+        self.sessao_cli.html_ao_fim = True
+        with mock.patch.object(self.sessao_cli, "confirmar", return_value=True), \
+                mock.patch.object(self.sessao_cli, "_garantir_pasta_sessao"), \
+                mock.patch.object(self.sessao_cli, "autorizar_saida"), \
+                mock.patch.object(mestre, "SESSION_RESULTS_DIR", self.sessao), \
+                mock.patch.object(mestre.Bancada, "from_env",
+                                  return_value=self._bancada_falsa(erro=mestre.CommunicationError("serial caiu"))), \
+                mock.patch.object(self.sessao_cli, "_recalibrar_ao_fim") as recal, \
+                mock.patch.object(self.sessao_cli, "_gerar_html_ao_fim") as html:
+            codigo, saida = self._rodar(self.sessao_cli._run_all)
+        self.assertEqual(codigo, 1)
+        self.assertIn("BATERIA ABORTADA", saida)
+        recal.assert_not_called()
+        html.assert_not_called()
+
+    def test_falha_do_gancho_nao_muda_o_resultado_do_run_all(self):
+        self.sessao_cli.recalibracao_ao_fim = True
+        self.sessao_cli.html_ao_fim = True
+        resultados = [mestre.ResultadoClasse("01", "NORMAL", ok=True)]
+        with mock.patch.object(self.sessao_cli, "confirmar", return_value=True), \
+                mock.patch.object(self.sessao_cli, "_garantir_pasta_sessao"), \
+                mock.patch.object(self.sessao_cli, "autorizar_saida"), \
+                mock.patch.object(mestre, "SESSION_RESULTS_DIR", self.sessao), \
+                mock.patch.object(mestre.Bancada, "from_env", return_value=self._bancada_falsa(resultados)), \
+                mock.patch.object(self.sessao_cli, "_recalibrar_ao_fim", side_effect=RuntimeError("boom")), \
+                mock.patch.object(self.sessao_cli, "_gerar_html_ao_fim", side_effect=RuntimeError("boom")):
+            codigo, saida = self._rodar(self.sessao_cli._run_all)
+        self.assertEqual(codigo, 0)
+        self.assertIn("1/1 classes OK", saida)
+        self.assertIn("AVISO", saida)
+
+
 if __name__ == "__main__":
     unittest.main()
