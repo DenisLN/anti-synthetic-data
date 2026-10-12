@@ -5273,7 +5273,9 @@ class SorteioInicioDuracaoFaseTests(unittest.TestCase):
     FIXTURE = PROJECT_ROOT / "tests" / "fixtures" / "gerar_sorteio_v1_15.json"
     CLASSES = [f"{i:02d}" for i in range(1, 21)]
     # Classes que sorteiam início (e duração onde o evento tem duração livre).
-    COM_INICIO = {"02", "03", "04", "07", "09", "10", "11", "12", "13", "14", "16", "17"}
+    # 07 só sorteia a fase (entalhes contínuos em toda a janela, v1.15); 17 sorteia o
+    # início da oscilação.
+    COM_INICIO = {"02", "03", "04", "09", "10", "11", "12", "13", "14", "16", "17"}
     COM_DURACAO_LIVRE = {"02", "03", "04", "10", "11", "12", "13", "14", "16"}
     SEM_SORTEIO = {"08"}
     T = np.arange(6000, dtype=np.float64) / 30_000.0
@@ -5383,8 +5385,8 @@ class SorteioInicioDuracaoFaseTests(unittest.TestCase):
             delta = abs((fase_no_t0 - disparo + 180.0) % 360.0 - 180.0)
             self.assertLess(delta, 1e-6, seed)
 
-    def test_notch_acopla_a_fase_ao_inicio_e_mantem_os_entalhes_nos_picos(self):
-        voltage, p = self._gerar("07", 4)
+    def test_17_acopla_a_fase_ao_inicio_da_oscilacao(self):
+        _, p = self._gerar("17", 4)
         t0 = p["inicio_disturbio_s"]
         self.assertAlmostEqual(math.sin(math.radians(p["fase_graus"]) + 2 * math.pi * 60.0 * t0), 0.0, places=9)
 
@@ -6176,6 +6178,190 @@ class Classe08FronteiraTests(unittest.TestCase):
 
     def test_classes_sem_posicao_a_conferir_nao_mudam_a_validacao(self):
         self.assertIsNone(_load_experimento("07").conferir_posicao_do_evento(0, self.T))
+
+
+class Classes05_07_18Tests(unittest.TestCase):
+    """v1.15 — 05 pelo modelo do CSINe, 07/17 com entalhes contínuos e 18 em
+    f0-3..f0+3 (docs/analise-2026-10-12/classes_05_07_18.md). Valem com o
+    sorteio ligado; ``set sorteio off`` reproduz 34a0d82 (teste de bytes)."""
+
+    T = np.arange(6000, dtype=np.float64) / 30_000.0
+
+    def _gerar(self, classe_id, seed, f0=60.0, indice=0, sorteio=True):
+        experimento = _load_experimento(classe_id)
+        if not sorteio:
+            _sem_sorteio(experimento)
+        return experimento.gerar(self.T, f0, indice, np.random.default_rng(seed))
+
+    # -- 05 --------------------------------------------------------------
+
+    def test_05_modelo_dos_niveis_csine_tem_o_thd_e_o_rms_pedidos(self):
+        import dataclasses
+        for perfil in ("literatura", "norma"):
+            experimento = _load_experimento("05")
+            experimento.config = dataclasses.replace(experimento.config, perfil=perfil)
+            for f0 in (60.0, 50.0):
+                for indice, thd in enumerate(experimento.NIVEIS_THD):
+                    if experimento.usar_trace(indice):
+                        continue
+                    for seed in range(5):
+                        voltage, p = experimento.gerar(self.T, f0, indice, np.random.default_rng(seed))
+                        self.assertEqual(p["thd"], thd)
+                        self.assertAlmostEqual(sinais.thd_medida(voltage, fs_hz=30_000.0, f0=f0), thd, delta=0.003)
+                        self.assertAlmostEqual(float(np.sqrt(np.mean(voltage ** 2))), 1.0 / math.sqrt(2.0), delta=0.003)
+                        self.assertLessEqual(float(np.max(np.abs(voltage))), 1.0)
+
+    def test_05_nivel_por_trace_continua_sendo_a_soma_de_harmonicas(self):
+        experimento = _load_experimento("05")
+        indice = list(experimento.NIVEIS_THD).index(0.30)
+        self.assertTrue(experimento.usar_trace(indice))
+        voltage, p = experimento.gerar(self.T, 60.0, indice, np.random.default_rng(3))
+        tau = p["fase_graus"] / (360.0 * 60.0)
+        np.testing.assert_allclose(
+            voltage, sinais.onda_com_harmonicos(self.T + tau, 0.30, frequencia_hz=60.0), atol=1e-12,
+        )
+
+    def test_05_modelo_e_forma_programada_do_csine_sao_a_mesma_forma(self):
+        experimento = _load_experimento("05")
+        voltage, p = experimento.gerar(self.T, 60.0, 1, np.random.default_rng(8))
+        programada, origem = experimento.forma_programada(voltage, p, 1, self.T)
+        self.assertIn("CSINe", origem)
+        np.testing.assert_allclose(programada, voltage, atol=1e-12)
+
+    def test_05_sem_sorteio_todos_os_niveis_seguem_a_soma_de_harmonicas(self):
+        for indice in range(5):
+            voltage, p = self._gerar("05", 3, indice=indice, sorteio=False)
+            esperada = sinais.onda_com_harmonicos(self.T, p["thd"], frequencia_hz=60.0)
+            np.testing.assert_array_equal(voltage, esperada)
+
+    # -- 07 / 17 ---------------------------------------------------------
+
+    def _picos_sem_entalhe(self, voltage, f0, origem_s):
+        """Picos (T/4 e 3T/4 dos ciclos que cabem INTEIROS na janela) sem
+        nenhuma amostra zerada em até 0,7 ms."""
+        ciclo = 1.0 / f0
+        faltando, picos = [], 0
+        k = int(math.ceil((0.0 - origem_s) / ciclo))
+        while origem_s + (k + 1) * ciclo <= self.T[-1]:
+            for fracao in (0.25, 0.75):
+                centro = origem_s + k * ciclo + fracao * ciclo
+                picos += 1
+                if not np.any(voltage[np.abs(self.T - centro) <= 0.0007] == 0.0):
+                    faltando.append(round(centro, 5))
+            k += 1
+        return picos, faltando
+
+    def test_07_tem_entalhes_em_todos_os_ciclos_da_janela_nos_picos_da_senoide(self):
+        for f0 in (60.0, 50.0):
+            for seed in range(20):
+                voltage, p = self._gerar("07", seed, f0)
+                self.assertNotIn("inicio_disturbio_s", p)
+                origem = -p["fase_graus"] / (360.0 * f0)
+                picos, faltando = self._picos_sem_entalhe(voltage, f0, origem)
+                self.assertGreaterEqual(picos, 2 * (int(0.2 * f0) - 1))
+                self.assertEqual(faltando, [], (f0, seed))
+
+    def test_07_sem_sorteio_so_ha_entalhes_na_janela_antiga(self):
+        voltage, _ = self._gerar("07", 3, 60.0, sorteio=False)
+        zeros = self.T[voltage != np.sin(2.0 * np.pi * 60.0 * self.T)]
+        self.assertGreater(zeros.size, 0)
+        self.assertGreaterEqual(zeros.min(), 0.060 - 1e-9)
+        self.assertLess(zeros.max(), 0.060 + 0.080 + 1e-9)
+
+    def test_aplicar_entalhes_continuos_descarta_pulso_com_centro_fora_da_janela(self):
+        """A regra antiga zerava a amostra mais próxima quando o centro caía
+        fora da grade; aqui o pulso é descartado e o rng é consumido igual."""
+        sinal = np.ones_like(self.T)
+        origem = -0.0123
+        total = sinais.aplicar_entalhes_continuos(
+            sinal, self.T, np.random.default_rng(1), frequencia_hz=60.0, origem_s=origem,
+        )
+        self.assertGreater(total, 20)
+        # nenhum zero longe de um pico (T/4 ou 3T/4 da grade de origem, ±0,7 ms)
+        ciclo = 1.0 / 60.0
+        fase = ((self.T[sinal == 0.0] - origem) % (ciclo / 2.0)) - ciclo / 4.0
+        self.assertLessEqual(float(np.max(np.abs(fase))), 0.0007)
+
+    def test_17_tem_entalhes_continuos_e_a_oscilacao_localizada_em_t0(self):
+        for f0 in (60.0, 50.0):
+            for seed in range(10):
+                voltage, p = self._gerar("17", seed, f0)
+                t0, d = p["inicio_disturbio_s"], p["duracao_s"]
+                origem = -p["fase_graus"] / (360.0 * f0)
+                fora = (self.T < t0) | (self.T >= t0 + d)
+                zerados = fora & (voltage == 0.0)
+                self.assertGreater(int(np.sum(zerados)), 6, (f0, seed))
+                # fora da oscilação, tudo o que não é entalhe é a senoide
+                resto = fora & (voltage != 0.0)
+                senoide = np.sin(2.0 * np.pi * f0 * (self.T - origem))
+                np.testing.assert_allclose(voltage[resto], senoide[resto], atol=1e-12)
+                # há entalhe antes e depois da oscilação (quando cabe um ciclo)
+                if t0 > 2.0 / f0:
+                    self.assertTrue(np.any(zerados & (self.T < t0)), (f0, seed))
+                if t0 + d < 0.2 - 2.0 / f0:
+                    self.assertTrue(np.any(zerados & (self.T >= t0 + d)), (f0, seed))
+
+    def test_05_07_17_18_sem_sorteio_reproduzem_34a0d82(self):
+        ref = json.loads(
+            (PROJECT_ROOT / "tests" / "fixtures" / "gerar_literatura_34a0d82.json").read_text(encoding="utf-8")
+        )
+        verificados = 0
+        for chave, esperado in ref["hashes"].items():
+            cid, f0, seed, indice = chave.split("/")
+            if cid in ("05", "07", "17", "18"):
+                experimento = _sem_sorteio(_load_experimento(cid))
+                self.assertEqual(
+                    PerfisDeFaixasTests._assinatura(experimento, float(f0), int(seed), int(indice)), esperado, chave,
+                )
+                verificados += 1
+        self.assertEqual(verificados, 80)
+
+    # -- 18 --------------------------------------------------------------
+
+    def test_18_varre_f0_menos_3_ate_f0_mais_3_e_o_inverso(self):
+        for f0 in (60.0, 50.0):
+            _, par = self._gerar("18", 1, f0, 0)
+            _, impar = self._gerar("18", 1, f0, 1)
+            self.assertEqual((par["start_hz"], par["end_hz"]), (f0 - 3.0, f0 + 3.0))
+            self.assertEqual((impar["start_hz"], impar["end_hz"]), (f0 + 3.0, f0 - 3.0))
+
+    def test_18_a_50_hz_nao_vira_uma_senoide_de_60(self):
+        voltage, _ = self._gerar("18", 5, 50.0, 0)
+        subidas = int(np.sum((voltage[:-1] < 0.0) & (voltage[1:] >= 0.0)))
+        # 0,2 s a 47 -> 53 Hz = 10 ciclos; a rampa antiga 57 -> 63 dava 12
+        self.assertLessEqual(abs(subidas - 10), 1)
+
+    def test_18_sem_sorteio_continua_em_57_63(self):
+        _, p = self._gerar("18", 1, 50.0, 0, sorteio=False)
+        self.assertEqual((p["start_hz"], p["end_hz"]), (57.0, 63.0))
+
+    def test_18_configurar_envia_os_mesmos_extremos_que_gerar_registra(self):
+        for sorteio in (True, False):
+            for f0 in (60.0, 50.0):
+                for indice in (0, 1):
+                    fonte = mock.Mock()
+                    tmp = Path(tempfile.mkdtemp())
+                    try:
+                        config = _config_bancada(tmp, sorteio_posicao=sorteio, grid_frequency_hz=f0)
+                        experimento = _carregar_classe("18")(mestre.Bancada(fonte, mock.Mock(), config))
+                        _, p = experimento.gerar(self.T, f0, indice, np.random.default_rng(1))
+                        enviados = experimento.configurar(indice)
+                    finally:
+                        shutil.rmtree(tmp, ignore_errors=True)
+                    args = fonte.frequency_drift_list.call_args
+                    self.assertEqual(args.args, (p["start_hz"], p["end_hz"]), (sorteio, f0, indice))
+                    self.assertEqual(enviados, {"start_hz": p["start_hz"], "end_hz": p["end_hz"]})
+
+    def test_18_a_frequencia_base_e_restaurada_depois_de_47_53(self):
+        fonte = AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=415.8, max_current_a=0.5)
+        fonte.configure_safe_baseline(
+            voltage_range_rms=300.0, voltage_high_vp=415.8, current_limit_a=0.5,
+            protection_delay_s=0.1, frequency_hz=50.0,
+        )
+        fonte.frequency_drift_list(47.0, 53.0, voltage_rms=127.0, dwell_s=0.1)
+        fonte.command_log.clear()
+        fonte.restaurar_forma_e_modo_padrao()
+        self.assertIn("SOURce:FREQuency 50", fonte.command_log)
 
 
 if __name__ == "__main__":

@@ -1,9 +1,13 @@
-"""Classe 05: HARMONICS — misto: 4 níveis via CSINe nativo (clipping físico),
-1 nível (30%, acima do teto de 20% do CSINe) sintetizado em Python e enviado
-por TRACe (mesmo mecanismo de experimentos_waveform, via ``usar_trace``).
+"""Classe 05: HARMONICS — misto: níveis até 20 % via CSINe nativo (clipping
+físico), níveis acima do teto de 20 % do CSINe (30 % da literatura)
+sintetizados em Python e enviados por TRACe (mesmo mecanismo de
+experimentos_waveform, via ``usar_trace``).
 
-O dataset sintético (modo simulado) usa sempre a fórmula exata dos 5 níveis
-do perfil ativo (``perfis.py``).
+``gerar()`` modela o que a bancada faz (v1.15, sorteio ligado): os níveis que
+vão por CSINe saem como a senoide CLIPADA no THD pedido (``sinais.
+senoide_clipada_pu``, mesmo rms da senoide); só os níveis por TRACe seguem a
+soma de harmônicas 3/5/7. Com ``set sorteio off``, soma de harmônicas em todos
+os níveis, byte a byte como em 34a0d82.
 Na bancada real, 5/10/15/20% usam CSINe nativo; 30% usa program_capture como
 os experimentos_waveform. Ainda não testado contra hardware real — validar
 no preflight antes do dataset físico completo.
@@ -16,6 +20,7 @@ import numpy as np
 import perfis
 from ametek_orm import AmetekMX30
 from mestre import ExperimentoNativo
+from sinais import senoide_clipada_pu
 
 TETO_CSINE = AmetekMX30.MAX_CSINE_THD_PCT / 100.0
 
@@ -40,6 +45,10 @@ class Experimento(ExperimentoNativo):
         coeficientes = thd * ratios / np.linalg.norm(ratios)
         w = 2.0 * np.pi * f0
         sorteio = self.sortear(rng, f0)
+        if sorteio.ativo and not self.usar_trace(capture_index):
+            # Nível dentro do teto do CSINe: a fonte clipa a senoide.
+            voltage = senoide_clipada_pu(t, f0, sorteio.deslocamento_s, thd)
+            return voltage, {"thd": thd, **sorteio.parametros()}
         tt = t + sorteio.deslocamento_s
         voltage = (
             np.sin(w * tt)

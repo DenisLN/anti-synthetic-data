@@ -3,7 +3,7 @@
 import numpy as np
 
 from mestre import ExperimentoWaveform
-from sinais import aplicar_entalhes
+from sinais import aplicar_entalhes, aplicar_entalhes_continuos
 
 
 class Experimento(ExperimentoWaveform):
@@ -14,11 +14,20 @@ class Experimento(ExperimentoWaveform):
     capturas_padrao = 3
 
     def gerar(self, t, f0, capture_index, rng):
-        # Início sorteado; a fase fica acoplada a ele (seno com fase 0 em
-        # t0), para os entalhes continuarem nos picos da senoide.
-        sorteio = self.sortear(
-            rng, f0, inicio_legado_s=0.060, duracao_legada_s=0.080, fase_acoplada_ao_inicio=True,
-        )
+        if getattr(self.config, "sorteio_posicao", True):
+            # IEEE 1159-2019, 4.4.5.4: o notching é periódico e contínuo
+            # (comutação de conversores). Entalhes em TODOS os ciclos da
+            # janela; sem evento localizado, só a fase é sorteada (como 06,
+            # 15 e 20) e a grade de ciclos acompanha a fase: os entalhes
+            # continuam nos picos da senoide sorteada.
+            sorteio = self.sortear(rng, f0)
+            voltage = np.sin(2.0 * np.pi * f0 * (t + sorteio.deslocamento_s))
+            pulsos = aplicar_entalhes_continuos(
+                voltage, t, rng, frequencia_hz=f0, origem_s=-sorteio.deslocamento_s,
+            )
+            return voltage, {"notch_pulses": float(pulsos), **sorteio.parametros()}
+        # Sorteio desligado: 34a0d82 byte a byte (entalhes em 80 ms a partir de 60 ms).
+        sorteio = self.sortear(rng, f0, inicio_legado_s=0.060, duracao_legada_s=0.080)
         voltage = np.sin(2.0 * np.pi * f0 * (t + sorteio.deslocamento_s))
         pulsos = aplicar_entalhes(
             voltage, t, rng, frequencia_hz=f0, inicio_s=sorteio.inicio_s, duracao_s=sorteio.duracao_s,

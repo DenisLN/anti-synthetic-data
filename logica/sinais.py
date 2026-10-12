@@ -89,6 +89,45 @@ def aplicar_entalhes(
     return total_pulsos
 
 
+def aplicar_entalhes_continuos(
+    sinal: np.ndarray,
+    t: np.ndarray,
+    rng: np.random.Generator,
+    *,
+    frequencia_hz: float,
+    origem_s: float,
+) -> int:
+    """Entalhes periódicos e contínuos (IEEE 1159-2019, 4.4.5.4): a MESMA
+    regra de ``aplicar_entalhes`` (2 a 4 pulsos de 0,1 ms por ciclo, nos dois
+    picos, com jitter de ±0,35 ms), mas em TODOS os ciclos da janela.
+
+    ``origem_s``: instante em que a senoide cruza zero subindo (``-tau`` de
+    ``Sorteio.deslocamento_s``); os picos ficam em ``origem + k T + T/4`` e
+    ``+ 3T/4``. Ciclos que começam antes de ``t[0]`` ou terminam depois de
+    ``t[-1]`` entram só com os pulsos cujo centro cai dentro da janela (o
+    ``rng`` é consumido igual, para a forma não depender de onde a janela
+    corta). Devolve quantos pulsos caíram na janela."""
+    ciclo_s = 1.0 / frequencia_hz
+    largura_pulso_s = 0.0001
+    primeiro = int(math.floor((float(t[0]) - origem_s) / ciclo_s))
+    ultimo = int(math.ceil((float(t[-1]) - origem_s) / ciclo_s))
+    total_pulsos = 0
+    for ciclo in range(primeiro, ultimo + 1):
+        inicio_ciclo = origem_s + ciclo * ciclo_s
+        n_pulsos = int(rng.integers(2, 5))
+        picos = (inicio_ciclo + ciclo_s / 4.0, inicio_ciclo + 3.0 * ciclo_s / 4.0)
+        for pulso in range(n_pulsos):
+            centro = picos[pulso % 2] + rng.uniform(-0.00035, 0.00035)
+            if not float(t[0]) <= centro <= float(t[-1]):
+                continue
+            mask = np.abs(t - centro) < largura_pulso_s / 2.0
+            if not np.any(mask):
+                mask[np.argmin(np.abs(t - centro))] = True
+            sinal[mask] = 0.0
+            total_pulsos += 1
+    return total_pulsos
+
+
 def oscilacao_amortecida(
     t: np.ndarray,
     *,

@@ -5,7 +5,7 @@ import inspect
 import numpy as np
 
 from mestre import ExperimentoWaveform
-from sinais import aplicar_entalhes, oscilacao_amortecida
+from sinais import aplicar_entalhes, aplicar_entalhes_continuos, oscilacao_amortecida
 
 
 class Experimento(ExperimentoWaveform):
@@ -16,14 +16,23 @@ class Experimento(ExperimentoWaveform):
     capturas_padrao = 3
 
     def gerar(self, t, f0, capture_index, rng):
-        # Mesma regra da 07: início sorteado, fase acoplada (entalhes nos picos).
+        # Início sorteado (da oscilação), fase acoplada a ele: a senoide cruza
+        # zero em t0.
         sorteio = self.sortear(
             rng, f0, inicio_legado_s=0.060, duracao_legada_s=0.060, fase_acoplada_ao_inicio=True,
         )
         voltage = np.sin(2.0 * np.pi * f0 * (t + sorteio.deslocamento_s))
-        pulsos = aplicar_entalhes(
-            voltage, t, rng, frequencia_hz=f0, inicio_s=sorteio.inicio_s, duracao_s=sorteio.duracao_s,
-        )
+        if getattr(self.config, "sorteio_posicao", True):
+            # Mesma regra da 07 (IEEE 1159-2019, 4.4.5.4): entalhes periódicos
+            # e contínuos, em todos os ciclos da janela, nos picos da senoide.
+            # Só a oscilação amortecida continua localizada em t0.
+            pulsos = aplicar_entalhes_continuos(
+                voltage, t, rng, frequencia_hz=f0, origem_s=-sorteio.deslocamento_s,
+            )
+        else:
+            pulsos = aplicar_entalhes(
+                voltage, t, rng, frequencia_hz=f0, inicio_s=sorteio.inicio_s, duracao_s=sorteio.duracao_s,
+            )
         voltage = voltage + oscilacao_amortecida(
             t, inicio_s=sorteio.inicio_s, duracao_s=sorteio.duracao_s, frequencia_hz=300.0,
         )
