@@ -51,6 +51,8 @@ Nenhum campo existente foi removido. Campos novos:
 | `sorteio_posicao` | toda captura | `true` se o sorteio estava ligado; metadata anterior não tem o campo (= `false`) |
 | `pre_trigger_s` | só física | passa a ser o pré-trigger **efetivo da captura** (nas 02/03/04 com sorteio, igual a `inicio_disturbio_s`); `inicio_janela` e os leitores já o usam |
 | `pre_trigger_desvio_amostras` | só física, pré-trigger sorteado | `indice_trigger` medido menos o previsto (`round(pre_trigger_s·fs) + margem_amostras_antes`) |
+| `parametros.inicio_impulso_s` (08) | só física | instante do impulso programado (80 ms; 90 ms a 50 Hz com `sorteio_posicao`; `docs/analise-2026-10-12/classe08_fronteira.md`) |
+| `validacao_fisica.posicao_evento` (08) | só física | `inicio_previsto_amostra`, `pico_medido_amostra`, `desvio_amostras` (medido menos previsto), `tolerancia_amostras` (10) e `desvio_pico_pu`; fora da tolerância a captura é marcada inválida (`ok = false`, motivo "posição do impulso") |
 | `git_commit`, `git_sujo`, `numpy_versao` | só física | cópia da procedência (o `.jsonl` sobrevive sozinho se for copiado sem a pasta) |
 | `calibracao_extremos_sha256` | só física | SHA-256 da calibração usada na captura; deve bater com `sessao.json` |
 | `tres_versoes` | captura gravada pela v1.16 em diante | `{arquivo, programada}`: onde estão modelo/programada/medida desta captura e como a programada foi obtida (`docs/tres_versoes.md`) |

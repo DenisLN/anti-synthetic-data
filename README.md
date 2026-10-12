@@ -207,6 +207,32 @@ captura física de comissionamento.
 A descrição física completa de cada classe (amplitudes, durações, faixas de
 frequência) está em [`experimentos.txt`](experimentos.txt).
 
+### 4.1 Classe 08: impulso filtrado pela fonte
+
+O modelo da 08 (`gerar()`) é um impulso unidirecional de 5 a 10 pu somado à
+senoide, com 50 µs (2 amostras). **A bancada não o reproduz**: o que sai da
+MX30 é um impulso de baixa amplitude filtrado pela fonte (um pico seguido de
+oscilação de ≈ 7,5 kHz que morre em < 0,5 ms), e a captura física da 08 deve
+ser descrita assim em qualquer texto que a use. Três limitações
+independentes:
+
+1. **Amplitude.** O teto da classe é 0,9 × `max_peak_v` (374,2 V). A 127 V
+   isso é 2,08 pu e, com o sobressinal de 0,55 do degrau, cabe um impulso de
+   ≈ 1,34 pu (pico previsto 372 V); o modelo pede 5 a 10 pu. A 230 V cabe
+   0,74 pu (pico ≈ 1,15 pu).
+2. **Velocidade.** O datasheet da fonte dá 200 µs para a saída ir de 10 a
+   90 % do fundo de escala; o impulso de 50 µs já acabou antes da subida. O
+   que se mede é a resposta do amplificador ao degrau.
+3. **Representação.** Cada TRACe tem 1024 pontos por ciclo (19,5 µs a
+   50 Hz); o impulso de 2 amostras ocupa 3 a 4 pontos.
+
+A posição do impulso (80 ms; 90 ms a 50 Hz) é conferida na validação física
+(`validacao_fisica.posicao_evento` no metadata; a captura é marcada inválida
+se o maior desvio da senoide cair a mais de 10 amostras do previsto). A 50 Hz
+o impulso nunca fica a menos de 30 amostras (1 ms) de uma fronteira de ciclo:
+em 2026-10-07 o de 80 ms (início do 5.º ciclo) saiu a 100 ms. Análise, números
+e roteiro de recaptura: [`docs/analise-2026-10-12/classe08_fronteira.md`](docs/analise-2026-10-12/classe08_fronteira.md).
+
 ---
 
 ## 5. Operação na bancada física — o que o operador precisa saber

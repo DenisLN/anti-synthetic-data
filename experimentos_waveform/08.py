@@ -22,6 +22,23 @@ class Experimento(ExperimentoWaveform):
 
     INICIO_IMPULSO_S = 0.080
     DURACAO_IMPULSO_S = 0.00005
+    # v1.15 (docs/analise-2026-10-12/classe08_fronteira.md): a 50 Hz os 80 ms
+    # são o início do 5.º ciclo, e a fonte tocou o impulso no FIM desse ciclo
+    # (100 ms; 3 capturas, 2026-10-07). O impulso nunca cai a menos de
+    # DISTANCIA_MIN_FRONTEIRA_AMOSTRAS amostras (1 ms) de uma fronteira de
+    # ciclo da rede: o deslocamento medido envolve <= 4 pontos da TRACE
+    # (<= 2,3 amostras), as capturas diferem ±2 amostras entre si e o
+    # toque pós-impulso dura < 0,5 ms (15 amostras). Vale com
+    # ``sorteio_posicao`` ligado (padrão); desligado, o 80 ms de sempre
+    # (34a0d82), inclusive a 50 Hz, para reproduzir as sessões de 07/10.
+    DISTANCIA_MIN_FRONTEIRA_AMOSTRAS = 30
+    # A validação física confere que o maior desvio da senoide cai a até
+    # TOLERANCIA_POSICAO_AMOSTRAS (0,33 ms) do início do impulso: acima do
+    # atraso/jitter medido (<= 3 amostras) e 60x abaixo do desvio de 20 ms.
+    TOLERANCIA_POSICAO_AMOSTRAS = 10
+    # O desvio medido tem de ser ao menos esta fração da amplitude de bancada
+    # (a saída fez 1,4x; sem impulso nenhum não há posição a conferir).
+    FRACAO_MIN_DESVIO_VISIVEL = 0.25
 
     # Resposta da saída da MX30 ao impulso de ~66 µs: oscilação de ~10 kHz
     # que morre em <0,5 ms. Caracterizada em 2026-09-30 15:09 ("set capturas
@@ -61,9 +78,23 @@ class Experimento(ExperimentoWaveform):
         nominal_peak_v = self.config.base_voltage_rms * math.sqrt(2.0)
         return 0.9 * self.fonte.max_peak_v / nominal_peak_v
 
-    def _indices_impulso(self, fs_hz):
+    def _indices_impulso(self, fs_hz, f0_hz=None):
+        """Amostras do impulso. ``f0_hz`` (padrão: a da rede da config) só
+        importa com ``sorteio_posicao`` ligado: se o início de 80 ms cair a
+        menos de ``DISTANCIA_MIN_FRONTEIRA_AMOSTRAS`` de uma fronteira de
+        ciclo (a 50 Hz cai exatamente nela), o impulso vai para o meio do
+        mesmo ciclo (90 ms a 50 Hz: cruzamento por zero, como o de 80 ms
+        e com o mesmo nível de partida). A 60 Hz continua em 80 ms."""
         start_index = int(round(self.INICIO_IMPULSO_S * fs_hz))
         pulse_samples = max(1, int(math.ceil(self.DURACAO_IMPULSO_S * fs_hz)))
+        if getattr(self.config, "sorteio_posicao", True):
+            if f0_hz is None:
+                f0_hz = self.config.grid_frequency_hz
+            n = int(round(fs_hz / float(f0_hz)))
+            resto = start_index % n
+            minimo = self.DISTANCIA_MIN_FRONTEIRA_AMOSTRAS
+            if resto < minimo or n - resto - pulse_samples < minimo:
+                start_index = start_index - resto + n // 2
         return np.arange(start_index, start_index + pulse_samples)
 
     def gerar(self, t, f0, capture_index, rng):
@@ -78,7 +109,7 @@ class Experimento(ExperimentoWaveform):
             amplitude = pico_alvo_pu - 1.0
         else:
             amplitude = float(rng.uniform(5.0, 10.0))
-        indices = self._indices_impulso(fs_hz)
+        indices = self._indices_impulso(fs_hz, f0)
         voltage[indices] += amplitude
         return voltage, {"transient_amplitude_pu": amplitude, "pulse_samples": float(indices.size)}
 
@@ -120,8 +151,10 @@ class Experimento(ExperimentoWaveform):
         pico_previsto_v = max(float(np.max(base)), partida_max + amplitude * (1.0 + self.SOBRESSINAL_DO_DEGRAU)) * nominal_v
         vale_previsto_v = min(float(np.min(base)), partida_min - self.SUBSINAL_DO_DEGRAU * amplitude) * nominal_v
         self._excursao_prevista_v = max(abs(pico_previsto_v), abs(vale_previsto_v))
+        self._amplitude_bancada_pu = amplitude
         parametros.update({
             "amplitude_bancada_pu": amplitude,
+            "inicio_impulso_s": float(indices[0]) / float(self.config.fs_hz),
             "pico_previsto_v": pico_previsto_v,
             "vale_previsto_v": vale_previsto_v,
             "caracterizacao": float(caracterizacao),
@@ -139,6 +172,44 @@ class Experimento(ExperimentoWaveform):
 
     def ciclos_excluidos_da_validacao(self, capture_index):
         # Ciclo do impulso e o seguinte (oscilação): ver T8-3 no ANALISE.md.
+        # A POSIÇÃO do impulso é conferida em ``conferir_posicao_do_evento``.
         n = int(round(self.config.fs_hz / self.config.grid_frequency_hz))
         ciclo = int(self._indices_impulso(self.config.fs_hz)[0]) // n
         return tuple(k for k in (ciclo, ciclo + 1) if k < self.config.points // n)
+
+    def conferir_posicao_do_evento(self, capture_index, janela_medida_pu):
+        """O maior desvio da senoide, na janela medida alinhada ao trigger,
+        tem de cair a até ``TOLERANCIA_POSICAO_AMOSTRAS`` do início do
+        impulso programado. A validação de envelope/THD/crista exclui os dois
+        ciclos do impulso e não via o impulso 20 ms fora do lugar (50 Hz,
+        2026-10-07)."""
+        fs_hz = float(self.config.fs_hz)
+        f0 = float(self.config.grid_frequency_hz)
+        medido = np.asarray(janela_medida_pu, dtype=np.float64)
+        senoide = np.sin(2.0 * np.pi * f0 * np.arange(medido.size) / fs_hz)
+        desvio = np.abs(medido - senoide)
+        previsto = int(self._indices_impulso(fs_hz)[0])
+        achado = int(np.argmax(desvio))
+        diferenca = achado - previsto
+        resultado = {
+            "inicio_previsto_amostra": previsto,
+            "pico_medido_amostra": achado,
+            "desvio_amostras": diferenca,
+            "tolerancia_amostras": self.TOLERANCIA_POSICAO_AMOSTRAS,
+            "desvio_pico_pu": float(desvio[achado]),
+        }
+        motivos = []
+        amplitude = getattr(self, "_amplitude_bancada_pu", None)
+        if amplitude is not None and desvio[achado] < self.FRACAO_MIN_DESVIO_VISIVEL * float(amplitude):
+            motivos.append(
+                f"impulso não encontrado: maior desvio da senoide {desvio[achado]:.3f} pu, "
+                f"esperado ao menos {self.FRACAO_MIN_DESVIO_VISIVEL * float(amplitude):.3f} pu"
+            )
+        elif abs(diferenca) > self.TOLERANCIA_POSICAO_AMOSTRAS:
+            motivos.append(
+                f"posição do impulso: pico medido na amostra {achado} "
+                f"({1000.0 * achado / fs_hz:.2f} ms), previsto {previsto} "
+                f"({1000.0 * previsto / fs_hz:.2f} ms); diferença {diferenca:+d} amostras "
+                f"(tolerância ±{self.TOLERANCIA_POSICAO_AMOSTRAS})"
+            )
+        return {"ok": not motivos, "motivos": motivos, "posicao": resultado}

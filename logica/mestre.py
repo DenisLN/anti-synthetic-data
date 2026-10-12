@@ -1659,7 +1659,7 @@ class ExperimentoBase(ABC):
 
     def _validar_fisicamente(
         self, capture_index: int, t: np.ndarray, seed: int, medido_pu: np.ndarray,
-        *, margem_antes: int = 0,
+        *, margem_antes: int = 0, inicio_janela: Optional[int] = None,
     ) -> Optional[dict]:
         """Compara o que saiu do instrumento com o que a classe pediu.
 
@@ -1681,6 +1681,7 @@ class ExperimentoBase(ABC):
         esperado = self.forma_esperada_para_validacao(capture_index, t, seed)
         if esperado is None:
             return None
+        medido_bruto = medido_pu
         medido_pu = np.asarray(medido_pu, dtype=np.float64)[margem_antes : margem_antes + len(esperado)]
         if medido_pu.size != len(esperado):
             logger.warning(
@@ -1688,6 +1689,11 @@ class ExperimentoBase(ABC):
                 self.id, medido_pu.size, len(esperado),
             )
             return None
+        # Janela alinhada ao TRIGGER real (``inicio_janela`` do metadata; sem
+        # ele, ``margem_antes``) para ``conferir_posicao_do_evento``.
+        ini = margem_antes if inicio_janela is None else int(inicio_janela)
+        tamanho_janela = len(esperado)
+        janela_do_trigger = np.asarray(medido_bruto, dtype=np.float64)[ini : ini + tamanho_janela]
         excluidos = tuple(self.ciclos_excluidos_da_validacao(capture_index))
         if excluidos:
             # Remove ciclos INTEIROS dos dois lados: a concatenação continua
@@ -1697,7 +1703,7 @@ class ExperimentoBase(ABC):
             esperado = np.concatenate([np.asarray(esperado)[k * n : (k + 1) * n] for k in manter])
             medido_pu = np.concatenate([medido_pu[k * n : (k + 1) * n] for k in manter])
         try:
-            return comparar_fisicamente(
+            resultado = comparar_fisicamente(
                 esperado, medido_pu,
                 fs_hz=self.config.fs_hz, f0=self.config.grid_frequency_hz,
                 tol_envelope=VALIDACAO_TOL_ENVELOPE, tol_thd=VALIDACAO_TOL_THD,
@@ -1705,6 +1711,26 @@ class ExperimentoBase(ABC):
         except Exception:  # noqa: BLE001
             logger.warning("[%s] validação física não pôde ser calculada", self.id, exc_info=True)
             return None
+        if janela_do_trigger.size == tamanho_janela:
+            try:
+                posicao = self.conferir_posicao_do_evento(capture_index, janela_do_trigger)
+            except Exception:  # noqa: BLE001
+                logger.warning("[%s] posição do evento não pôde ser conferida", self.id, exc_info=True)
+                posicao = None
+            if posicao is not None:
+                resultado["posicao_evento"] = posicao["posicao"]
+                if not posicao["ok"]:
+                    resultado["ok"] = False
+                    resultado["motivos"] = list(resultado["motivos"]) + list(posicao["motivos"])
+        return resultado
+
+    def conferir_posicao_do_evento(self, capture_index: int, janela_medida_pu: np.ndarray) -> Optional[dict]:
+        """Complemento da validação física para classes cujo evento precisa
+        estar num instante conhecido (a 08 exclui os ciclos do impulso do
+        envelope/THD e, sem isto, não notaria o impulso 20 ms fora do lugar).
+        ``janela_medida_pu``: a janela nominal alinhada ao trigger. Devolve
+        ``{"ok", "motivos", "posicao"}`` ou ``None`` (padrão: nada a conferir)."""
+        return None
 
     def ciclos_excluidos_da_validacao(self, capture_index: int) -> Sequence[int]:
         """Ciclos (índices na janela nominal) que a validação física ignora.
@@ -2534,6 +2560,7 @@ class ExperimentoBase(ABC):
                     validacao = self._validar_fisicamente(
                         capture_index, t, seed, measured_voltage_pu,
                         margem_antes=margem_antes,
+                        inicio_janela=metadados[-1].get("inicio_janela"),
                     )
                     if validacao is not None:
                         metadados[-1]["validacao_fisica"] = validacao

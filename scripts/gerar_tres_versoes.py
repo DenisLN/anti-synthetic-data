@@ -100,7 +100,7 @@ def _forma_de_bancada(instancia, registro: dict, modelo: np.ndarray, parametros_
         return senoide + float(k) * (modelo - senoide)
     if "amplitude_bancada_pu" in gravados and hasattr(instancia, "_indices_impulso"):
         # 08: a base fica em 1 pu e só o impulso tem a amplitude de bancada.
-        indices = instancia._indices_impulso(float(registro["fs_hz"]))
+        indices = instancia._indices_impulso(float(registro["fs_hz"]), f0)
         forma = np.array(modelo, dtype=np.float64)
         forma[indices] += float(gravados["amplitude_bancada_pu"]) - float(parametros_gerar["transient_amplitude_pu"])
         return forma

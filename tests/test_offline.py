@@ -6030,5 +6030,153 @@ class TresVersoesTests(unittest.TestCase):
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
+class Classe08FronteiraTests(unittest.TestCase):
+    """docs/analise-2026-10-12/classe08_fronteira.md: a 50 Hz o impulso de
+    80 ms (amostra 0 do 5.º ciclo) saiu em 100 ms; ele não pode mais cair
+    perto de uma fronteira de ciclo, e a validação física confere a posição."""
+
+    T = np.arange(6000, dtype=np.float64) / 30_000.0
+
+    def _experimento(self, f0, *, sorteio=True, base_v=127.0):
+        import dataclasses
+        experimento = _load_experimento("08")
+        experimento.fonte = mock.Mock(max_peak_v=415.8)
+        experimento.osc = mock.Mock()
+        experimento.config = dataclasses.replace(
+            experimento.config, grid_frequency_hz=f0, sorteio_posicao=sorteio, base_voltage_rms=base_v,
+        )
+        return experimento
+
+    def _distancias(self, experimento, f0):
+        """(amostras entre a fronteira anterior e o impulso, entre o impulso e a próxima)."""
+        indices = experimento._indices_impulso(30_000.0, f0)
+        n = int(round(30_000.0 / f0))
+        return int(indices[0]) % n, n - int(indices[0]) % n - indices.size
+
+    def test_o_impulso_nunca_cai_a_menos_de_n_amostras_da_fronteira_a_50_e_60hz(self):
+        minimo = _load_experimento("08").DISTANCIA_MIN_FRONTEIRA_AMOSTRAS
+        for f0 in (50.0, 60.0):
+            experimento = self._experimento(f0)
+            antes, depois = self._distancias(experimento, f0)
+            self.assertGreaterEqual(antes, minimo, f0)
+            self.assertGreaterEqual(depois, minimo, f0)
+            voltage, parametros = experimento.gerar(self.T, f0, 0, np.random.default_rng(5))
+            achados = np.flatnonzero(np.abs(voltage - np.sin(2.0 * np.pi * f0 * self.T)) > 1.0)
+            np.testing.assert_array_equal(achados, experimento._indices_impulso(30_000.0, f0))
+            self.assertEqual(parametros["pulse_samples"], achados.size)
+
+    def test_qualquer_inicio_preferido_e_empurrado_para_fora_da_fronteira(self):
+        """Varre o início preferido por todas as amostras da janela: a regra
+        vale para qualquer valor de ``INICIO_IMPULSO_S``, não só os 80 ms."""
+        for f0 in (50.0, 60.0):
+            experimento = self._experimento(f0)
+            minimo = experimento.DISTANCIA_MIN_FRONTEIRA_AMOSTRAS
+            n = int(round(30_000.0 / f0))
+            for amostra in range(0, 6000 - 2):
+                experimento.INICIO_IMPULSO_S = amostra / 30_000.0
+                antes, depois = self._distancias(experimento, f0)
+                self.assertGreaterEqual(antes, minimo, (f0, amostra))
+                self.assertGreaterEqual(depois, minimo, (f0, amostra))
+                if amostra % n >= minimo and n - amostra % n - 2 >= minimo:
+                    # já longe da fronteira: a regra não mexe
+                    self.assertEqual(int(experimento._indices_impulso(30_000.0, f0)[0]), amostra)
+
+    def test_50hz_vai_para_90ms_no_meio_do_ciclo_e_60hz_continua_em_80ms(self):
+        a50 = self._experimento(50.0)._indices_impulso(30_000.0, 50.0)
+        a60 = self._experimento(60.0)._indices_impulso(30_000.0, 60.0)
+        self.assertEqual(list(a50), [2700, 2701])
+        self.assertEqual(list(a60), [2400, 2401])
+        # mesmo nível de partida do 80 ms de antes (cruzamento por zero)
+        self.assertAlmostEqual(math.sin(2.0 * math.pi * 50.0 * a50[0] / 30_000.0), 0.0, places=9)
+
+    def test_sorteio_desligado_reproduz_o_80ms_de_34a0d82_tambem_a_50hz(self):
+        for f0 in (50.0, 60.0):
+            experimento = self._experimento(f0, sorteio=False)
+            self.assertEqual(list(experimento._indices_impulso(30_000.0, f0)), [2400, 2401], f0)
+
+    def test_forma_para_bancada_calcula_a_amplitude_pela_partida_real_e_grava_a_posicao(self):
+        for f0, esperado_s in ((50.0, 0.090), (60.0, 0.080)):
+            experimento = self._experimento(f0)
+            onda, parametros = experimento.gerar(self.T, f0, 0, np.random.default_rng(3))
+            forma = experimento.forma_para_bancada(onda, parametros, 0)
+            self.assertAlmostEqual(parametros["inicio_impulso_s"], esperado_s, places=9)
+            indices = experimento._indices_impulso(30_000.0, f0)
+            base = np.sin(2.0 * np.pi * f0 * self.T)
+            np.testing.assert_allclose(forma[indices] - base[indices], parametros["amplitude_bancada_pu"])
+            fora = np.ones(6000, dtype=bool)
+            fora[indices] = False
+            np.testing.assert_allclose(forma[fora], base[fora])
+            # o pico previsto continua dentro do teto de 90 % (como no 80 ms de antes)
+            self.assertLessEqual(parametros["pico_previsto_v"], 0.9 * 415.8 + 1e-6)
+
+    def test_montagem_da_trace_nao_desloca_o_impulso_a_50_nem_a_60hz(self):
+        """Hipótese do deslocamento de um ponto, parte da montagem: com a
+        função de montagem do projeto, um impulso na amostra 0 do ciclo vai
+        para os pontos 0 a 3 da TRACE (não para o fim) e a forma reconstruída
+        o devolve na mesma amostra, antes e depois da correção."""
+        for f0, inicio in ((50.0, 2400), (50.0, 2700), (60.0, 2400)):
+            forma = np.sin(2.0 * np.pi * f0 * self.T)
+            forma[inicio:inicio + 2] += 1.3374832769767175
+            programacao = AmetekMX30.montar_programacao(forma, base_voltage_rms=127.0, frequency_hz=f0)
+            n = programacao.pontos_por_ciclo
+            ponto_no_ciclo = (inicio % n) * AmetekMX30.TRACE_POINTS / n
+            trace = programacao.traces[inicio // n]
+            salto = int(np.argmax(np.abs(np.diff(trace))))  # a queda do impulso: pontos p+1 a p+3
+            self.assertTrue(ponto_no_ciclo - 2 <= salto <= ponto_no_ciclo + 4, (f0, inicio, salto, ponto_no_ciclo))
+            reconstruida = programacao.programada_pu()
+            achados = np.flatnonzero(np.abs(reconstruida - np.sin(2.0 * np.pi * f0 * self.T)) > 0.2)
+            np.testing.assert_array_equal(achados, [inicio, inicio + 1], str((f0, inicio)))
+
+    def _medido_com_impulso_em(self, f0, amostra, amplitude=1.9):
+        """Janela medida de mentira: senoide + o toque de 7,5 kHz da fonte."""
+        medido = np.sin(2.0 * np.pi * f0 * self.T)
+        k = np.arange(30)
+        medido[amostra:amostra + 30] += amplitude * np.exp(-k / 8.0) * np.cos(2.0 * np.pi * 7500.0 * k / 30_000.0 - 0.6)
+        return medido
+
+    def test_validacao_confere_a_posicao_do_impulso(self):
+        for f0 in (50.0, 60.0):
+            experimento = self._experimento(f0)
+            onda, parametros = experimento.gerar(self.T, f0, 0, np.random.default_rng(3))
+            experimento.forma_para_bancada(onda, parametros, 0)
+            previsto = int(experimento._indices_impulso(30_000.0, f0)[0])
+            for atraso in (-3, 0, 1, 3, 10):
+                resultado = experimento.conferir_posicao_do_evento(0, self._medido_com_impulso_em(f0, previsto + atraso))
+                self.assertTrue(resultado["ok"], (f0, atraso, resultado))
+            # o caso de 07/10 a 50 Hz (impulso 600 amostras = 20 ms depois) e outros fora da tolerância
+            for atraso in (600, -600, 11, -14, 300):
+                resultado = experimento.conferir_posicao_do_evento(0, self._medido_com_impulso_em(f0, previsto + atraso))
+                self.assertFalse(resultado["ok"], (f0, atraso))
+                self.assertIn("posição do impulso", resultado["motivos"][0])
+            vazio = experimento.conferir_posicao_do_evento(0, np.sin(2.0 * np.pi * f0 * self.T))
+            self.assertFalse(vazio["ok"])
+            self.assertIn("impulso não encontrado", vazio["motivos"][0])
+
+    def test_validacao_fisica_reprova_o_impulso_deslocado_que_a_exclusao_de_ciclos_escondia(self):
+        f0 = 50.0
+        experimento = self._experimento(f0)
+        onda, parametros = experimento.gerar(self.T, f0, 0, np.random.default_rng(3))
+        experimento.forma_para_bancada(onda, parametros, 0)
+        previsto = int(experimento._indices_impulso(30_000.0, f0)[0])
+
+        def registro(amostra):
+            # 600 amostras de margem, trigger no índice 595 (como a bancada de 07/10)
+            bruto = np.zeros(8100)
+            bruto[595:595 + 6000] = self._medido_com_impulso_em(f0, amostra)
+            return bruto
+
+        certo = experimento._validar_fisicamente(0, self.T, 3, registro(previsto), margem_antes=600, inicio_janela=595)
+        self.assertTrue(certo["ok"], certo)
+        self.assertIn(certo["posicao_evento"]["desvio_amostras"], range(-3, 4))
+        errado = experimento._validar_fisicamente(
+            0, self.T, 3, registro(previsto + 600), margem_antes=600, inicio_janela=595,
+        )
+        self.assertFalse(errado["ok"])
+        self.assertTrue(any("posição do impulso" in m for m in errado["motivos"]), errado["motivos"])
+
+    def test_classes_sem_posicao_a_conferir_nao_mudam_a_validacao(self):
+        self.assertIsNone(_load_experimento("07").conferir_posicao_do_evento(0, self.T))
+
+
 if __name__ == "__main__":
     unittest.main()
