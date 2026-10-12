@@ -1962,7 +1962,7 @@ class AnalisarSessaoTests(unittest.TestCase):
                 encoding="utf-8",
             )
             import analisar_sessao
-            relatorio = analisar_sessao.analisar_sessao(sessao_dir, gerar_imagens=False)
+            relatorio = analisar_sessao.analisar_sessao(sessao_dir)
             self.assertEqual(len(relatorio), 1)
             self.assertEqual(relatorio[0]["classe"], "01_normal_cap01")
         finally:
@@ -1996,7 +1996,7 @@ class AnalisarSessaoTests(unittest.TestCase):
                         "parametros": {}, "pontos": pontos, "seed": 21260827, "simulado": True,
                     }) + "\n")
             import analisar_sessao
-            relatorio = analisar_sessao.analisar_sessao(sessao_dir, gerar_imagens=False)
+            relatorio = analisar_sessao.analisar_sessao(sessao_dir)
             self.assertEqual(len(relatorio), 1)
             self.assertEqual(relatorio[0]["classe"], "01_normal")
             self.assertIn("erro", relatorio[0])
@@ -2107,7 +2107,7 @@ class CorrelacaoDisturbioTests(unittest.TestCase):
                     id_captura=np.array([f"{classe}-0001"], dtype=object),
                 )
                 (sessao_dir / "metadata" / f"{classe}_{nome}.jsonl").write_text(json.dumps(md) + "\n", encoding="utf-8")
-            relatorio = {r["classe"]: r for r in analisar_sessao.analisar_sessao(sessao_dir, gerar_imagens=False)}
+            relatorio = {r["classe"]: r for r in analisar_sessao.analisar_sessao(sessao_dir)}
             self.assertIsNone(relatorio["01_normal_cap01"]["correlacao_disturbio"])
             self.assertTrue(relatorio["01_normal_cap01"]["correlacao_disturbio_motivo"])
             self.assertAlmostEqual(relatorio["05_harmonics_cap01"]["correlacao_disturbio"], 1.0, places=6)
@@ -3538,7 +3538,7 @@ class JanelaNominalEAnaliseTests(unittest.TestCase):
             import analisar_sessao
             import importlib
             importlib.reload(analisar_sessao)
-            relatorio = analisar_sessao.analisar_sessao(sessao_dir, gerar_imagens=False)
+            relatorio = analisar_sessao.analisar_sessao(sessao_dir)
             self.assertEqual(len(relatorio), 1)
             self.assertNotIn("erro", relatorio[0])
             # com f0 correto a correlação é ~1; com 60 Hz chumbado seria baixa
@@ -4986,7 +4986,7 @@ class MetadataLegivelERastreavelTests(unittest.TestCase):
             tempo_ms=np.arange(7200) / 30.0, tensao_pu=registro[np.newaxis, :],
         )
         (sessao / "metadata" / "01_normal.jsonl").write_text(json.dumps(md) + "\n", encoding="utf-8")
-        resultado = analisar_sessao.analisar_sessao(sessao, gerar_imagens=False)
+        resultado = analisar_sessao.analisar_sessao(sessao)
         self.assertEqual(resultado[0]["lag_amostras"], 0)
         self.assertGreater(resultado[0]["correlacao"], 0.99)
 

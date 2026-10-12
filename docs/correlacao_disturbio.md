@@ -32,7 +32,7 @@ Saída (`analisar_sessao.py` CLI): coluna `corr. distúrbio` mostra `n/a` e uma 
 
 ## 4. Tabela nas sessões de 07/10
 
-Comando: `.\env\Scripts\python.exe logica\analisar_sessao.py resultados\sessao_2026-10-07_<sessão> --sem-imagens` (127 V/60 Hz = `14-59-54_run02`; as três reconstruídas sem sorteio). Valores por captura; intervalo quando a classe tem várias. "—" = classe não está na sessão (230 V não tem 02, 03, 04, 08, 16).
+Comando: `.\env\Scripts\python.exe logica\analisar_sessao.py resultados\sessao_2026-10-07_<sessão>` (127 V/60 Hz = `14-59-54_run02`; as três reconstruídas sem sorteio). Valores por captura; intervalo quando a classe tem várias. "—" = classe não está na sessão (230 V não tem 02, 03, 04, 08, 16).
 
 | classe | 127 V/60 Hz | 127 V/50 Hz | 230 V/50 Hz | faixa do professor | bate? |
 |---|---|---|---|---|---|

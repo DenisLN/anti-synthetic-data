@@ -66,7 +66,6 @@ logica/                     Todo o código Python "de motor" do projeto
                                  LIST:FREQuency/ACDC/MEASure* da AMETEK, canal 2 do Keysight), log por etapa
     cli.py                     REPL interativo do operador (status/list/comm/trigger/lowvoltage/native/run) —
                                  ver seção 5.3
-    visualizador.py             CLI: gera um PNG de inspeção de um .npz de resultados/ e abre no visualizador do SO
     analisar_sessao.py          Análise offline de uma pasta de sessão (gerar() + seed do metadata x captura)
     recortar_margem.py          Recorta a folga de 20/50 ms das capturas físicas (janela nominal, sem tocar no original)
     relatorio_html.py           HTML autocontido (figuras em base64) de uma sessão, para compartilhar
@@ -80,7 +79,6 @@ scripts/                    Todo o PowerShell/CMD que o operador roda no Windows
     run_simulation_windows.ps1 Gera o dataset simulado (sem hardware)
     setup_windows.ps1          Cria/atualiza o venv (env/) e instala requirements.txt
     package_windows.ps1        Empacota o repositório em .zip para transporte
-    visualizar_npz.ps1         Wrapper de logica/visualizador.py
     relatorio_limites_bancada.py  Offline: o que cabe a uma tensão base (pico/extremo previsto, limite de bancada)
     recalibrar_extremos.py     Offline: recalcula calibracao_extremos.json (por condição) a partir do VMAX/VMIN do metadata
     diag_nativo_output_off.py  Diagnóstico da AMETEK com OUTPUT OFF (ver CHANGELOG/v1.12.md)
@@ -264,7 +262,7 @@ antes de conectar qualquer cabo.
 
 Cria/atualiza o virtualenv em `env/` (Python 3.9–3.12, 3.11 recomendado) e
 instala [`requirements.txt`](requirements.txt) (`numpy`, `PyMeasure`,
-`PyVISA`, `matplotlib`). `start_bench_windows.ps1` já chama isso sozinho —
+`PyVISA`, `matplotlib` — este só para o relatório HTML). `start_bench_windows.ps1` já chama isso sozinho —
 normalmente você não precisa rodar à parte.
 
 ### 5.3 O único comando do operador
@@ -654,20 +652,11 @@ uma única captura por arquivo, nomeado pelo parâmetro físico ou posição (ve
 5.8) — inspecione o arquivo específico da condição que interessa, sem
 precisar de `--captura`.
 
-Para inspecionar visualmente um arquivo:
-
-```powershell
-# dataset simulado (várias capturas empilhadas):
-.\scripts\visualizar_npz.ps1 -Npz resultados\02_sag.npz
-.\env\Scripts\python.exe logica\visualizador.py resultados\02_sag.npz --captura 12
-
-# captura real (um arquivo por captura):
-.\scripts\visualizar_npz.ps1 -Npz resultados\sessao_2026-09-15_14-30-00\02_sag_sag_pu-0.1.npz
-```
-
-Gera um PNG (amostra de capturas sobrepostas, uma captura individual,
-envelope média±desvio-padrão, resumo textual) e abre no visualizador de
-imagens padrão do sistema. Veja `--help` para todas as opções.
+Para inspecionar visualmente uma sessão, use o relatório HTML
+(`set html on` na CLI, ou `logica/relatorio_html.py <sessao>`; ver
+`docs/analise-2026-10-12/cli_recalibracao_html.md`). Os geradores de PNG
+(`visualizador.py`, `visualizar_npz.ps1`, imagens de `analisar_sessao.py`)
+foram descontinuados na v1.15; `analisar_sessao.py` segue só numérico.
 
 ---
 
@@ -699,7 +688,7 @@ resultado de execuções anteriores.
 - [`CHANGELOG/v1.3.md`](CHANGELOG/v1.3.md) — reorganização em `logica/` e
   `scripts/`.
 - [`CHANGELOG/v1.4.md`](CHANGELOG/v1.4.md) — visualizador de capturas `.npz`
-  (`logica/visualizador.py`).
+  (`logica/visualizador.py`, descontinuado na v1.15; substituído pelo relatório HTML).
 - [`CHANGELOG/v1.5.md`](CHANGELOG/v1.5.md) — rearmamento do Keysight nas
   classes nativas e `preflight_new.py`.
 - [`CHANGELOG/v1.6.md`](CHANGELOG/v1.6.md) — comissionamento na bancada:

@@ -1,14 +1,13 @@
 """Análise offline de uma pasta de sessão (``resultados/sessao_*/``): para
 cada ``.npz``, reconstrói a forma esperada via ``gerar()`` + ``seed`` do
 metadata (mesma técnica usada manualmente na investigação do
-CHANGELOG/v1.7.md), mede deslocamento por cross-correlação e razão de pico,
-e opcionalmente gera uma imagem lado-a-lado (gerado vs. capturado) por
-arquivo. Sem hardware — mesmo padrão de ``visualizador.py``: roda em
-qualquer máquina, só precisa dos ``.npz``/``.jsonl`` já gravados.
+CHANGELOG/v1.7.md), mede deslocamento por cross-correlação e razão de pico
+e correlação do distúrbio. Só numérico: as figuras ficam no relatório HTML
+(``relatorio_html.py``). Sem hardware: roda em qualquer máquina, só precisa
+dos ``.npz``/``.jsonl`` já gravados.
 
 Uso:
     python logica/analisar_sessao.py resultados/sessao_2026-09-11_140000
-    python logica/analisar_sessao.py resultados/sessao_2026-09-11_140000 --sem-imagens
 """
 
 from __future__ import annotations
@@ -201,7 +200,7 @@ def _correlacao_disturbio_alinhada(
     )
 
 
-def analisar_sessao(sessao_dir: Path, *, gerar_imagens: bool = True) -> List[Dict]:
+def analisar_sessao(sessao_dir: Path) -> List[Dict]:
     metadata_dir = sessao_dir / "metadata"
     if not metadata_dir.is_dir():
         raise FileNotFoundError(f"{sessao_dir} não parece uma pasta de sessão (sem metadata/)")
@@ -216,9 +215,6 @@ def analisar_sessao(sessao_dir: Path, *, gerar_imagens: bool = True) -> List[Dic
 
     relatorio: List[Dict] = []
     avisos: List[str] = []
-    imagens_dir = sessao_dir / "analise"
-    if gerar_imagens:
-        imagens_dir.mkdir(exist_ok=True)
 
     for npz_path in sorted(sessao_dir.glob("*.npz")):
         stem = npz_path.stem
@@ -311,43 +307,17 @@ def analisar_sessao(sessao_dir: Path, *, gerar_imagens: bool = True) -> List[Dic
             "razao_pico": pico_capturado / pico_esperado if pico_esperado else float("nan"),
         })
 
-        if gerar_imagens:
-            _salvar_imagem_comparacao(imagens_dir, stem, esperado, capturado, metadado["fs_hz"])
-
     for aviso in avisos:
         print(f"AVISO: {aviso}")
     return relatorio
 
 
-def _salvar_imagem_comparacao(imagens_dir: Path, stem: str, esperado: np.ndarray, capturado: np.ndarray, fs_hz: float) -> None:
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    t_esperado_ms = np.arange(len(esperado)) / fs_hz * 1000.0
-    t_capturado_ms = np.arange(len(capturado)) / fs_hz * 1000.0
-    fig, eixos = plt.subplots(1, 2, figsize=(16, 5))
-    fig.suptitle(stem, fontsize=13, fontweight="bold")
-    eixos[0].plot(t_esperado_ms, esperado, color="#1f77b4", linewidth=0.8)
-    eixos[0].set_title("Gerado (gerar() + seed)")
-    eixos[0].set_xlabel("Tempo (ms)")
-    eixos[0].grid(True, alpha=0.3)
-    eixos[1].plot(t_capturado_ms, capturado, color="#d62728", linewidth=0.8)
-    eixos[1].set_title("Capturado (bancada real)")
-    eixos[1].set_xlabel("Tempo (ms)")
-    eixos[1].grid(True, alpha=0.3)
-    fig.tight_layout(rect=[0, 0, 1, 0.94])
-    fig.savefig(imagens_dir / f"{stem}_comparacao.png", dpi=110)
-    plt.close(fig)
-
-
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("sessao_dir", type=Path, help="Pasta resultados/sessao_.../ a analisar")
-    parser.add_argument("--sem-imagens", action="store_true", help="Não gera PNGs, só o relatório no terminal")
     args = parser.parse_args(argv)
 
-    relatorio = analisar_sessao(args.sessao_dir, gerar_imagens=not args.sem_imagens)
+    relatorio = analisar_sessao(args.sessao_dir)
     print(f"{'arquivo':<40}{'lag (ms)':>12}{'correlação':>12}{'corr. distúrbio':>17}{'razão pico':>12}")
     for linha in relatorio:
         if "erro" in linha:
