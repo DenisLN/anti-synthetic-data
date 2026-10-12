@@ -2,6 +2,7 @@
 
 import numpy as np
 
+import perfis
 import sinais
 from mestre import ExperimentoWaveform
 
@@ -18,9 +19,12 @@ class Experimento(ExperimentoWaveform):
         total = self.config.capturas(simulado)
         cobertura_ativa = not simulado and self.config.capturas_override is not None
         flicker_hz = sinais.valor_para_captura(rng, 8.0, 25.0, capture_index, total, cobertura_ativa=cobertura_ativa)
-        profundidade = float(rng.uniform(0.05, 0.15))
-        voltage = np.sin(2.0 * np.pi * f0 * t) * (1.0 + profundidade * np.sin(2.0 * np.pi * flicker_hz * t))
-        return voltage, {"flicker_hz": flicker_hz, "flicker_depth": profundidade}
+        profundidade = float(rng.uniform(*perfis.faixa(self.config, "flicker_profundidade")))
+        sorteio = self.sortear(rng, f0)
+        voltage = np.sin(2.0 * np.pi * f0 * (t + sorteio.deslocamento_s)) * (
+            1.0 + profundidade * np.sin(2.0 * np.pi * flicker_hz * t)
+        )
+        return voltage, {"flicker_hz": flicker_hz, "flicker_depth": profundidade, **sorteio.parametros()}
 
     def parametros_com_disturbio_reduzido(self, parametros, fracao):
         # Gancho de bancada (limite de bancada, v1.13): forma física =

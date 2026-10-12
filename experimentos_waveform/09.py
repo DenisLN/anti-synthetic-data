@@ -17,16 +17,18 @@ class Experimento(ExperimentoWaveform):
     capturas_padrao = 3
 
     def gerar(self, t, f0, capture_index, rng):
-        voltage = np.sin(2.0 * np.pi * f0 * t)
         simulado = self.osc is None
         total = self.config.capturas(simulado)
         cobertura_ativa = not simulado and self.config.capturas_override is not None
         frequencia = sinais.valor_para_captura(rng, 300.0, 2400.0, capture_index, total, cobertura_ativa=cobertura_ativa)
         duracao = float(rng.uniform(0.010, 0.040))
+        # Início e fase sorteados; a duração já era sorteada acima.
+        sorteio = self.sortear(rng, f0, inicio_legado_s=0.080, duracao_legada_s=duracao)
+        voltage = np.sin(2.0 * np.pi * f0 * (t + sorteio.deslocamento_s))
         voltage = voltage + oscilacao_amortecida(
-            t, inicio_s=0.080, duracao_s=duracao, frequencia_hz=frequencia,
+            t, inicio_s=sorteio.inicio_s, duracao_s=duracao, frequencia_hz=frequencia,
         )
-        return voltage, {"oscillation_hz": frequencia, "duration_s": duracao}
+        return voltage, {"oscillation_hz": frequencia, "duration_s": duracao, **sorteio.parametros()}
 
     def parametros_com_disturbio_reduzido(self, parametros, fracao):
         # Gancho de bancada (limite de bancada, v1.13): forma física =

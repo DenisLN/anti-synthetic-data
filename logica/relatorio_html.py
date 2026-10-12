@@ -87,6 +87,7 @@ class Captura:
     esperado: Optional[np.ndarray] = None
     detalhes: List[Tuple[float, float]] = field(default_factory=list)
     detalhes_automaticos: bool = True
+    correlacoes: Optional[dict] = None  # total e do distúrbio (físicas, com forma esperada)
 
     @property
     def tempo_ms(self) -> np.ndarray:
@@ -222,6 +223,25 @@ def _reconstruir_esperado(captura: Captura) -> Optional[np.ndarray]:
         print(f"AVISO: {captura.id_captura}: forma esperada não reconstruída ({exc})")
         return None
     return esperado if esperado.size == captura.pontos_nominais else None
+
+
+def _correlacoes(captura: Captura, esperado: Optional[np.ndarray]) -> Optional[dict]:
+    """Correlação total e só da componente de distúrbio contra a forma
+    esperada, com as mesmas funções de ``analisar_sessao`` (mesmo alinhamento
+    por lag). ``None`` sem esperado ou sem metadata."""
+    md = captura.metadado
+    if esperado is None or md is None:
+        return None
+    try:
+        from analisar_sessao import _correlacao_disturbio_alinhada, analisar_offset
+        n = esperado.size
+        janela = captura.sinal[captura.inicio_nominal : captura.inicio_nominal + n]
+        lag, total = analisar_offset(esperado, janela, captura.fs_hz)
+        valor, motivo = _correlacao_disturbio_alinhada(esperado, captura.sinal, captura.inicio_nominal, lag, md)
+    except Exception as exc:  # noqa: BLE001 - relatório nunca cai por isto
+        print(f"AVISO: {captura.id_captura}: correlações não calculadas ({exc})")
+        return None
+    return {"total": total, "disturbio": valor, "motivo": motivo, "lag_ms": lag / captura.fs_hz * 1000.0}
 
 
 def ler_capturas(
@@ -404,6 +424,12 @@ def tabela_metadados(captura: Captura) -> str:
         linhas.append(("Janela", _e(texto)))
     else:
         linhas.append(("Janela", _e(f"{duracao:.1f} ms ({captura.sinal.size} amostras, sem folga)")))
+    if captura.correlacoes:
+        c = captura.correlacoes
+        disturbio = f"{c['disturbio']:.3f}" if c["disturbio"] is not None else f"n/a ({_e(c['motivo'])})"
+        linhas.append(("Correlação com o esperado",
+                       f"total {c['total']:.3f} · só do distúrbio {disturbio} "
+                       f"(após alinhar; lag {c['lag_ms']:.2f} ms)"))
     validacao = md.get("validacao_fisica")
     if isinstance(validacao, dict):
         if validacao.get("ok"):
@@ -514,8 +540,10 @@ def gerar_relatorio(
         raise FileNotFoundError(f"Nenhuma captura encontrada em {dados_dir}")
     manuais = detalhes_manuais or {}
     for c in capturas:
+        esperado = _reconstruir_esperado(c)  # sempre: as correlações precisam dele
+        c.correlacoes = _correlacoes(c, esperado)
         if com_esperado:
-            c.esperado = _reconstruir_esperado(c)
+            c.esperado = esperado
         janelas = manuais.get(c.arquivo.stem) or manuais.get(c.id_captura)
         if janelas is not None:
             c.detalhes, c.detalhes_automaticos = list(janelas)[:MAX_DETALHES], False

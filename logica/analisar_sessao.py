@@ -26,7 +26,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 EXPERIMENT_DIRS = (PROJECT_ROOT / "experimentos_nativos", PROJECT_ROOT / "experimentos_waveform")
 if str(PROJECT_ROOT / "logica") not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT / "logica"))
-from sinais import janela_nominal  # noqa: E402
+from sinais import correlacao_disturbio, janela_nominal  # noqa: E402
 
 # Valores usados só quando o metadata é ANTIGO e não os traz. Enquanto
 # estiveram chumbados no código (60 Hz na chamada de gerar() e 127 V em
@@ -75,9 +75,19 @@ class _ConfigOffline:
 
     capturas_override: Optional[int] = None
     base_voltage_rms: float = TENSAO_BASE_PADRAO_RMS
+    perfil: str = "literatura"
+    sorteio_posicao: bool = False
 
-    def __init__(self, base_voltage_rms: float = TENSAO_BASE_PADRAO_RMS):
+    def __init__(
+        self, base_voltage_rms: float = TENSAO_BASE_PADRAO_RMS, perfil: str = "literatura",
+        sorteio_posicao: bool = False, fs_hz: float = 30_000.0, points: int = 6_000,
+    ):
         self.base_voltage_rms = float(base_voltage_rms)
+        self.perfil = perfil
+        # Início/duração/fase sorteados (v1.15) precisam da grade da captura.
+        self.sorteio_posicao = bool(sorteio_posicao)
+        self.fs_hz = float(fs_hz)
+        self.points = int(points)
 
     def capturas(self, simulated: bool) -> int:
         return 1
@@ -93,8 +103,8 @@ class _BancadaOffline:
     fonte = None
     osc = None
 
-    def __init__(self, base_voltage_rms: float = TENSAO_BASE_PADRAO_RMS):
-        self.config = _ConfigOffline(base_voltage_rms)
+    def __init__(self, base_voltage_rms: float = TENSAO_BASE_PADRAO_RMS, perfil: str = "literatura", **sorteio):
+        self.config = _ConfigOffline(base_voltage_rms, perfil, **sorteio)
 
 
 def _carregar_experimento_cls(class_id: str):
@@ -126,9 +136,16 @@ def _reconstruir_esperado(class_id: str, metadado: dict) -> np.ndarray:
     # tocar hardware nenhum.
     f0_hz = float(metadado.get("f0_hz", F0_PADRAO_HZ))
     tensao_base = float(metadado.get("tensao_base_rms", TENSAO_BASE_PADRAO_RMS))
-    instancia = cls(_BancadaOffline(tensao_base))
+    # Perfil de faixas da captura (v1.15); metadata anterior não tem o campo
+    # e foi gerado com as faixas da literatura.
     fs_hz = metadado["fs_hz"]
     pontos = metadado["pontos"]
+    # Sorteio de início/duração/fase (v1.15): metadata anterior não tem o
+    # campo e foi gerado com as posições fixas.
+    instancia = cls(_BancadaOffline(
+        tensao_base, metadado.get("perfil", "literatura"),
+        sorteio_posicao=bool(metadado.get("sorteio_posicao", False)), fs_hz=fs_hz, points=pontos,
+    ))
     t = np.arange(pontos, dtype=np.float64) / fs_hz
     rng = np.random.default_rng(metadado["seed"])
     # capture_index seleciona o nível/parâmetro dentro de gerar() (SAG/SWELL
@@ -161,9 +178,27 @@ def _reconstruir_esperado(class_id: str, metadado: dict) -> np.ndarray:
     # (modelo - senoide); é contra ESSA forma que a análise compara.
     fracao = (metadado.get("parametros") or {}).get("fator_disturbio_bancada")
     if fracao is not None:
-        senoide = np.sin(2.0 * np.pi * f0_hz * t)
+        tau = float(metadado.get("fase_graus", 0.0)) / (360.0 * f0_hz)
+        senoide = np.sin(2.0 * np.pi * f0_hz * (t + tau))
         voltage_pu = senoide + float(fracao) * (voltage_pu - senoide)
     return voltage_pu
+
+
+def _correlacao_disturbio_alinhada(
+    esperado: np.ndarray, registro: np.ndarray, inicio_janela: int, lag: int, metadado: dict,
+) -> Tuple[Optional[float], Optional[str]]:
+    """Correlação só da componente de distúrbio (``sinais.correlacao_disturbio``)
+    com a janela da captura re-alinhada pelo ``lag`` de ``analisar_offset``:
+    desloca o início da janela no registro bruto (sem perder amostras nas
+    bordas, enquanto houver margem) e usa a senoide nominal com a fase do
+    modelo (metadata ``fase_graus``; sem sorteio, 0)."""
+    n = len(esperado)
+    inicio = max(0, min(int(inicio_janela) + int(lag), max(0, registro.size - n)))
+    return correlacao_disturbio(
+        esperado, registro[inicio : inicio + n], fs_hz=float(metadado["fs_hz"]),
+        f0_hz=float(metadado.get("f0_hz", F0_PADRAO_HZ)),
+        fase_graus=float(metadado.get("fase_graus", 0.0)),
+    )
 
 
 def analisar_sessao(sessao_dir: Path, *, gerar_imagens: bool = True) -> List[Dict]:
@@ -234,15 +269,30 @@ def analisar_sessao(sessao_dir: Path, *, gerar_imagens: bool = True) -> List[Dic
                     f"{stem}: metadata sem indice_trigger; recorte alinhado por "
                     "margem_amostras_antes (pode ter viés de janela/10)"
                 )
-        capturado_para_comparar = janela_nominal(
-            capturado,
-            indice_trigger=int(indice_trigger),
-            pre_trigger_s=float(metadado.get("pre_trigger_s", 0.0)),
-            pontos=len(esperado),
-            fs_hz=float(metadado["fs_hz"]),
-        )
+        if metadado.get("inicio_janela") is not None:
+            # Início já calculado pela bancada (prefere-se a refazer a conta).
+            inicio_janela = max(0, min(int(metadado["inicio_janela"]), max(0, capturado.size - len(esperado))))
+            capturado_para_comparar = capturado[inicio_janela : inicio_janela + len(esperado)]
+        else:
+            # Mesmo recorte de janela_nominal(); o início é recuperado para a
+            # correlação do distúrbio re-alinhar a janela no registro bruto.
+            inicio_janela = int(janela_nominal(
+                np.arange(capturado.size), indice_trigger=int(indice_trigger),
+                pre_trigger_s=float(metadado.get("pre_trigger_s", 0.0)),
+                pontos=len(esperado), fs_hz=float(metadado["fs_hz"]),
+            )[0])
+            capturado_para_comparar = janela_nominal(
+                capturado,
+                indice_trigger=int(indice_trigger),
+                pre_trigger_s=float(metadado.get("pre_trigger_s", 0.0)),
+                pontos=len(esperado),
+                fs_hz=float(metadado["fs_hz"]),
+            )
 
         lag, corr = analisar_offset(esperado, capturado_para_comparar, metadado["fs_hz"])
+        corr_disturbio, motivo_disturbio = _correlacao_disturbio_alinhada(
+            esperado, capturado, inicio_janela, lag, metadado,
+        )
         pico_esperado = float(np.max(np.abs(esperado)))
         pico_capturado = float(np.max(np.abs(capturado)))
         relatorio.append({
@@ -254,6 +304,8 @@ def analisar_sessao(sessao_dir: Path, *, gerar_imagens: bool = True) -> List[Dic
             "lag_amostras": lag,
             "lag_ms": lag / metadado["fs_hz"] * 1000.0,
             "correlacao": corr,
+            "correlacao_disturbio": corr_disturbio,
+            "correlacao_disturbio_motivo": motivo_disturbio,
             "pico_esperado": pico_esperado,
             "pico_capturado": pico_capturado,
             "razao_pico": pico_capturado / pico_esperado if pico_esperado else float("nan"),
@@ -296,12 +348,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     relatorio = analisar_sessao(args.sessao_dir, gerar_imagens=not args.sem_imagens)
-    print(f"{'arquivo':<40}{'lag (ms)':>12}{'correlação':>12}{'razão pico':>12}")
+    print(f"{'arquivo':<40}{'lag (ms)':>12}{'correlação':>12}{'corr. distúrbio':>17}{'razão pico':>12}")
     for linha in relatorio:
         if "erro" in linha:
             print(f"{linha['classe']:<40}  ERRO: {linha['erro']}")
             continue
-        print(f"{linha['classe']:<40}{linha['lag_ms']:>12.2f}{linha['correlacao']:>12.3f}{linha['razao_pico']:>12.3f}")
+        cd = linha["correlacao_disturbio"]
+        cd_txt = "n/a" if cd is None else f"{cd:.3f}"
+        print(f"{linha['classe']:<40}{linha['lag_ms']:>12.2f}{linha['correlacao']:>12.3f}{cd_txt:>17}{linha['razao_pico']:>12.3f}")
+        if cd is None:
+            print(f"{'':<40}  corr. distúrbio n/a: {linha['correlacao_disturbio_motivo']}")
     return 0
 
 

@@ -23,8 +23,10 @@ class Experimento(ExperimentoNativo):
         phase = np.empty(points, dtype=np.float64)
         phase[0] = 0.0
         phase[1:] = 2.0 * np.pi * np.cumsum(instantaneous_frequency[:-1]) / fs_hz
-        voltage = np.sin(phase)
-        return voltage, {"start_hz": start_hz, "end_hz": end_hz}
+        # Só a fase (da fundamental em t = 0) é sorteada (v1.15).
+        sorteio = self.sortear(rng, f0)
+        voltage = np.sin(phase + np.deg2rad(sorteio.fase_graus))
+        return voltage, {"start_hz": start_hz, "end_hz": end_hz, **sorteio.parametros()}
 
     def configurar(self, capture_index):
         start_hz, end_hz = (57.0, 63.0) if capture_index % 2 == 0 else (63.0, 57.0)

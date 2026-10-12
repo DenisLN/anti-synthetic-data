@@ -25,6 +25,7 @@ from typing import List, Optional
 
 import mestre
 import preflight
+import perfis
 import preflight_new
 
 logger = logging.getLogger(__name__)
@@ -107,6 +108,24 @@ Comandos disponíveis (nenhum energiza a saída sem pedir confirmação própria
                        seed => mesmas formas, parâmetros e plano de
                        capturas (testes reprodutíveis). Gravada no metadata
                        (base_seed). "set seed padrao" volta à do início.    [OFF]
+  set perfil norma|literatura|fronteira
+                       Perfil de faixas do dataset (logica/perfis.py,
+                       docs/perfis.md), gravado em cada captura (campo
+                       "perfil"). norma = IEEE 1159 (flicker 2-7 %, inter-
+                       harmônicas 0,5-2 %, THD até 20 %, sag 0,15-0,85 pu,
+                       swell 1,15-1,75 pu); literatura = as faixas de
+                       sempre (padrão, reproduz o dataset anterior);
+                       fronteira = sag/swell em 0,1/0,9/1,1/1,8 pu. Vale a
+                       partir do próximo run; env PERFIL define o inicial. [OFF]
+  set sorteio on|off  Início, duração e fase sorteados em gerar() (padrão ON;
+                       docs/analise-2026-10-12/sorteio_inicio_fase.md). ON:
+                       o distúrbio cai em posição diferente a cada captura,
+                       as classes de pulso (02/03/04) reprogramam fase de
+                       disparo e pré-trigger do osciloscópio por captura e
+                       cada captura TRACE regrava a Flash (a estimativa
+                       passa a ser exata). OFF: posições fixas de antes
+                       (60/80 ms, fase 0). Gravado em "sorteio_posicao";
+                       env SORTEIO=0 define o inicial.                      [OFF]
   help / ?            Mostra esta referência.                              [OFF]
   quit / exit         Sai da CLI (não desliga nada por si só — a saída já
                        deve estar OFF entre comandos; ver "status").       [OFF]
@@ -174,6 +193,9 @@ class SessaoCLI:
         mestre.SESSION_RESULTS_DIR = sessao_dir
         mestre.configurar_log_de_sessao(sessao_dir)
         print(f"Sessão gravando em: {sessao_dir}")
+        # Cópia da calibração + sessao.json (commit, numpy) e aviso de árvore
+        # suja em destaque, já no início do run (ver mestre.preparar_pasta_da_sessao).
+        mestre.preparar_pasta_da_sessao(sessao_dir, bancada=mestre.BENCH_MODE)
         if mestre.DIAGNOSTICO_MODE and mestre.BENCH_MODE and DIAGNOSTICO_ABRIR_TERMINAL:
             self._abrir_terminal_de_diagnostico(sessao_dir / "scpi_transcricao.log")
 
@@ -253,6 +275,8 @@ class SessaoCLI:
         print(f"seed base: {mestre.BASE_SEED}" + (
             "" if mestre.BASE_SEED == self._seed_inicial else f" (início da sessão: {self._seed_inicial})"
         ))
+        print(f"perfil de faixas: {mestre.PERFIL}")
+        print(f"sorteio de início/duração/fase: {'ON' if mestre.SORTEIO_POSICAO else 'OFF'}")
         self._imprimir_capturas_por_classe()
         if mestre.SESSION_RESULTS_DIR is not None:
             print(f"Sessão: {mestre.SESSION_RESULTS_DIR}")
@@ -284,8 +308,18 @@ class SessaoCLI:
     @staticmethod
     def _aviso_escritas_trace(linhas: List[tuple]) -> str:
         escritas = sum(info["escritas_trace"] for _, _, info in linhas)
+        if linhas and all(info.get("escritas_trace_exatas") for _, _, info in linhas):
+            # Sorteio ligado: cada captura TRACE tem forma única, o cache de
+            # program_capture não reaproveita nada e cada uma regrava a Flash.
+            quantidade = (
+                f"{escritas} gravações na Flash da AMETEK nesta bateria (início/duração/fase "
+                f"sorteados: cada captura TRACE grava a Flash, sem reaproveitar o cache; pelo "
+                f"menos {escritas} s só de espera de gravação, 1 s por TRACe)"
+            )
+        else:
+            quantidade = f"até {escritas} gravações na Flash da AMETEK nesta bateria"
         texto = (
-            f"TRACe: até {escritas} gravações na Flash da AMETEK nesta bateria "
+            f"TRACe: {quantidade} "
             f"(referência: a fonte travou na ~{mestre.ESCRITAS_TRACE_REFERENCIA_TRAVA}.ª "
             "gravação de uma conexão em 2026-09-16)."
         )
@@ -323,7 +357,8 @@ class SessaoCLI:
 
     def cmd_set(self, args: List[str]) -> int:
         if len(args) < 2:
-            print("Uso: set diagnostico on|off   |   set capturas <N>|padrao   |   set seed <N>|padrao")
+            print("Uso: set diagnostico on|off   |   set capturas <N>|padrao   |   set seed <N>|padrao   |   "
+                "set perfil norma|literatura|fronteira   |   set sorteio on|off")
             return 1
         chave, valor = args[0].lower(), args[1].lower()
         if chave == "margin":
@@ -392,7 +427,26 @@ class SessaoCLI:
             mestre.BASE_SEED = seed
             print(f"seed base: {seed} (vale a partir do próximo run; gravada no metadata como base_seed)")
             return 0
-        print(f"Chave desconhecida: {chave!r}. Use diagnostico, capturas ou seed.")
+        if chave == "perfil":
+            try:
+                mestre.PERFIL = perfis.validar(valor)
+            except ValueError as exc:
+                print(f"perfil: {exc}; mantendo {mestre.PERFIL}")
+                return 1
+            print(f"perfil de faixas: {mestre.PERFIL} (vale a partir do próximo run; gravado no metadata como perfil)")
+            return 0
+        if chave == "sorteio":
+            if valor not in ("on", "off"):
+                print("Uso: set sorteio on|off")
+                return 1
+            mestre.SORTEIO_POSICAO = valor == "on"
+            print(
+                f"sorteio de início/duração/fase: {valor.upper()} (vale a partir do próximo run; "
+                "gravado no metadata como sorteio_posicao)"
+            )
+            self._imprimir_capturas_por_classe()
+            return 0
+        print(f"Chave desconhecida: {chave!r}. Use diagnostico, capturas, seed, perfil ou sorteio.")
         return 1
 
     # -- preflights (energizam conforme o comando) -----------------------

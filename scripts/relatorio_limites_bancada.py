@@ -14,6 +14,7 @@ Limites iguais aos que ``scripts/start_bench_windows.ps1`` fixa: 300 Vrms
 Uso (na raiz do projeto):
     env\\Scripts\\python scripts\\relatorio_limites_bancada.py --tensao 127 --tensao 220
     env/bin/python scripts/relatorio_limites_bancada.py --tensao 220 --capturas 3 --seed 1
+    env\Scripts\python scripts\relatorio_limites_bancada.py --tensao 127 --perfil fronteira
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "logica"))
 
 import mestre  # noqa: E402
+import perfis  # noqa: E402
 from ametek_orm import AmetekMX30  # noqa: E402
 
 RANGE_RMS = 300.0
@@ -40,14 +42,14 @@ class _OscOffline:
     (cobertura/caracterização com ``--capturas``, limite de bancada)."""
 
 
-def _config(tensao: float, frequencia: float, capturas: Optional[int], seed: int) -> mestre.Config:
+def _config(tensao: float, frequencia: float, capturas: Optional[int], seed: int, perfil: str) -> mestre.Config:
     return mestre.Config(
         fs_hz=mestre.FS_HZ, points=mestre.POINTS, duration_s=mestre.DURATION_S,
         grid_frequency_hz=frequencia, base_voltage_rms=tensao, snr_levels_db=(),
         base_seed=seed, capture_current=False, current_base_a=None,
         results_dir=PROJECT_ROOT / "resultados", sim_captures_per_class=1,
         real_captures_per_class=1, disturbance_start_s=mestre.DISTURBANCE_START_S,
-        capturas_override=capturas,
+        capturas_override=capturas, perfil=perfil,
     )
 
 
@@ -79,12 +81,14 @@ def _resumo_parametros(info: Dict[str, object]) -> str:
     return ", ".join(f"{k}={v:.3g}" for k, v in bancada.items())
 
 
-def relatorio(tensao: float, *, frequencia: float, capturas: Optional[int], seed: int) -> List[str]:
-    config = _config(tensao, frequencia, capturas, seed)
+def relatorio(
+    tensao: float, *, frequencia: float, capturas: Optional[int], seed: int, perfil: str = perfis.PERFIL_PADRAO,
+) -> List[str]:
+    config = _config(tensao, frequencia, capturas, seed, perfil)
     fonte = AmetekMX30(simulated=True, max_voltage_rms=RANGE_RMS, max_peak_v=TETO_PICO_V)
     linhas = [
         f"### {tensao:g} Vrms / {frequencia:g} Hz — teto {TETO_PICO_V} Vp, {RANGE_RMS:g} Vrms; "
-        f"set capturas: {capturas if capturas is not None else 'não'}; seed base {seed}; "
+        f"set capturas: {capturas if capturas is not None else 'não'}; seed base {seed}; perfil {perfil}; "
         f"limite de bancada: {'ligado' if mestre.LIMITE_BANCADA_DISTURBIO else 'DESLIGADO'} "
         f"(fração mínima {mestre.LIMITE_BANCADA_FRACAO_MINIMA:.2f})",
         "",
@@ -137,6 +141,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--frequencia", type=float, default=60.0)
     parser.add_argument("--capturas", type=int, default=None, help="como 'set capturas N' (padrão: só o padrão das classes)")
     parser.add_argument("--seed", type=int, default=mestre.BASE_SEED_PADRAO, help="como 'set seed N'")
+    parser.add_argument("--perfil", choices=perfis.PERFIS, default=perfis.PERFIL_PADRAO, help="como 'set perfil'")
     args = parser.parse_args(argv)
     logging.getLogger("MestreExperimentos").setLevel(logging.ERROR)
     for tensao in args.tensao:
@@ -147,7 +152,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                 "380 V de linha (sistema 220/380 V) = 219,4 V por fase: rode com --tensao 220.\n"
             )
             continue
-        print("\n".join(relatorio(tensao, frequencia=args.frequencia, capturas=args.capturas, seed=args.seed)))
+        print("\n".join(relatorio(tensao, frequencia=args.frequencia, capturas=args.capturas, seed=args.seed,
+                              perfil=args.perfil)))
     return 0
 
 

@@ -12,6 +12,7 @@ import os
 import re
 import threading
 import time
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -74,6 +75,73 @@ class FalhaFatalDeInstrumento(AmetekORMError):
 
 def _normalized_identity(value: str) -> str:
     return re.sub(r"[^A-Z0-9]", "", value.upper())
+
+
+def formatar_valores(valores: Sequence[float]) -> str:
+    """Texto que ``program_capture()`` manda à fonte para uma lista de números
+    (pontos de TRACe:DATA, SOURce:LIST:VOLTage): ``%.8g`` separados por vírgula.
+    Fonte única do formato — ``ProgramacaoCaptura`` arredonda com ele."""
+    return ",".join(f"{valor:.8g}" for valor in valores)
+
+
+def _como_enviado(valores: np.ndarray) -> np.ndarray:
+    """Os mesmos números depois do ``%.8g`` do SCPI (o que a fonte recebe)."""
+    return np.array([float(f"{valor:.8g}") for valor in valores], dtype=np.float64)
+
+
+@dataclass(frozen=True)
+class ProgramacaoCaptura:
+    """Tudo o que ``AmetekMX30.program_capture()`` programa na fonte para uma
+    captura de 6000 amostras, calculado sem SCPI por
+    ``AmetekMX30.montar_programacao()`` (ver ``programada_pu``)."""
+
+    base_voltage_rms: float
+    frequency_hz: float
+    dc_offset_pu: float
+    pontos_por_ciclo: int
+    ciclos: int
+    trace_names: Tuple[str, ...]
+    # (ciclos, TRACE_POINTS): um ciclo por TRACe, média zero, pico 1, já com o
+    # arredondamento de ``formatar_valores``.
+    traces: np.ndarray
+    # LIST:VOLTage de cada passo (V rms do ciclo), idem.
+    list_voltages_rms: np.ndarray
+    # Pico físico reconstruído até cada ciclo (máximo acumulado, V) — o último
+    # é ``last_programmed_peak_v``.
+    pico_acumulado_v: np.ndarray
+    pico_reconstruido_v: float
+
+    def comando_trace(self, indice: int) -> str:
+        return f"TRACe:DATA {self.trace_names[indice]},{formatar_valores(self.traces[indice])}"
+
+    def texto_list_voltages(self) -> str:
+        return formatar_valores(self.list_voltages_rms)
+
+    def programada_pu(self) -> np.ndarray:
+        """A forma que a fonte emite, de volta na grade de 30 kSa/s da captura,
+        em pu do pico nominal (``base_voltage_rms * sqrt(2)``).
+
+        Cada passo do LIST toca a TRACe (1024 pontos = 1 ciclo) escalada para o
+        rms de ``LIST:VOLTage`` — o manual (AMETEK MX SCPI p. 126, TRACe:DATA:
+        "scales the data to an internal format that removes the dc component
+        and ensures that the correct ac rms voltage is output") garante o rms
+        e a remoção do DC; a grade é a inversa
+        de ``_resample_cycle`` (interpolação periódica). Mais o offset DC, que
+        ``program_capture`` manda à parte por ``SOURce:VOLTage:OFFSet``."""
+        n = self.pontos_por_ciclo
+        pontos = self.traces.shape[1]
+        posicao = np.arange(n, dtype=np.float64) * (pontos / n)
+        grade = np.arange(pontos, dtype=np.float64)
+        pico_nominal_v = self.base_voltage_rms * math.sqrt(2.0)
+        ciclos = []
+        for trace, rms_v in zip(self.traces, self.list_voltages_rms):
+            rms_trace = float(np.sqrt(np.mean(np.square(trace))))
+            if rms_trace < 1e-12:
+                ciclos.append(np.zeros(n, dtype=np.float64))
+                continue
+            volts = np.interp(posicao, grade, trace, period=pontos) * (float(rms_v) / rms_trace)
+            ciclos.append(volts / pico_nominal_v)
+        return np.concatenate(ciclos) + self.dc_offset_pu
 
 
 class AmetekMX30:
@@ -149,6 +217,9 @@ class AmetekMX30:
         self.idn = ""
         self.command_log: List[str] = []
         self.last_programmed_peak_v = 0.0
+        # O que a última program_capture() programou (ProgramacaoCaptura): é de
+        # onde mestre.py tira a forma "programada" que grava ao lado da medida.
+        self.ultima_programacao: Optional[ProgramacaoCaptura] = None
         # Quantas TRACe:DATA esta CONEXÃO já gravou na memória não volátil
         # da fonte ([AM] p. 126). A sessão 2 travou na 280.ª; sem este
         # número no metadata não há como correlacionar exposição e falha.
@@ -754,9 +825,15 @@ class AmetekMX30:
         recusava a captura. Escrevendo já o valor representável, o que está
         no metadata/readback é o que a fonte REALMENTE aplica — nenhuma
         tolerância é afrouxada. Nunca arredonda para cima do teto de software."""
-        quantizado = round(round(voltage_rms / self.RESOLUCAO_TENSAO_V) * self.RESOLUCAO_TENSAO_V, 1)
-        if quantizado > self.max_voltage_rms:
-            quantizado = round(quantizado - self.RESOLUCAO_TENSAO_V, 1)
+        return self.quantizar_tensao_rms(voltage_rms, self.max_voltage_rms)
+
+    @classmethod
+    def quantizar_tensao_rms(cls, voltage_rms: float, max_voltage_rms: float) -> float:
+        """Conta pura de ``_na_resolucao_da_fonte`` (também usada offline para
+        reconstruir o nível que um PULSe/STEP nativo realmente programou)."""
+        quantizado = round(round(voltage_rms / cls.RESOLUCAO_TENSAO_V) * cls.RESOLUCAO_TENSAO_V, 1)
+        if quantizado > max_voltage_rms:
+            quantizado = round(quantizado - cls.RESOLUCAO_TENSAO_V, 1)
         return quantizado
 
     def trigger_step(self, voltage_rms: float) -> None:
@@ -1241,6 +1318,89 @@ class AmetekMX30:
         target_x = np.arange(AmetekMX30.TRACE_POINTS, dtype=np.float64) / AmetekMX30.TRACE_POINTS
         return np.interp(target_x, source_x, cycle)
 
+    @classmethod
+    def montar_programacao(
+        cls,
+        waveform_pu: Sequence[float],
+        *,
+        base_voltage_rms: float,
+        frequency_hz: float,
+        dc_offset_pu: float = 0.0,
+    ) -> ProgramacaoCaptura:
+        """Função pura (sem SCPI, sem estado) que decide o que ``program_capture``
+        programa: ciclos de ``FS_HZ / frequency_hz`` amostras, cada um sem a
+        componente DC, reamostrado para ``TRACE_POINTS`` pontos, sem a média,
+        normalizado pelo pico, mais o rms do ciclo para ``SOURce:LIST:VOLTage``.
+        ``program_capture()`` envia exatamente isto e
+        ``ProgramacaoCaptura.programada_pu()`` reconstrói a forma emitida,
+        offline. Levanta ``ValueError`` nas mesmas condições de antes."""
+        waveform = np.asarray(waveform_pu, dtype=np.float64)
+        if waveform.shape != (cls.CAPTURE_POINTS,) or not np.all(np.isfinite(waveform)):
+            raise ValueError("A captura para a AMETEK deve conter exatamente 6000 valores finitos")
+        # pontos_por_ciclo é o tamanho, em amostras, de UM período fechado da
+        # onda na frequência que será programada. Cada TRACE representa
+        # exatamente um ciclo (o manual exige 1024 pontos = 1 ciclo por
+        # forma); um pedaço que não seja um ciclo fechado tem viés DC real e,
+        # ao ser normalizado, gera pico inflado e descontinuidade de fase na
+        # troca de passo do LIST (bug corrigido: antes fixo em 600 amostras,
+        # que só fecha um ciclo a 50 Hz).
+        pontos_por_ciclo_f = cls.FS_HZ / frequency_hz
+        pontos_por_ciclo = round(pontos_por_ciclo_f)
+        if abs(pontos_por_ciclo_f - pontos_por_ciclo) > 1e-6:
+            raise ValueError(
+                f"FS_HZ/frequency_hz ({cls.FS_HZ}/{frequency_hz}) não é um número inteiro "
+                "de amostras por ciclo"
+            )
+        if cls.CAPTURE_POINTS % pontos_por_ciclo != 0:
+            raise ValueError(
+                f"{cls.CAPTURE_POINTS} amostras não dividem em ciclos inteiros de "
+                f"{pontos_por_ciclo} amostras (frequency_hz={frequency_hz})"
+            )
+        ciclos = cls.CAPTURE_POINTS // pontos_por_ciclo
+        trace_names = tuple(f"TCC{index:02d}" for index in range(ciclos))
+
+        dc_component = float(dc_offset_pu)
+        pico_dc_v = abs(dc_component) * base_voltage_rms * math.sqrt(2.0)
+        list_voltages = []
+        traces = []
+        pico_acumulado = []
+        reconstructed_peak_v = pico_dc_v
+        for index in range(ciclos):
+            start = index * pontos_por_ciclo
+            cycle = waveform[start : start + pontos_por_ciclo] - dc_component
+            cycle_rms_pu = float(np.sqrt(np.mean(np.square(cycle))))
+            voltage_rms = base_voltage_rms * math.sqrt(2.0) * cycle_rms_pu
+            list_voltages.append(voltage_rms)
+            trace = cls._resample_cycle(cycle)
+            trace -= np.mean(trace)
+            scale = float(np.max(np.abs(trace)))
+            if scale < 1e-12:
+                trace = np.zeros(cls.TRACE_POINTS, dtype=np.float64)
+            else:
+                trace /= scale
+                # O pico físico real do ciclo reconstruído é o pico em pu
+                # (scale, antes da normalização) multiplicado pela tensão base
+                # de pico. A abordagem anterior (voltage_rms / trace_rms)
+                # infla incorretamente o resultado porque voltage_rms já
+                # incorpora o fator sqrt(2), levando a uma superestimativa de
+                # ~17% para senoide de 60 Hz reamostrada a 1024 pontos.
+                cycle_peak_v = scale * base_voltage_rms * math.sqrt(2.0)
+                reconstructed_peak_v = max(reconstructed_peak_v, cycle_peak_v + pico_dc_v)
+            traces.append(_como_enviado(trace))
+            pico_acumulado.append(reconstructed_peak_v)
+        return ProgramacaoCaptura(
+            base_voltage_rms=float(base_voltage_rms),
+            frequency_hz=float(frequency_hz),
+            dc_offset_pu=dc_component,
+            pontos_por_ciclo=int(pontos_por_ciclo),
+            ciclos=int(ciclos),
+            trace_names=trace_names,
+            traces=np.vstack(traces),
+            list_voltages_rms=_como_enviado(np.array(list_voltages, dtype=np.float64)),
+            pico_acumulado_v=np.array(pico_acumulado, dtype=np.float64),
+            pico_reconstruido_v=float(reconstructed_peak_v),
+        )
+
     def program_capture(
         self,
         waveform_pu: Sequence[float],
@@ -1258,27 +1418,16 @@ class AmetekMX30:
                 "Pico calculado %.3f V excede limite %.3f V; prosseguindo sem carga.",
                 physical_peak, self.max_peak_v,
             )
-        # pontos_por_ciclo é o tamanho, em amostras, de UM período fechado da
-        # onda na frequência que será programada. Cada TRACE representa
-        # exatamente um ciclo (o manual exige 1024 pontos = 1 ciclo por
-        # forma); um pedaço que não seja um ciclo fechado tem viés DC real e,
-        # ao ser normalizado, gera pico inflado e descontinuidade de fase na
-        # troca de passo do LIST (bug corrigido: antes fixo em 600 amostras,
-        # que só fecha um ciclo a 50 Hz).
-        pontos_por_ciclo_f = self.FS_HZ / frequency_hz
-        pontos_por_ciclo = round(pontos_por_ciclo_f)
-        if abs(pontos_por_ciclo_f - pontos_por_ciclo) > 1e-6:
-            raise ValueError(
-                f"FS_HZ/frequency_hz ({self.FS_HZ}/{frequency_hz}) não é um número inteiro "
-                "de amostras por ciclo"
-            )
-        if self.CAPTURE_POINTS % pontos_por_ciclo != 0:
-            raise ValueError(
-                f"{self.CAPTURE_POINTS} amostras não dividem em ciclos inteiros de "
-                f"{pontos_por_ciclo} amostras (frequency_hz={frequency_hz})"
-            )
-        ciclos = self.CAPTURE_POINTS // pontos_por_ciclo
-        trace_names = tuple(f"TCC{index:02d}" for index in range(ciclos))
+        # Ciclos, TRACes e LIST:VOLTage vêm da função pura montar_programacao()
+        # (a mesma que reconstrói a forma "programada" offline): o que se envia
+        # e o que se grava como programado não podem divergir.
+        programacao = self.montar_programacao(
+            waveform, base_voltage_rms=base_voltage_rms, frequency_hz=frequency_hz,
+            dc_offset_pu=dc_offset_pu,
+        )
+        pontos_por_ciclo = programacao.pontos_por_ciclo
+        ciclos = programacao.ciclos
+        trace_names = programacao.trace_names
 
         # ABORt aqui não desliga OUTPUT (a saída fica ligada durante toda a
         # bateria — ver energize_baseline()). Só reseta o sistema de trigger.
@@ -1335,45 +1484,23 @@ class AmetekMX30:
         else:
             self._ensure_trace_slots(trace_names)
 
-            dc_component = float(dc_offset_pu)
-            list_voltages = []
-            reconstructed_peak_v = abs(dc_component) * base_voltage_rms * math.sqrt(2.0)
+            list_voltages = [float(value) for value in programacao.list_voltages_rms]
+            reconstructed_peak_v = programacao.pico_reconstruido_v
             for index, name in enumerate(trace_names):
-                start = index * pontos_por_ciclo
-                cycle = waveform[start : start + pontos_por_ciclo] - dc_component
-                cycle_rms_pu = float(np.sqrt(np.mean(np.square(cycle))))
-                voltage_rms = base_voltage_rms * math.sqrt(2.0) * cycle_rms_pu
-                if voltage_rms > self.max_voltage_rms:
+                if list_voltages[index] > self.max_voltage_rms:
                     logger.warning(
                         "Ciclo %d: %.3f Vrms acima do limite configurado %.3f Vrms; aceito.",
-                        index, voltage_rms, self.max_voltage_rms,
+                        index, list_voltages[index], self.max_voltage_rms,
                     )
-                list_voltages.append(voltage_rms)
-                trace = self._resample_cycle(cycle)
-                trace -= np.mean(trace)
-                scale = float(np.max(np.abs(trace)))
-                if scale < 1e-12:
-                    trace = np.zeros(self.TRACE_POINTS, dtype=np.float64)
-                else:
-                    trace /= scale
-                    # O pico físico real do ciclo reconstruído é o pico em pu
-                    # (scale, antes da normalização) multiplicado pela tensão base
-                    # de pico. A abordagem anterior (voltage_rms / trace_rms)
-                    # infla incorretamente o resultado porque voltage_rms já
-                    # incorpora o fator sqrt(2), levando a uma superestimativa de
-                    # ~17% para senoide de 60 Hz reamostrada a 1024 pontos.
-                    cycle_peak_v = scale * base_voltage_rms * math.sqrt(2.0)
-                    reconstructed_peak_v = max(
-                        reconstructed_peak_v,
-                        cycle_peak_v + abs(dc_component) * base_voltage_rms * math.sqrt(2.0),
+                if (
+                    programacao.pico_acumulado_v[index] > self.max_peak_v
+                    and np.any(programacao.traces[index])
+                ):
+                    logger.warning(
+                        "TRACE reconstruída atingiria %.3f Vp, acima do limite %.3f Vp; prosseguindo.",
+                        programacao.pico_acumulado_v[index], self.max_peak_v,
                     )
-                    if reconstructed_peak_v > self.max_peak_v:
-                        logger.warning(
-                            "TRACE reconstruída atingiria %.3f Vp, acima do limite %.3f Vp; prosseguindo.",
-                            reconstructed_peak_v, self.max_peak_v,
-                        )
-                values = ",".join(f"{value:.8g}" for value in trace)
-                self.write(f"TRACe:DATA {name},{values}")
+                self.write(programacao.comando_trace(index))
                 self.escritas_trace += 1
                 # A transferência serial em 115200 baud na Rev. 5.53 pode deixar o buffer ocupado
                 # se checado imediatamente via SYST:ERR?. Limpamos com *CLS e aguardamos o processamento.
@@ -1389,7 +1516,7 @@ class AmetekMX30:
         # senão o próximo passo do LIST começa no meio de um ciclo.
         dwell_s = pontos_por_ciclo / self.FS_HZ
         names = ",".join(trace_names)
-        voltages = ",".join(f"{value:.8g}" for value in list_voltages)
+        voltages = formatar_valores(list_voltages)
         dwells = ",".join(f"{dwell_s:.10g}" for _ in trace_names)
         # "1" era lido pelo firmware Rev. 5.53 como "repete uma vez" (toca
         # cada ciclo 2x), não "sem repetição" -- confirmado na bancada
@@ -1458,6 +1585,7 @@ class AmetekMX30:
             if command == "VOLTage:MODE LIST":
                 self._log_diagnostico("apos_voltage_mode_list")
         self.last_programmed_peak_v = reconstructed_peak_v
+        self.ultima_programacao = programacao
         self._last_cycles = ciclos
         # A saída fica ligada durante toda a bateria (energize_baseline() é
         # chamado uma vez, fora daqui). Se o ABORt/reprogramação acima

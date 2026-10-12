@@ -94,6 +94,38 @@ v1.12 (writes sincronizados por `*ESR?`, bloqueio prévio de pico,
 `VOLTage:HIGH` = limite RMS, e o achado de segurança: nunca consultar a
 fonte logo após `TRACe:DATA`).
 
+### Autorização de 2026-10-12 (perfis de faixas; `CHANGELOG/v1.15.md`)
+
+O dono autorizou mudar o que `gerar()` produz para uma dada seed, para
+implementar os perfis `norma`, `literatura` e `fronteira` (`set perfil`):
+
+- `experimentos_nativos/02.py`, `03.py`, `05.py` e
+  `experimentos_waveform/06.py`, `10.py`–`16.py`, `20.py`: faixas e níveis
+  passam a ser lidos de `logica/perfis.py` pelo perfil ativo;
+- `logica/mestre.py`, `logica/cli.py`, `logica/analisar_sessao.py`,
+  `scripts/relatorio_limites_bancada.py`: plumbing do perfil.
+
+Condições: o perfil `literatura` (padrão) continua reproduzindo byte a byte o
+`gerar()` do commit 34a0d82 (teste em `tests/test_offline.py`,
+`PerfisDeFaixasTests`); as mudanças entram juntas numa versão congelada antes
+da próxima campanha; as 63 capturas de 07/10 ficam como piloto. Início,
+duração, fase e forma das classes não mudam. Os limites inegociáveis abaixo
+continuam valendo integralmente (`max_voltage_rms`, `max_peak_v`,
+`max_current_a`, pré-validação de pico).
+
+### Autorização de 2026-10-12 (início, duração e fase sorteados; `CHANGELOG/v1.15.md`)
+
+O dono autorizou também que `gerar()` passe a sortear início, duração e fase
+da senoide base (Pergunta 7 e proposta 3 de `atividade.tex`), na mesma versão
+congelada dos perfis, o que substitui a frase "início, duração, fase e forma
+não mudam" da autorização acima. Editados: `experimentos_nativos/01.py`–`05.py`,
+`18.py`, `19.py`; `experimentos_waveform/06.py`, `07.py`, `09.py`–`17.py`, `20.py`
+(a 08 fica de fora); `logica/mestre.py` (`Sorteio`, pré-trigger por captura),
+`logica/oscilloscope_orm.py` (só `definir_pre_trigger`), `logica/cli.py`
+(`set sorteio`, estimativa de gravações), `logica/analisar_sessao.py`,
+`scripts/recalibrar_extremos.py`. `SORTEIO=0` / `set sorteio off` reproduz byte a
+byte o `gerar()` de 34a0d82. Limites e validações abaixo intactos.
+
 ## Limites inegociáveis (não mudar em nenhuma hipótese)
 
 - `AMETEK_PORT=COM10` e `AMETEK_BAUDRATE=115200` continuam fixos e validados

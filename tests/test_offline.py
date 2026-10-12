@@ -120,6 +120,13 @@ def _load_experimento(experiment_id: str):
     return module.Experimento(_BancadaFake())
 
 
+def _sem_sorteio(experimento):
+    """O mesmo experimento com as posições fixas de antes da v1.15."""
+    import dataclasses
+    experimento.config = dataclasses.replace(experimento.config, sorteio_posicao=False)
+    return experimento
+
+
 def _load_gerar(experiment_id: str):
     return _load_experimento(experiment_id).gerar
 
@@ -1998,6 +2005,116 @@ class AnalisarSessaoTests(unittest.TestCase):
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
+class CorrelacaoDisturbioTests(unittest.TestCase):
+    FS_HZ = 30_000.0
+    F0_HZ = 60.0
+
+    def _t(self):
+        return np.arange(6000) / self.FS_HZ
+
+    def _senoide(self, fase_graus=0.0):
+        return np.sin(2.0 * np.pi * self.F0_HZ * self._t() + np.radians(fase_graus))
+
+    def _disturbio(self):
+        # pulso de 1 ms + oscilação amortecida: resíduo sem simetria nem média nula
+        t = self._t()
+        pulso = np.where((t > 0.05) & (t < 0.051), 0.8, 0.0)
+        osc = 0.3 * np.exp(-(t - 0.1).clip(0) / 0.01) * np.sin(2 * np.pi * 900 * t) * (t >= 0.1)
+        return pulso + osc
+
+    def _corr(self, esperado, capturado, fase_graus=0.0):
+        return sinais.correlacao_disturbio(
+            esperado, capturado, fs_hz=self.FS_HZ, f0_hz=self.F0_HZ, fase_graus=fase_graus,
+        )
+
+    def test_disturbio_identico_da_1(self):
+        sinal = self._senoide() + self._disturbio()
+        valor, motivo = self._corr(sinal, sinal.copy())
+        self.assertIsNone(motivo)
+        self.assertAlmostEqual(valor, 1.0, places=9)
+
+    def test_disturbio_com_sinal_trocado_da_menos_1(self):
+        senoide = self._senoide()
+        valor, motivo = self._corr(senoide + self._disturbio(), senoide - self._disturbio())
+        self.assertIsNone(motivo)
+        self.assertAlmostEqual(valor, -1.0, places=9)
+
+    def test_escala_do_disturbio_nao_muda_a_correlacao(self):
+        senoide = self._senoide()
+        valor, _ = self._corr(senoide + self._disturbio(), senoide + 0.4 * self._disturbio())
+        self.assertAlmostEqual(valor, 1.0, places=9)
+
+    def test_correlacao_total_alta_mas_disturbio_ortogonal_da_zero(self):
+        # a fundamental domina a correlação do sinal inteiro (>0,99) mesmo
+        # quando o distúrbio capturado não tem nada a ver com o esperado
+        senoide = self._senoide()
+        esperado = senoide + 0.2 * np.sin(2 * np.pi * 180 * self._t())
+        capturado = senoide + 0.2 * np.sin(2 * np.pi * 180 * self._t() + np.pi / 2)
+        import analisar_sessao
+        _, total = analisar_sessao.analisar_offset(esperado, capturado, self.FS_HZ)
+        self.assertGreater(total, 0.95)
+        valor, _ = self._corr(esperado, capturado)
+        self.assertAlmostEqual(valor, 0.0, places=6)
+
+    def test_usa_a_fase_do_modelo_na_senoide_nominal(self):
+        fase = 37.0
+        sinal = self._senoide(fase) + self._disturbio()
+        valor, motivo = self._corr(sinal, sinal.copy(), fase_graus=fase)
+        self.assertIsNone(motivo)
+        self.assertAlmostEqual(valor, 1.0, places=9)
+        # com a fase errada o resíduo carrega a senoide mal subtraída e a
+        # correlação com um capturado sem a mesma senoide deixa de ser 1
+        capturado = self._senoide(fase) + 0.5 * self._disturbio()
+        errado, _ = self._corr(sinal, capturado, fase_graus=0.0)
+        self.assertLess(errado, 0.999)
+
+    def test_classe_01_sem_disturbio_devolve_none_com_motivo(self):
+        valor, motivo = self._corr(self._senoide(), self._senoide() + 0.01 * np.cos(self._t() * 1e4))
+        self.assertIsNone(valor)
+        self.assertIn("~ 0", motivo)
+
+    def test_offset_dc_puro_devolve_none_com_motivo(self):
+        valor, motivo = self._corr(self._senoide() + 0.05, self._senoide() + 0.05)
+        self.assertIsNone(valor)
+        self.assertIn("constante", motivo)
+
+    def test_capturado_com_residuo_constante_devolve_none(self):
+        valor, motivo = self._corr(self._senoide() + self._disturbio(), self._senoide())
+        self.assertIsNone(valor)
+        self.assertIn("capturado constante", motivo)
+
+    def test_formas_incompativeis_devolvem_none(self):
+        valor, motivo = self._corr(np.zeros(10), np.zeros(9))
+        self.assertIsNone(valor)
+        self.assertIn("incompat", motivo)
+
+    def test_analisar_sessao_expoe_a_correlacao_do_disturbio(self):
+        # captura == esperado de uma classe com distúrbio real (05, THD 5%):
+        # correlação do distúrbio ~1; na 01 vem None com motivo
+        import analisar_sessao
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            sessao_dir = tmp_dir / "sessao_teste"
+            (sessao_dir / "metadata").mkdir(parents=True)
+            fs_hz, pontos = self.FS_HZ, 6000
+            for classe, nome, seed in (("01", "normal", 21260827), ("05", "harmonics", 25260827)):
+                md = {"classe": nome.upper(), "fs_hz": fs_hz, "id_captura": f"{classe}-0001", "f0_hz": 60.0,
+                      "parametros": {}, "pontos": pontos, "seed": seed, "simulado": False, "nivel_indice": 0}
+                esperado = analisar_sessao._reconstruir_esperado(classe, md)
+                np.savez(
+                    sessao_dir / f"{classe}_{nome}_cap01.npz", tempo_ms=self._t() * 1000.0,
+                    tensao_pu=esperado.reshape(1, -1), classe=nome.upper(),
+                    id_captura=np.array([f"{classe}-0001"], dtype=object),
+                )
+                (sessao_dir / "metadata" / f"{classe}_{nome}.jsonl").write_text(json.dumps(md) + "\n", encoding="utf-8")
+            relatorio = {r["classe"]: r for r in analisar_sessao.analisar_sessao(sessao_dir, gerar_imagens=False)}
+            self.assertIsNone(relatorio["01_normal_cap01"]["correlacao_disturbio"])
+            self.assertTrue(relatorio["01_normal_cap01"]["correlacao_disturbio_motivo"])
+            self.assertAlmostEqual(relatorio["05_harmonics_cap01"]["correlacao_disturbio"], 1.0, places=6)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
 class CaminhoNativoIntegridadeTests(unittest.TestCase):
     """P01 — integridade do caminho nativo (STEP/PULSe/CSINe).
 
@@ -2557,13 +2674,17 @@ class FaseDeDisparoTests(unittest.TestCase):
         experimento.fonte = fonte
         experimento.osc = mock.Mock()
         experimento.usar_trace.return_value = False
-        experimento.fase_de_disparo_graus = lambda: mestre.ExperimentoNativo.fase_de_disparo_graus(experimento)
+        experimento.fase_de_disparo_graus = (
+            lambda *a, **k: mestre.ExperimentoNativo.fase_de_disparo_graus(experimento, *a, **k)
+        )
         experimento.configurar.side_effect = lambda ci: (fonte.trigger_pulse(2.7, width_s=0.06), {})[1]
         experimento._ler_captura.return_value = "ok"
+        experimento.gerar.return_value = (None, {})  # sem sorteio: fase e pré-trigger de sempre
         self.assertEqual(mestre.ExperimentoNativo._capturar_real(experimento, 0, None, None), "ok")
         log = fonte.command_log
         fase = log.index("TRIGger:SYNChronize:PHASe 216.0")
         self.assertLess(fase, log.index("VOLTage:MODE PULSe"))
+        experimento.osc.definir_pre_trigger.assert_not_called()
 
 
 class FrequenciaBaseTests(unittest.TestCase):
@@ -3728,6 +3849,11 @@ def _config_bancada(results_dir, **overrides):
         base_voltage_rms=127.0, snr_levels_db=(), base_seed=20_260_827,
         capture_current=False, current_base_a=None, results_dir=results_dir,
         sim_captures_per_class=1, real_captures_per_class=1, disturbance_start_s=0.06,
+        # Estes testes cobrem a MECÂNICA da bancada (limite, pré-validação,
+        # metadata) com as posições fixas de antes da v1.15; o sorteio de
+        # início/duração/fase tem a classe de testes própria
+        # (SorteioInicioDuracaoFaseTests), que liga o campo explicitamente.
+        sorteio_posicao=False,
     )
     base.update(overrides)
     return mestre.Config(**base)
@@ -3775,7 +3901,7 @@ class CapturasPadraoPorClasseTests(unittest.TestCase):
     bancada (``capturas_padrao``). Pedido do dono (2026-10-07): 3 nas classes
     que sorteiam parâmetros em ``gerar()``, 1 nas determinísticas."""
 
-    COM_SORTEIO = {"04", "06", "07", "08", "09", "17", "19", "20"}
+    COM_SORTEIO = {"04", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "19", "20"}
 
     def setUp(self):
         self.tmp_dir = Path(tempfile.mkdtemp())
@@ -3831,7 +3957,7 @@ class CapturasPadraoPorClasseTests(unittest.TestCase):
         self.assertNotIn(0.09, niveis)
 
     def test_classe_deterministica_continua_com_1(self):
-        registros, _ = _executar_classe_real_com_stub("10", _config_bancada(self.tmp_dir))
+        registros, _ = _executar_classe_real_com_stub("18", _config_bancada(self.tmp_dir))
         self.assertEqual(len(registros), 1)
 
     def test_classe_com_niveis_e_padrao_maior_que_1_agrupa_por_nivel(self):
@@ -3933,7 +4059,12 @@ class CliCapturasTests(unittest.TestCase):
         codigo, saida = self._rodar(self.cli.SessaoCLI().cmd_status, [])
         self.assertEqual(codigo, 0)
         self.assertIn("04=3", saida)
-        self.assertIn("TRACe: até", saida)
+        # Sorteio ligado (padrão): a conta é exata, cada captura TRACE regrava a Flash.
+        self.assertIn("468 gravações na Flash", saida)  # 300 + 7 compostas x 2 capturas a mais x 12 ciclos (v1.15)
+        self.assertIn("cada captura TRACE grava a Flash", saida)
+        with mock.patch.object(self.cli.mestre, "SORTEIO_POSICAO", False):
+            _, saida_sem = self._rodar(self.cli.SessaoCLI().cmd_status, [])
+        self.assertIn("TRACe: até 468 gravações", saida_sem)
 
     def test_set_capturas_padrao_desfaz_o_override(self):
         sessao = self.cli.SessaoCLI()
@@ -4323,7 +4454,8 @@ class LimiteDeBancada220VTests(unittest.TestCase):
         esperado = analisar_sessao._reconstruir_esperado("16", metadado)
         t = np.arange(6000) / 30_000.0
         senoide = np.sin(2.0 * np.pi * 60.0 * t)
-        modelo, _ = _load_gerar("16")(t, 60.0, 0, np.random.default_rng(1))
+        # Metadata sem "sorteio_posicao" = sessão anterior à v1.15 (posições fixas).
+        modelo, _ = _sem_sorteio(_load_experimento("16")).gerar(t, 60.0, 0, np.random.default_rng(1))
         np.testing.assert_allclose(esperado, senoide + 0.4 * (modelo - senoide), atol=1e-12)
 
 
@@ -4338,7 +4470,7 @@ class RelatorioERecalibracaoTests(unittest.TestCase):
         texto = saida.getvalue()
         for indice in range(1, 21):
             self.assertIn(f"| {indice:02d} ", texto)
-        self.assertIn("16: 1/1 rodam, 1 com distúrbio reduzido", texto)
+        self.assertIn("16: 3/3 rodam, 3 com distúrbio reduzido", texto)
         self.assertIn("380 Vrms — RECUSADA", texto)
         self.assertNotIn("CLIPA", texto)
 
@@ -4691,6 +4823,1172 @@ class RecorteMargemERelatorioHtmlTests(unittest.TestCase):
         self.assertIn("snr_30db", caminho.read_text(encoding="utf-8"))
         capturas = relatorio_html.ler_capturas(recortado, recortar_margem.carregar_metadados(recortado))
         self.assertTrue(all(not c.tem_margem for c in capturas))
+
+
+
+class MetadataLegivelERastreavelTests(unittest.TestCase):
+    """Metadata legível (.json indentado ao lado do .jsonl), ``inicio_janela``,
+    cópia da calibração e procedência do código na pasta da sessão."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+
+    def _config(self, results_dir, **overrides):
+        base = dict(
+            fs_hz=30_000.0, points=6_000, duration_s=0.2, grid_frequency_hz=60.0,
+            base_voltage_rms=127.0, snr_levels_db=(), base_seed=1,
+            capture_current=False, current_base_a=None, results_dir=results_dir,
+            sim_captures_per_class=2, real_captures_per_class=1, disturbance_start_s=0.06,
+            capturas_override=1,
+        )
+        base.update(overrides)
+        return mestre.Config(**base)
+
+    def _classe_fisica(self, config, indice_trigger, pre_trigger_s=0.060):
+        fonte = mestre.AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=425.0)
+        bancada = mestre.Bancada(fonte, mock.Mock(), config)
+
+        class _Classe(mestre.ExperimentoNativo):
+            id = "02"
+            nome = "SAG"
+
+            def gerar(self, t, f0, capture_index, rng):
+                return np.sin(2.0 * np.pi * f0 * t), {}
+
+            def configurar(self, capture_index):
+                return {}
+
+        _Classe.pre_trigger_s = pre_trigger_s
+        experimento = _Classe(bancada)
+        experimento.osc = mock.Mock()
+        experimento.osc.ultimo_indice_trigger = indice_trigger
+        tempo_s = np.arange(7200, dtype=np.float64) / 30_000.0
+        experimento._capturar_real = lambda ci, t, rng: (
+            tempo_s, np.sin(2.0 * np.pi * 60.0 * tempo_s), None, {},
+        )
+        experimento._preparar_acquisicao_real = lambda: None
+        return experimento
+
+    def _rodar_fisica(self, indice_trigger):
+        config = self._config(self.tmp / "resultados")
+        experimento = self._classe_fisica(config, indice_trigger)
+        with mock.patch.object(
+            mestre.ExperimentoBase, "_calcular_margem", staticmethod(lambda **kw: (600, 600, 7200))
+        ):
+            experimento.executar()
+        return config.results_dir
+
+    def _primeiro_registro(self, pasta):
+        texto = (pasta / "metadata" / "02_sag.jsonl").read_text(encoding="utf-8")
+        return json.loads(texto.splitlines()[0])
+
+    def test_fisica_grava_json_indentado_igual_ao_jsonl(self):
+        pasta = self._rodar_fisica(2500)
+        jsonl = pasta / "metadata" / "02_sag.jsonl"
+        legivel = pasta / "metadata" / "02_sag.json"
+        self.assertTrue(legivel.exists())
+        texto = legivel.read_text(encoding="utf-8")
+        self.assertGreater(texto.count("\n"), 10, "o .json precisa ser indentado (várias linhas)")
+        linhas = [json.loads(l) for l in jsonl.read_text(encoding="utf-8").splitlines() if l.strip()]
+        self.assertEqual(json.loads(texto), linhas)
+        self.assertFalse(list((pasta / "metadata").glob("*.part")))
+
+    def test_inicio_janela_segue_a_formula_do_recorte(self):
+        # 2500 - 0,060 s * 30 kHz = 700, dentro de [0, 7200 - 6000].
+        registro = self._primeiro_registro(self._rodar_fisica(2500))
+        self.assertEqual(registro["inicio_janela"], 700)
+        self.assertFalse(registro["inicio_janela_ajustado"])
+        self.assertEqual(registro["indice_trigger"], 2500)  # campo antigo preservado
+
+    def test_fisica_grava_perfil(self):
+        registro = self._primeiro_registro(self._rodar_fisica(2500))
+        self.assertEqual(registro["perfil"], "literatura")
+
+    def test_inicio_janela_respeita_o_limite_do_registro(self):
+        # 3500 - 1800 = 1700 > 7200 - 6000: a janela é empurrada para 1200.
+        registro = self._primeiro_registro(self._rodar_fisica(3500))
+        self.assertEqual(registro["inicio_janela"], 1200)
+        self.assertTrue(registro["inicio_janela_ajustado"])
+
+    def test_leitores_preferem_inicio_janela(self):
+        import recortar_margem
+        md = {
+            "pontos": 6000, "fs_hz": 30_000.0, "pre_trigger_s": 0.060,
+            "margem_amostras_antes": 600, "indice_trigger": 2500, "inicio_janela": 900,
+        }
+        inicio, pontos, info = recortar_margem.calcular_recorte(7200, md)
+        self.assertEqual((inicio, pontos, info["origem"]), (900, 6000, "inicio_janela"))
+        sem = {k: v for k, v in md.items() if k != "inicio_janela"}
+        inicio_antigo, _, info_antigo = recortar_margem.calcular_recorte(7200, sem)
+        self.assertEqual((inicio_antigo, info_antigo["origem"]), (700, "indice_trigger"))
+        recortado = recortar_margem.metadado_recortado(md, info)
+        self.assertEqual(recortado["inicio_janela"], 0)
+        self.assertEqual(recortado["indice_trigger"], 2500 - 900)
+
+    def test_analisar_sessao_usa_inicio_janela(self):
+        import analisar_sessao
+        sessao = self.tmp / "sessao_analise"
+        (sessao / "metadata").mkdir(parents=True)
+        t = np.arange(6000) / 30_000.0
+        nominal = np.sin(2 * np.pi * 60.0 * t)
+        registro = np.zeros(7200)
+        registro[900:6900] = nominal
+        md = {
+            "id_captura": "01-0001", "classe": "NORMAL", "seed": 1, "simulado": False,
+            "fs_hz": 30_000.0, "pontos": 6000, "parametros": {}, "nivel_indice": 0,
+            "f0_hz": 60.0, "tensao_base_rms": 127.0, "pre_trigger_s": 0.0,
+            "margem_amostras_antes": 600, "margem_amostras_depois": 600, "amostras_totais": 7200,
+            "indice_trigger": 123, "inicio_janela": 900,  # indice_trigger inconsistente de propósito
+        }
+        np.savez(
+            sessao / "01_normal_cap01.npz", classe="NORMAL",
+            id_captura=np.array(["01-0001"], dtype=object),
+            tempo_ms=np.arange(7200) / 30.0, tensao_pu=registro[np.newaxis, :],
+        )
+        (sessao / "metadata" / "01_normal.jsonl").write_text(json.dumps(md) + "\n", encoding="utf-8")
+        resultado = analisar_sessao.analisar_sessao(sessao, gerar_imagens=False)
+        self.assertEqual(resultado[0]["lag_amostras"], 0)
+        self.assertGreater(resultado[0]["correlacao"], 0.99)
+
+    def _rodar_simulada(self):
+        config = self._config(self.tmp / "sim")
+        fonte = mestre.AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=425.0)
+        bancada = mestre.Bancada(fonte, None, config)
+
+        class _Classe(mestre.ExperimentoNativo):
+            id = "01"
+            nome = "NORMAL"
+
+            def gerar(self, t, f0, capture_index, rng):
+                return np.sin(2.0 * np.pi * f0 * t), {}
+
+            def configurar(self, capture_index):
+                return {}
+
+        _Classe(bancada).executar()
+        return config.results_dir
+
+    def test_sessao_simulada_grava_legivel_calibracao_e_procedencia(self):
+        pasta = self._rodar_simulada()
+        registros = json.loads((pasta / "metadata" / "01_normal.json").read_text(encoding="utf-8"))
+        texto_jsonl = (pasta / "metadata" / "01_normal.jsonl").read_text(encoding="utf-8")
+        linhas = [json.loads(l) for l in texto_jsonl.splitlines()]
+        self.assertEqual(registros, linhas)
+        self.assertEqual(len(linhas), 2)
+        copia = pasta / "calibracao_extremos.json"
+        self.assertEqual(copia.read_bytes(), mestre.CALIBRACAO_EXTREMOS_PATH.read_bytes())
+        sessao = json.loads((pasta / "sessao.json").read_text(encoding="utf-8"))
+        self.assertEqual(sessao["calibracao_extremos"]["sha256"], mestre.sha256_do_arquivo(copia))
+        self.assertEqual(sessao["calibracao_extremos"]["copia_na_sessao"], "calibracao_extremos.json")
+        self.assertEqual(sessao["numpy_versao"], np.__version__)
+        self.assertEqual(sessao["modo"], "simulado")
+        self.assertIn("git_commit", sessao)
+        self.assertIn("git_sujo", sessao)
+        self.assertIn("python_versao", sessao)
+
+    def test_fisica_repete_procedencia_no_registro(self):
+        pasta = self._rodar_fisica(2500)
+        registro = self._primeiro_registro(pasta)
+        sessao = json.loads((pasta / "sessao.json").read_text(encoding="utf-8"))
+        self.assertEqual(sessao["modo"], "bancada")
+        self.assertEqual(registro["calibracao_extremos_sha256"], sessao["calibracao_extremos"]["sha256"])
+        self.assertEqual(registro["numpy_versao"], np.__version__)
+        self.assertEqual(registro["git_commit"], sessao["git_commit"])
+
+    def test_commit_e_versao_do_numpy_sao_lidos_do_ambiente(self):
+        resultado = mock.Mock(stdout="abc123\n")
+        with mock.patch.object(mestre, "_INFO_CODIGO_CACHE", None), \
+                mock.patch("subprocess.run", return_value=resultado) as run:
+            info = mestre.info_do_codigo()
+        comandos = [c.args[0] for c in run.call_args_list]
+        self.assertIn(["git", "rev-parse", "HEAD"], comandos)
+        self.assertEqual(info["git_commit"], "abc123")
+        self.assertTrue(info["git_sujo"])  # status "abc123" != vazio
+        self.assertEqual(info["numpy_versao"], np.__version__)
+
+    def test_arvore_suja_em_bancada_avisa_em_destaque_sem_bloquear(self):
+        pasta = self.tmp / "bancada"
+        sujo = {"git_commit": "abc", "git_sujo": True, "versao_codigo": "abc-dirty",
+                "numpy_versao": np.__version__, "python_versao": "3"}
+        with mock.patch.object(mestre, "info_do_codigo", return_value=sujo), \
+                mock.patch("builtins.print") as imprimir, \
+                self.assertLogs("MestreExperimentos", level="WARNING") as logs:
+            info = mestre.preparar_pasta_da_sessao(pasta, bancada=True)
+        self.assertTrue(info["git_sujo"])
+        self.assertIn("SUJA", "".join(str(c.args[0]) for c in imprimir.call_args_list))
+        self.assertIn("SUJA", "".join(logs.output))
+        self.assertTrue((pasta / "sessao.json").exists())
+
+    def test_arvore_limpa_ou_simulado_nao_avisa(self):
+        for bancada, sujo_flag in ((True, False), (False, True)):
+            pasta = self.tmp / f"p_{bancada}"
+            info = {"git_commit": "abc", "git_sujo": sujo_flag, "versao_codigo": "abc",
+                    "numpy_versao": np.__version__, "python_versao": "3"}
+            with mock.patch.object(mestre, "info_do_codigo", return_value=info), \
+                    mock.patch("builtins.print") as imprimir:
+                mestre.preparar_pasta_da_sessao(pasta, bancada=bancada)
+            imprimir.assert_not_called()
+
+    def test_leitores_continuam_lendo_sessao_antiga_de_uma_linha(self):
+        import recortar_margem
+        sessao = self.tmp / "antiga"
+        (sessao / "metadata").mkdir(parents=True)
+        md = {"id_captura": "01-0001", "pontos": 6000, "fs_hz": 30_000.0, "pre_trigger_s": 0.0,
+              "margem_amostras_antes": 600, "indice_trigger": 600, "amostras_totais": 7200}
+        (sessao / "metadata" / "01_normal.jsonl").write_text(json.dumps(md) + "\n", encoding="utf-8")
+        (sessao / "metadata" / "01_normal.json").write_text("[\n  {}\n]\n", encoding="utf-8")  # não pode atrapalhar
+        lidos = recortar_margem.carregar_metadados(sessao)
+        self.assertEqual(list(lidos), ["01-0001"])
+        self.assertEqual(recortar_margem.calcular_recorte(7200, lidos["01-0001"])[2]["origem"], "indice_trigger")
+
+
+class PerfisDeFaixasTests(unittest.TestCase):
+    """Perfis norma/literatura/fronteira (logica/perfis.py, v1.15)."""
+
+    REFERENCIA = PROJECT_ROOT / "tests" / "fixtures" / "gerar_literatura_34a0d82.json"
+
+    @staticmethod
+    def _com_perfil(experiment_id, perfil):
+        import dataclasses
+        experimento = _load_experimento(experiment_id)
+        # Estes testes isolam o PERFIL: início/duração/fase ficam fixos (v1.15).
+        experimento.config = dataclasses.replace(experimento.config, perfil=perfil, sorteio_posicao=False)
+        return experimento
+
+    @staticmethod
+    def _assinatura(experimento, f0, seed, indice):
+        import hashlib
+        t = np.arange(6000, dtype=np.float64) / 30_000.0
+        tensao, parametros = experimento.gerar(t, f0, indice, np.random.default_rng(seed))
+        corpo = np.asarray(tensao, dtype="<f8").tobytes() + json.dumps(parametros, sort_keys=True).encode()
+        return hashlib.sha256(corpo).hexdigest()
+
+    def _parametros(self, experiment_id, perfil, f0=60.0):
+        experimento = self._com_perfil(experiment_id, perfil)
+        t = np.arange(6000, dtype=np.float64) / 30_000.0
+        for seed in range(40):
+            for indice in range(5):
+                yield experimento.gerar(t, f0, indice, np.random.default_rng(seed))[1]
+
+    def test_literatura_reproduz_byte_a_byte_o_gerar_do_commit_34a0d82(self):
+        """As 400 assinaturas (20 classes x 60/50 Hz x 2 seeds x 5 índices:
+        sha256 dos bytes float64 da tensão + parâmetros) foram gravadas com o
+        ``gerar()`` do commit 34a0d82, ANTES da v1.15. Valem para o perfil
+        padrão e para ``perfil="literatura"`` explícito, com
+        ``sorteio_posicao=False`` (as posições fixas de antes do sorteio de
+        início/duração/fase; o ``gerar()`` com sorteio tem o fixture
+        ``gerar_sorteio_v1_15.json``, ver SorteioInicioDuracaoFaseTests). O fixture grava a
+        versão do numpy que o gerou; outra versão só pode divergir por
+        aritmética do próprio numpy."""
+        ref = json.loads(self.REFERENCIA.read_text(encoding="utf-8"))
+        self.assertEqual(len(ref["hashes"]), 400)
+        for chave, esperado in ref["hashes"].items():
+            cid, f0, seed, indice = chave.split("/")
+            for experimento in (_sem_sorteio(_load_experimento(cid)), self._com_perfil(cid, "literatura")):
+                self.assertEqual(
+                    self._assinatura(experimento, float(f0), int(seed), int(indice)), esperado, chave,
+                )
+
+    def test_norma_e_fronteira_mudam_so_o_que_a_spec_manda(self):
+        ref = json.loads(self.REFERENCIA.read_text(encoding="utf-8"))["hashes"]
+        afetadas = {"norma": {"02", "03", "05", "06", "11", "15", "20"},
+                    "fronteira": {"02", "03", "10", "11", "12", "13", "14"}}
+        for perfil, esperadas in afetadas.items():
+            mudou = set()
+            for chave, h in ref.items():
+                cid, f0, seed, indice = chave.split("/")
+                if self._assinatura(self._com_perfil(cid, perfil), float(f0), int(seed), int(indice)) != h:
+                    mudou.add(cid)
+            self.assertEqual(mudou, esperadas, perfil)
+
+    def test_faixas_da_norma(self):
+        for p in self._parametros("02", "norma"):
+            self.assertTrue(0.15 <= p["sag_pu"] <= 0.85, p)
+        for p in self._parametros("03", "norma"):
+            self.assertTrue(1.15 <= p["swell_pu"] <= 1.75, p)
+        niveis05 = {p["thd"] for p in self._parametros("05", "norma")}
+        self.assertEqual(max(niveis05), 0.20)
+        self.assertLessEqual(max(niveis05), AmetekMX30.MAX_CSINE_THD_PCT / 100.0)
+        for cid in ("06", "11", "15"):
+            for p in self._parametros(cid, "norma"):
+                self.assertTrue(0.02 <= p["flicker_depth"] <= 0.07, (cid, p))
+        for p in self._parametros("20", "norma"):
+            for chave, valor in p.items():
+                self.assertTrue(0.005 <= valor <= 0.02, (chave, valor))
+        for cid in ("10", "11", "12"):
+            for p in self._parametros(cid, "norma"):
+                self.assertTrue(0.15 <= p["sag_pu"] <= 0.85, (cid, p))
+        for cid in ("13", "14"):
+            for p in self._parametros(cid, "norma"):
+                self.assertTrue(1.15 <= p["swell_pu"] <= 1.75, (cid, p))
+        for cid in ("10", "13", "15", "16"):
+            for p in self._parametros(cid, "norma"):
+                self.assertLessEqual(p["thd"], 0.20)
+
+    def test_05_norma_nao_usa_trace_e_literatura_usa_so_o_30(self):
+        norma = self._com_perfil("05", "norma")
+        self.assertFalse(any(norma.usar_trace(i) for i in range(norma.total_niveis())))
+        lit = self._com_perfil("05", "literatura")
+        self.assertEqual([lit.usar_trace(i) for i in range(5)], [False, False, False, False, True])
+
+    def test_fronteira_so_nos_valores_de_fronteira(self):
+        self.assertEqual({p["sag_pu"] for p in self._parametros("02", "fronteira")}, {0.1, 0.9})
+        self.assertEqual({p["swell_pu"] for p in self._parametros("03", "fronteira")}, {1.1, 1.8})
+        for cid in ("10", "11", "12"):
+            self.assertEqual({p["sag_pu"] for p in self._parametros(cid, "fronteira")}, {0.1, 0.9}, cid)
+        for cid in ("13", "14"):
+            self.assertEqual({p["swell_pu"] for p in self._parametros(cid, "fronteira")}, {1.1, 1.8}, cid)
+        self.assertEqual(self._com_perfil("02", "fronteira").total_niveis(), 2)
+
+    def test_perfil_invalido_e_padrao(self):
+        import perfis
+        self.assertEqual(mestre.Config.__dataclass_fields__["perfil"].default, "literatura")
+        with self.assertRaises(ValueError):
+            perfis.validar("outro")
+        with self.assertRaises(ValueError):
+            self._com_perfil("02", "outro").gerar(
+                np.arange(6000) / 30_000.0, 60.0, 0, np.random.default_rng(1))
+        with mock.patch.dict("os.environ", {"PERFIL": "Norma"}):
+            self.assertEqual(perfis.perfil_do_ambiente(), "norma")
+        with mock.patch.dict("os.environ", {"PERFIL": ""}):
+            self.assertEqual(perfis.perfil_do_ambiente(), "literatura")
+        with mock.patch.dict("os.environ", {"PERFIL": "xyz"}):
+            with self.assertRaises(ValueError):
+                perfis.perfil_do_ambiente()
+
+    def test_cada_perfil_tem_todos_os_componentes_e_as_classes_apontam_para_eles(self):
+        import perfis
+        for componente, por_perfil in perfis.FAIXAS.items():
+            self.assertEqual(set(por_perfil), set(perfis.PERFIS), componente)
+        usados = {c for comps in perfis.COMPONENTES_POR_CLASSE.values() for c in comps}
+        self.assertEqual(usados, set(perfis.FAIXAS))
+
+    def test_cli_set_perfil_status_e_help(self):
+        import io
+        from contextlib import redirect_stdout
+        import cli
+        with mock.patch.object(mestre, "PERFIL", "literatura"):
+            sessao = cli.SessaoCLI()
+
+            def rodar(metodo, args):
+                saida = io.StringIO()
+                with redirect_stdout(saida):
+                    return metodo(args), saida.getvalue()
+
+            for valor in ("norma", "fronteira", "literatura"):
+                codigo, _ = rodar(sessao.cmd_set, ["perfil", valor])
+                self.assertEqual(codigo, 0, valor)
+                self.assertEqual(mestre.PERFIL, valor)
+                self.assertEqual(mestre._build_config().perfil, valor)
+                _, saida = rodar(sessao.cmd_status, [])
+                self.assertIn(f"perfil de faixas: {valor}", saida)
+            codigo, _ = rodar(sessao.cmd_set, ["perfil", "xyz"])
+            self.assertEqual(codigo, 1)
+            self.assertEqual(mestre.PERFIL, "literatura")
+        self.assertIn("set perfil norma|literatura|fronteira", cli.HELP_TEXT)
+
+    def test_metadata_grava_perfil_em_cada_captura(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        for perfil in ("norma", "literatura", "fronteira"):
+            config = mestre.Config(
+                fs_hz=30_000.0, points=6_000, duration_s=0.2, grid_frequency_hz=60.0,
+                base_voltage_rms=127.0, snr_levels_db=(), base_seed=1, capture_current=False,
+                current_base_a=None, results_dir=tmp / perfil, sim_captures_per_class=2,
+                real_captures_per_class=1, disturbance_start_s=0.06, perfil=perfil,
+            )
+            fonte = AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=425.0)
+            classe = type(_load_experimento("02"))(mestre.Bancada(fonte, None, config))
+            classe.executar()
+            registros = [
+                json.loads(l) for l in
+                (tmp / perfil / "metadata" / "02_sag.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            self.assertEqual({r["perfil"] for r in registros}, {perfil})
+            self.assertEqual(len(registros), 2)
+
+    def test_analisar_sessao_reconstroi_com_o_perfil_da_captura(self):
+        import analisar_sessao
+        md = {"fs_hz": 30_000.0, "pontos": 6000, "seed": 5, "nivel_indice": 0,
+              "f0_hz": 60.0, "tensao_base_rms": 127.0}
+        antigo = analisar_sessao._reconstruir_esperado("02", md)
+        lit = analisar_sessao._reconstruir_esperado("02", dict(md, perfil="literatura"))
+        fronteira = analisar_sessao._reconstruir_esperado("02", dict(md, perfil="fronteira"))
+        norma = analisar_sessao._reconstruir_esperado("02", dict(md, perfil="norma"))
+        np.testing.assert_array_equal(antigo, lit)
+        t = np.arange(6000) / 30_000.0
+        base = np.sin(2 * np.pi * 60.0 * t)
+        evento = (t >= 0.06) & (t < 0.12)
+        # nível 0: literatura 0,1 pu, fronteira 0,1 pu, norma 0,15 pu
+        np.testing.assert_allclose(lit[evento], 0.1 * base[evento])
+        np.testing.assert_allclose(fronteira[evento], 0.1 * base[evento])
+        np.testing.assert_allclose(norma[evento], 0.15 * base[evento])
+        np.testing.assert_array_equal(norma[~evento], base[~evento])
+
+
+class SorteioInicioDuracaoFaseTests(unittest.TestCase):
+    """v1.15 — início, duração e fase sorteados em ``gerar()``
+    (docs/analise-2026-10-12/sorteio_inicio_fase.md)."""
+
+    FIXTURE = PROJECT_ROOT / "tests" / "fixtures" / "gerar_sorteio_v1_15.json"
+    CLASSES = [f"{i:02d}" for i in range(1, 21)]
+    # Classes que sorteiam início (e duração onde o evento tem duração livre).
+    COM_INICIO = {"02", "03", "04", "07", "09", "10", "11", "12", "13", "14", "16", "17"}
+    COM_DURACAO_LIVRE = {"02", "03", "04", "10", "11", "12", "13", "14", "16"}
+    SEM_SORTEIO = {"08"}
+    T = np.arange(6000, dtype=np.float64) / 30_000.0
+
+    def setUp(self):
+        self.tmp_dir = Path(tempfile.mkdtemp())
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp_dir, ignore_errors=True)
+
+    def _gerar(self, classe_id, seed, f0=60.0, indice=0, sorteio=True):
+        experimento = _load_experimento(classe_id)
+        if not sorteio:
+            _sem_sorteio(experimento)
+        return experimento.gerar(self.T, f0, indice, np.random.default_rng(seed))
+
+    def test_mesma_seed_mesma_forma_e_mesmos_campos(self):
+        for classe_id in self.CLASSES:
+            for f0 in (60.0, 50.0):
+                v1, p1 = self._gerar(classe_id, 123, f0)
+                v2, p2 = self._gerar(classe_id, 123, f0)
+                np.testing.assert_array_equal(v1, v2, classe_id)
+                self.assertEqual(p1, p2, classe_id)
+                # a mesma instância, chamada duas vezes com rng novo, também
+                experimento = _load_experimento(classe_id)
+                a = experimento.gerar(self.T, f0, 0, np.random.default_rng(9))
+                b = experimento.gerar(self.T, f0, 0, np.random.default_rng(9))
+                np.testing.assert_array_equal(a[0], b[0], classe_id)
+
+    def test_seeds_diferentes_dao_inicio_e_fase_diferentes(self):
+        for classe_id in self.CLASSES:
+            if classe_id in self.SEM_SORTEIO:
+                continue
+            fases = {self._gerar(classe_id, seed)[1]["fase_graus"] for seed in range(40)}
+            self.assertGreater(len(fases), 30, classe_id)
+            if classe_id in self.COM_INICIO:
+                inicios = {self._gerar(classe_id, seed)[1]["inicio_disturbio_s"] for seed in range(40)}
+                self.assertGreater(len(inicios), 30, classe_id)
+        # 01: só fase, sem evento a posicionar
+        self.assertNotIn("inicio_disturbio_s", self._gerar("01", 1)[1])
+
+    def test_faixas_sorteadas_respeitam_tmin_e_a_janela(self):
+        for f0 in (60.0, 50.0):
+            ciclo = 1.0 / f0
+            for classe_id in sorted(self.COM_INICIO):
+                for seed in range(60):
+                    p = self._gerar(classe_id, seed, f0)[1]
+                    t0, d = p["inicio_disturbio_s"], p["duracao_s"]
+                    self.assertGreaterEqual(t0, ciclo - 1e-9, (classe_id, seed))
+                    self.assertLessEqual(t0 + d, 0.2 - ciclo + 1e-9, (classe_id, seed))
+                    if classe_id in self.COM_DURACAO_LIVRE:
+                        self.assertGreaterEqual(d, 0.5 * ciclo - 1e-9, (classe_id, seed))
+                    self.assertTrue(0.0 <= p["fase_graus"] < 360.0, (classe_id, seed))
+
+    def test_duracao_cobre_de_meio_ciclo_ate_o_que_a_janela_permite(self):
+        duracoes = [self._gerar("02", seed)[1]["duracao_s"] for seed in range(400)]
+        self.assertLess(min(duracoes), 0.5 / 60.0 * 1.15)
+        self.assertGreater(max(duracoes), (0.2 - 2.0 / 60.0) * 0.9)
+
+    def test_formas_distintas_em_200_capturas(self):
+        """A conta do professor (formas distintas entre capturas de uma
+        classe): com o sorteio, nenhuma classe volta a ser cópia da mesma onda."""
+        for classe_id in self.CLASSES:
+            com = {self._gerar(classe_id, seed)[0].tobytes() for seed in range(200)}
+            self.assertGreater(len(com), 150, classe_id)
+        sem = {self._gerar("01", seed, sorteio=False)[0].tobytes() for seed in range(200)}
+        self.assertEqual(len(sem), 1)
+
+    def test_sem_sorteio_nao_acrescenta_campos(self):
+        for classe_id in self.CLASSES:
+            voltage, parametros = self._gerar(classe_id, 5, sorteio=False)
+            self.assertFalse(set(mestre.CHAVES_SORTEIO) & set(parametros), classe_id)
+
+    def test_parametros_ja_sorteados_nao_mudam_com_o_sorteio(self):
+        """O sorteio usa um sub-fluxo da seed: flicker_hz, amplitudes etc. de
+        uma dada seed são os de antes."""
+        for classe_id in ("04", "06", "09", "19", "20"):
+            com = self._gerar(classe_id, 77)[1]
+            sem = self._gerar(classe_id, 77, sorteio=False)[1]
+            for chave, valor in sem.items():
+                self.assertEqual(com[chave], valor, (classe_id, chave))
+
+    def test_08_fica_de_fora_com_impulso_e_fase_de_sempre(self):
+        voltage, parametros = self._gerar("08", 3)
+        self.assertFalse(set(mestre.CHAVES_SORTEIO) & set(parametros))
+        np.testing.assert_array_equal(voltage, self._gerar("08", 3, sorteio=False)[0])
+
+    def test_fase_e_inicio_aparecem_na_forma(self):
+        """Fase: a senoide fora do evento é sin(2 pi f0 t + fase); evento: o
+        nível cai exatamente em [t0, t0 + d)."""
+        voltage, p = self._gerar("02", 11)
+        fase = np.deg2rad(p["fase_graus"])
+        base = np.sin(2.0 * np.pi * 60.0 * self.T + fase)
+        dentro = sinais.janela(self.T, p["inicio_disturbio_s"], p["duracao_s"])
+        np.testing.assert_allclose(voltage[~dentro], base[~dentro], atol=1e-12)
+        np.testing.assert_allclose(voltage[dentro], p["sag_pu"] * base[dentro], atol=1e-12)
+
+    def test_fase_de_disparo_e_multiplo_de_0_1_grau_e_reproduz_a_fase_de_gerar(self):
+        experimento = _load_experimento("02")
+        for seed in range(60):
+            _, p = experimento.gerar(self.T, 60.0, 0, np.random.default_rng(seed))
+            disparo = mestre.ExperimentoNativo.fase_de_disparo_graus(
+                experimento, p["inicio_disturbio_s"], p["fase_graus"],
+            )
+            self.assertAlmostEqual(disparo * 10.0, round(disparo * 10.0), places=6)
+            fase_no_t0 = (p["fase_graus"] + 360.0 * 60.0 * p["inicio_disturbio_s"]) % 360.0
+            delta = abs((fase_no_t0 - disparo + 180.0) % 360.0 - 180.0)
+            self.assertLess(delta, 1e-6, seed)
+
+    def test_notch_acopla_a_fase_ao_inicio_e_mantem_os_entalhes_nos_picos(self):
+        voltage, p = self._gerar("07", 4)
+        t0 = p["inicio_disturbio_s"]
+        self.assertAlmostEqual(math.sin(math.radians(p["fase_graus"]) + 2 * math.pi * 60.0 * t0), 0.0, places=9)
+
+    def test_resultado_congelado_da_v1_15(self):
+        """400 assinaturas (20 classes x 60/50 Hz x 2 seeds x 5 índices) do
+        ``gerar()`` COM sorteio, perfil literatura, gravadas na v1.15.
+        Detecta qualquer mudança do dataset por acidente (mudar de propósito
+        exige regravar o fixture e declarar a versão)."""
+        ref = json.loads(self.FIXTURE.read_text(encoding="utf-8"))
+        self.assertEqual(len(ref["hashes"]), 400)
+        for chave, esperado in ref["hashes"].items():
+            cid, f0, seed, indice = chave.split("/")
+            self.assertEqual(
+                PerfisDeFaixasTests._assinatura(_load_experimento(cid), float(f0), int(seed), int(indice)),
+                esperado, chave,
+            )
+
+    # -- bancada ---------------------------------------------------------
+
+    def _bancada_pulso(self, classe_id, sorteio=True, f0=60.0):
+        """Classe nativa de pulso rodando ``executar()`` inteiro no caminho de
+        BANCADA, com um osciloscópio de mentira que entrega o registro físico
+        que ``gerar()`` descreve, no lugar do trigger que o pré-trigger pede."""
+        config = _config_bancada(self.tmp_dir, sorteio_posicao=sorteio, grid_frequency_hz=f0)
+        fonte = AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=415.8)
+        osc = mock.Mock()
+        osc.medir_extremos = lambda canal: (100.0, -100.0)
+        osc.posicoes = []
+        osc.definir_pre_trigger.side_effect = lambda **kw: osc.posicoes.append(kw)
+        experimento = _carregar_classe(classe_id)(mestre.Bancada(fonte, osc, config))
+        registros_osc = []
+
+        def _get_waveform(canal, expected_points):
+            ordem = len(registros_osc)
+            seed = experimento.seed_da_captura(ordem)
+            forma, p = experimento.gerar(
+                mestre.tempo(config), f0, 0, np.random.default_rng(seed),
+            )
+            antes, depois = mestre.ExperimentoBase.MARGEM_ANTES_S, mestre.ExperimentoBase.MARGEM_DEPOIS_S
+            n_antes, n_depois = int(round(antes * 30_000)), int(round(depois * 30_000))
+            registro = np.concatenate([np.full(n_antes, 0.37), forma, np.full(n_depois, 0.41)])
+            pre = p.get("inicio_disturbio_s", experimento.pre_trigger_s)
+            osc.ultimo_indice_trigger = int(round(pre * 30_000)) + n_antes
+            registros_osc.append(registro)
+            volts = registro * config.base_voltage_rms * math.sqrt(2.0)
+            return np.arange(registro.size) / 30_000.0, volts
+
+        osc.get_waveform.side_effect = _get_waveform
+        return config, fonte, osc, experimento, registros_osc
+
+    def test_pulso_programa_fase_largura_e_pre_trigger_sorteados_e_o_recorte_acerta(self):
+        import recortar_margem
+        config, fonte, osc, experimento, registros = self._bancada_pulso("02")
+        experimento.executar()
+        metadata = config.results_dir / "metadata" / "02_sag.jsonl"
+        registro = json.loads(metadata.read_text(encoding="utf-8").splitlines()[0])
+        t0, d, fase = registro["inicio_disturbio_s"], registro["duracao_s"], registro["fase_graus"]
+        self.assertTrue(registro["sorteio_posicao"])
+        self.assertNotIn("inicio_disturbio_s", registro["parametros"])
+        # pré-trigger efetivo da captura (não o 0,060 da classe) no metadata e no osciloscópio
+        self.assertAlmostEqual(registro["pre_trigger_s"], t0)
+        self.assertNotAlmostEqual(registro["pre_trigger_s"], 0.060, places=6)
+        margem_s = mestre.ExperimentoBase.MARGEM_ANTES_S
+        self.assertAlmostEqual(osc.posicoes[-1]["pre_trigger_s"], t0 + margem_s)
+        # fase de disparo e largura do pulso na fonte
+        disparo = round((fase + 360.0 * 60.0 * t0) % 360.0, 1) % 360.0
+        log = fonte.command_log
+        self.assertIn(f"TRIGger:SYNChronize:PHASe {disparo:.1f}", log)
+        self.assertIn(f"PULSe:WIDTh {d:.8g}", log)
+        # inicio_janela segue o pré-trigger variável e o recorte devolve gerar()
+        self.assertEqual(registro["pre_trigger_desvio_amostras"], 0)
+        n_antes = int(round(margem_s * 30_000))
+        self.assertEqual(registro["inicio_janela"], n_antes)
+        self.assertFalse(registro["inicio_janela_ajustado"])
+        bruto = registros[0]
+        inicio, pontos, info = recortar_margem.calcular_recorte(bruto.size, registro)
+        self.assertEqual(info["origem"], "inicio_janela")
+        forma, _ = experimento.gerar(mestre.tempo(config), 60.0, 0, np.random.default_rng(registro["seed"]))
+        np.testing.assert_array_equal(bruto[inicio : inicio + pontos], forma)
+        # a validação física comparou com a janela certa
+        self.assertTrue(registro["validacao_fisica"]["ok"], registro["validacao_fisica"]["motivos"])
+
+    def test_recorte_acerta_a_janela_pelo_indice_do_trigger_sem_inicio_janela(self):
+        """Metadata sem ``inicio_janela`` (só ``indice_trigger`` e o
+        ``pre_trigger_s`` DA CAPTURA): o recorte usa o pré-trigger sorteado."""
+        import recortar_margem
+        config, fonte, osc, experimento, registros = self._bancada_pulso("03")
+        experimento.executar()
+        registro = json.loads(
+            (config.results_dir / "metadata" / "03_swell.jsonl").read_text(encoding="utf-8").splitlines()[0]
+        )
+        registro.pop("inicio_janela")
+        registro.pop("inicio_janela_ajustado")
+        bruto = registros[0]
+        inicio, pontos, info = recortar_margem.calcular_recorte(bruto.size, registro)
+        self.assertEqual(info["origem"], "indice_trigger")
+        forma, _ = experimento.gerar(mestre.tempo(config), 60.0, 0, np.random.default_rng(registro["seed"]))
+        np.testing.assert_array_equal(bruto[inicio : inicio + pontos], forma)
+
+    def test_pre_trigger_varia_entre_capturas_da_mesma_classe(self):
+        config, fonte, osc, experimento, registros = self._bancada_pulso("04")
+        experimento.executar()
+        linhas = (config.results_dir / "metadata" / "04_interruption.jsonl").read_text(encoding="utf-8").splitlines()
+        pres = [json.loads(linha)["pre_trigger_s"] for linha in linhas]
+        self.assertEqual(len(pres), 3)
+        self.assertEqual(len(set(pres)), 3)
+        self.assertEqual(len(osc.posicoes), 3)
+
+    def test_sem_sorteio_o_osciloscopio_nao_e_reposicionado(self):
+        config, fonte, osc, experimento, registros = self._bancada_pulso("02", sorteio=False)
+        experimento.executar()
+        osc.definir_pre_trigger.assert_not_called()
+        registro = json.loads(
+            (config.results_dir / "metadata" / "02_sag.jsonl").read_text(encoding="utf-8").splitlines()[0]
+        )
+        self.assertFalse(registro["sorteio_posicao"])
+        self.assertEqual(registro["pre_trigger_s"], 0.060)
+        self.assertNotIn("inicio_disturbio_s", registro)
+        self.assertIn("TRIGger:SYNChronize:PHASe 216.0", fonte.command_log)
+
+    def test_osciloscopio_definir_pre_trigger_so_mexe_na_posicao(self):
+        adapter = ScriptedAdapter()
+        scope = KeysightDSOX4034A(adapter)
+        scope.initialize_safe()
+        scope.configure_acquisition(duration_s=0.2, pre_trigger_s=0.060)
+        antes = len(adapter.commands)
+        scope.definir_pre_trigger(duration_s=0.2, pre_trigger_s=0.0437)
+        novos = adapter.commands[antes:]
+        self.assertEqual(novos[0], ":TIMebase:POSition -0.0437")
+        self.assertFalse([c for c in novos if "RANGe" in c or "REFerence" in c])
+        with self.assertRaises(ValueError):
+            scope.definir_pre_trigger(duration_s=0.2, pre_trigger_s=0.2)
+        sem_config = KeysightDSOX4034A(ScriptedAdapter())
+        with self.assertRaises(OscilloscopeError):
+            sem_config.definir_pre_trigger(duration_s=0.2, pre_trigger_s=0.01)
+
+    def test_fase_sorteada_na_bancada_waveform_mantem_a_senoide_fora_do_disturbio(self):
+        """Limite de bancada com a fase sorteada: a senoide base da forma
+        reduzida é a da fase sorteada (e não a de fase 0)."""
+        config = _config_bancada(self.tmp_dir, base_voltage_rms=220.0, sorteio_posicao=True)
+        fonte = mestre.AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=415.8)
+        experimento = _carregar_classe("16")(mestre.Bancada(fonte, mock.Mock(), config))
+        t = mestre.tempo(config)
+        modelo, _ = experimento.gerar(t, 60.0, 0, np.random.default_rng(5))
+        forma, parametros = experimento.forma_e_parametros_para_bancada(0, t, 5)
+        self.assertIn("fator_disturbio_bancada", parametros)
+        senoide = np.sin(2.0 * np.pi * 60.0 * t + np.deg2rad(parametros["fase_graus"]))
+        janela = sinais.janela(t, parametros["inicio_disturbio_s"], parametros["duracao_s"])
+        np.testing.assert_allclose(forma[~janela], senoide[~janela], atol=1e-12)
+        fracao = parametros["fator_disturbio_bancada"]
+        np.testing.assert_allclose(forma, senoide + fracao * (modelo - senoide), atol=1e-12)
+
+    def test_todas_as_classes_cabem_a_220v_com_sorteio(self):
+        for classe_id in self.CLASSES:
+            if classe_id == "03":
+                continue  # 03 a 220 V já pulava níveis (1,4 pu > 300 Vrms)
+            config = _config_bancada(self.tmp_dir, base_voltage_rms=220.0, sorteio_posicao=True)
+            fonte = mestre.AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=415.8)
+            experimento = _carregar_classe(classe_id)(mestre.Bancada(fonte, mock.Mock(), config))
+            for indice_global, capture_index in experimento.plano_de_capturas(False):
+                info = experimento.avaliar_captura_na_bancada(indice_global, capture_index)
+                self.assertTrue(info["cabe"], (classe_id, indice_global, info.get("motivo")))
+
+    def test_analisar_sessao_reconstroi_a_forma_com_sorteio(self):
+        import analisar_sessao
+        for classe_id in ("01", "02", "07", "10", "18", "20"):
+            voltage, p = self._gerar(classe_id, 21)
+            metadado = {
+                "fs_hz": 30_000.0, "pontos": 6000, "seed": 21, "nivel_indice": 0, "f0_hz": 60.0,
+                "tensao_base_rms": 127.0, "sorteio_posicao": True,
+                **{chave: p[chave] for chave in mestre.CHAVES_SORTEIO if chave in p},
+            }
+            np.testing.assert_array_equal(analisar_sessao._reconstruir_esperado(classe_id, metadado), voltage)
+
+    def test_metadata_simulado_grava_inicio_duracao_e_fase_no_nivel_de_cima(self):
+        config = _config_bancada(self.tmp_dir, sorteio_posicao=True, sim_captures_per_class=3)
+        classe = _carregar_classe("10")(mestre.Bancada(None, None, config))
+        classe.executar()
+        arquivos = list(self.tmp_dir.rglob("10_*.jsonl"))
+        self.assertTrue(arquivos)
+        registros = [json.loads(l) for l in arquivos[0].read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(len(registros), 3)
+        for registro in registros:
+            for chave in mestre.CHAVES_SORTEIO:
+                self.assertIn(chave, registro)
+                self.assertNotIn(chave, registro["parametros"])
+            self.assertTrue(registro["sorteio_posicao"])
+        self.assertEqual(len({r["fase_graus"] for r in registros}), 3)
+
+    def test_estimativa_do_run_all_conta_cada_captura_trace_como_gravacao_exata(self):
+        cls = _carregar_classe("10")
+        info = mestre.capturas_efetivas_da_classe(cls, _config_bancada(self.tmp_dir, sorteio_posicao=True))
+        self.assertTrue(info["escritas_trace_exatas"])
+        self.assertEqual(info["escritas_trace"], 36)  # 3 capturas (padrão da 10 desde a v1.15) x 12 ciclos a 60 Hz
+        info = mestre.capturas_efetivas_da_classe(cls, _config_bancada(self.tmp_dir, sorteio_posicao=False))
+        self.assertFalse(info["escritas_trace_exatas"])
+
+    def test_cli_set_sorteio(self):
+        import io
+        from contextlib import redirect_stdout
+        import cli
+        anterior = mestre.SORTEIO_POSICAO
+        try:
+            for valor, esperado in (("off", False), ("on", True)):
+                with redirect_stdout(io.StringIO()):
+                    codigo = cli.SessaoCLI().cmd_set(["sorteio", valor])
+                self.assertEqual(codigo, 0)
+                self.assertIs(mestre.SORTEIO_POSICAO, esperado)
+                self.assertIs(mestre._build_config().sorteio_posicao, esperado)
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(cli.SessaoCLI().cmd_set(["sorteio", "talvez"]), 1)
+            self.assertIn("set sorteio on|off", cli.HELP_TEXT)
+        finally:
+            mestre.SORTEIO_POSICAO = anterior
+
+class ParametrosSorteadosNasCompostasTests(unittest.TestCase):
+    """v1.15 — compostas 10 a 16 sorteiam os parâmetros em ``gerar()`` com o
+    sorteio ligado (docs/analise-2026-10-12/compostas_sorteadas.md), e o teste
+    do item f) do professor: nenhuma classe volta a ter poucas formas
+    distintas no simulado."""
+
+    COMPOSTAS = [f"{i}" for i in range(10, 17)]
+    CLASSES = [f"{i:02d}" for i in range(1, 21)]
+    T = np.arange(6000, dtype=np.float64) / 30_000.0
+    # Item f): N capturas simuladas por classe, forma contada ANTES do ruído
+    # (o que gerar() devolve). N = 100: as 4 combinações custam ~2 s no total e
+    # deixa o pior caso (classes só com fase sorteada, 3600 valores de 0,1
+    # grau: ~1,4 colisões esperadas em 100) a ~98 formas. MINIMO = 90 (90 %)
+    # fica longe das colisões casuais (10 colisões de 100 não ocorrem) e
+    # reprova qualquer classe que volte a repetir a mesma onda (1, 2 ou 5).
+    N_CAPTURAS = 100
+    MINIMO_DISTINTAS = 90
+
+    @staticmethod
+    def _com(classe_id, perfil="literatura", sorteio=True):
+        import dataclasses
+        experimento = _load_experimento(classe_id)
+        experimento.config = dataclasses.replace(
+            experimento.config, perfil=perfil, sorteio_posicao=sorteio,
+        )
+        return experimento
+
+    def _formas(self, experimento, f0=60.0, n=None):
+        n = self.N_CAPTURAS if n is None else n
+        formas, parametros = set(), []
+        for indice in range(n):
+            tensao, p = experimento.gerar(
+                self.T, f0, indice, np.random.default_rng(experimento.seed_da_captura(indice)),
+            )
+            formas.add(np.asarray(tensao, dtype=np.float64).tobytes())
+            parametros.append(p)
+        return formas, parametros
+
+    def test_toda_classe_tem_formas_distintas_suficientes_em_todos_os_perfis(self):
+        """Item f): falha se alguma das 20 classes tiver menos de
+        MINIMO_DISTINTAS formas distintas em N_CAPTURAS (simulado, antes do
+        ruído), nos 3 perfis a 60 Hz e na literatura a 50 Hz."""
+        casos = [(perfil, 60.0) for perfil in ("literatura", "norma", "fronteira")] + [("literatura", 50.0)]
+        for perfil, f0 in casos:
+            for classe_id in self.CLASSES:
+                formas, _ = self._formas(self._com(classe_id, perfil), f0)
+                self.assertGreaterEqual(
+                    len(formas), self.MINIMO_DISTINTAS, f"classe {classe_id}, {perfil}, {f0:g} Hz",
+                )
+
+    def test_o_teste_de_formas_distintas_reprova_uma_classe_que_repete_a_onda(self):
+        """Sem sorteio as compostas voltam a ser 1 forma só (34a0d82): o limite
+        do teste acima as pegaria."""
+        for classe_id in self.COMPOSTAS:
+            formas, _ = self._formas(self._com(classe_id, sorteio=False), n=20)
+            self.assertLess(len(formas), self.MINIMO_DISTINTAS, classe_id)
+
+    def test_parametros_sorteados_dentro_da_faixa_do_perfil(self):
+        import perfis
+        faixas = {
+            "sag_pu": "sag_composto", "swell_pu": "swell_composto", "thd": "thd_composto",
+            "flicker_depth": "flicker_composto", "flicker_hz": "flicker_composto_hz",
+            "oscillation_hz": "oscilacao_composto_hz",
+        }
+        for perfil in perfis.PERFIS:
+            for classe_id in self.COMPOSTAS:
+                experimento = self._com(classe_id, perfil)
+                _, todos = self._formas(experimento, n=60)
+                for p in todos:
+                    for chave, componente in faixas.items():
+                        if chave not in p:
+                            continue
+                        intervalo = perfis.FAIXAS_SORTEADAS[componente][perfil]
+                        if intervalo is None:  # fronteira de sag/swell: níveis discretos
+                            self.assertIn(p[chave], perfis.FAIXAS[componente][perfil], (classe_id, chave))
+                        else:
+                            self.assertTrue(intervalo[0] <= p[chave] <= intervalo[1], (perfil, classe_id, chave, p))
+                if perfil != "fronteira":
+                    for chave in set(todos[0]) & set(faixas):
+                        self.assertGreater(len({p[chave] for p in todos}), 50, (perfil, classe_id, chave))
+
+    def test_literatura_cobre_as_faixas_da_proposta_4(self):
+        """sag U(0,1; 0,9), THD U(0,05; 0,20), f_osc U(300; 2400), flicker U(8; 25)."""
+        esperado = {
+            "10": {"sag_pu": (0.1, 0.9), "thd": (0.05, 0.20)},
+            "11": {"sag_pu": (0.1, 0.9), "flicker_hz": (8.0, 25.0)},
+            "12": {"oscillation_hz": (300.0, 2400.0)}, "14": {"oscillation_hz": (300.0, 2400.0)},
+            "15": {"thd": (0.05, 0.20), "flicker_hz": (8.0, 25.0)},
+        }
+        for classe_id, chaves in esperado.items():
+            _, todos = self._formas(self._com(classe_id), n=100)
+            for chave, (lo, hi) in chaves.items():
+                valores = [p[chave] for p in todos]
+                self.assertGreaterEqual(min(valores), lo, (classe_id, chave))
+                self.assertLessEqual(max(valores), hi, (classe_id, chave))
+                self.assertLess(min(valores), lo + 0.1 * (hi - lo), (classe_id, chave))
+                self.assertGreater(max(valores), hi - 0.1 * (hi - lo), (classe_id, chave))
+
+    def test_sem_sorteio_as_compostas_voltam_aos_valores_fixos(self):
+        fixos = {"sag_pu": 0.5, "swell_pu": 1.3, "thd": 0.20, "flicker_depth": 0.10,
+                 "flicker_hz": 15.0, "oscillation_hz": 600.0}
+        for classe_id in self.COMPOSTAS:
+            _, p = self._com(classe_id, sorteio=False).gerar(self.T, 60.0, 0, np.random.default_rng(3))
+            for chave, valor in p.items():
+                if chave in fixos:
+                    self.assertEqual(valor, fixos[chave], (classe_id, chave))
+
+    def test_sorteio_dos_parametros_nao_muda_o_sub_fluxo_de_inicio_duracao_fase(self):
+        """Os parâmetros saem do rng da classe; início/duração/fase, de um
+        sub-fluxo da mesma seed: o sorteio de posição é o que
+        ``sortear_posicao`` devolve para a seed pura."""
+        opcoes = {
+            "10": dict(inicio_legado_s=0.060, duracao_legada_s=0.060, duracao_variavel=True),
+            "11": dict(inicio_legado_s=0.060, duracao_legada_s=0.060, duracao_variavel=True),
+            "12": dict(inicio_legado_s=0.060, duracao_legada_s=0.040, duracao_variavel=True),
+            "13": dict(inicio_legado_s=0.060, duracao_legada_s=0.060, duracao_variavel=True),
+            "14": dict(inicio_legado_s=0.060, duracao_legada_s=0.040, duracao_variavel=True),
+            "15": {},
+            "16": dict(inicio_legado_s=0.060, duracao_legada_s=0.060, duracao_variavel=True),
+        }
+        for classe_id, kw in opcoes.items():
+            experimento = self._com(classe_id)
+            for seed in range(25):
+                _, p = experimento.gerar(self.T, 60.0, 0, np.random.default_rng(seed))
+                s = mestre.sortear_posicao(np.random.default_rng(seed), experimento.config, 60.0, **kw)
+                self.assertEqual(p["fase_graus"], s.fase_graus, (classe_id, seed))
+                self.assertEqual(p.get("inicio_disturbio_s"), s.inicio_s, (classe_id, seed))
+                self.assertEqual(p.get("duracao_s"), s.duracao_s, (classe_id, seed))
+
+    def test_padrao_de_capturas_das_compostas_e_3(self):
+        for classe_id in self.COMPOSTAS + ["17"]:
+            self.assertEqual(_carregar_classe(classe_id).capturas_padrao, 3, classe_id)
+
+    def test_gancho_de_bancada_traduz_o_fator_k_com_os_parametros_sorteados(self):
+        """forma física = senoide + k (gerar() - senoide) é a forma construída
+        só com os parâmetros ``*_bancada``, para parâmetros sorteados (inclui
+        frequência de flicker e de oscilação)."""
+        import perfis
+        k = 0.6
+        for seed in range(12):
+            for classe_id in ("10", "11", "12", "13", "14", "16"):
+                experimento = self._com(classe_id)
+                forma, p = experimento.gerar(self.T, 60.0, 0, np.random.default_rng(seed))
+                tau = p["fase_graus"] / (360.0 * 60.0)
+                tt = self.T + tau
+                senoide = np.sin(2.0 * np.pi * 60.0 * tt)
+                fisica = senoide + k * (forma - senoide)
+                b = experimento.parametros_com_disturbio_reduzido(p, k)
+                mask = sinais.janela(self.T, p["inicio_disturbio_s"], p["duracao_s"])
+                esperada = senoide.copy()
+                if classe_id in ("10", "13", "16"):
+                    nivel = b[next(c for c in b if c.endswith("_pu_bancada"))]
+                    esperada[mask] = nivel * sinais.onda_com_harmonicos(tt[mask], b["thd_bancada"], frequencia_hz=60.0)
+                elif classe_id == "11":
+                    esperada[mask] = b["sag_pu_bancada"] * senoide[mask] * (
+                        1.0 + b["flicker_depth_bancada"] * np.sin(2.0 * np.pi * p["flicker_hz"] * self.T[mask])
+                    )
+                else:
+                    chave = "sag_pu_bancada" if classe_id == "12" else "swell_pu_bancada"
+                    esperada[mask] = b[chave] * senoide[mask]
+                    esperada = esperada + sinais.oscilacao_amortecida(
+                        self.T, inicio_s=p["inicio_disturbio_s"], duracao_s=p["duracao_s"],
+                        frequencia_hz=p["oscillation_hz"], amplitude_pu=b["oscillation_amplitude_pu_bancada"],
+                    )
+                np.testing.assert_allclose(esperada, fisica, atol=1e-9, err_msg=f"{classe_id} seed {seed}")
+
+class TresVersoesTests(unittest.TestCase):
+    """v1.16 — modelo / programada / medida (docs/tres_versoes.md). O ponto
+    central: ``AmetekMX30.montar_programacao`` e ``program_capture`` nunca
+    divergem, porque a segunda usa a primeira."""
+
+    T = np.arange(6000, dtype=np.float64) / 30_000.0
+    WAVEFORM = ("06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "20")
+
+    @staticmethod
+    def _fonte():
+        return AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=425.0, max_current_a=0.5)
+
+    def _formas(self):
+        """(nome, forma, frequência, tensão base, offset) — gerar() real."""
+        casos = []
+        for classe_id in self.WAVEFORM:
+            for f0, base in ((50.0, 127.0), (60.0, 230.0)):
+                for sorteio in (False, True):
+                    experimento = _load_experimento(classe_id)
+                    import dataclasses
+                    experimento.config = dataclasses.replace(experimento.config, sorteio_posicao=sorteio)
+                    forma, _ = experimento.gerar(self.T, f0, 0, np.random.default_rng(31 + int(sorteio)))
+                    casos.append((f"{classe_id} f0={f0:g} sorteio={sorteio}", np.asarray(forma), f0, base, 0.0))
+        senoide = np.sin(2.0 * np.pi * 60.0 * self.T)
+        casos.append(("senoide + DC", senoide + 0.05, 60.0, 127.0, 0.05))
+        casos.append(("zeros", np.zeros(6000), 50.0, 127.0, 0.0))
+        return casos
+
+    def test_funcao_pura_gera_byte_a_byte_o_que_program_capture_envia(self):
+        for nome, forma, f0, base, dc in self._formas():
+            with self.subTest(nome):
+                programacao = AmetekMX30.montar_programacao(
+                    forma, base_voltage_rms=base, frequency_hz=f0, dc_offset_pu=dc,
+                )
+                fonte = self._fonte()
+                fonte.program_capture(forma, base_voltage_rms=base, frequency_hz=f0, dc_offset_pu=dc)
+                enviados = [c for c in fonte.command_log if c.startswith("TRACe:DATA ")]
+                self.assertEqual(enviados, [programacao.comando_trace(i) for i in range(programacao.ciclos)])
+                self.assertIn(f"SOURce:LIST:VOLTage {programacao.texto_list_voltages()}", fonte.command_log)
+                self.assertIn(
+                    "SOURce:LIST:DWELl " + ",".join(f"{programacao.pontos_por_ciclo / 30000.0:.10g}" for _ in range(programacao.ciclos)),
+                    fonte.command_log,
+                )
+                self.assertEqual(fonte.last_programmed_peak_v, programacao.pico_reconstruido_v)
+                self.assertIs(fonte.ultima_programacao.__class__, programacao.__class__)
+                np.testing.assert_array_equal(fonte.ultima_programacao.traces, programacao.traces)
+
+    def test_programada_tem_o_rms_do_list_voltage_em_cada_ciclo(self):
+        forma, _ = _load_experimento("10").gerar(self.T, 60.0, 0, np.random.default_rng(3))
+        programacao = AmetekMX30.montar_programacao(forma, base_voltage_rms=127.0, frequency_hz=60.0)
+        programada = programacao.programada_pu()
+        self.assertEqual(programada.shape, (6000,))
+        n = programacao.pontos_por_ciclo
+        for i, rms_v in enumerate(programacao.list_voltages_rms):
+            ciclo_v = programada[i * n:(i + 1) * n] * 127.0 * np.sqrt(2.0)
+            # reamostragem 1024 -> n pontos muda o rms de ~1e-4; a ordem de grandeza e a conta valem
+            self.assertAlmostEqual(float(np.sqrt(np.mean(ciclo_v ** 2))), float(rms_v), delta=max(0.02 * float(rms_v), 0.05))
+
+    def test_programada_de_senoide_pura_e_a_senoide(self):
+        senoide = np.sin(2.0 * np.pi * 50.0 * self.T)
+        programada = AmetekMX30.montar_programacao(senoide, base_voltage_rms=127.0, frequency_hz=50.0).programada_pu()
+        # Até ~1,3e-3 pu nas últimas amostras do ciclo: _resample_cycle repete a
+        # última amostra do ciclo nos ~2 últimos dos 1024 pontos (np.interp não extrapola).
+        np.testing.assert_allclose(programada, senoide, atol=2e-3)
+
+    def test_programada_soma_o_offset_dc_enviado(self):
+        senoide = np.sin(2.0 * np.pi * 60.0 * self.T) + 0.0895731
+        programada = AmetekMX30.montar_programacao(
+            senoide, base_voltage_rms=127.0, frequency_hz=60.0, dc_offset_pu=0.0895731,
+        ).programada_pu()
+        np.testing.assert_allclose(programada, senoide, atol=2e-3)
+
+    def test_montar_programacao_mantem_as_recusas_de_antes(self):
+        with self.assertRaises(ValueError):
+            AmetekMX30.montar_programacao(np.zeros(5999), base_voltage_rms=127.0, frequency_hz=60.0)
+        with self.assertRaises(ValueError):
+            AmetekMX30.montar_programacao(np.full(6000, np.nan), base_voltage_rms=127.0, frequency_hz=60.0)
+        with self.assertRaises(ValueError):
+            AmetekMX30.montar_programacao(np.zeros(6000), base_voltage_rms=127.0, frequency_hz=61.0)
+
+    # --- nativas -----------------------------------------------------------
+
+    def _nativa(self, classe_id, parametros, f0=60.0, base=127.0):
+        experimento = _sem_sorteio(_load_experimento(classe_id))
+        programada, origem = experimento.forma_programada(
+            np.zeros(6000), parametros, 0, self.T,
+        )
+        return programada, origem
+
+    def test_pulse_programa_o_nivel_truncado_em_0_1_v(self):
+        programada, origem = self._nativa("04", {"interruption_pu": 0.0171752})
+        self.assertIn("PULSe", origem)
+        nivel = 2.2 / 127.0  # 0,0171752 x 127 = 2,1813 V -> 2,2 V
+        mask = sinais.janela(self.T, 0.060, 0.060)
+        senoide = np.sin(2.0 * np.pi * 60.0 * self.T)
+        np.testing.assert_allclose(programada[mask], senoide[mask] * nivel, atol=1e-12)
+        np.testing.assert_allclose(programada[~mask], senoide[~mask], atol=1e-12)
+
+    def test_pulse_usa_a_posicao_sorteada_do_metadata(self):
+        experimento = _load_experimento("02")
+        parametros = {"sag_pu": 0.5, "inicio_disturbio_s": 0.1, "duracao_s": 0.05, "fase_graus": 90.0}
+        programada, _ = experimento.forma_programada(np.zeros(6000), parametros, 0, self.T)
+        mask = sinais.janela(self.T, 0.1, 0.05)
+        senoide = np.sin(2.0 * np.pi * 60.0 * (self.T + 90.0 / (360.0 * 60.0)))
+        np.testing.assert_allclose(programada, senoide * np.where(mask, 0.5, 1.0), atol=1e-12)
+
+    def test_step_e_offset_das_nativas_01_e_19(self):
+        normal, _ = self._nativa("01", {})
+        np.testing.assert_allclose(normal, np.sin(2.0 * np.pi * 60.0 * self.T), atol=1e-12)
+        dc, origem = self._nativa("19", {"dc_offset_pu": 0.0505661})
+        self.assertIn("OFFSet", origem)
+        np.testing.assert_allclose(dc, np.sin(2.0 * np.pi * 60.0 * self.T) + 0.0505661, atol=1e-7)
+
+    def test_csine_programada_tem_o_thd_pedido(self):
+        for thd in (0.05, 0.10, 0.20):
+            programada, origem = self._nativa("05", {"thd": thd})
+            self.assertIn("CSINe", origem)
+            self.assertAlmostEqual(sinais.thd_medida(programada, fs_hz=30_000.0, f0=60.0), thd, delta=0.003)
+            self.assertAlmostEqual(float(np.sqrt(np.mean(programada ** 2))), 1.0 / np.sqrt(2.0), places=3)
+
+    def test_csine_a_30_por_cento_usa_o_caminho_trace(self):
+        experimento = _sem_sorteio(_load_experimento("05"))
+        indice_30 = list(experimento.NIVEIS_THD).index(0.30)
+        self.assertTrue(experimento.grava_trace(indice_30))
+        forma, parametros = experimento.gerar(self.T, 60.0, indice_30, np.random.default_rng(1))
+        programada, origem = experimento.forma_programada(forma, parametros, indice_30, self.T)
+        self.assertIn("TRACe", origem)
+        esperada = AmetekMX30.montar_programacao(forma, base_voltage_rms=127.0, frequency_hz=60.0).programada_pu()
+        np.testing.assert_array_equal(programada, esperada)
+
+    def test_frequency_drift_programa_dois_degraus_com_fase_continua(self):
+        programada, origem = self._nativa("18", {"start_hz": 57.0, "end_hz": 63.0})
+        self.assertIn("LIST:FREQuency", origem)
+        fase = np.concatenate([2.0 * np.pi * 57.0 * self.T[:3000], 2.0 * np.pi * 57.0 * 3000 / 30000.0 + 2.0 * np.pi * 63.0 * (self.T[3000:] - self.T[3000])])
+        np.testing.assert_allclose(programada[:3000], np.sin(fase[:3000]), atol=1e-9)
+        np.testing.assert_allclose(programada[3001:], np.sin(fase[3001:]), atol=1e-9)
+
+    # --- gravação ----------------------------------------------------------
+
+    def test_simulado_grava_modelo_e_programada_empilhados_e_aponta_no_metadata(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            config = mestre.Config(
+                fs_hz=30_000.0, points=6_000, duration_s=0.2, grid_frequency_hz=60.0,
+                base_voltage_rms=127.0, snr_levels_db=(), base_seed=5,
+                capture_current=False, current_base_a=None, results_dir=tmp_dir / "r",
+                sim_captures_per_class=3, real_captures_per_class=1, disturbance_start_s=0.06,
+            )
+            bancada = mestre.Bancada(None, None, config)
+            for classe_id in ("02", "10"):
+                script = next(s for s in mestre._experiment_scripts() if s.stem == classe_id)
+                mestre.Bancada._carregar_classe_experimento(script)(bancada).executar()
+            for stem in ("02_sag", "10_sag_harmonics"):
+                with np.load(config.results_dir / "tres_versoes" / f"{stem}.npz", allow_pickle=True) as dados, np.load(config.results_dir / f"{stem}.npz", allow_pickle=True) as principal:
+                    np.testing.assert_array_equal(dados["modelo_pu"], principal["tensao_pu"])
+                    self.assertEqual(dados["programada_pu"].shape, (3, 6000))
+                    self.assertFalse(np.any(np.isnan(dados["programada_pu"])))
+                    self.assertNotIn("medida_pu", dados.files)
+                linha = json.loads((config.results_dir / "metadata" / f"{stem}.jsonl").read_text(encoding="utf-8").splitlines()[0])
+                self.assertEqual(linha["tres_versoes"]["arquivo"], f"tres_versoes/{stem}.npz")
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_fisico_grava_as_tres_versoes_alinhadas_na_janela(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            config = mestre.Config(
+                fs_hz=30_000.0, points=6_000, duration_s=0.2, grid_frequency_hz=60.0,
+                base_voltage_rms=127.0, snr_levels_db=(), base_seed=1,
+                capture_current=False, current_base_a=None, results_dir=tmp_dir / "r",
+                sim_captures_per_class=1, real_captures_per_class=1, disturbance_start_s=0.06,
+            )
+            fonte = AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=425.0)
+            bancada = mestre.Bancada(fonte, mock.Mock(), config)
+            registro = np.concatenate([np.zeros(600), np.sin(2.0 * np.pi * 60.0 * np.arange(6000) / 30000.0), np.zeros(1500)])
+
+            class _Classe(mestre.ExperimentoWaveform):
+                id = "95"
+                nome = "TESTE_TRES"
+
+                def gerar(self, t, f0, capture_index, rng):
+                    return np.sin(2.0 * np.pi * f0 * t), {}
+
+                def _capturar_real(self, capture_index, t, rng):
+                    modelo, _ = self.gerar(t, 60.0, capture_index, rng)
+                    forma = 0.8 * modelo  # "bancada" reduziu a forma
+                    self.fonte.program_capture(forma, base_voltage_rms=127.0, frequency_hz=60.0)
+                    self._registrar_versoes(modelo, forma, {}, capture_index, t, self._programacao_enviada())
+                    return np.arange(8100) / 30000.0, registro, None, {}
+
+            experimento = _Classe(bancada)
+            experimento.osc = mock.Mock()
+            experimento._preparar_acquisicao_real = lambda: None
+            experimento.executar()
+            arquivo = config.results_dir / "tres_versoes" / "95_teste_tres_cap01.npz"
+            with np.load(arquivo, allow_pickle=True) as dados:
+                self.assertEqual(dados["modelo_pu"].shape, (1, 6000))
+                np.testing.assert_allclose(dados["modelo_pu"][0], np.sin(2.0 * np.pi * 60.0 * self.T), atol=1e-12)
+                np.testing.assert_allclose(dados["programada_pu"][0], 0.8 * dados["modelo_pu"][0], atol=2e-3)
+                np.testing.assert_array_equal(dados["medida_pu"][0], registro[600:6600])
+                self.assertEqual(int(dados["inicio_janela"]), 600)
+                self.assertEqual(dados["tempo_ms"].shape, (6000,))
+            linha = json.loads((config.results_dir / "metadata" / "95_teste_tres.jsonl").read_text(encoding="utf-8").splitlines()[0])
+            self.assertEqual(linha["tres_versoes"]["arquivo"], "tres_versoes/95_teste_tres_cap01.npz")
+            # o .npz principal (a medida com margem) continua sendo gravado como sempre
+            with np.load(config.results_dir / "95_teste_tres_cap01.npz") as principal:
+                self.assertEqual(principal["tensao_pu"].shape, (1, 8100))
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_falha_na_programada_nao_derruba_a_captura(self):
+        experimento = _BancadaFake.experimento_sem_niveis()
+        experimento._registrar_versoes(np.zeros(6000), np.zeros(5999), {}, 0, self.T)
+        self.assertIn("modelo", experimento._versoes_atuais)
+        self.assertNotIn("programada", experimento._versoes_atuais)
+
+    # --- script offline ----------------------------------------------------
+
+    def test_script_offline_reconstroi_o_que_a_bancada_programou(self):
+        gerar_tres = _carregar_script("gerar_tres_versoes")
+        k = 0.6
+        registro = {
+            "id_captura": "10-0001", "classe": "SAG_HARMONICS", "seed": 12345, "nivel_indice": 0, "simulado": False,
+            "fs_hz": 30_000.0, "pontos": 6000, "f0_hz": 60.0, "tensao_base_rms": 220.0,
+            "parametros": {"sag_pu": 0.5, "fator_disturbio_bancada": k},
+        }
+        resultado = gerar_tres.reconstruir_versoes(registro)
+        modelo, _ = _sem_sorteio(_load_experimento("10")).gerar(self.T, 60.0, 0, np.random.default_rng(12345))
+        np.testing.assert_array_equal(resultado["modelo"], modelo)
+        senoide = np.sin(2.0 * np.pi * 60.0 * self.T)
+        esperada = AmetekMX30.montar_programacao(
+            senoide + k * (modelo - senoide), base_voltage_rms=220.0, frequency_hz=60.0,
+        ).programada_pu()
+        np.testing.assert_array_equal(resultado["programada"], esperada)
+
+    def test_script_offline_nao_altera_a_sessao_e_recusa_pasta_com_arquivos(self):
+        gerar_tres = _carregar_script("gerar_tres_versoes")
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            sessao = tmp_dir / "sessao"
+            (sessao / "metadata").mkdir(parents=True)
+            registro = {
+                "id_captura": "02-0001", "classe": "SAG", "seed": 7, "nivel_indice": 0, "simulado": False,
+                "fs_hz": 30_000.0, "pontos": 6000, "f0_hz": 50.0, "tensao_base_rms": 127.0,
+                "parametros": {"sag_pu": 0.1},
+            }
+            (sessao / "metadata" / "02_sag.jsonl").write_text(json.dumps(registro) + "\n", encoding="utf-8")
+            np.savez(sessao / "02_sag_sag_pu-0.1.npz", classe="SAG", id_captura=np.array(["02-0001"], dtype=object), tensao_pu=np.zeros((1, 8100)))
+            antes = {p.name: p.read_bytes() for p in sessao.rglob("*") if p.is_file()}
+            linhas = gerar_tres.gerar_sessao(sessao, sessao / "tres_versoes")
+            self.assertEqual(linhas[0]["arquivo"], "02_sag_sag_pu-0.1.npz")
+            with np.load(sessao / "tres_versoes" / "02_sag_sag_pu-0.1.npz", allow_pickle=True) as dados:
+                self.assertEqual(dados["programada_pu"].shape, (1, 6000))
+            depois = {p.name: p.read_bytes() for p in sessao.rglob("*") if p.is_file() and "tres_versoes" not in p.parts}
+            self.assertEqual(antes, depois)
+            with self.assertRaises(FileExistsError):
+                gerar_tres.gerar_sessao(sessao, sessao / "tres_versoes")
+            gerar_tres.gerar_sessao(sessao, sessao / "tres_versoes", refazer=True)
+            with self.assertRaises(FileExistsError):
+                gerar_tres.gerar_sessao(sessao, sessao / "metadata", refazer=True)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

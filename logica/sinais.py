@@ -8,6 +8,7 @@ as classes de ``mestre.py``.
 from __future__ import annotations
 
 import math
+from typing import Optional, Tuple
 
 import numpy as np
 
@@ -295,3 +296,160 @@ def janela_nominal(
     inicio = int(round(indice_trigger - pre_trigger_s * fs_hz))
     inicio = max(0, min(inicio, max(0, registro.size - pontos)))
     return registro[inicio : inicio + pontos]
+
+
+# Abaixo disto (rms do resíduo ESPERADO, em pu) não há "componente de
+# distúrbio" a correlacionar: a classe 01 dá ~1e-16 (arredondamento de ponto
+# flutuante); a menor classe com distúrbio real fica ordens de grandeza acima.
+LIMITE_RESIDUO_DEGENERADO_PU = 1e-6
+
+
+def correlacao_disturbio(
+    esperado: np.ndarray, capturado: np.ndarray, *, fs_hz: float, f0_hz: float, fase_graus: float = 0.0,
+) -> Tuple[Optional[float], Optional[str]]:
+    """Correlação de Pearson só da COMPONENTE DE DISTÚRBIO: (capturado -
+    senoide nominal) contra (esperado - senoide nominal), com a senoide
+    nominal ``sin(2π·f0·t + fase)`` de amplitude 1 pu, a MESMA para os dois
+    (mesma f0 e fase do modelo; sem sorteio, fase 0).
+
+    A correlação do sinal inteiro é dominada pela fundamental e passa de 0,99
+    contra qualquer senoide; subtraí-la deixa só o que o evento acrescenta.
+
+    ``capturado`` deve vir JÁ ALINHADO com ``esperado`` (mesma grade de tempo,
+    mesmo comprimento) — ``analisar_sessao`` faz o alinhamento. Devolve
+    ``(valor, None)`` ou ``(None, motivo)`` quando a conta não tem sentido
+    (resíduo esperado ~ 0 como na classe 01, constante como o offset DC da 19, ou resíduo capturado constante):
+    um número ali seria correlação de ruído de arredondamento."""
+    esperado = np.asarray(esperado, dtype=np.float64)
+    capturado = np.asarray(capturado, dtype=np.float64)
+    if esperado.shape != capturado.shape or esperado.ndim != 1 or esperado.size < 2:
+        return None, f"formas incompatíveis ({esperado.shape} x {capturado.shape})"
+    t = np.arange(esperado.size, dtype=np.float64) / float(fs_hz)
+    senoide = np.sin(2.0 * np.pi * float(f0_hz) * t + math.radians(float(fase_graus)))
+    r_esp = esperado - senoide
+    r_cap = capturado - senoide
+    rms_total = float(np.sqrt(np.mean(np.square(r_esp))))
+    if rms_total < LIMITE_RESIDUO_DEGENERADO_PU:
+        return None, f"resíduo esperado ~ 0 (rms {rms_total:.2e} pu): sem componente de distúrbio"
+    rms_esp = float(np.sqrt(np.mean(np.square(r_esp - np.mean(r_esp)))))
+    if rms_esp < LIMITE_RESIDUO_DEGENERADO_PU:
+        return None, (f"resíduo esperado constante (rms {rms_total:.2e} pu, sem variação): "
+                      "Pearson indefinido (offset DC puro)")
+    rms_cap = float(np.sqrt(np.mean(np.square(r_cap - np.mean(r_cap)))))
+    if rms_cap == 0.0:
+        return None, "resíduo capturado constante"
+    a = r_esp - np.mean(r_esp)
+    b = r_cap - np.mean(r_cap)
+    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))), None
+
+
+# ---------------------------------------------------------------------------
+# Forma "programada" das classes NATIVAS (v1.16)
+# ---------------------------------------------------------------------------
+# Nas classes nativas (01-05, 18, 19) a fonte gera a forma sozinha; o que o
+# código programa é um NÍVEL (STEP/PULSe), um THD (CSINe), dois pontos de
+# frequência (LIST:FREQuency) ou um offset. A forma "programada" é a ideal para
+# esses comandos, na grade da captura: o que o modelo (``gerar()``) pediria se
+# a fonte só soubesse fazer o que foi programado (nível truncado em 0,1 V,
+# frequência em degraus, senoide clipada no THD pedido).
+
+FORMA_NATIVA_POR_CLASSE = {
+    "01": "STEP", "02": "PULSe", "03": "PULSe", "04": "PULSe",
+    "05": "CSINe", "18": "LIST:FREQuency", "19": "STEP+OFFSet",
+}
+_PARAMETRO_DO_NIVEL = {"02": "sag_pu", "03": "swell_pu", "04": "interruption_pu"}
+
+
+def _thd_do_ciclo(x: np.ndarray) -> float:
+    espectro = np.abs(np.fft.rfft(x))
+    return float(np.sqrt(np.sum(np.square(espectro[2:]))) / espectro[1])
+
+
+def corte_da_senoide_clipada(thd_fracao: float) -> float:
+    """Nível de corte ``c`` (em pu do pico) tal que ``clip(sin, -c, c)`` tem o
+    THD pedido (``FUNCtion:CSINusoid``, 0 a 20 %). Bisseção sobre um ciclo de
+    4096 pontos; o THD cai monotonicamente com ``c``."""
+    if not 0.0 < thd_fracao <= 0.25:
+        raise ValueError(f"THD {thd_fracao} fora do alcance do CSINe (0..20 %)")
+    ciclo = np.sin(2.0 * np.pi * np.arange(4096) / 4096.0)
+    baixo, alto = 0.05, 1.0
+    for _ in range(60):
+        meio = 0.5 * (baixo + alto)
+        if _thd_do_ciclo(np.clip(ciclo, -meio, meio)) > thd_fracao:
+            baixo = meio
+        else:
+            alto = meio
+    return 0.5 * (baixo + alto)
+
+
+def senoide_clipada_pu(t: np.ndarray, f0_hz: float, tau_s: float, thd_fracao: float) -> np.ndarray:
+    """Senoide clipada com o THD pedido e o MESMO rms da senoide de pico 1
+    (1/sqrt 2): a fonte escala a forma para o rms programado — garantido pelo
+    manual para tabelas de usuário; para a CSINusoid interna é NÃO VERIFICADO."""
+    corte = corte_da_senoide_clipada(thd_fracao)
+    ciclo = np.clip(np.sin(2.0 * np.pi * np.arange(4096) / 4096.0), -corte, corte)
+    rms_ciclo = float(np.sqrt(np.mean(np.square(ciclo))))
+    x = np.clip(np.sin(2.0 * np.pi * f0_hz * (t + tau_s)), -corte, corte)
+    return x * (1.0 / math.sqrt(2.0) / rms_ciclo)
+
+
+def forma_programada_nativa(
+    id_classe: str,
+    *,
+    t: np.ndarray,
+    f0_hz: float,
+    base_voltage_rms: float,
+    parametros: dict,
+    quantizar,
+    inicio_legado_s: float | None = None,
+    duracao_legada_s: float | None = None,
+) -> np.ndarray:
+    """Forma programada (pu do pico base, grade ``t``) de uma classe nativa.
+
+    ``parametros`` = os de ``gerar()`` (nível da classe; ``inicio_disturbio_s``,
+    ``duracao_s``, ``fase_graus`` quando o sorteio está ligado). ``quantizar`` =
+    ``AmetekMX30.quantizar_tensao_rms`` já com o teto de tensão (a Rev. 5.53
+    trunca ``VOLTage:TRIGgered`` a 0,1 V). Sem sorteio, o evento usa
+    ``inicio_legado_s``/``duracao_legada_s`` (``INICIO_S``/``DURACAO_S`` da
+    classe).
+
+    * 01 e 19: STEP para a tensão base (quantizada) — 19 soma o offset enviado
+      por ``SOURce:VOLTage:OFFSet`` (``%.8g``).
+    * 02/03/04: PULSe para ``nível x base`` (quantizado) em
+      ``[inicio, inicio + duração)``; fora disso, a base.
+    * 05 (CSINe): senoide clipada no THD pedido (``senoide_clipada_pu``).
+    * 18: ``LIST:FREQuency`` de 2 pontos, ``start_hz`` na 1.ª metade da janela e
+      ``end_hz`` na 2.ª, fase contínua (a continuidade da fase na troca de
+      passo é NÃO VERIFICADA) e fase inicial ``fase_graus``.
+    """
+    t = np.asarray(t, dtype=np.float64)
+    fase_graus = float(parametros.get("fase_graus", 0.0))
+    tau_s = fase_graus / (360.0 * f0_hz)
+    senoide = np.sin(2.0 * np.pi * f0_hz * (t + tau_s))
+    base = float(base_voltage_rms)
+    fator_base = quantizar(base) / base
+
+    if id_classe == "01":
+        return senoide * fator_base
+    if id_classe in _PARAMETRO_DO_NIVEL:
+        nivel = float(parametros[_PARAMETRO_DO_NIVEL[id_classe]])
+        inicio = float(parametros.get("inicio_disturbio_s", inicio_legado_s))
+        duracao = float(parametros.get("duracao_s", duracao_legada_s))
+        nivel_programado = quantizar(nivel * base) / base
+        fator = np.where(janela(t, inicio, duracao), nivel_programado, 1.0)
+        return senoide * fator
+    if id_classe == "05":
+        return senoide_clipada_pu(t, f0_hz, tau_s, float(parametros["thd"]))
+    if id_classe == "18":
+        fs_hz = 1.0 / float(t[1] - t[0])
+        metade = t.size // 2
+        frequencia = np.where(np.arange(t.size) < metade, float(parametros["start_hz"]), float(parametros["end_hz"]))
+        fase = np.empty(t.size, dtype=np.float64)
+        fase[0] = 0.0
+        fase[1:] = 2.0 * np.pi * np.cumsum(frequencia[:-1]) / fs_hz
+        return np.sin(fase + np.deg2rad(fase_graus))
+    if id_classe == "19":
+        pico_v = base * math.sqrt(2.0)
+        offset_enviado_v = float(f"{float(parametros['dc_offset_pu']) * pico_v:.8g}")
+        return senoide * fator_base + offset_enviado_v / pico_v
+    raise KeyError(f"classe {id_classe!r} não é nativa")

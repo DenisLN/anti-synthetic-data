@@ -87,6 +87,11 @@ def calcular_recorte(n_amostras: int, metadado: Optional[dict]) -> Tuple[int, in
     if n_amostras <= pontos:
         origem = "sem_margem"
         inicio_ideal = 0
+    elif metadado.get("inicio_janela") is not None:
+        # Gravado pela bancada (já com o limite do registro aplicado): ninguém
+        # precisa refazer indice_trigger - pre_trigger_s * fs.
+        origem = "inicio_janela"
+        inicio_ideal = int(metadado["inicio_janela"])
     elif metadado.get("indice_trigger") is not None:
         # Mesmo cálculo de sinais.janela_nominal(): o trigger caiu em
         # indice_trigger e a janela nominal começa pre_trigger_s antes dele.
@@ -106,7 +111,7 @@ def calcular_recorte(n_amostras: int, metadado: Optional[dict]) -> Tuple[int, in
             pre_trigger_s=pre_trigger_s, pontos=pontos, fs_hz=fs_hz,
         )
         inicio = int(trecho[0]) if trecho.size else 0
-    else:
+    else:  # inicio_janela, margem_amostras_antes e sem_margem
         inicio = max(0, min(inicio_ideal, max(0, n_amostras - pontos)))
     pontos = min(pontos, n_amostras - inicio)
     info = {
@@ -127,10 +132,14 @@ def metadado_recortado(metadado: dict, info: dict) -> dict:
     """Linha do metadata descrevendo o arquivo RECORTADO (original intocado)."""
     novo = dict(metadado)
     novo["recorte"] = info
-    if info["origem"] in ("indice_trigger", "margem_amostras_antes"):
+    if info["origem"] in ("inicio_janela", "indice_trigger", "margem_amostras_antes"):
         novo["margem_amostras_antes"] = 0
         novo["margem_amostras_depois"] = 0
         novo["amostras_totais"] = info["fim_amostra"] - info["inicio_amostra"]
+        if "inicio_janela" in novo:
+            # O arquivo recortado JÁ começa na janela nominal.
+            novo["inicio_janela"] = 0
+            novo["inicio_janela_ajustado"] = False
         if metadado.get("indice_trigger") is not None:
             novo["indice_trigger"] = int(metadado["indice_trigger"]) - info["inicio_amostra"]
     return novo

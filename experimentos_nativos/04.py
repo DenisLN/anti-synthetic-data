@@ -19,13 +19,16 @@ class Experimento(ExperimentoNativo):
     DURACAO_S = 0.060
 
     def gerar(self, t, f0, capture_index, rng):
-        voltage = np.sin(2.0 * np.pi * f0 * t)
+        sorteio = self.sortear(
+            rng, f0, inicio_legado_s=self.INICIO_S, duracao_legada_s=self.DURACAO_S, duracao_variavel=True,
+        )
+        voltage = np.sin(2.0 * np.pi * f0 * (t + sorteio.deslocamento_s))
         simulado = self.osc is None
         total = self.config.capturas(simulado)
         cobertura_ativa = not simulado and self.config.capturas_override is not None
         nivel = sinais.valor_para_captura(rng, 0.0, 0.09, capture_index, total, cobertura_ativa=cobertura_ativa)
-        voltage[janela(t, self.INICIO_S, self.DURACAO_S)] *= nivel
-        return voltage, {"interruption_pu": nivel}
+        voltage[janela(t, sorteio.inicio_s, sorteio.duracao_s)] *= nivel
+        return voltage, {"interruption_pu": nivel, **sorteio.parametros()}
 
     def configurar(self, capture_index):
         # Sem osciloscópio real por captura para gerar o rng "certo", reproduz a
@@ -36,5 +39,5 @@ class Experimento(ExperimentoNativo):
         nivel = sinais.valor_para_captura(
             np.random.default_rng(seed), 0.0, 0.09, capture_index, total, cobertura_ativa=cobertura_ativa,
         )
-        self.fonte.trigger_pulse(nivel * self.config.base_voltage_rms, width_s=self.DURACAO_S)
+        self.fonte.trigger_pulse(nivel * self.config.base_voltage_rms, width_s=self.largura_do_pulso_s(self.DURACAO_S))
         return {"interruption_pu": nivel}

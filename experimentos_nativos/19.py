@@ -24,8 +24,9 @@ class Experimento(ExperimentoNativo):
         total = self.config.capturas(simulado)
         cobertura_ativa = not simulado and self.config.capturas_override is not None
         dc_offset = sinais.valor_para_captura(rng, 0.02, 0.10, capture_index, total, cobertura_ativa=cobertura_ativa)
-        voltage = np.sin(2.0 * np.pi * f0 * t) + dc_offset
-        return voltage, {"dc_offset_pu": dc_offset}
+        sorteio = self.sortear(rng, f0)
+        voltage = np.sin(2.0 * np.pi * f0 * (t + sorteio.deslocamento_s)) + dc_offset
+        return voltage, {"dc_offset_pu": dc_offset, **sorteio.parametros()}
 
     def configurar(self, capture_index):
         seed = self.config.base_seed + 19_000_000 + capture_index

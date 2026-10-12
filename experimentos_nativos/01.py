@@ -10,8 +10,10 @@ class Experimento(ExperimentoNativo):
     nome = "NORMAL"
 
     def gerar(self, t, f0, capture_index, rng):
-        voltage = np.sin(2.0 * np.pi * f0 * t)
-        return voltage, {}
+        # Só a fase é sorteada (v1.15): não há evento para posicionar.
+        sorteio = self.sortear(rng, f0)
+        voltage = np.sin(2.0 * np.pi * f0 * (t + sorteio.deslocamento_s))
+        return voltage, sorteio.parametros()
 
     def configurar(self, capture_index):
         # Sem distúrbio nenhum: um STEP para o mesmo valor imediato só para gerar

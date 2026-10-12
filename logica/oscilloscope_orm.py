@@ -334,7 +334,21 @@ class KeysightDSOX4034A(SCPIMixin, Instrument):
         # Com CUSTom/LOCation 0 a referência JÁ é a borda esquerda: POSition é
         # só -pre_trigger. Com LEFT, a referência está 1 divisão adiante, e a
         # borda esquerda cai em POSition - RANGe/10 — por isso a soma.
-        compensacao = 0.0 if self.referencia_horizontal_efetiva == "CUSTOM" else duration_s / 10.0
+        self.definir_pre_trigger(duration_s=duration_s, pre_trigger_s=pre_trigger_s)
+
+    def definir_pre_trigger(self, *, duration_s: float, pre_trigger_s: float) -> None:
+        """Muda SÓ o pré-trigger (``:TIMebase:POSition``) de uma aquisição já
+        configurada por ``configure_acquisition`` — usado por captura quando o
+        início do distúrbio é sorteado (v1.15). Mesma conta e mesma
+        compensação de referência de ``_programar_referencia_horizontal``; a
+        posição que o trigger realmente teve volta na preamble
+        (``ultimo_indice_trigger``)."""
+        referencia = getattr(self, "referencia_horizontal_efetiva", None)
+        if referencia is None:
+            raise OscilloscopeError("definir_pre_trigger() antes de configure_acquisition()")
+        if not 0.0 <= pre_trigger_s < duration_s:
+            raise ValueError(f"pre_trigger_s deve estar entre 0 e {duration_s} s")
+        compensacao = 0.0 if referencia == "CUSTOM" else duration_s / 10.0
         posicao = -pre_trigger_s + compensacao
         self.write(f":TIMebase:POSition {posicao or 0.0:.12g}")
         self.assert_no_errors("posição da base de tempo")

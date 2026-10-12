@@ -79,6 +79,8 @@ def pico_programado_reconstruido_v(registro: dict, script_path: Path) -> float:
         results_dir=PROJECT_ROOT / "resultados", sim_captures_per_class=1, real_captures_per_class=1,
         disturbance_start_s=mestre.DISTURBANCE_START_S,
         capturas_override=registro.get("capturas_override"),
+        # Sessões anteriores à v1.15 não sortearam início/duração/fase.
+        sorteio_posicao=bool(registro.get("sorteio_posicao", False)),
     )
     teto = float(registro.get("teto_extremos_v", 415.8))
     fonte = AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=max(teto, 415.8))

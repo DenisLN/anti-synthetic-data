@@ -4,20 +4,31 @@ import inspect
 
 import numpy as np
 
+import perfis
 from mestre import ExperimentoWaveform
 from sinais import janela, oscilacao_amortecida
 
 
 class Experimento(ExperimentoWaveform):
     id = "12"
+    # Parâmetros SORTEADOS em gerar() (v1.15, com o sorteio ligado): 3 capturas
+    # por padrão na bancada (docs/analise-2026-10-12/compostas_sorteadas.md).
+    capturas_padrao = 3
     nome = "SAG_OSCILLATORY_TRANSIENT"
 
     def gerar(self, t, f0, capture_index, rng):
-        voltage = np.sin(2.0 * np.pi * f0 * t)
-        mask = janela(t, 0.060, 0.040)
-        voltage[mask] *= 0.5
-        voltage = voltage + oscilacao_amortecida(t, inicio_s=0.060, duracao_s=0.040, frequencia_hz=600.0)
-        return voltage, {"sag_pu": 0.5, "oscillation_hz": 600.0}
+        sag = perfis.composto(self.config, "sag_composto", capture_index, rng)
+        oscilacao_hz = perfis.composto(self.config, "oscilacao_composto_hz", capture_index, rng)
+        sorteio = self.sortear(
+            rng, f0, inicio_legado_s=0.060, duracao_legada_s=0.040, duracao_variavel=True,
+        )
+        voltage = np.sin(2.0 * np.pi * f0 * (t + sorteio.deslocamento_s))
+        mask = janela(t, sorteio.inicio_s, sorteio.duracao_s)
+        voltage[mask] *= sag
+        voltage = voltage + oscilacao_amortecida(
+            t, inicio_s=sorteio.inicio_s, duracao_s=sorteio.duracao_s, frequencia_hz=oscilacao_hz,
+        )
+        return voltage, {"sag_pu": sag, "oscillation_hz": oscilacao_hz, **sorteio.parametros()}
 
     def parametros_com_disturbio_reduzido(self, parametros, fracao):
         # Gancho de bancada (limite de bancada, v1.13): forma física =

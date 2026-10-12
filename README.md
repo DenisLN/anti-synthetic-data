@@ -278,6 +278,8 @@ momento; resumo:
 | `set capturas <N>` | não | mínimo de capturas por classe na bancada real: cada classe roda **max(N, padrão da classe)** (ver 5.3.1); em classes com níveis discretos (SAG/SWELL/HARMONICS), por nível; com ele, 04/06/09/19 cobrem o intervalo do parâmetro e a 08 entra em caracterização (rampa de amplitude). A CLI avisa onde o padrão vence |
 | `set capturas padrao` | não | desfaz o `set capturas`: só o padrão de cada classe, com sorteio |
 | `set seed <N>` | não | seed base dos próximos `run` (inteiro ≥ 0; `set seed padrao` volta à do início). Mesma seed → mesmas formas, parâmetros e plano de capturas. Gravada no metadata (`base_seed`) |
+| `set perfil norma\|literatura\|fronteira` | não | perfil de faixas do dataset (`logica/perfis.py`, `docs/perfis.md`); padrão `literatura` = dataset anterior à v1.15. Gravado em cada captura (`perfil`) |
+| `set sorteio on\|off` | não | início, duração e fase sorteados em `gerar()` (padrão `on`; `docs/analise-2026-10-12/sorteio_inicio_fase.md`). `off` volta às posições fixas de antes (60/80 ms, fase 0). Com `on` as 02/03/04 reprogramam fase de disparo e pré-trigger do osciloscópio por captura e cada captura TRACE grava a Flash (estimativa do `run all` exata). Gravado em cada captura (`sorteio_posicao`) |
 | `quit` / `exit` | não | sai da CLI |
 
 Ordem recomendada para uma sessão do zero: `comm` → `trigger` → `native` →
@@ -473,6 +475,8 @@ fluxo PowerShell). Campos que o operador tipicamente revisa:
 | `CAPTURE_CURRENT` | Liga captura de corrente | Ver 5.6 — requer `CURRENT_PROBE_ATTENUATION` e `CURRENT_BASE_A` |
 | `REAL_CAPTURES_PER_CLASS` | Piso global de capturas físicas por classe | `1`; cada classe roda max(isto, padrão da classe) — ver 5.3.1 |
 | `BASE_SEED` | Seed base das capturas (inteiro ≥ 0) | Vazio = 20260827; também `set seed N` na CLI |
+| `PERFIL` | Perfil de faixas inicial: `norma`, `literatura` ou `fronteira` | Vazio = `literatura`; também `set perfil` na CLI |
+| `SORTEIO` | Sorteio de início/duração/fase em `gerar()` | `1`; `0` = posições fixas de antes; também `set sorteio` na CLI |
 | `LIMITE_BANCADA_DISTURBIO` / `LIMITE_BANCADA_FRACAO_MINIMA` | Limite de bancada (220 V): reduzir o distúrbio das waveform para caber / menor fração aceita | `1` / `0.25`; `0` = só pular (comportamento da v1.12) |
 | `SNR_LEVELS_DB` | Níveis de SNR para o AWGN aplicado, separados por vírgula | Ex.: `20,30,40,50` |
 

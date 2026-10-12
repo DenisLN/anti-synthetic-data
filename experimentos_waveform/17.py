@@ -16,10 +16,18 @@ class Experimento(ExperimentoWaveform):
     capturas_padrao = 3
 
     def gerar(self, t, f0, capture_index, rng):
-        voltage = np.sin(2.0 * np.pi * f0 * t)
-        pulsos = aplicar_entalhes(voltage, t, rng, frequencia_hz=f0, inicio_s=0.060, duracao_s=0.060)
-        voltage = voltage + oscilacao_amortecida(t, inicio_s=0.060, duracao_s=0.060, frequencia_hz=300.0)
-        return voltage, {"notch_pulses": float(pulsos), "oscillation_hz": 300.0}
+        # Mesma regra da 07: início sorteado, fase acoplada (entalhes nos picos).
+        sorteio = self.sortear(
+            rng, f0, inicio_legado_s=0.060, duracao_legada_s=0.060, fase_acoplada_ao_inicio=True,
+        )
+        voltage = np.sin(2.0 * np.pi * f0 * (t + sorteio.deslocamento_s))
+        pulsos = aplicar_entalhes(
+            voltage, t, rng, frequencia_hz=f0, inicio_s=sorteio.inicio_s, duracao_s=sorteio.duracao_s,
+        )
+        voltage = voltage + oscilacao_amortecida(
+            t, inicio_s=sorteio.inicio_s, duracao_s=sorteio.duracao_s, frequencia_hz=300.0,
+        )
+        return voltage, {"notch_pulses": float(pulsos), "oscillation_hz": 300.0, **sorteio.parametros()}
 
     def parametros_com_disturbio_reduzido(self, parametros, fracao):
         # Gancho de bancada (limite de bancada, v1.13): forma física =

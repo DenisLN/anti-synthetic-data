@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import logging
 import math
 import os
+import shutil
 import sys
 import time
 from abc import ABC, abstractmethod
@@ -18,9 +20,13 @@ import numpy as np
 
 from ametek_orm import (
     AmetekMX30, CommunicationError, FalhaFatalDeInstrumento, InstrumentHardwareError,
-    ParameterOutOfBoundsError,
+    ParameterOutOfBoundsError, ProgramacaoCaptura,
 )
-from sinais import comparar_fisicamente, ruido_awgn, snr_medida, tempo
+import perfis
+from sinais import (
+    FORMA_NATIVA_POR_CLASSE, comparar_fisicamente, forma_programada_nativa, janela_nominal,
+    ruido_awgn, snr_medida, tempo,
+)
 
 
 logging.basicConfig(
@@ -108,6 +114,116 @@ def versao_do_codigo() -> str:
 
 
 _VERSAO_CACHE: Optional[str] = None
+_INFO_CODIGO_CACHE: Optional[Dict[str, object]] = None
+
+
+def info_do_codigo() -> Dict[str, object]:
+    """Procedência do código desta execução: commit (``git rev-parse HEAD``),
+    se a árvore tem alteração rastreada não commitada, versões do numpy e do
+    Python. ``git_commit``/``git_sujo`` ficam ``None`` quando o git não
+    responde — nunca impede uma sessão.
+
+    "Sujo" = ``git status --porcelain --untracked-files=no`` não vazio, o
+    mesmo critério do ``-dirty`` de ``git describe`` (arquivo novo ainda não
+    adicionado ao git não conta)."""
+    global _INFO_CODIGO_CACHE
+    if _INFO_CODIGO_CACHE is not None:
+        return dict(_INFO_CODIGO_CACHE)
+    import platform
+    import subprocess
+
+    def _git(*args: str) -> Optional[str]:
+        try:
+            return subprocess.run(
+                ["git", *args], cwd=str(PROJECT_ROOT), capture_output=True,
+                text=True, timeout=10, check=True,
+            ).stdout.strip()
+        except Exception:  # noqa: BLE001 - nunca impedir uma sessão por causa disto
+            return None
+
+    commit = _git("rev-parse", "HEAD") or None
+    status = _git("status", "--porcelain", "--untracked-files=no")
+    _INFO_CODIGO_CACHE = {
+        "git_commit": commit,
+        "git_sujo": None if status is None else bool(status),
+        "versao_codigo": versao_do_codigo(),
+        "numpy_versao": np.__version__,
+        "python_versao": platform.python_version(),
+    }
+    return dict(_INFO_CODIGO_CACHE)
+
+
+def sha256_do_arquivo(caminho: Path) -> str:
+    return hashlib.sha256(Path(caminho).read_bytes()).hexdigest()
+
+
+def _gravar_metadata_legivel(jsonl_final: Path, registros: Sequence[dict]) -> None:
+    """Ao lado do ``NN_classe.jsonl`` (formato de máquina, 1 linha por captura,
+    o que todos os leitores consomem) grava ``NN_classe.json``: a mesma lista de
+    registros, indentada, para leitura humana. Derivado do .jsonl, nunca o
+    contrário; os leitores não o usam (``glob("*.jsonl")`` não o casa)."""
+    destino = Path(jsonl_final).with_suffix(".json")
+    parcial = destino.with_suffix(".json.part")
+    parcial.write_text(
+        json.dumps(list(registros), ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(parcial, destino)
+
+
+NOME_CALIBRACAO_NA_SESSAO = "calibracao_extremos.json"
+NOME_METADATA_DA_SESSAO = "sessao.json"
+# Modelo / programada / medida de cada captura (docs/tres_versoes.md).
+PASTA_TRES_VERSOES = "tres_versoes"
+_SESSOES_PREPARADAS: Dict[Path, Dict[str, object]] = {}
+
+
+def preparar_pasta_da_sessao(results_dir: Path, *, bancada: bool) -> Dict[str, object]:
+    """Uma vez por processo e pasta: copia a ``calibracao_extremos.json`` EM
+    USO para dentro da sessão e grava ``sessao.json`` (commit, árvore suja,
+    numpy, Python, caminho e SHA-256 da calibração). A calibração muda depois
+    das sessões (relatório do professor, pergunta 11): sem a cópia, o ``k``
+    recalculado a partir do código de hoje deixa de bater com o gravado.
+
+    Árvore suja numa sessão de BANCADA é avisada em destaque, sem bloquear
+    (não há mecanismo de bloqueio no fluxo; o operador decide)."""
+    results_dir = Path(results_dir)
+    chave = results_dir.resolve()
+    if chave in _SESSOES_PREPARADAS:
+        return _SESSOES_PREPARADAS[chave]
+    results_dir.mkdir(parents=True, exist_ok=True)
+    codigo = info_do_codigo()
+    copia = results_dir / NOME_CALIBRACAO_NA_SESSAO
+    parcial = copia.with_suffix(".json.part")
+    shutil.copyfile(CALIBRACAO_EXTREMOS_PATH, parcial)
+    os.replace(parcial, copia)
+    info: Dict[str, object] = {
+        "formato_metadata": 2,
+        "criada_em": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "modo": "bancada" if bancada else "simulado",
+        **codigo,
+        "calibracao_extremos": {
+            "origem": str(CALIBRACAO_EXTREMOS_PATH),
+            "copia_na_sessao": NOME_CALIBRACAO_NA_SESSAO,
+            "sha256": sha256_do_arquivo(copia),
+        },
+    }
+    destino = results_dir / NOME_METADATA_DA_SESSAO
+    parcial = destino.with_suffix(".json.part")
+    parcial.write_text(json.dumps(info, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    os.replace(parcial, destino)
+    _SESSOES_PREPARADAS[chave] = info
+    if bancada and codigo["git_sujo"]:
+        aviso = (
+            "ATENÇÃO: árvore git SUJA (alterações rastreadas não commitadas; "
+            f"versão {codigo['versao_codigo']}). Esta sessão NÃO é reproduzível "
+            "só pelo commit. Commit limpo antes de uma sessão de coleta."
+        )
+        logger.warning(aviso)
+        print("\n" + "!" * 78 + f"\n{aviso}\n" + "!" * 78 + "\n")
+    elif bancada and codigo["git_sujo"] is None:
+        logger.warning("Não foi possível verificar se a árvore git está limpa (git indisponível).")
+    return info
 
 
 # ---------------------------------------------------------------------------
@@ -205,6 +321,14 @@ CAPTURE_CURRENT = env_bool("CAPTURE_CURRENT", default=False)
 SESSION_RESULTS_DIR: Optional[Path] = None
 CAPTURAS_OVERRIDE: Optional[int] = None
 DIAGNOSTICO_MODE: bool = False
+# Perfil de faixas do dataset (v1.15; logica/perfis.py): norma|literatura|
+# fronteira. Inicial = env PERFIL (padrão literatura = dataset de sempre);
+# "set perfil" da CLI muda em runtime, vale a partir do próximo run.
+PERFIL: str = perfis.perfil_do_ambiente()
+# Sorteio de início/duração/fase em gerar() (v1.15; docs/analise-2026-10-12/
+# sorteio_inicio_fase.md). Padrão ligado; SORTEIO=0 (ou "set sorteio off")
+# reproduz as posições fixas de antes (60 ms/80 ms, fase 0), byte a byte.
+SORTEIO_POSICAO: bool = env_bool("SORTEIO", default=True)
 
 # AMETEK pela USB com porta COM virtual; 115200 foi confirmado no equipamento real.
 AMETEK_PORT = os.getenv("AMETEK_PORT", "COM10")
@@ -587,6 +711,12 @@ class Config:
     # ``gerar()``/``configurar()`` de 04/06/08/09/19), sem cada script
     # precisar repassar o próprio padrão.
     capturas_padrao_classe: int = 1
+    # Perfil de faixas lido por gerar() das classes 02/03/05/06/10-16/20
+    # (logica/perfis.py). O padrão reproduz o dataset anterior à v1.15.
+    perfil: str = perfis.PERFIL_PADRAO
+    # Início, duração e fase sorteados em gerar() (ver ``Sorteio``). False =
+    # posições fixas anteriores à v1.15.
+    sorteio_posicao: bool = True
 
     def capturas(self, simulated: bool) -> int:
         """Capturas desta classe (por nível, nas classes com ``NIVEIS``).
@@ -604,6 +734,116 @@ class Config:
             else self.real_captures_per_class
         )
         return max(global_, self.capturas_padrao_classe)
+
+
+# ---------------------------------------------------------------------------
+# Sorteio de início, duração e fase (v1.15)
+# ---------------------------------------------------------------------------
+
+# Margem mínima, em ciclos da rede, entre as bordas da janela e o distúrbio
+# (tmin da proposta 3 de atividade.tex): ao menos 1 ciclo de senoide limpa
+# antes e depois. A duração de um evento vai de meio ciclo ao que sobra.
+SORTEIO_TMIN_CICLOS = 1.0
+SORTEIO_DURACAO_MIN_CICLOS = 0.5
+# Resolução de TRIGger:SYNChronize:PHASe (ametek_orm.definir_fase_de_disparo).
+SORTEIO_FASE_RESOLUCAO_GRAUS = 0.1
+# Chaves que gerar() acrescenta a ``parametros`` quando o sorteio está ligado;
+# executar() as move para o nível de cima do metadata.
+CHAVES_SORTEIO = ("inicio_disturbio_s", "duracao_s", "fase_graus")
+_CHAVE_DO_SUBFLUXO = 0x50525445  # separa o sub-fluxo do sorteio do fluxo do rng
+
+
+@dataclass(frozen=True)
+class Sorteio:
+    """Posição sorteada de uma captura: ``inicio_s``/``duracao_s`` do distúrbio
+    (``None`` quando a classe não tem evento localizado) e ``fase_graus`` da
+    senoide base em t = 0, ou seja ``sin(2 pi f0 t + fase)``. Inativo
+    (``ativo=False``) devolve os valores fixos de antes da v1.15: fase 0 e
+    nada acrescentado a ``parametros``."""
+
+    ativo: bool
+    f0_hz: float
+    inicio_s: Optional[float] = None
+    duracao_s: Optional[float] = None
+    fase_graus: float = 0.0
+
+    @property
+    def deslocamento_s(self) -> float:
+        """``tau`` tal que ``sin(2 pi f0 (t + tau))`` tem a fase sorteada.
+        Somar ``tau`` a ``t`` em TODA parcela periódica (fundamental e
+        harmônicas) é deslocar a forma inteira no tempo, sem refazer fórmula."""
+        return self.fase_graus / (360.0 * self.f0_hz) if self.ativo else 0.0
+
+    def parametros(self) -> Dict[str, float]:
+        if not self.ativo:
+            return {}
+        sorteados = {
+            "inicio_disturbio_s": self.inicio_s,
+            "duracao_s": self.duracao_s,
+            "fase_graus": self.fase_graus,
+        }
+        return {chave: float(valor) for chave, valor in sorteados.items() if valor is not None}
+
+
+def _rng_do_sorteio(rng: np.random.Generator) -> np.random.Generator:
+    """Sub-fluxo determinístico da MESMA seed, independente de quantas vezes
+    ``rng`` já foi usado: os parâmetros que ``gerar()`` já sorteava (flicker_hz,
+    amplitudes...) continuam idênticos para uma dada seed."""
+    seed_seq = getattr(rng.bit_generator, "seed_seq", None)
+    if isinstance(seed_seq, np.random.SeedSequence):
+        filho = np.random.SeedSequence(
+            entropy=seed_seq.entropy, spawn_key=tuple(seed_seq.spawn_key) + (_CHAVE_DO_SUBFLUXO,),
+        )
+        return np.random.default_rng(filho)
+    return np.random.default_rng(rng.integers(0, 2**32, size=4))
+
+
+def sortear_posicao(
+    rng: np.random.Generator, config, f0_hz: float, *,
+    inicio_legado_s: Optional[float] = None, duracao_legada_s: Optional[float] = None,
+    duracao_variavel: bool = False, fase_acoplada_ao_inicio: bool = False,
+) -> Sorteio:
+    """Início ``t0``, duração ``d`` e fase ``phi`` da captura.
+
+    Com ``t0`` e ``d`` sorteados: ``d ~ U(0,5 ciclo, T - 2 tmin)`` (se
+    ``duracao_variavel``; senão ``d = duracao_legada_s``) e
+    ``t0 ~ U(tmin, T - d - tmin)``, ambos na grade de amostragem. A fase vem de
+    ``theta ~ U(0, 360)`` na resolução de 0,1 grau, onde ``theta`` é a fase da
+    senoide NO INSTANTE ``t0`` (a que o ``TRIGger:SYNChronize:PHASe`` da fonte
+    reproduz); a fase em t = 0 é ``theta - 360 f0 t0``. Sem evento
+    (``inicio_legado_s=None``) ``theta`` é a própria fase em t = 0.
+    ``fase_acoplada_ao_inicio``: a senoide cruza zero em ``t0`` (entalhes
+    posicionados nos picos acompanham o início); a fase deixa de ser livre.
+
+    Desligado (``config.sorteio_posicao`` falso): valores legados, fase 0."""
+    f0_hz = float(f0_hz)
+    if not getattr(config, "sorteio_posicao", True):
+        return Sorteio(False, f0_hz, inicio_legado_s, duracao_legada_s, 0.0)
+    fs_hz = float(config.fs_hz)
+    janela_s = float(config.points) / fs_hz
+    ciclo_s = 1.0 / f0_hz
+    tmin_s = SORTEIO_TMIN_CICLOS * ciclo_s
+    u_duracao, u_inicio, u_fase = _rng_do_sorteio(rng).random(3)
+
+    def grade(valor_s: float) -> float:
+        return round(valor_s * fs_hz) / fs_hz
+
+    duracao_s = duracao_legada_s
+    if duracao_s is not None and duracao_variavel:
+        minimo = SORTEIO_DURACAO_MIN_CICLOS * ciclo_s
+        maximo = max(minimo, janela_s - 2.0 * tmin_s)
+        duracao_s = grade(minimo + u_duracao * (maximo - minimo))
+    inicio_s = None
+    if inicio_legado_s is not None:
+        folga = janela_s - float(duracao_s or 0.0) - tmin_s
+        inicio_s = grade(tmin_s + u_inicio * max(0.0, folga - tmin_s))
+    theta = (
+        0.0 if fase_acoplada_ao_inicio
+        else round(u_fase * 360.0 / SORTEIO_FASE_RESOLUCAO_GRAUS) * SORTEIO_FASE_RESOLUCAO_GRAUS
+    )
+    # round(): só tira o ruído de ponto flutuante do metadata (1e-6 grau).
+    fase_graus = round((theta - 360.0 * f0_hz * (inicio_s or 0.0)) % 360.0, 6) % 360.0
+    return Sorteio(True, f0_hz, inicio_s, duracao_s, fase_graus)
 
 
 @dataclass
@@ -647,6 +887,8 @@ def _build_config() -> Config:
         disturbance_start_s=DISTURBANCE_START_S,
         capturas_override=CAPTURAS_OVERRIDE,
         diagnostico_mode=DIAGNOSTICO_MODE,
+        perfil=PERFIL,
+        sorteio_posicao=SORTEIO_POSICAO,
     )
 
 
@@ -1144,6 +1386,85 @@ class ExperimentoBase(ABC):
     # (``capturas_override``). Tabela completa: README, seção "Capturas por
     # classe".
     capturas_padrao: int = 1
+    # Pré-trigger sorteado da captura em curso (None = o da classe). Zerado a
+    # cada captura por ``executar()``; posto pelas classes nativas de pulso.
+    _pre_trigger_atual_s: Optional[float] = None
+    # Três versões da captura em curso (docs/tres_versoes.md): {"modelo": gerar(),
+    # "programada": o que a fonte emitiria, "origem_programada": texto}. Zerado a
+    # cada captura por ``executar()``; posto por ``_capturar_real``.
+    _versoes_atuais: Optional[Dict[str, object]] = None
+
+    def forma_programada(
+        self, forma_bancada_pu: np.ndarray, parametros: Dict[str, float], capture_index: int,
+        t: np.ndarray, programacao=None,
+    ) -> Tuple[np.ndarray, str]:
+        """Forma "programada" (pu, grade da captura): o que a fonte emite para
+        o que o código programou, sem tocar nenhum instrumento.
+
+        Captura TRACe/LIST (``grava_trace``): ``AmetekMX30.montar_programacao``
+        sobre ``forma_bancada_pu`` (a já reduzida pelo limite de bancada), a
+        MESMA função de ``program_capture`` — k, ciclos, 1024 pontos, pico e
+        rms por ciclo. Nativa: ``sinais.forma_programada_nativa``. Devolve
+        ``(forma, origem)``; levanta se a classe não tiver como. ``programacao``:
+        a ``ProgramacaoCaptura`` que ``program_capture`` acabou de enviar (na
+        bancada), em vez de recalculá-la."""
+        base = float(self.config.base_voltage_rms)
+        f0 = float(self.config.grid_frequency_hz)
+        if self.grava_trace(capture_index):
+            if programacao is None:
+                programacao = AmetekMX30.montar_programacao(
+                    forma_bancada_pu, base_voltage_rms=base, frequency_hz=f0,
+                    dc_offset_pu=float(parametros.get("dc_offset_pu", 0.0)),
+                )
+            return programacao.programada_pu(), "TRACe+LIST:VOLTage (AmetekMX30.montar_programacao)"
+        teto_rms = float(getattr(self.fonte, "max_voltage_rms", 300.0))
+        forma = forma_programada_nativa(
+            self.id, t=t, f0_hz=f0, base_voltage_rms=base, parametros=parametros,
+            quantizar=lambda v: AmetekMX30.quantizar_tensao_rms(v, teto_rms),
+            inicio_legado_s=getattr(self, "INICIO_S", None),
+            duracao_legada_s=getattr(self, "DURACAO_S", None),
+        )
+        return forma, f"{FORMA_NATIVA_POR_CLASSE[self.id]} nativo (sinais.forma_programada_nativa)"
+
+    def _programacao_enviada(self) -> Optional[ProgramacaoCaptura]:
+        """A ``ProgramacaoCaptura`` que o ``program_capture`` que acabou de rodar
+        enviou (None com fonte que não a expõe)."""
+        programacao = getattr(self.fonte, "ultima_programacao", None)
+        return programacao if isinstance(programacao, ProgramacaoCaptura) else None
+
+    def _registrar_versoes(
+        self, modelo_pu: np.ndarray, forma_bancada_pu: np.ndarray, parametros: Dict[str, float],
+        capture_index: int, t: np.ndarray, programacao=None,
+    ) -> None:
+        """Guarda modelo e programada da captura em curso. Nunca derruba a
+        captura: sem a programada (erro logado) só ela deixa de ser gravada."""
+        versoes: Dict[str, object] = {"modelo": np.array(modelo_pu, dtype=np.float64)}
+        try:
+            programada, origem = self.forma_programada(
+                forma_bancada_pu, parametros, capture_index, t, programacao,
+            )
+            versoes["programada"] = np.asarray(programada, dtype=np.float64)
+            versoes["origem_programada"] = origem
+        except Exception as exc:  # noqa: BLE001 - produto extra, não pode custar a captura
+            if not getattr(self, "_aviso_programada_dado", False):
+                self._aviso_programada_dado = True
+                logger.warning(
+                    "[%s] forma programada não calculada (%s: %s); só o modelo será gravado. "
+                    "Aviso uma vez por classe.", self.id, type(exc).__name__, exc,
+                )
+        self._versoes_atuais = versoes
+
+    @staticmethod
+    def _versoes_simuladas_da_classe(
+        modelo: np.ndarray, programada: np.ndarray, origens: List[str],
+    ) -> Dict[str, np.ndarray]:
+        """Arrays empilhados de ``tres_versoes/NN_classe.npz`` (simulado: sem
+        medida). Sem nenhuma programada válida, só o modelo."""
+        versoes: Dict[str, np.ndarray] = {"modelo_pu": modelo}
+        if np.any(np.isfinite(programada)):
+            versoes["programada_pu"] = programada
+            versoes["origem_programada"] = np.array(origens, dtype=object)
+        return versoes
 
     def __init__(self, bancada: Bancada):
         padrao = self.capturas_padrao
@@ -1168,6 +1489,12 @@ class ExperimentoBase(ABC):
         """Fórmula da classe: produz a captura do dataset SIMULADO (sem
         hardware). Usada também na bancada real pelas classes que precisam
         de forma de onda arbitrária (ver ``ExperimentoWaveform``)."""
+
+    def sortear(self, rng: np.random.Generator, f0: float, **opcoes) -> Sorteio:
+        """Início/duração/fase desta captura (ver ``sortear_posicao``). As
+        classes chamam dentro de ``gerar()`` e acrescentam
+        ``sorteio.parametros()`` ao dicionário que devolvem."""
+        return sortear_posicao(rng, self.config, f0, **opcoes)
 
     def total_niveis(self) -> int:
         """Quantos valores discretos de parâmetro esta classe tem (ex.:
@@ -1240,7 +1567,12 @@ class ExperimentoBase(ABC):
             "f0_hz": self.config.grid_frequency_hz,
             "tensao_base_rms": self.config.base_voltage_rms,
             "probe_tensao": VOLTAGE_PROBE_ATTENUATION,
-            "pre_trigger_s": float(getattr(self, "pre_trigger_s", 0.0)),
+            # Pré-trigger EFETIVO desta captura: o da classe, ou o sorteado
+            # (``_pre_trigger_atual_s``, posto por ``_capturar_real`` das nativas).
+            "pre_trigger_s": float(
+                self._pre_trigger_atual_s if self._pre_trigger_atual_s is not None
+                else getattr(self, "pre_trigger_s", 0.0)
+            ),
             # Desde 2026-09-22 (P10) a margem de captura deixou de ser opt-in
             # (era "margin_mode"/`set margin on|off`) — passa a ser aplicada
             # sempre, então o que vale registrar são os valores em si, não
@@ -1257,6 +1589,13 @@ class ExperimentoBase(ABC):
             "capturas_override": self.config.capturas_override,
             "capturas_padrao_classe": int(getattr(self.config, "capturas_padrao_classe", 1)),
             "versao_codigo": versao_do_codigo(),
+            # Procedência repetida em cada captura para o .jsonl sobreviver
+            # sozinho (copiado sem a pasta da sessão); o registro completo
+            # fica em sessao.json.
+            "git_commit": info_do_codigo()["git_commit"],
+            "git_sujo": info_do_codigo()["git_sujo"],
+            "numpy_versao": np.__version__,
+            "calibracao_extremos_sha256": sha256_do_arquivo(CALIBRACAO_EXTREMOS_PATH),
             "idn_fonte": str(getattr(self.fonte, "idn", "")),
             "idn_osciloscopio": str(getattr(osc, "idn", "")),
             "escritas_trace_na_conexao": int(getattr(self.fonte, "escritas_trace", 0)),
@@ -1271,6 +1610,24 @@ class ExperimentoBase(ABC):
         if isinstance(escala, (int, float)):
             contexto["escala_vertical_v_div"] = float(escala)
         return contexto
+
+    def _inicio_janela_para_metadata(self, metadado: dict, amostras_totais: int) -> dict:
+        """``inicio_janela`` = ``indice_trigger - pre_trigger_s * fs_hz``
+        (arredondado), limitado a ``[0, amostras_totais - pontos]`` — exatamente
+        o que ``sinais.janela_nominal`` devolve, que é o que os leitores
+        usavam. ``inicio_janela_ajustado`` = True quando o limite agiu (o
+        registro não tinha amostras suficientes e a janela foi empurrada)."""
+        fs_hz = float(self.config.fs_hz)
+        pontos = int(self.config.points)
+        pre_trigger_s = float(metadado.get("pre_trigger_s", 0.0))
+        indice_trigger = int(metadado["indice_trigger"])
+        trecho = janela_nominal(
+            np.arange(amostras_totais), indice_trigger=indice_trigger,
+            pre_trigger_s=pre_trigger_s, pontos=pontos, fs_hz=fs_hz,
+        )
+        inicio = int(trecho[0]) if trecho.size else 0
+        ideal = int(round(indice_trigger - pre_trigger_s * fs_hz))
+        return {"inicio_janela": inicio, "inicio_janela_ajustado": inicio != ideal}
 
     def forma_esperada_para_validacao(
         self, capture_index: int, t: np.ndarray, seed: int
@@ -1646,6 +2003,7 @@ class ExperimentoBase(ABC):
         corrente: Optional[np.ndarray],
         metadados: List[dict],
         simulated: bool,
+        versoes: Optional[Dict[str, np.ndarray]] = None,
     ) -> None:
         """Grava a classe completa. O LAYOUT depende de ``simulated``:
 
@@ -1714,7 +2072,7 @@ class ExperimentoBase(ABC):
         if simulated:
             self._salvar_classe_simulada(
                 tempo_ms=tempo_ms, tensao_limpa=tensao_limpa, tensao_por_snr=tensao_por_snr,
-                ids=ids, corrente=corrente, metadados=metadados,
+                ids=ids, corrente=corrente, metadados=metadados, versoes=versoes,
             )
             return
 
@@ -1741,11 +2099,13 @@ class ExperimentoBase(ABC):
         gravação. Depois disto cada captura pode ir para o disco sozinha."""
         config = self.config
         config.results_dir.mkdir(parents=True, exist_ok=True)
+        preparar_pasta_da_sessao(config.results_dir, bancada=self.osc is not None)
         metadata_dir = config.results_dir / "metadata"
         metadata_dir.mkdir(parents=True, exist_ok=True)
         metadata_final = metadata_dir / f"{self.id}_{self.nome.lower()}.jsonl"
         metadata_partial = metadata_final.with_suffix(".jsonl.part")
         self._gravacao = {
+            "registros": [],
             "ocorrencias": {},
             "nomes_por_diretorio": {},
             "metadata_final": metadata_final,
@@ -1764,6 +2124,7 @@ class ExperimentoBase(ABC):
         corrente_captura: Optional[np.ndarray],
         id_captura: str,
         metadado: dict,
+        versoes: Optional[Dict[str, object]] = None,
     ) -> None:
         """Grava UMA captura (dados puros + cada ``snr_XXdb/`` + corrente) e
         acrescenta a linha dela ao ``metadata/*.jsonl.part``, com ``flush`` +
@@ -1810,12 +2171,37 @@ class ExperimentoBase(ABC):
                 f"{self.id}_{self.nome.lower()}_{rotulo}_corrente.npz",
                 tempo_ms=tempo_ms, corrente_pu=corrente_captura[np.newaxis, :],
             )
+        if versoes:
+            # Três versões na janela rotulada (docs/tres_versoes.md): modelo e
+            # programada já são de 6000 amostras; a medida é o recorte do
+            # registro (com margem) pelo mesmo inicio_janela do metadata.
+            pontos = int(metadado.get("pontos", config.points))
+            registro = np.asarray(tensao_limpa_captura, dtype=np.float64)
+            inicio = metadado.get("inicio_janela")
+            if inicio is None:
+                inicio = metadado.get("margem_amostras_antes", 0)
+            inicio = max(0, min(int(inicio), max(0, registro.size - pontos)))
+            arrays_versoes = {
+                "tempo_ms": np.arange(pontos, dtype=np.float64) / float(config.fs_hz) * 1000.0,
+                "modelo_pu": versoes["modelo"][np.newaxis, :],
+                "medida_pu": registro[inicio : inicio + pontos][np.newaxis, :],
+                "inicio_janela": np.array(inicio),
+            }
+            if "programada" in versoes:
+                arrays_versoes["programada_pu"] = versoes["programada"][np.newaxis, :]
+                arrays_versoes["origem_programada"] = np.array(versoes["origem_programada"])
+            _gravar(config.results_dir / PASTA_TRES_VERSOES, nome_base, **arrays_versoes)
+            metadado["tres_versoes"] = {
+                "arquivo": f"{PASTA_TRES_VERSOES}/{nome_base}",
+                "programada": versoes.get("origem_programada"),
+            }
 
         handle = gravacao["handle"]
         handle.write(json.dumps(metadado, ensure_ascii=False, sort_keys=True) + "\n")
         handle.flush()
         os.fsync(handle.fileno())
         gravacao["linhas"] += 1
+        gravacao["registros"].append(metadado)
 
     def _finalizar_gravacao(self, *, parcial: bool) -> None:
         """Promove o ``metadata/*.jsonl.part`` e, só quando a rodada terminou
@@ -1838,6 +2224,7 @@ class ExperimentoBase(ABC):
             gravacao["metadata_partial"].unlink(missing_ok=True)
             return
         os.replace(gravacao["metadata_partial"], gravacao["metadata_final"])
+        _gravar_metadata_legivel(gravacao["metadata_final"], gravacao["registros"])
         if parcial:
             logger.error(
                 "[%s] classe interrompida: %d captura(s) preservada(s) em %s "
@@ -1877,6 +2264,7 @@ class ExperimentoBase(ABC):
         ids: List[str],
         corrente: Optional[np.ndarray],
         metadados: List[dict],
+        versoes: Optional[Dict[str, np.ndarray]] = None,
     ) -> None:
         """Layout histórico do dataset sintético: um ``.npz`` por classe com
         todas as capturas empilhadas (``tensao_pu`` com shape
@@ -1886,6 +2274,7 @@ class ExperimentoBase(ABC):
         arquivos terminaram sem erro — nunca deixa uma classe meio gravada.
         """
         config = self.config
+        preparar_pasta_da_sessao(config.results_dir, bancada=False)
         ids_array = np.array(ids, dtype=object)
         final_paths = []
 
@@ -1914,6 +2303,21 @@ class ExperimentoBase(ABC):
                 np.savez(handle, tempo_ms=tempo_ms, corrente_pu=corrente, classe=self.nome, id_captura=ids_array)
             final_paths.append((partial_path, final_path))
 
+        if versoes:
+            # Simulado: modelo e programada (não há medida), empilhadas como o resto.
+            directory = config.results_dir / PASTA_TRES_VERSOES
+            directory.mkdir(parents=True, exist_ok=True)
+            final_path = directory / f"{self.id}_{self.nome.lower()}.npz"
+            partial_path = final_path.with_suffix(".npz.part")
+            with partial_path.open("wb") as handle:
+                np.savez(handle, tempo_ms=tempo_ms, classe=self.nome, id_captura=ids_array, **versoes)
+            final_paths.append((partial_path, final_path))
+            for linha, registro in enumerate(metadados):
+                registro["tres_versoes"] = {
+                    "arquivo": f"{PASTA_TRES_VERSOES}/{final_path.name}",
+                    "programada": (str(versoes["origem_programada"][linha]) or None) if "origem_programada" in versoes else None,
+                }
+
         metadata_dir = config.results_dir / "metadata"
         metadata_dir.mkdir(parents=True, exist_ok=True)
         metadata_final = metadata_dir / f"{self.id}_{self.nome.lower()}.jsonl"
@@ -1925,6 +2329,7 @@ class ExperimentoBase(ABC):
         for partial_path, final_path in final_paths:
             os.replace(partial_path, final_path)
         os.replace(metadata_partial, metadata_final)
+        _gravar_metadata_legivel(metadata_final, metadados)
 
     def executar(self) -> None:
         simulated = self.osc is None
@@ -1955,6 +2360,7 @@ class ExperimentoBase(ABC):
             config_points=self.config.points, fs_hz=self.config.fs_hz,
         )
         self._pontos_efetivos_captura_atual = pontos_efetivos
+        self._margem_antes_amostras = margem_antes
         if not simulated:
             duracao_efetiva = pontos_efetivos / self.config.fs_hz
             pre_trigger_efetivo = self.pre_trigger_s + margem_antes / self.config.fs_hz
@@ -1980,6 +2386,10 @@ class ExperimentoBase(ABC):
         capturas_invalidas: List[Tuple[str, List[str]]] = []
         capturas_descartadas: List[Tuple[str, int, str]] = []
         tempo_ms_eixo = None
+        # Simulado: modelo e programada empilhados (None até a 1.ª captura).
+        versoes_modelo = np.empty((total, pontos_efetivos), dtype=np.float64) if simulated else None
+        versoes_programada = np.full((total, pontos_efetivos), np.nan) if simulated else None
+        origens_programada: List[str] = [""] * total
         if not simulated:
             # Gravação incremental: cada captura vai para o disco assim que
             # sai (ver _salvar_captura). Sem isto, uma falha na captura k
@@ -1992,12 +2402,21 @@ class ExperimentoBase(ABC):
                 seed = self.seed_da_captura(indice_global)
                 rng = np.random.default_rng(seed)
                 capture_id = f"{self.id}-{indice_global + 1:04d}"
+                self._pre_trigger_atual_s = None
+                self._versoes_atuais = None
 
                 if simulated:
                     voltage_pu, parametros = self.gerar(t, self.config.grid_frequency_hz, capture_index, rng)
                     voltage_pu = np.asarray(voltage_pu, dtype=np.float64)
                     if voltage_pu.shape != (self.config.points,) or not np.all(np.isfinite(voltage_pu)):
                         raise RuntimeError(f"gerar() do experimento {self.id} produziu forma inválida")
+                    # Programada ideal do dataset: sem o limite de bancada (a
+                    # 08 mantém os 5-10 pu da especificação).
+                    self._registrar_versoes(voltage_pu, voltage_pu, parametros, capture_index, t)
+                    versoes_modelo[posicao] = voltage_pu
+                    if "programada" in self._versoes_atuais:
+                        versoes_programada[posicao] = self._versoes_atuais["programada"]
+                        origens_programada[posicao] = str(self._versoes_atuais["origem_programada"])
                     time_s = t
                     measured_voltage_pu = voltage_pu
                     measured_current_pu = (
@@ -2041,11 +2460,18 @@ class ExperimentoBase(ABC):
                 if corrente is not None and measured_current_pu is not None:
                     corrente[posicao] = measured_current_pu
 
+                # Início/duração/fase sorteados saem de ``parametros`` (onde
+                # gerar() os põe) para o nível de cima do metadata.
+                parametros = dict(parametros)
+                sorteados = {chave: parametros.pop(chave) for chave in CHAVES_SORTEIO if chave in parametros}
                 metadados.append({
                     "id_captura": capture_id,
                     "classe": self.nome,
                     "seed": seed,
                     "simulado": simulated,
+                    "perfil": perfis.perfil_da_config(self.config),
+                    "sorteio_posicao": bool(getattr(self.config, "sorteio_posicao", True)),
+                    **sorteados,
                     "fs_hz": self.config.fs_hz,
                     "pontos": self.config.points,
                     "parametros": parametros,
@@ -2067,6 +2493,23 @@ class ExperimentoBase(ABC):
                     metadados[-1]["margem_amostras_antes"] = margem_antes
                     metadados[-1]["margem_amostras_depois"] = margem_depois
                     metadados[-1]["amostras_totais"] = pontos_efetivos
+                if not simulated and metadados[-1].get("indice_trigger") is not None:
+                    # Início da janela nominal dentro do registro, já calculado
+                    # (mesma conta de janela_nominal()/recortar_margem.py).
+                    metadados[-1].update(self._inicio_janela_para_metadata(metadados[-1], pontos_efetivos))
+                if not simulated and self._pre_trigger_atual_s is not None and metadados[-1].get("indice_trigger") is not None:
+                    # Pré-trigger sorteado: o trigger tem de ter caído onde foi
+                    # pedido (pre_trigger + margem), na grade de 30 kSa/s.
+                    previsto = int(round(self._pre_trigger_atual_s * self.config.fs_hz)) + margem_antes
+                    desvio = int(metadados[-1]["indice_trigger"]) - previsto
+                    metadados[-1]["pre_trigger_desvio_amostras"] = desvio
+                    if abs(desvio) > 2:
+                        logger.warning(
+                            "[%s] captura %s: trigger na amostra %d, esperado %d (pré-trigger sorteado "
+                            "%.3f ms); o recorte por inicio_janela segue o trigger REAL.",
+                            self.id, capture_id, metadados[-1]["indice_trigger"], previsto,
+                            1000.0 * self._pre_trigger_atual_s,
+                        )
                 if not simulated:
                     validacao = self._validar_fisicamente(
                         capture_index, t, seed, measured_voltage_pu,
@@ -2093,6 +2536,7 @@ class ExperimentoBase(ABC):
                         ),
                         id_captura=capture_id,
                         metadado=metadados[-1],
+                        versoes=self._versoes_atuais,
                     )
                     logger.info("[%s] captura %d/%d gravada", self.id, posicao + 1, total)
                     # Só DEPOIS de gravada: a captura que passou do teto é a evidência.
@@ -2152,6 +2596,7 @@ class ExperimentoBase(ABC):
                 tempo_ms=tempo_ms_eixo, tensao_limpa=tensao_limpa,
                 tensao_por_snr=tensao_por_snr, ids=ids, corrente=corrente,
                 metadados=metadados, simulated=True,
+                versoes=self._versoes_simuladas_da_classe(versoes_modelo, versoes_programada, origens_programada),
             )
         logger.info("[%s] classe concluída: %s", self.id, self.nome)
 
@@ -2165,6 +2610,15 @@ class ExperimentoNativo(ExperimentoBase):
     nunca ``self.fonte.write()`` cru — e devolve os parâmetros físicos
     daquela captura (ex.: nível de sag).
     """
+
+    # Duração do evento sorteada por gerar() para a captura em curso (None =
+    # a da classe); posta por ``_capturar_real`` antes de ``configurar()``.
+    _duracao_sorteada_s: Optional[float] = None
+
+    def largura_do_pulso_s(self, legada_s: float) -> float:
+        """Largura do PULSe desta captura: a sorteada por ``gerar()`` (v1.15)
+        ou, sem sorteio, a ``legada_s`` de sempre."""
+        return float(legada_s if self._duracao_sorteada_s is None else self._duracao_sorteada_s)
 
     @abstractmethod
     def configurar(self, capture_index: int) -> Dict[str, float]:
@@ -2199,7 +2653,7 @@ class ExperimentoNativo(ExperimentoBase):
         if scale is not None:
             self.osc.set_vertical_scale(1, scale)
 
-    def fase_de_disparo_graus(self) -> float:
+    def fase_de_disparo_graus(self, pre_trigger_s: Optional[float] = None, fase_graus: float = 0.0) -> float:
         """Fase que ``gerar()`` tem no instante do trigger.
 
         ``gerar()`` põe fase 0 em t=0 da janela e o trigger cai em
@@ -2210,8 +2664,12 @@ class ExperimentoNativo(ExperimentoBase):
         o modelo com fase 0 no trigger, e a THD da 04 reprovada (3,38% contra
         4,61%) porque o corte físico começava no zero e o do modelo num
         degrau. Disparando na fase do modelo, a bancada reproduz o dataset."""
-        ciclos = float(self.pre_trigger_s) * float(self.config.grid_frequency_hz)
-        return round((ciclos % 1.0) * 360.0, 1) % 360.0
+        # v1.15: com início/fase sorteados, o trigger cai em ``pre_trigger_s``
+        # sorteado e a senoide tem ``fase_graus`` em t = 0: a fase de disparo é
+        # ``fase_graus + 360 f0 pre_trigger``. Sem argumentos, o de sempre.
+        pre = float(self.pre_trigger_s if pre_trigger_s is None else pre_trigger_s)
+        ciclos = pre * float(self.config.grid_frequency_hz)
+        return round(((ciclos % 1.0) * 360.0 + float(fase_graus)) % 360.0, 1) % 360.0
 
     def _capturar_real(self, capture_index, t, rng):
         if self.usar_trace(capture_index):
@@ -2225,12 +2683,32 @@ class ExperimentoNativo(ExperimentoBase):
                 base_voltage_rms=self.config.base_voltage_rms,
                 frequency_hz=self.config.grid_frequency_hz,
             )
+            self._registrar_versoes(
+                voltage_pu, voltage_pu, parametros, capture_index, t, self._programacao_enviada(),
+            )
             self.osc.arm()
             self.osc.wait_for_armed()
             self.fonte.arm_transient()
         else:
-            self.fonte.definir_fase_de_disparo(self.fase_de_disparo_graus())
-            parametros = self.configurar(capture_index)
+            # gerar() é a fonte da verdade da posição: a fonte e o
+            # osciloscópio reproduzem o que ele sorteou (v1.15).
+            modelo_pu, gerados = self.gerar(t, self.config.grid_frequency_hz, capture_index, rng)
+            sorteados = {chave: gerados[chave] for chave in CHAVES_SORTEIO if chave in gerados}
+            self._duracao_sorteada_s = sorteados.get("duracao_s")
+            if "inicio_disturbio_s" in sorteados:
+                pre_trigger_s = float(sorteados["inicio_disturbio_s"])
+                self.osc.definir_pre_trigger(
+                    duration_s=self._pontos_efetivos_captura_atual / self.config.fs_hz,
+                    pre_trigger_s=pre_trigger_s + self._margem_antes_amostras / self.config.fs_hz,
+                )
+                self._pre_trigger_atual_s = pre_trigger_s
+            else:
+                pre_trigger_s = None
+            self.fonte.definir_fase_de_disparo(
+                self.fase_de_disparo_graus(pre_trigger_s, sorteados.get("fase_graus", 0.0))
+            )
+            parametros = {**self.configurar(capture_index), **sorteados}
+            self._registrar_versoes(modelo_pu, modelo_pu, parametros, capture_index, t)
             self.osc.arm()
             self.osc.wait_for_armed()
             self.fonte.arm()
@@ -2332,7 +2810,11 @@ class ExperimentoWaveform(ExperimentoBase):
             return voltage_pu
         n = voltage_pu.size
         t = np.arange(n, dtype=np.float64) / self.config.fs_hz
-        senoide = np.sin(2.0 * np.pi * self.config.grid_frequency_hz * t)
+        # A senoide base de gerar() tem a fase sorteada (v1.15); sem sorteio,
+        # tau = 0 e a conta é a de sempre.
+        f0 = self.config.grid_frequency_hz
+        tau = float(parametros.get("fase_graus", 0.0)) / (360.0 * f0)
+        senoide = np.sin(2.0 * np.pi * f0 * (t + tau))
         disturbio = voltage_pu - senoide
 
         def extremo(fracao: float) -> float:
@@ -2381,6 +2863,7 @@ class ExperimentoWaveform(ExperimentoBase):
         voltage_pu = np.asarray(voltage_pu, dtype=np.float64)
         if voltage_pu.shape != (self.config.points,) or not np.all(np.isfinite(voltage_pu)):
             raise RuntimeError(f"gerar() do experimento {self.id} produziu forma inválida")
+        modelo_pu = voltage_pu.copy()
         voltage_pu = np.asarray(self.forma_para_bancada(voltage_pu, parametros, capture_index), dtype=np.float64)
         if voltage_pu.shape != (self.config.points,) or not np.all(np.isfinite(voltage_pu)):
             raise RuntimeError(f"forma_para_bancada() do experimento {self.id} produziu forma inválida")
@@ -2403,6 +2886,9 @@ class ExperimentoWaveform(ExperimentoBase):
             base_voltage_rms=self.config.base_voltage_rms,
             frequency_hz=self.config.grid_frequency_hz,
             dc_offset_pu=float(parametros.get("dc_offset_pu", 0.0)),
+        )
+        self._registrar_versoes(
+            modelo_pu, voltage_pu, parametros, capture_index, t, self._programacao_enviada(),
         )
         # Margem de headroom de 25% sobre o pico programado (arredondamento do
         # firmware, sobremodulação de classes como FLICKER/SWELL, overshoot de
@@ -2476,9 +2962,12 @@ def capturas_efetivas_da_classe(experimento_cls: type, config: Optional[Config] 
         "niveis": experimento.total_niveis() if por_nivel else 1,
         "por_nivel": capturas_por_nivel,
         "total": total,
-        # Teto: o cache de program_capture (forma idêntica na mesma conexão)
-        # e a poda de _indices_viaveis só podem diminuir.
+        # Com o sorteio de início/duração/fase (v1.15) cada captura TRACE tem
+        # forma única e o cache de program_capture (forma idêntica na mesma
+        # conexão) nunca reaproveita: a conta é EXATA, salvo a poda de
+        # _indices_viaveis, que só pode diminuir. Sem sorteio, é um teto.
         "escritas_trace": com_trace * ciclos,
+        "escritas_trace_exatas": bool(getattr(config, "sorteio_posicao", True)),
     }
 
 
