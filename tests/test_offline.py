@@ -1,4 +1,5 @@
 import importlib.util
+import itertools
 import json
 import logging
 import math
@@ -594,6 +595,73 @@ class AmetekTests(unittest.TestCase):
         self.assertGreater(source.last_programmed_peak_v, 3.0 * nominal_peak)
         self.assertLessEqual(source.last_programmed_peak_v, 100.0)
 
+    def _lista_programada(self, **kwargs):
+        source = AmetekMX30(
+            simulated=True, max_voltage_rms=10.0, max_peak_v=100.0, max_current_a=0.5, **kwargs,
+        )
+        t = np.arange(6000, dtype=np.float64) / 30000.0
+        source.program_capture(np.sin(2.0 * np.pi * 50.0 * t), base_voltage_rms=5.0, frequency_hz=50.0)
+        comandos = {
+            nome: next(c for c in source.command_log if c.startswith(f"SOURce:LIST:{nome} "))
+            for nome in ("FUNCtion:SHAPe", "VOLTage", "DWELl", "REPeat")
+        }
+        return source, {k: v.split(" ", 1)[1].split(",") for k, v in comandos.items()}
+
+    def test_passo_final_sin_ligado_por_padrao(self):
+        source, lista = self._lista_programada()
+        self.assertTrue(source.passo_final_sin)
+        self.assertEqual(len(lista["FUNCtion:SHAPe"]), 11)
+        self.assertEqual(lista["FUNCtion:SHAPe"][-1], "SINE")
+
+    def test_passo_final_sin_desligado_reproduz_scpi_de_antes(self):
+        source, lista = self._lista_programada(passo_final_sin=False)
+        self.assertFalse(source.passo_final_sin)
+        self.assertEqual(lista["FUNCtion:SHAPe"], [f"TCC{i:02d}" for i in range(10)])
+        self.assertEqual(len(lista["VOLTage"]), 10)
+        self.assertEqual(len(lista["DWELl"]), 10)
+        self.assertEqual(lista["REPeat"], ["0"] * 10)
+        self.assertEqual(source._last_cycles, 10)
+
+    def test_passo_final_sin_acrescenta_um_passo_sine_na_tensao_base(self):
+        source, lista = self._lista_programada(passo_final_sin=True)
+        formas = lista["FUNCtion:SHAPe"]
+        self.assertEqual(len(formas), 11)
+        self.assertEqual(formas[:10], [f"TCC{i:02d}" for i in range(10)])
+        self.assertEqual(formas[-1], "SINE")
+        self.assertAlmostEqual(float(lista["VOLTage"][-1]), 5.0)
+        self.assertEqual(len(lista["VOLTage"]), 11)
+        # dwell de um ciclo (1/50 Hz), repeat 0 (o 1 tocaria o passo 2x)
+        self.assertEqual(len(lista["DWELl"]), 11)
+        self.assertAlmostEqual(float(lista["DWELl"][-1]), 0.02)
+        self.assertEqual(lista["REPeat"], ["0"] * 11)
+        # nenhuma TRACe:DATA extra: o passo não grava na Flash
+        self.assertEqual(sum(c.startswith("TRACe:DATA") for c in source.command_log), 10)
+        self.assertEqual(source._last_cycles, 11)
+
+    def test_programacao_descreve_margem_final_senoide_na_base(self):
+        t = np.arange(6000, dtype=np.float64) / 30000.0
+        forma = np.sin(2.0 * np.pi * 50.0 * t) * np.hanning(6000)
+        com = AmetekMX30.montar_programacao(forma, base_voltage_rms=5.0, frequency_hz=50.0, passo_final_sin=True)
+        sem = AmetekMX30.montar_programacao(forma, base_voltage_rms=5.0, frequency_hz=50.0)
+        self.assertFalse(sem.passo_final_sin)
+        self.assertEqual(sem.passos_nomes, sem.trace_names)
+        self.assertEqual(com.passos_nomes[-1], "SINE")
+        self.assertAlmostEqual(float(com.passos_tensoes_rms[-1]), 5.0)
+        np.testing.assert_array_equal(com.programada_pu(), sem.programada_pu())
+        margem = com.margem_final_pu()
+        self.assertEqual(margem.shape, (600,))
+        self.assertAlmostEqual(float(np.sqrt(np.mean(margem ** 2))), 1.0 / np.sqrt(2.0), places=6)
+        self.assertEqual(com.programada_com_margem_pu().shape, (6600,))
+        np.testing.assert_array_equal(sem.margem_final_pu(), sem.programada_pu()[-600:])
+
+    def test_passo_final_sin_recusa_tensao_base_acima_do_limite(self):
+        source = AmetekMX30(
+            simulated=True, max_voltage_rms=10.0, max_peak_v=100.0, passo_final_sin=True,
+        )
+        t = np.arange(6000, dtype=np.float64) / 30000.0
+        with self.assertRaises(ValueError):
+            source.program_capture(np.sin(2.0 * np.pi * 50.0 * t), base_voltage_rms=11.0, frequency_hz=50.0)
+
     def test_arm_envia_wai_antes_do_init(self):
         """Regressão de bancada: 01/NORMAL (VOLTage:MODE STEP) seguido de
         02/SAG (VOLTage:MODE PULSe) na MESMA conexão (sem passar de novo por
@@ -642,7 +710,7 @@ class AmetekTests(unittest.TestCase):
         """Regressão: POINTS_PER_CYCLE fixo em 600 só fecha 1 ciclo a 50 Hz.
         A 60 Hz (padrão do projeto) isso gerava viés de pico de ~15%."""
         source = AmetekMX30(
-            simulated=True, max_voltage_rms=10.0, max_peak_v=100.0, max_current_a=0.5,
+            simulated=True, max_voltage_rms=10.0, max_peak_v=100.0, max_current_a=0.5, passo_final_sin=False,
         )
         t = np.arange(6000, dtype=np.float64) / 30000.0
         voltage = np.sin(2.0 * np.pi * 60.0 * t)
@@ -665,7 +733,7 @@ class AmetekTests(unittest.TestCase):
         pelo firmware Rev. 5.53 como 'repete uma vez' (toca 2x cada ciclo),
         não 'sem repetição' — o valor certo para tocar cada ciclo uma única
         vez é 0."""
-        source = AmetekMX30(simulated=True, max_voltage_rms=10.0, max_peak_v=100.0, max_current_a=0.5)
+        source = AmetekMX30(simulated=True, max_voltage_rms=10.0, max_peak_v=100.0, max_current_a=0.5, passo_final_sin=False)
         t = np.arange(6000, dtype=np.float64) / 30000.0
         voltage = np.sin(2.0 * np.pi * 60.0 * t)
         source.program_capture(voltage, base_voltage_rms=5.0, frequency_hz=60.0)
@@ -5797,20 +5865,26 @@ class TresVersoesTests(unittest.TestCase):
         return casos
 
     def test_funcao_pura_gera_byte_a_byte_o_que_program_capture_envia(self):
-        for nome, forma, f0, base, dc in self._formas():
-            with self.subTest(nome):
+        for (nome, forma, f0, base, dc), passo in itertools.product(self._formas(), (False, True)):
+            with self.subTest(f"{nome} passo_final_sin={passo}"):
                 programacao = AmetekMX30.montar_programacao(
                     forma, base_voltage_rms=base, frequency_hz=f0, dc_offset_pu=dc,
+                    passo_final_sin=passo,
                 )
                 fonte = self._fonte()
+                fonte.passo_final_sin = passo
                 fonte.program_capture(forma, base_voltage_rms=base, frequency_hz=f0, dc_offset_pu=dc)
                 enviados = [c for c in fonte.command_log if c.startswith("TRACe:DATA ")]
                 self.assertEqual(enviados, [programacao.comando_trace(i) for i in range(programacao.ciclos)])
                 self.assertIn(f"SOURce:LIST:VOLTage {programacao.texto_list_voltages()}", fonte.command_log)
                 self.assertIn(
-                    "SOURce:LIST:DWELl " + ",".join(f"{programacao.pontos_por_ciclo / 30000.0:.10g}" for _ in range(programacao.ciclos)),
+                    "SOURce:LIST:DWELl " + ",".join(f"{programacao.pontos_por_ciclo / 30000.0:.10g}" for _ in programacao.passos_nomes),
                     fonte.command_log,
                 )
+                self.assertIn(
+                    "SOURce:LIST:FUNCtion:SHAPe " + ",".join(programacao.passos_nomes), fonte.command_log,
+                )
+                self.assertEqual(programacao.passos_nomes[-1] == "SINE", passo)
                 self.assertEqual(fonte.last_programmed_peak_v, programacao.pico_reconstruido_v)
                 self.assertIs(fonte.ultima_programacao.__class__, programacao.__class__)
                 np.testing.assert_array_equal(fonte.ultima_programacao.traces, programacao.traces)

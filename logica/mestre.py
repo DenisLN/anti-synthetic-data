@@ -337,6 +337,8 @@ AMETEK_TIMEOUT_S = env_float("AMETEK_TIMEOUT_S", 5.0)
 AMETEK_QUERY_EOT = env_bool("AMETEK_QUERY_EOT", default=True)
 AMETEK_EXPECTED_MODEL = os.getenv("AMETEK_EXPECTED_MODEL", "MX30")
 AMETEK_CLEAR_USER_WAVEFORMS = env_bool("AMETEK_CLEAR_USER_WAVEFORMS", default=False)
+# Passo extra SINE no fim da lista das classes TRACE (ver ametek_orm.program_capture).
+AMETEK_PASSO_FINAL_SIN = env_bool("AMETEK_PASSO_FINAL_SIN", default=True)
 
 # Keysight USB/VISA informado para a bancada. Use AUTO apenas para descoberta.
 KEYSIGHT_RESOURCE = os.getenv(
@@ -985,6 +987,7 @@ class Bancada:
                 query_eot=AMETEK_QUERY_EOT,
                 expected_model=AMETEK_EXPECTED_MODEL,
                 clear_user_waveforms=AMETEK_CLEAR_USER_WAVEFORMS,
+                passo_final_sin=AMETEK_PASSO_FINAL_SIN,
                 max_voltage_rms=EUT_MAX_VOLTAGE_RMS,
                 max_peak_v=EUT_MAX_PEAK_V,
                 max_current_a=CURRENT_LIMIT_A,
@@ -1424,6 +1427,7 @@ class ExperimentoBase(ABC):
                 programacao = AmetekMX30.montar_programacao(
                     forma_bancada_pu, base_voltage_rms=base, frequency_hz=f0,
                     dc_offset_pu=float(parametros.get("dc_offset_pu", 0.0)),
+                    passo_final_sin=bool(getattr(self.fonte, "passo_final_sin", False)),
                 )
             return programacao.programada_pu(), "TRACe+LIST:VOLTage (AmetekMX30.montar_programacao)"
         teto_rms = float(getattr(self.fonte, "max_voltage_rms", 300.0))

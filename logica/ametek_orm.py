@@ -110,12 +110,29 @@ class ProgramacaoCaptura:
     # é ``last_programmed_peak_v``.
     pico_acumulado_v: np.ndarray
     pico_reconstruido_v: float
+    # Passo extra no fim do LIST com a forma interna SINE na tensão base
+    # (dwell de 1 ciclo, nada gravado na Flash) — ver AmetekMX30.passo_final_sin.
+    passo_final_sin: bool = False
+
+    @property
+    def passos_nomes(self) -> Tuple[str, ...]:
+        """Formas de ``SOURce:LIST:FUNCtion:SHAPe``: as TRACEs e, se ligado, SINE."""
+        if self.passo_final_sin:
+            return self.trace_names + (AmetekMX30.PASSO_FINAL_SIN_FORMA,)
+        return self.trace_names
+
+    @property
+    def passos_tensoes_rms(self) -> np.ndarray:
+        """``SOURce:LIST:VOLTage`` de cada passo; o SINE final fica na tensão base."""
+        if self.passo_final_sin:
+            return np.append(self.list_voltages_rms, _como_enviado(np.array([self.base_voltage_rms])))
+        return self.list_voltages_rms
 
     def comando_trace(self, indice: int) -> str:
         return f"TRACe:DATA {self.trace_names[indice]},{formatar_valores(self.traces[indice])}"
 
     def texto_list_voltages(self) -> str:
-        return formatar_valores(self.list_voltages_rms)
+        return formatar_valores(self.passos_tensoes_rms)
 
     def programada_pu(self) -> np.ndarray:
         """A forma que a fonte emite, de volta na grade de 30 kSa/s da captura,
@@ -142,6 +159,22 @@ class ProgramacaoCaptura:
             volts = np.interp(posicao, grade, trace, period=pontos) * (float(rms_v) / rms_trace)
             ciclos.append(volts / pico_nominal_v)
         return np.concatenate(ciclos) + self.dc_offset_pu
+
+    def margem_final_pu(self) -> np.ndarray:
+        """Um ciclo (``pontos_por_ciclo`` amostras, pu do pico nominal) do que a
+        fonte emite DEPOIS do último ciclo da TRACE, enquanto a lista não é
+        reiniciada: com ``passo_final_sin``, uma senoide de pico 1 (rms =
+        tensão base) mais o offset DC; sem, a repetição do último ciclo da
+        TRACE (a lista fica no último passo)."""
+        n = self.pontos_por_ciclo
+        if self.passo_final_sin:
+            fase = 2.0 * math.pi * np.arange(n, dtype=np.float64) / n
+            return np.sin(fase) + self.dc_offset_pu
+        return self.programada_pu()[-n:]
+
+    def programada_com_margem_pu(self) -> np.ndarray:
+        """``programada_pu()`` seguida de um ciclo de ``margem_final_pu()``."""
+        return np.concatenate([self.programada_pu(), self.margem_final_pu()])
 
 
 class AmetekMX30:
@@ -178,6 +211,10 @@ class AmetekMX30:
     # após INITiate). Não trava, mas não sincroniza mais que o *ESR? e todo
     # arm() logaria "devolveu '0'": ESR fica como padrão.
     SINCRONISMO = os.environ.get("AMETEK_SINCRONISMO", "ESR").strip().upper()
+    # Nome da forma senoidal interna em LIST:FUNCtion:SHAPe. Manual (LIST:FUNC,
+    # forma "SINe", i.e. SINE/SIN) e TRACe:CATalog? gravado na bancada
+    # ("SINE,SQUARE,CLIPPED,TCC00,..." em scpi_transcricao.log): "SINE".
+    PASSO_FINAL_SIN_FORMA = "SINE"
 
     def __init__(
         self,
@@ -195,8 +232,14 @@ class AmetekMX30:
         diagnostico: bool = False,
         visa_resource=None,
         resource_manager=None,
+        passo_final_sin: bool = True,
     ):
         self.port = port
+        # Passo extra no fim da lista de program_capture() com a forma interna
+        # SINE na tensão base (nada gravado na Flash) — ver PASSO_FINAL_SIN_FORMA.
+        # Ligado por padrão (v1.15, pendente de validação na bancada); desligar
+        # com AMETEK_PASSO_FINAL_SIN=0 reproduz a SCPI de antes.
+        self.passo_final_sin = bool(passo_final_sin)
         self.baudrate = int(baudrate)
         self.timeout_s = float(timeout_s)
         self.query_eot = bool(query_eot)
@@ -1326,6 +1369,7 @@ class AmetekMX30:
         base_voltage_rms: float,
         frequency_hz: float,
         dc_offset_pu: float = 0.0,
+        passo_final_sin: bool = False,
     ) -> ProgramacaoCaptura:
         """Função pura (sem SCPI, sem estado) que decide o que ``program_capture``
         programa: ciclos de ``FS_HZ / frequency_hz`` amostras, cada um sem a
@@ -1399,6 +1443,7 @@ class AmetekMX30:
             list_voltages_rms=_como_enviado(np.array(list_voltages, dtype=np.float64)),
             pico_acumulado_v=np.array(pico_acumulado, dtype=np.float64),
             pico_reconstruido_v=float(reconstructed_peak_v),
+            passo_final_sin=bool(passo_final_sin),
         )
 
     def program_capture(
@@ -1421,9 +1466,15 @@ class AmetekMX30:
         # Ciclos, TRACes e LIST:VOLTage vêm da função pura montar_programacao()
         # (a mesma que reconstrói a forma "programada" offline): o que se envia
         # e o que se grava como programado não podem divergir.
+        if self.passo_final_sin and base_voltage_rms > self.max_voltage_rms:
+            # Antes de qualquer escrita: o passo SINE vai a esta tensão.
+            raise ValueError(
+                f"Passo final SIN: {base_voltage_rms:.3f} Vrms acima do limite "
+                f"{self.max_voltage_rms:.3f} Vrms"
+            )
         programacao = self.montar_programacao(
             waveform, base_voltage_rms=base_voltage_rms, frequency_hz=frequency_hz,
-            dc_offset_pu=dc_offset_pu,
+            dc_offset_pu=dc_offset_pu, passo_final_sin=self.passo_final_sin,
         )
         pontos_por_ciclo = programacao.pontos_por_ciclo
         ciclos = programacao.ciclos
@@ -1515,15 +1566,19 @@ class AmetekMX30:
         # TRACE precisa terminar exatamente quando o ciclo real dela termina,
         # senão o próximo passo do LIST começa no meio de um ciclo.
         dwell_s = pontos_por_ciclo / self.FS_HZ
-        names = ",".join(trace_names)
-        voltages = formatar_valores(list_voltages)
-        dwells = ",".join(f"{dwell_s:.10g}" for _ in trace_names)
+        # Passos do LIST: um por TRACE e, com passo_final_sin, o SINE final
+        # (ver ProgramacaoCaptura.passos_*) — a mesma descrição que a forma
+        # "programada" usa.
+        passos_nomes = list(programacao.passos_nomes)
+        names = ",".join(passos_nomes)
+        voltages = programacao.texto_list_voltages()
+        dwells = ",".join(f"{dwell_s:.10g}" for _ in passos_nomes)
         # "1" era lido pelo firmware Rev. 5.53 como "repete uma vez" (toca
         # cada ciclo 2x), não "sem repetição" -- confirmado na bancada
         # (CHANGELOG/v1.9.md hipótese, v1.10 confirmação): NOTCH real levou
         # 516ms (2,58x os ~200ms nominais de 12 ciclos a 60Hz) entre
         # apos_trigger e transiente_concluido.
-        repeats = ",".join("0" for _ in trace_names)
+        repeats = ",".join("0" for _ in passos_nomes)
         # Cada comando de dados de LISTA é confirmado IMEDIATAMENTE pela sua
         # própria consulta ":POINts?" (write seguido de query, sem delay
         # adivinhado) — se um comando não "pegar" (ex.: o firmware ainda
@@ -1532,7 +1587,7 @@ class AmetekMX30:
         # Diferente de TRACe:DATA (gravação em Flash, sem query dedicada no
         # manual — ver o time.sleep(1.0) acima), estes comandos SOURce:LIST:*
         # são apenas configuração em RAM e têm consulta ":POINts?" própria.
-        expected = len(trace_names)
+        expected = len(passos_nomes)
         list_data_commands = (
             (f"SOURce:LIST:FUNCtion:SHAPe {names}", "SOURce:LIST:FUNCtion:POINts?"),
             (f"SOURce:LIST:VOLTage {voltages}", "SOURce:LIST:VOLTage:POINts?"),
@@ -1586,7 +1641,7 @@ class AmetekMX30:
                 self._log_diagnostico("apos_voltage_mode_list")
         self.last_programmed_peak_v = reconstructed_peak_v
         self.ultima_programacao = programacao
-        self._last_cycles = ciclos
+        self._last_cycles = len(passos_nomes)
         # A saída fica ligada durante toda a bateria (energize_baseline() é
         # chamado uma vez, fora daqui). Se o ABORt/reprogramação acima
         # derrubou o relé por algum motivo, religa aqui — já estamos em modo
