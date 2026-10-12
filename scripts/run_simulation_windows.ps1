@@ -1,6 +1,6 @@
 param(
     [int]$CapturesPerClass = 1,
-    [string]$SnrLevels = "30"
+    [string]$SnrLevels = "20,30,40"
 )
 
 $ErrorActionPreference = "Stop"

@@ -8,7 +8,7 @@ as classes de ``mestre.py``.
 from __future__ import annotations
 
 import math
-from typing import Optional, Tuple
+from typing import Dict, Iterable, Optional, Tuple
 
 import numpy as np
 
@@ -159,6 +159,120 @@ def snr_medida(limpo: np.ndarray, ruidoso: np.ndarray) -> float:
     potencia_sinal = float(np.mean(np.square(limpo)))
     potencia_ruido = float(np.mean(np.square(ruidoso - limpo)))
     return 10.0 * math.log10(potencia_sinal / potencia_ruido)
+
+
+# Ruído aplicado SÓ na janela rotulada (v1.15, proposta 8 de atividade.tex):
+# potência de referência = mean(janela**2); as margens de captura (20 ms antes,
+# 50 ms depois) não entram no arquivo com ruído.
+SEMENTE_BASE_RUIDO = 50_000_000
+MINIMO_AMOSTRAS_RUIDO_BANCADA = 100
+
+
+def semente_do_ruido(seed: int, snr_db: float) -> int:
+    """Seed do AWGN de um nível: a fórmula de sempre (uma só definição, usada
+    pela bancada e pelo script offline)."""
+    return int(seed) + int(round(float(snr_db) * 1000.0)) + SEMENTE_BASE_RUIDO
+
+
+def potencia_ruido_segunda_diferenca(x: np.ndarray) -> float:
+    """Potência do ruído branco de ``x`` pela segunda diferença
+    ``x[n] - 2 x[n+1] + x[n+2]``: variância 6 sigma^2 para ruído branco, e a
+    senoide de 50/60 Hz a 30 kSa/s (600/500 amostras por ciclo) contribui
+    ~1e-4 pu, desprezível ao lado de 6e-3..1,5e-2 pu de ruído. Por isso mede o
+    ruído da bancada tanto numa margem em zero (classes TRACe) quanto numa
+    margem em que a fonte ainda emite a senoide (classes nativas), sem ajuste
+    de fase/frequência, e ignora o offset DC do osciloscópio."""
+    x = np.asarray(x, dtype=np.float64)
+    if x.size < 3:
+        raise ValueError("segunda diferença exige ao menos 3 amostras")
+    d2 = x[:-2] - 2.0 * x[1:-1] + x[2:]
+    return float(np.mean(np.square(d2)) / 6.0)
+
+
+def medir_ruido_da_bancada(
+    registro: np.ndarray, inicio: int, pontos: int, *, minimo_amostras: int = MINIMO_AMOSTRAS_RUIDO_BANCADA,
+) -> Optional[Dict[str, object]]:
+    """Ruído próprio da bancada num registro com margens, na margem ANTERIOR à
+    janela (``registro[:inicio]``) ou, se ela tiver menos de ``minimo_amostras``,
+    na posterior (``registro[inicio + pontos:]``). ``None`` sem margem
+    utilizável. SNR da bancada = potência de referência da janela / potência
+    do ruído medida."""
+    registro = np.asarray(registro, dtype=np.float64)
+    inicio, pontos = int(inicio), int(pontos)
+    potencia_ref = float(np.mean(np.square(registro[inicio : inicio + pontos])))
+    anterior, posterior = registro[:inicio], registro[inicio + pontos:]
+    if anterior.size >= minimo_amostras:
+        margem, trecho = "anterior", anterior
+    elif posterior.size >= minimo_amostras:
+        margem, trecho = "posterior", posterior
+    else:
+        return None
+    potencia_ruido = potencia_ruido_segunda_diferenca(trecho)
+    if potencia_ruido <= 0 or potencia_ref <= 0:
+        return None
+    return {
+        "metodo": "segunda_diferenca",
+        "margem": margem,
+        "amostras": int(trecho.size),
+        "ruido_rms_pu": math.sqrt(potencia_ruido),
+        "media_da_margem_pu": float(np.mean(trecho)),
+        "snr_db": 10.0 * math.log10(potencia_ref / potencia_ruido),
+        "_potencia_ruido_pu2": potencia_ruido,
+    }
+
+
+def ruido_na_janela(
+    registro: np.ndarray, inicio: int, pontos: int, niveis_db: Iterable[float], seed: int,
+    *, simulado: bool = False,
+) -> Dict[str, object]:
+    """AWGN de cada nível em ``registro[inicio : inicio + pontos]`` (a janela
+    rotulada) e os três SNRs a gravar no metadata:
+
+    * ``snr_medido_db``  : SNR ACRESCENTADO por nível (janela limpa contra ruído somado);
+    * ``snr_bancada_db`` : SNR do ruído próprio da bancada (``None`` no simulado
+      ou sem margem utilizável);
+    * ``snr_efetivo_db`` : sinal / (ruído da bancada + ruído acrescentado),
+      potências somadas (independentes); sem bancada, igual ao acrescentado.
+
+    Devolve ``{"janelas": {snr_db: array(pontos)}, "metadata": {...}}``."""
+    registro = np.asarray(registro, dtype=np.float64)
+    inicio, pontos = int(inicio), int(pontos)
+    limpa = registro[inicio : inicio + pontos]
+    if limpa.size != pontos:
+        raise ValueError(f"janela [{inicio}, {inicio + pontos}) fora do registro de {registro.size} amostras")
+    potencia_ref = float(np.mean(np.square(limpa)))
+    bancada = None if simulado else medir_ruido_da_bancada(registro, inicio, pontos)
+    janelas: Dict[float, np.ndarray] = {}
+    acrescentado: Dict[str, float] = {}
+    efetivo: Dict[str, float] = {}
+    for snr_db in niveis_db:
+        # Mesmo sorteio da seed, mas escalado para a potência EXATA
+        # P_ref / 10**(snr/10) na janela: o SNR acrescentado é o nominal por
+        # construção (e não só em esperança, como em ruido_awgn).
+        ruido = np.random.default_rng(semente_do_ruido(seed, snr_db)).normal(0.0, 1.0, size=limpa.shape)
+        ruido *= math.sqrt(potencia_ref / (10.0 ** (snr_db / 10.0)) / float(np.mean(np.square(ruido))))
+        ruidosa = limpa + ruido
+        janelas[snr_db] = ruidosa
+        acrescentado[str(snr_db)] = snr_medida(limpa, ruidosa)
+        potencia_add = float(np.mean(np.square(ruidosa - limpa)))
+        potencia_total = potencia_add + (bancada["_potencia_ruido_pu2"] if bancada else 0.0)
+        efetivo[str(snr_db)] = 10.0 * math.log10(potencia_ref / potencia_total)
+    detalhe_bancada = None if bancada is None else {k: v for k, v in bancada.items() if not k.startswith("_")}
+    return {
+        "janelas": janelas,
+        "metadata": {
+            "snr_medido_db": acrescentado,
+            "snr_bancada_db": None if bancada is None else bancada["snr_db"],
+            "snr_efetivo_db": efetivo,
+            "ruido_janela": {
+                "inicio_janela": inicio,
+                "amostras": pontos,
+                "potencia_referencia_pu2": potencia_ref,
+                "margens_com_ruido": False,
+                "bancada": detalhe_bancada,
+            },
+        },
+    }
 
 
 def envelope_rms_meio_ciclo(x: np.ndarray, *, fs_hz: float, f0: float) -> np.ndarray:

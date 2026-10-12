@@ -508,7 +508,7 @@ fluxo PowerShell). Campos que o operador tipicamente revisa:
 | `PERFIL` | Perfil de faixas inicial: `norma`, `literatura` ou `fronteira` | Vazio = `literatura`; também `set perfil` na CLI |
 | `SORTEIO` | Sorteio de início/duração/fase em `gerar()` | `1`; `0` = posições fixas de antes; também `set sorteio` na CLI |
 | `LIMITE_BANCADA_DISTURBIO` / `LIMITE_BANCADA_FRACAO_MINIMA` | Limite de bancada (220 V): reduzir o distúrbio das waveform para caber / menor fração aceita | `1` / `0.25`; `0` = só pular (comportamento da v1.12) |
-| `SNR_LEVELS_DB` | Níveis de SNR para o AWGN aplicado, separados por vírgula | Ex.: `20,30,40,50` |
+| `SNR_LEVELS_DB` | Níveis de SNR para o AWGN aplicado, separados por vírgula | `20,30,40` (padrão); o ruído entra só na janela rotulada, ver `docs/analise-2026-10-12/snr_mudancas.md` |
 
 ### 5.8 Onde os dados caem
 

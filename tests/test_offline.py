@@ -6364,5 +6364,224 @@ class Classes05_07_18Tests(unittest.TestCase):
         self.assertIn("SOURce:FREQuency 50", fonte.command_log)
 
 
+class RuidoNaJanelaTests(unittest.TestCase):
+    """Proposta 8: AWGN de 20/30/40 dB só na janela rotulada; SNR da bancada
+    medido na margem; SNR efetivo combinado."""
+
+    FS = 30_000.0
+
+    def _registro(self, rng, *, sigma=0.01, margem_viva=False, offset=0.0):
+        """8100 amostras: 600 de margem, 6000 de janela (senoide 60 Hz), 1500 de margem."""
+        n = np.arange(8100)
+        seno = 0.9 * np.sin(2.0 * np.pi * 60.0 * n / self.FS)
+        x = seno.copy()
+        if not margem_viva:
+            x[:600] = 0.0
+            x[6600:] = 0.0
+        return x + offset + rng.normal(0.0, sigma, size=n.size)
+
+    def test_padrao_e_20_30_40_db(self):
+        if "SNR_LEVELS_DB" in mestre.os.environ:
+            self.skipTest("SNR_LEVELS_DB definido no ambiente")
+        self.assertEqual(mestre.SNR_LEVELS_DB, (20.0, 30.0, 40.0))
+
+    def test_semente_mantem_a_formula_historica(self):
+        for seed, snr in ((22260827, 30.0), (1, 20.0), (123456, 40.0)):
+            self.assertEqual(sinais.semente_do_ruido(seed, snr), seed + int(round(snr * 1000.0)) + 50_000_000)
+
+    def test_seed_reproduzivel_e_distinta_entre_seeds(self):
+        registro = self._registro(np.random.default_rng(0))
+        a = sinais.ruido_na_janela(registro, 600, 6000, (20.0, 30.0, 40.0), 777)
+        b = sinais.ruido_na_janela(registro, 600, 6000, (20.0, 30.0, 40.0), 777)
+        c = sinais.ruido_na_janela(registro, 600, 6000, (20.0, 30.0, 40.0), 778)
+        for snr in (20.0, 30.0, 40.0):
+            np.testing.assert_array_equal(a["janelas"][snr], b["janelas"][snr])
+            self.assertFalse(np.array_equal(a["janelas"][snr], c["janelas"][snr]))
+        self.assertEqual(a["metadata"], b["metadata"])
+
+    def test_so_a_janela_recebe_ruido_e_snr_medido_na_janela_bate_com_o_nominal(self):
+        desvios = []
+        for seed in range(40):
+            registro = self._registro(np.random.default_rng(seed))
+            res = sinais.ruido_na_janela(registro, 600, 6000, (20.0, 30.0, 40.0), seed)
+            for snr, janela in res["janelas"].items():
+                self.assertEqual(janela.shape, (6000,))  # sem as margens
+                limpa = registro[600:6600]
+                medido = 10.0 * math.log10(np.mean(limpa**2) / np.mean((janela - limpa) ** 2))
+                self.assertAlmostEqual(medido, res["metadata"]["snr_medido_db"][str(snr)], places=9)
+                desvios.append(medido - snr)
+            self.assertFalse(res["metadata"]["ruido_janela"]["margens_com_ruido"])
+        # potência do ruído normalizada: SNR medido exato por construção (ruído da janela = P_ref/10^(snr/10))
+        self.assertLess(max(abs(d) for d in desvios), 1e-6)
+        self.assertLess(abs(float(np.mean(desvios))), 1e-6)
+
+    def test_referencia_e_a_potencia_da_janela_nao_a_do_registro(self):
+        # janela em 0,2 pu no meio de um registro de 1 pu: o ruido segue a janela
+        registro = np.ones(1000)
+        registro[300:700] = 0.2
+        res = sinais.ruido_na_janela(registro, 300, 400, (30.0,), 5, simulado=True)
+        ruido = res["janelas"][30.0] - 0.2
+        self.assertAlmostEqual(float(np.mean(ruido**2)), 0.04 / 1000.0, delta=0.04 / 1000.0 * 0.2)
+
+    def test_snr_da_bancada_em_margem_em_zero_e_em_margem_viva(self):
+        # sigma 0,01 e janela de 0,9 pu de pico: P = 0,405 -> 10log(0,405/1e-4) = 36,07 dB
+        esperado = 10.0 * math.log10(0.405 / 1e-4)
+        for viva in (False, True):
+            registro = self._registro(np.random.default_rng(3), margem_viva=viva)
+            bancada = sinais.medir_ruido_da_bancada(registro, 600, 6000)
+            self.assertEqual(bancada["margem"], "anterior")
+            self.assertAlmostEqual(bancada["snr_db"], esperado, delta=0.5)
+
+    def test_offset_dc_nao_conta_como_ruido_da_bancada(self):
+        sem = sinais.medir_ruido_da_bancada(self._registro(np.random.default_rng(4)), 600, 6000)
+        com = sinais.medir_ruido_da_bancada(self._registro(np.random.default_rng(4), offset=0.02), 600, 6000)
+        self.assertAlmostEqual(sem["snr_db"], com["snr_db"], delta=0.05)
+
+    def test_usa_margem_posterior_quando_a_anterior_e_curta(self):
+        registro = self._registro(np.random.default_rng(5))
+        bancada = sinais.medir_ruido_da_bancada(registro, 50, 6000)
+        self.assertEqual(bancada["margem"], "posterior")
+        self.assertIsNone(sinais.medir_ruido_da_bancada(registro[:6050], 50, 6000))
+
+    def test_snr_efetivo_soma_as_potencias_de_bancada_e_acrescentada(self):
+        registro = self._registro(np.random.default_rng(6))
+        res = sinais.ruido_na_janela(registro, 600, 6000, (30.0, 40.0), 9)
+        meta = res["metadata"]
+        bancada_db = meta["snr_bancada_db"]
+        for snr in ("30.0", "40.0"):
+            soma = 10.0 ** (-bancada_db / 10.0) + 10.0 ** (-meta["snr_medido_db"][snr] / 10.0)
+            self.assertAlmostEqual(meta["snr_efetivo_db"][snr], -10.0 * math.log10(soma), delta=0.01)
+            self.assertLess(meta["snr_efetivo_db"][snr], min(bancada_db, meta["snr_medido_db"][snr]))
+
+    def test_simulado_nao_tem_snr_de_bancada_e_efetivo_igual_ao_acrescentado(self):
+        sinal = 0.9 * np.sin(2.0 * np.pi * 60.0 * np.arange(6000) / self.FS)
+        meta = sinais.ruido_na_janela(sinal, 0, 6000, (20.0,), 3, simulado=True)["metadata"]
+        self.assertIsNone(meta["snr_bancada_db"])
+        self.assertEqual(meta["snr_efetivo_db"], meta["snr_medido_db"])
+
+    def test_sessao_simulada_grava_os_tres_niveis(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            config = mestre.Config(
+                fs_hz=30_000.0, points=6_000, duration_s=0.2, grid_frequency_hz=60.0,
+                base_voltage_rms=127.0, snr_levels_db=(20.0, 30.0, 40.0), base_seed=1,
+                capture_current=False, current_base_a=None, results_dir=tmp_dir / "resultados",
+                sim_captures_per_class=4, real_captures_per_class=1, disturbance_start_s=0.06,
+            )
+            bancada = mestre.Bancada(mestre.AmetekMX30(simulated=True), None, config)
+
+            class _Classe(mestre.ExperimentoWaveform):
+                id = "02"
+                nome = "SAG"
+
+                def gerar(self, t, f0, capture_index, rng):
+                    return 0.5 * np.sin(2.0 * np.pi * f0 * t), {"sag_pu": 0.5}
+
+            _Classe(bancada).executar()
+            pasta = config.results_dir
+            limpa = np.load(pasta / "02_sag.npz", allow_pickle=True)["tensao_pu"]
+            for snr in (20, 30, 40):
+                ruidosa = np.load(pasta / f"snr_{snr}db" / "02_sag.npz", allow_pickle=True)["tensao_pu"]
+                self.assertEqual(ruidosa.shape, limpa.shape)
+                for k in range(limpa.shape[0]):
+                    medido = 10.0 * math.log10(np.mean(limpa[k] ** 2) / np.mean((ruidosa[k] - limpa[k]) ** 2))
+                    self.assertAlmostEqual(medido, snr, delta=1e-6)
+            linha = json.loads((pasta / "metadata" / "02_sag.jsonl").read_text(encoding="utf-8").splitlines()[0])
+            self.assertEqual(sorted(linha["snr_medido_db"]), ["20.0", "30.0", "40.0"])
+            self.assertIsNone(linha["snr_bancada_db"])
+            self.assertEqual(linha["snr_efetivo_db"], linha["snr_medido_db"])
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_captura_fisica_grava_ruido_so_na_janela_com_snr_de_bancada(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            config = mestre.Config(
+                fs_hz=30_000.0, points=6_000, duration_s=0.2, grid_frequency_hz=60.0,
+                base_voltage_rms=127.0, snr_levels_db=(20.0, 40.0), base_seed=1,
+                capture_current=False, current_base_a=None, results_dir=tmp_dir / "resultados",
+                sim_captures_per_class=1, real_captures_per_class=1, disturbance_start_s=0.06,
+                capturas_override=2,
+            )
+            bancada = mestre.Bancada(
+                mestre.AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=425.0), mock.Mock(), config,
+            )
+
+            class _Classe(mestre.ExperimentoNativo):
+                id = "96"
+                nome = "TESTE_RUIDO"
+
+                def gerar(self, t, f0, capture_index, rng):
+                    return np.sin(2.0 * np.pi * f0 * t), {}
+
+                def configurar(self, capture_index):
+                    return {}
+
+            experimento = _Classe(bancada)
+            experimento.osc = mock.Mock()
+            experimento._calcular_margem = lambda **kw: (600, 1500, 8100)
+            n = np.arange(8100, dtype=np.float64)
+            tempo_s = n / 30_000.0
+            registro = np.zeros(8100)
+            registro[600:6600] = np.sin(2.0 * np.pi * 60.0 * tempo_s[:6000])
+            registro += np.random.default_rng(11).normal(0.0, 0.01, size=8100)
+            experimento._capturar_real = lambda capture_index, t, rng: (tempo_s, registro.copy(), None, {})
+            experimento._preparar_acquisicao_real = lambda: None
+            experimento.executar()
+
+            pasta = config.results_dir
+            nomes = sorted(p.name for p in pasta.glob("96_*.npz"))
+            self.assertEqual(len(nomes), 2)
+            for nome in nomes:
+                limpa = np.load(pasta / nome, allow_pickle=True)["tensao_pu"][0]
+                self.assertEqual(limpa.size, 8100)  # o limpo mantém as margens
+                for snr in (20, 40):
+                    dados = np.load(pasta / f"snr_{snr}db" / nome, allow_pickle=True)
+                    self.assertEqual(dados["tensao_pu"].shape, (1, 6000))
+                    self.assertEqual(dados["tempo_ms"].shape, (6000,))
+                    janela = limpa[600:6600]
+                    medido = 10.0 * math.log10(np.mean(janela**2) / np.mean((dados["tensao_pu"][0] - janela) ** 2))
+                    self.assertAlmostEqual(medido, snr, delta=1e-6)
+            linhas = [json.loads(l) for l in (pasta / "metadata" / "96_teste_ruido.jsonl").read_text(encoding="utf-8").splitlines()]
+            for linha in linhas:
+                self.assertEqual(linha["ruido_janela"]["inicio_janela"], 600)
+                self.assertEqual(linha["ruido_janela"]["bancada"]["margem"], "anterior")
+                esperado = 10.0 * math.log10(0.5 / 1e-4)  # P=0,5 pu^2, sigma 0,01
+                self.assertAlmostEqual(linha["snr_bancada_db"], esperado, delta=0.5)
+                self.assertLess(linha["snr_efetivo_db"]["40.0"], linha["snr_bancada_db"])
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_script_offline_reproduz_a_conta_da_bancada(self):
+        import importlib
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        try:
+            gerar = importlib.import_module("gerar_ruido_janela")
+        finally:
+            sys.path.pop(0)
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            sessao = tmp_dir / "sessao"
+            (sessao / "metadata").mkdir(parents=True)
+            registro = self._registro(np.random.default_rng(21))
+            np.savez(sessao / "96_teste_cap01.npz", classe="TESTE", id_captura=np.array(["96-0001"], dtype=object),
+                     tempo_ms=np.arange(8100) / 30.0, tensao_pu=registro[np.newaxis, :])
+            meta = {"id_captura": "96-0001", "classe": "TESTE", "seed": 4242, "simulado": False, "fs_hz": 30000.0,
+                    "pontos": 6000, "pre_trigger_s": 0.0, "indice_trigger": 600, "margem_amostras_antes": 600,
+                    "margem_amostras_depois": 1500, "amostras_totais": 8100}
+            (sessao / "metadata" / "96_teste.jsonl").write_text(json.dumps(meta) + "\n", encoding="utf-8")
+            gerar.gerar_sessao(sessao, sessao / "ruido_janela")
+            esperado = sinais.ruido_na_janela(registro, 600, 6000, (20.0, 30.0, 40.0), 4242)
+            for snr in (20, 30, 40):
+                saida = np.load(sessao / "ruido_janela" / f"snr_{snr}db" / "96_teste_cap01.npz", allow_pickle=True)
+                np.testing.assert_array_equal(saida["tensao_pu"][0], esperado["janelas"][float(snr)])
+            linha = json.loads((sessao / "ruido_janela" / "metadata" / "96_teste.jsonl").read_text(encoding="utf-8"))
+            self.assertEqual(linha["snr_efetivo_db"], esperado["metadata"]["snr_efetivo_db"])
+            with self.assertRaises(FileExistsError):
+                gerar.gerar_sessao(sessao, sessao / "ruido_janela")
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main()

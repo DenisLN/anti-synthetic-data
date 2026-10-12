@@ -56,6 +56,10 @@ Nenhum campo existente foi removido. Campos novos:
 | `git_commit`, `git_sujo`, `numpy_versao` | só física | cópia da procedência (o `.jsonl` sobrevive sozinho se for copiado sem a pasta) |
 | `calibracao_extremos_sha256` | só física | SHA-256 da calibração usada na captura; deve bater com `sessao.json` |
 | `tres_versoes` | captura gravada pela v1.16 em diante | `{arquivo, programada}`: onde estão modelo/programada/medida desta captura e como a programada foi obtida (`docs/tres_versoes.md`) |
+| `snr_medido_db` | toda captura | SNR **acrescentado** por nível (`"20.0"`, `"30.0"`, `"40.0"`): janela limpa contra ruído somado, medido só na janela rotulada |
+| `snr_bancada_db` | só física | SNR do ruído próprio da bancada nesta captura (potência da janela / ruído medido na margem anterior por segunda diferença); `null` no simulado |
+| `snr_efetivo_db` | toda captura | por nível: sinal / (ruído da bancada + ruído acrescentado); no simulado igual a `snr_medido_db` |
+| `ruido_janela` | toda captura | `inicio_janela`, `amostras`, `potencia_referencia_pu2`, `margens_com_ruido` (sempre `false`: os `snr_XXdb/` têm só a janela) e `bancada` (`margem`, `amostras`, `ruido_rms_pu`, `media_da_margem_pu`, `snr_db`) |
 
 Capturas simuladas não têm trigger nem registro bruto: não têm `inicio_janela`; a procedência delas está em `sessao.json`.
 

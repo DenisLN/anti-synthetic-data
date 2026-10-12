@@ -25,7 +25,7 @@ from ametek_orm import (
 import perfis
 from sinais import (
     FORMA_NATIVA_POR_CLASSE, comparar_fisicamente, forma_programada_nativa, janela_nominal,
-    ruido_awgn, snr_medida, tempo,
+    ruido_na_janela, tempo,
 )
 
 
@@ -293,7 +293,7 @@ FS_HZ = 30_000.0
 GRID_FREQUENCY_HZ = env_float("GRID_FREQUENCY_HZ", 60.0)
 DURATION_S = 0.200
 POINTS = 6_000
-SNR_LEVELS_DB = env_float_tuple("SNR_LEVELS_DB", (30.0,))
+SNR_LEVELS_DB = env_float_tuple("SNR_LEVELS_DB", (20.0, 30.0, 40.0))
 SIM_CAPTURES_PER_CLASS = env_int("SIM_CAPTURES_PER_CLASS", 2_000)
 REAL_CAPTURES_PER_CLASS = env_int("REAL_CAPTURES_PER_CLASS", 1)
 # Seed base da sessão. Seed de cada captura = BASE_SEED + int(id) × 1 000 000
@@ -2207,9 +2207,14 @@ class ExperimentoBase(ABC):
         )
         for snr_db, tensao in tensao_por_snr_captura.items():
             rotulo_snr = str(int(snr_db)) if float(snr_db).is_integer() else str(snr_db).replace(".", "_")
+            # Ruído só na janela: o eixo de tempo acompanha o tamanho do array
+            # (a janela começa em 0 ms), não o do registro com margens.
+            tempo_snr = tempo_ms if tensao.size == np.size(tempo_ms) else (
+                np.arange(tensao.size, dtype=np.float64) / float(config.fs_hz) * 1000.0
+            )
             _gravar(
                 config.results_dir / f"snr_{rotulo_snr}db", nome_base,
-                tempo_ms=tempo_ms, tensao_pu=tensao[np.newaxis, :],
+                tempo_ms=tempo_snr, tensao_pu=tensao[np.newaxis, :],
             )
         if corrente_captura is not None:
             _gravar(
@@ -2419,8 +2424,9 @@ class ExperimentoBase(ABC):
             self._preparar_acquisicao_real()
 
         tensao_limpa = np.empty((total, pontos_efetivos), dtype=np.float64)
+        # Ruído só na janela rotulada (config.points amostras), sem as margens.
         tensao_por_snr: Dict[float, np.ndarray] = {
-            snr_db: np.empty((total, pontos_efetivos), dtype=np.float64)
+            snr_db: np.empty((total, self.config.points), dtype=np.float64)
             for snr_db in self.config.snr_levels_db
         }
         corrente = (
@@ -2496,13 +2502,6 @@ class ExperimentoBase(ABC):
                 ids.append(capture_id)
                 tensao_limpa[posicao] = measured_voltage_pu
 
-                medidas_snr = {}
-                for snr_db in self.config.snr_levels_db:
-                    noise_seed = seed + int(round(snr_db * 1000.0)) + 50_000_000
-                    ruidoso = ruido_awgn(measured_voltage_pu, snr_db, np.random.default_rng(noise_seed))
-                    tensao_por_snr[snr_db][posicao] = ruidoso
-                    medidas_snr[str(snr_db)] = snr_medida(measured_voltage_pu, ruidoso)
-
                 if corrente is not None and measured_current_pu is not None:
                     corrente[posicao] = measured_current_pu
 
@@ -2521,7 +2520,6 @@ class ExperimentoBase(ABC):
                     "fs_hz": self.config.fs_hz,
                     "pontos": self.config.points,
                     "parametros": parametros,
-                    "snr_medido_db": medidas_snr,
                     "nivel_indice": capture_index if (cobertura_por_nivel_ativa or not simulated) else 0,
                 })
                 extremos: Dict[str, object] = {}
@@ -2543,6 +2541,20 @@ class ExperimentoBase(ABC):
                     # Início da janela nominal dentro do registro, já calculado
                     # (mesma conta de janela_nominal()/recortar_margem.py).
                     metadados[-1].update(self._inicio_janela_para_metadata(metadados[-1], pontos_efetivos))
+                # Ruído AWGN só na janela rotulada (inicio_janela .. +points),
+                # nunca nas margens; mede também o ruído próprio da bancada
+                # (margem anterior) e grava SNR acrescentado/bancada/efetivo.
+                inicio_ruido = metadados[-1].get("inicio_janela")
+                if inicio_ruido is None:
+                    inicio_ruido = margem_antes
+                inicio_ruido = max(0, min(int(inicio_ruido), max(0, pontos_efetivos - self.config.points)))
+                ruido = ruido_na_janela(
+                    measured_voltage_pu, inicio_ruido, self.config.points,
+                    self.config.snr_levels_db, seed, simulado=simulated,
+                )
+                for snr_db, janela_ruidosa in ruido["janelas"].items():
+                    tensao_por_snr[snr_db][posicao] = janela_ruidosa
+                metadados[-1].update(ruido["metadata"])
                 if not simulated and self._pre_trigger_atual_s is not None and metadados[-1].get("indice_trigger") is not None:
                     # Pré-trigger sorteado: o trigger tem de ter caído onde foi
                     # pedido (pre_trigger + margem), na grade de 30 kSa/s.
