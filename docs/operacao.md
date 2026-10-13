@@ -37,9 +37,9 @@ Seed opcional: variável `BASE_SEED` antes do `START_BENCH`, ou `set seed N` na 
 |---|---|---|
 | `status` | não | modo, porta, `ARM_OUTPUT`, tensão/frequência base, margem, `diagnostico`, `set capturas`, seed, perfil, sorteio, `recalibracao`/`html`, capturas por classe e estimativa de gravações de TRACe, pasta da sessão, último resultado por classe |
 | `list` | não | as 20 classes com capturas efetivas, padrão da classe e último status |
-| `comm` | não | `*IDN?` dos dois instrumentos, protocolo/porta, OUTPUT OFF (`preflight.run`) |
+| `comm` | não | `*IDN?` dos dois instrumentos, protocolo/porta, OUTPUT OFF (`preflight_new.run_basic_stage`) |
 | `trigger` | não | força uma aquisição do Keysight (valida download/decodificação; **não** testa o BNC) |
-| `lowvoltage` | **sim** | recomissionamento (BNC + trigger real + rms). Pede `ENERGIZAR-5V`. Opcional; reprograma TRACes na Flash (~40-50 s). **Ver aviso abaixo** |
+| `lowvoltage` | **sim** | recomissionamento (BNC + trigger real + rms). Pede `ENERGIZAR-TESTE`. Opcional; reprograma TRACes na Flash (~40-50 s). **Ver aviso abaixo** |
 | `native` | **sim** | `preflight_new.run_native_commands`: STEP, PULSe, CSINe, `LIST:FREQuency`, ACDC, `MEASure:*`, canal 2. Pede `ENERGIZAR-COMANDOS` |
 | `run <NN\|nome>` | **sim** | uma classe (`run 02`, `run SAG`). Pede `EXECUTAR-CLASSE-<NN>` |
 | `run all` | **sim** | as 20 classes (menos `BATERIA_EXCLUIR`), resiliente por classe. Pede `EXECUTAR-20-CLASSES` e mostra capturas planejadas e gravações de TRACe |
@@ -55,7 +55,7 @@ Seed opcional: variável `BASE_SEED` antes do `START_BENCH`, ou `set seed N` na 
 
 `set perfil`, `set sorteio`, `set seed` e `set capturas` valem a partir do **próximo** `run`.
 
-> **Aviso verificado no código — o rótulo "5 V" é histórico.** `lowvoltage` e `native` chamam `preflight.run(low_voltage=True)` / `preflight_new.run_native_commands()`, que usam `BASE_VOLTAGE_RMS` (a tensão digitada no início, `preflight.py:65-90`, `preflight_new.py:185-189`). Não há nenhum código que force 5 V. Com `START_BENCH` iniciado em 127 V, `lowvoltage` programa e mede **127 V**, apesar do texto `ENERGIZAR-5V`. Para um recomissionamento a 5 V de fato, inicie o `START_BENCH` digitando 5 V. Não foi testado no hardware; é leitura do código (achado registrado em `docs/analise-2026-10-12/apresentabilidade.md`).
+> **Aviso verificado no código (v1.15):** `lowvoltage` e `native` chamam `preflight_new.run_basic_stage(low_voltage=True)` / `preflight_new.run_native_commands()` (`cli.py:517-545`), que usam `BASE_VOLTAGE_RMS` (a tensão digitada no início). Não há nenhum código que force 5 V. Com `START_BENCH` iniciado em 127 V, `lowvoltage` programa e mede **127 V**; desde a v1.15 o aviso da CLI mostra essa tensão e a confirmação é `ENERGIZAR-TESTE` (antes era o enganoso `ENERGIZAR-5V`). Para um recomissionamento a 5 V de fato, inicie o `START_BENCH` digitando 5 V. Não foi testado no hardware; é leitura do código.
 
 Sem hardware (`BENCH_MODE=0`): `status`, `list` e `run` funcionam em modo simulado; `comm`, `trigger`, `lowvoltage`, `native` exigem bancada.
 
@@ -64,7 +64,7 @@ Ordem recomendada para uma sessão do zero: `comm` → `trigger` → `native` �
 ## 4. Confirmações físicas (não automatizar)
 
 1. Fator da probe e tensão/frequência, perguntados pelo `start_bench_windows.ps1`.
-2. A string digitada, **case-sensitive**: `ENERGIZAR-5V`, `ENERGIZAR-COMANDOS`, `EXECUTAR-CLASSE-<NN>` (ex.: `EXECUTAR-CLASSE-02`), `EXECUTAR-20-CLASSES`. Antes de digitar confira probe, cabos, **E-stop** e EUT. A CLI põe `ARM_OUTPUT=YES` só durante o comando e revoga ao fim (`cli.py:186-197`).
+2. A string digitada, **case-sensitive**: `ENERGIZAR-TESTE`, `ENERGIZAR-COMANDOS`, `EXECUTAR-CLASSE-<NN>` (ex.: `EXECUTAR-CLASSE-02`), `EXECUTAR-20-CLASSES`. Antes de digitar confira probe, cabos, **E-stop** e EUT. A CLI põe `ARM_OUTPUT=YES` só durante o comando e revoga ao fim (`cli.py:186-197`).
 
 ## 5. O que acontece em um `run` e como ler o resultado
 
@@ -95,7 +95,7 @@ Condição sem tabela mostra um aviso no log; calibrar rodando a bateria e depoi
 - **Falha de infraestrutura** (`CommunicationError`, `FalhaFatalDeInstrumento`, `CadeiaDeMedicaoError`): aborta tudo. Procedimento:
   1. Confirmar fisicamente **OUTPUT OFF** no painel.
   2. **Não** executar de novo automaticamente.
-  3. Entregar ao responsável os logs: para `run`/`run all`, `resultados\sessao_<timestamp>[_runNN]\sessao.log` e `scpi_transcricao.log` da pasta mais recente; para `comm`/`trigger`/`lowvoltage`/`native`, a saída do terminal (esses comandos não criam pasta de sessão); `logs\preflight_new-<etapa>-<timestamp>.log` só existe se o `preflight_new.py` foi rodado direto (`python logica\preflight_new.py --native-commands`). O arquivo `logs\startup-bench-*.log`, citado em documentos antigos, **não é mais gerado por nenhum código**.
+  3. Entregar ao responsável os logs: para `run`/`run all`, `resultados\sessao_<timestamp>[_runNN]\sessao.log` e `scpi_transcricao.log` da pasta mais recente; para `comm`/`trigger`/`lowvoltage`/`native`, o `logs\preflight_new-<etapa>-<timestamp>.log` mais recente (esses comandos não criam pasta de sessão; a CLI grava o mesmo log que `python logica\preflight_new.py --native-commands`, via `preflight_new.run_com_log`). O arquivo `logs\startup-bench-*.log`, citado em documentos antigos, **não é mais gerado por nenhum código**.
   4. Não remover validações de IDN, timeout, 6000 pontos ou SCPI para "fazer passar".
 - **Ctrl+C**: interrompe quando a chamada VISA em curso retorna (até ~15 s), a saída é desligada ao fechar a conexão, a CLI volta ao prompt (`mestre.py:393-429`, `cli.py:768-774`). Em emergência vale o E-stop.
 - Captura de corrente fica **desligada** (`CAPTURE_CURRENT=0`); não ativar sem fator da probe de corrente e corrente-base fornecidos.

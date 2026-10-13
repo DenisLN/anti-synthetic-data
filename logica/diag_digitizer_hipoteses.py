@@ -6,7 +6,7 @@ estado residual de outra coisa enviada antes na mesma sessao?".
 
 So fala com o Keysight (nunca abre AMETEK, nunca precisa do EUT -- usa
 force_trigger(), mesmo padrao ja validado por `bancada> trigger` em
-preflight.py).
+preflight_new.py).
 
 Hipoteses:
   H1. O bracket original (1.0s-1.2s todos aceitos, diag_digitizer_range.py)

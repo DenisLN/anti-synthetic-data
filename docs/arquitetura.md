@@ -33,7 +33,7 @@ O projeto gera o dataset rotulado de 20 classes de distúrbio de tensão (200 ms
 | `logica/sinais.py` | matemática pura (janela, ruído, entalhes, THD, correlação, forma programada das nativas) |
 | `logica/perfis.py` | faixas dos perfis `norma`/`literatura`/`fronteira` e `FAIXAS_SORTEADAS` |
 | `logica/cli.py` | REPL do operador (`bancada>`) |
-| `logica/preflight.py`, `preflight_new.py` | comissionamento: comunicação, trigger, baixa tensão, comandos nativos, diagnóstico de LIST |
+| `logica/preflight_new.py` | comissionamento: comunicação, trigger, baixa tensão (tensão base), comandos nativos, diagnóstico de LIST (o antigo `preflight.py` foi removido na v1.15) |
 | `logica/analisar_sessao.py` | análise offline numérica de uma sessão (lag, correlação, correlação do distúrbio, razão de pico) |
 | `logica/recortar_margem.py` | recorta a margem de 20/50 ms (saída em `sem_margem/`) |
 | `logica/relatorio_html.py` + `logica/modelos/relatorio_capturas.html` | relatório HTML autocontido (figuras em base64) |

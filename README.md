@@ -60,7 +60,7 @@ Dentro da CLI: `help`; sequência recomendada `comm` → `trigger` → `native` 
 
 ## Estrutura (resumo)
 ```
-logica/                 motor: mestre.py, ametek_orm.py, oscilloscope_orm.py, sinais.py, perfis.py, cli.py, preflight*.py, análise offline
+logica/                 motor: mestre.py, ametek_orm.py, oscilloscope_orm.py, sinais.py, perfis.py, cli.py, preflight_new.py, análise offline
 experimentos_nativos/   classes 01-05, 18, 19 (recurso nativo da fonte)
 experimentos_waveform/  classes 06-17, 20 (TRACe/LIST)
 scripts/                PowerShell/CMD do operador e utilitários Python

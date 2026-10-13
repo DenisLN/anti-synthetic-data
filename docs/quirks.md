@@ -58,7 +58,7 @@ Comportamentos **medidos** na bancada (AMETEK MX30-3Pi Rev. 5.53, Keysight DSO-X
 | B6 | **O ruído próprio da bancada já é 32–42 dB de SNR** | `snr_bancada_db`/`snr_efetivo_db` no metadata (o "40 dB" é o acrescentado) | `docs/analise-2026-10-12/snr_mudancas.md` |
 | B7 | **A 220/230 V a previsão com a tabela de 127 V/60 Hz subestimou**: a 17 mediu 444 V (acima de 425 Vp) | tabelas de fatores por condição | `CHANGELOG/v1.14.md` |
 | B8 | **`git_sujo` não conta arquivo novo não rastreado** (`--untracked-files=no`) e é calculado **uma vez por processo** (`_INFO_CODIGO_CACHE`, `mestre.py:129`) | commitar tudo (inclusive arquivos novos) antes da sessão e reiniciar a CLI depois de commitar; ver `docs/versionamento.md` | código |
-| B9 | **`lowvoltage`/`native` usam a tensão base digitada, não 5 V** (rótulo histórico) | ver `docs/operacao.md` §3 | código (`preflight.py:65-90`). Achado desta revisão |
+| B9 | **`lowvoltage`/`native` usam a tensão base digitada, não 5 V** (rótulo histórico) | ver `docs/operacao.md` §3 | código (`preflight_new.py:86-160`; desde a v1.15 a confirmação é `ENERGIZAR-TESTE`). Achado desta revisão |
 
 ## 4. Armadilhas de código já documentadas
 - `gerar()` e `configurar()` precisam concordar na ordem do `rng` (04, 19): `valor_para_captura` sorteia **primeiro**; o sorteio de posição usa um sub-fluxo (`_rng_do_sorteio`, `mestre.py:797`) e não consome o `rng` da classe.
