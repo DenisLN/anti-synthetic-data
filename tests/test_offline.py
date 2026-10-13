@@ -6944,5 +6944,207 @@ class PreflightUnicoTests(unittest.TestCase):
             self.assertIn("linha de teste lowvoltage", baixa_log)
 
 
+class RunListaTests(unittest.TestCase):
+    """``run <lista>`` na CLI (``01-07,09-20``): parser, recusa sem energizar,
+    confirmação específica (``EXECUTAR-CLASSES-<normalizada>``) e execução da
+    lista por ``Bancada.executar_bateria``, na ordem numérica."""
+
+    def setUp(self):
+        import cli
+        self.cli = cli
+        self.sessao = cli.SessaoCLI()
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+
+    def _rodar(self, metodo, *args):
+        import io
+        from contextlib import redirect_stdout
+        saida = io.StringIO()
+        with redirect_stdout(saida):
+            codigo = metodo(*args)
+        return codigo, saida.getvalue()
+
+    # -- parser e normalização (funções puras) ------------------------------
+
+    def test_parser_aceita_intervalos_e_ids_soltos(self):
+        p = self.cli.parsear_lista_classes
+        self.assertEqual(p("01-07,09-20"), list(range(1, 8)) + list(range(9, 21)))
+        self.assertEqual(p("2,5,8"), [2, 5, 8])
+        self.assertEqual(p("10-16"), list(range(10, 17)))
+        self.assertEqual(p("5"), [5])
+        self.assertEqual(p("2,2-3"), [2, 3])  # repetido não duplica
+        self.assertEqual(p(" 01 - 03 , 05 "), [1, 2, 3, 5])  # espaços ignorados
+        self.assertEqual(p("20,1"), [1, 20])  # ordem numérica, não a digitada
+
+    def test_parser_recusa_entradas_invalidas(self):
+        for texto in ("07-01", "01-", "-05", "01,,02", "01,", ",01", "", "   ",
+                      "0", "21", "00", "1-21", "0-5", "a", "1.5", "²", "01-07,xx"):
+            with self.subTest(texto=texto), self.assertRaises(ValueError):
+                self.cli.parsear_lista_classes(texto)
+
+    def test_normalizacao_forma_a_confirmacao(self):
+        n = self.cli.normalizar_lista_classes
+        self.assertEqual(n(self.cli.parsear_lista_classes("01-07,09-20")), "01-07,09-20")
+        self.assertEqual(n(self.cli.parsear_lista_classes("2,5,8")), "02,05,08")
+        self.assertEqual(n(self.cli.parsear_lista_classes("1,2")), "01-02")
+        self.assertEqual(n([3]), "03")
+
+    # -- recusa sem energizar ----------------------------------------------
+
+    def test_entrada_invalida_e_recusada_sem_chamar_a_bancada(self):
+        for entrada in (["07-01"], ["01-07,"], ["0-5"], ["1-21"], ["01-"], ["a-b"], ["01-07,,09"]):
+            with self.subTest(entrada=entrada), \
+                    mock.patch.object(mestre.Bancada, "from_env") as from_env, \
+                    mock.patch.object(self.sessao, "confirmar") as confirmar, \
+                    mock.patch.object(self.sessao, "autorizar_saida") as saida, \
+                    mock.patch.object(self.sessao, "_garantir_pasta_sessao") as pasta:
+                codigo, saida_txt = self._rodar(self.sessao.cmd_run, entrada)
+                self.assertEqual(codigo, 1)
+                self.assertIn("recusada", saida_txt)
+                self.assertIn("Nada foi energizado", saida_txt)
+                from_env.assert_not_called()
+                confirmar.assert_not_called()
+                saida.assert_not_called()
+                pasta.assert_not_called()
+
+    def test_id_unico_inexistente_segue_o_caminho_de_uma_classe_e_nao_energiza(self):
+        # Sem vírgula nem hífen, 'run 21' é o caminho de uma classe (inalterado).
+        for entrada in (["21"], ["00"], ["a"]):
+            with self.subTest(entrada=entrada), \
+                    mock.patch.object(mestre.Bancada, "from_env") as from_env, \
+                    mock.patch.object(self.sessao, "confirmar") as confirmar:
+                codigo, saida_txt = self._rodar(self.sessao.cmd_run, entrada)
+                self.assertEqual(codigo, 1)
+                self.assertIn("não encontrada", saida_txt)
+                from_env.assert_not_called()
+                confirmar.assert_not_called()
+
+    def test_run_com_uma_classe_mantem_a_confirmacao_antiga(self):
+        with mock.patch.object(self.sessao, "confirmar", return_value=False) as confirmar:
+            codigo, _ = self._rodar(self.sessao.cmd_run, ["5"])
+        self.assertEqual(codigo, 1)
+        self.assertEqual(confirmar.call_args[0][1], "EXECUTAR-CLASSE-05")
+
+    def test_run_all_mantem_a_confirmacao_antiga(self):
+        with mock.patch.object(self.sessao, "confirmar", return_value=False) as confirmar:
+            codigo, _ = self._rodar(self.sessao.cmd_run, ["all"])
+        self.assertEqual(codigo, 1)
+        self.assertEqual(confirmar.call_args[0][1], "EXECUTAR-20-CLASSES")
+
+    # -- confirmação --------------------------------------------------------
+
+    def test_confirmacao_mostra_capturas_so_das_classes_escolhidas(self):
+        with mock.patch("builtins.input", return_value="nao confere"), \
+                mock.patch.object(mestre.Bancada, "from_env") as from_env:
+            codigo, saida = self._rodar(self.sessao.cmd_run, ["01-03,05"])
+        self.assertEqual(codigo, 1)
+        from_env.assert_not_called()
+        self.assertIn("4 capturas planejadas", saida)
+        self.assertIn("TRACe:", saida)
+        for classe in ("01", "02", "03", "05"):
+            self.assertIn(f"  {classe}  ", saida)
+        self.assertNotIn("  04  ", saida)
+        self.assertNotIn("  08  ", saida)
+
+    def test_confirmacao_exige_a_lista_normalizada_case_sensitive(self):
+        recusadas = ("EXECUTAR-CLASSES-1-7,9-20", "executar-classes-01-07,09-20",
+                     "EXECUTAR-CLASSES-01-07,09-20 ", "EXECUTAR-CLASSE-01-07,09-20",
+                     "EXECUTAR-20-CLASSES", "")
+        for resposta in recusadas:
+            with self.subTest(resposta=resposta), \
+                    mock.patch("builtins.input", return_value=resposta), \
+                    mock.patch.object(mestre.Bancada, "from_env") as from_env:
+                codigo, saida = self._rodar(self.sessao.cmd_run, ["01-07,09-20"])
+                self.assertEqual(codigo, 1)
+                self.assertIn("Cancelado", saida)
+                from_env.assert_not_called()
+
+    # -- execução simulada pelo executar_bateria ----------------------------
+
+    def _executar_com_classes_falsas(self, entrada, executadas, *, extra=None, falhas=()):
+        """Roda ``cmd_run`` de verdade (``from_env`` real em modo simulado e
+        ``executar_bateria`` real), trocando só as classes por falsas que
+        registram o id em ``executadas`` — sem gerar formas nem gravar arquivo.
+        ``falhas``: ids cuja ``executar()`` levanta erro de EXPERIMENTO."""
+        def carregar(script_path):
+            class_id = script_path.stem
+
+            class _Falsa:
+                nome = f"FALSA_{class_id}"
+
+                def __init__(self, bancada):
+                    pass
+
+                def executar(self):
+                    executadas.append(class_id)
+                    if class_id in falhas:
+                        raise ValueError("RMS fora de tolerância (teste)")
+
+            return _Falsa
+
+        def capturas_falsas(scripts=None):
+            return [(s.stem, s.stem, {"total": 1, "niveis": 1, "por_nivel": 1, "padrao": 1,
+                                      "escritas_trace": 0, "escritas_trace_exatas": True})
+                    for s in scripts]
+
+        patches = [
+            mock.patch.object(mestre, "SIMULATED_MODE", True),
+            mock.patch.object(mestre, "SESSION_RESULTS_DIR", self.tmp),
+            mock.patch.object(mestre.Bancada, "_carregar_classe_experimento", side_effect=carregar),
+            mock.patch.object(self.cli.SessaoCLI, "_capturas_das_classes", new=staticmethod(capturas_falsas)),
+            mock.patch.object(self.sessao, "_garantir_pasta_sessao"),
+            mock.patch.object(self.sessao, "autorizar_saida"),
+            mock.patch.object(self.sessao, "confirmar", return_value=True),
+        ]
+        for patch in patches:
+            patch.start()
+            self.addCleanup(patch.stop)
+        if extra:
+            for patch in extra:
+                patch.start()
+                self.addCleanup(patch.stop)
+        return self._rodar(self.sessao.cmd_run, entrada)
+
+    def test_run_lista_executa_exatamente_a_lista_em_ordem(self):
+        executadas = []
+        codigo, saida = self._executar_com_classes_falsas(["01-03,05"], executadas)
+        self.assertEqual(executadas, ["01", "02", "03", "05"])
+        self.assertEqual(codigo, 0)
+        self.assertIn("4/4 classes OK", saida)
+        self.assertEqual(sorted(self.sessao.ultimo_resultado), ["01", "02", "03", "05"])
+
+    def test_run_lista_ignora_bateria_excluir_porque_roda_o_pedido(self):
+        executadas = []
+        codigo, _ = self._executar_com_classes_falsas(
+            ["02,03"], executadas,
+            extra=[mock.patch.object(mestre, "BATERIA_EXCLUIR", ("02",))],
+        )
+        self.assertEqual(executadas, ["02", "03"])
+        self.assertEqual(codigo, 0)
+
+    def test_run_lista_falha_de_experimento_nao_para_a_lista(self):
+        # Resiliência de executar_bateria (não ampliada aqui): a 02 falha com
+        # erro de experimento, a lista segue para a 03 e a 05.
+        executadas = []
+        codigo, saida = self._executar_com_classes_falsas(["01-03,05"], executadas, falhas=("02",))
+        self.assertEqual(executadas[0], "01")
+        self.assertIn("03", executadas)
+        self.assertIn("05", executadas)
+        self.assertEqual(codigo, 1)
+        self.assertIn("FALHOU [02]", saida)
+        self.assertIn("3/4 classes OK", saida)
+
+    def test_run_lista_recusada_pela_confirmacao_nao_chama_executar_bateria(self):
+        with mock.patch.object(self.sessao, "confirmar", return_value=False), \
+                mock.patch.object(mestre.Bancada, "from_env") as from_env:
+            codigo, _ = self._rodar(self.sessao.cmd_run, ["01-07,09-20"])
+        self.assertEqual(codigo, 1)
+        from_env.assert_not_called()
+
+    def test_help_documenta_a_lista(self):
+        self.assertIn("run 01-07,09-20", self.cli.HELP_TEXT)
+        self.assertIn("EXECUTAR-CLASSES-", self.cli.HELP_TEXT)
+
+
 if __name__ == "__main__":
     unittest.main()
