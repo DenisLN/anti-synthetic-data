@@ -7386,5 +7386,203 @@ class RunListaTests(unittest.TestCase):
         self.assertIn("EXECUTAR-CLASSES-", self.cli.HELP_TEXT)
 
 
+
+class DiagnosticoCopiaEm100msTests(unittest.TestCase):
+    """v1.15, diagnóstico da cópia do evento em 100 ms: modelo provisório da
+    fonte, ``diag_ciclos_trace.py`` (offline) e ``diag_marcadores_trace.py``
+    (bancada, aqui só ``--simulado``). Sem hardware."""
+
+    @staticmethod
+    def _programacao_com_impulso(f0=50.0, amostra=2400, amp=0.8):
+        forma = np.sin(2 * np.pi * f0 * np.arange(6000) / 30000.0)
+        forma[amostra : amostra + 2] += amp
+        return AmetekMX30.montar_programacao(forma, base_voltage_rms=127.0, frequency_hz=f0)
+
+    def _sessao_sintetica(self, medida, programada, f0=50.0):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        (tmp / "metadata").mkdir()
+        (tmp / "tres_versoes").mkdir()
+        registro = {
+            "id_captura": "99-0001", "pontos": 6000, "fs_hz": 30000.0, "f0_hz": f0, "tensao_base_rms": 127.0,
+            "inicio_janela": 600, "seed": 1, "parametros": {},
+            "tres_versoes": {"arquivo": "tres_versoes/99_sintetica.npz", "programada": "TRACe+LIST"},
+        }
+        (tmp / "metadata" / "99_sintetica.jsonl").write_text(json.dumps(registro) + "\n", encoding="utf-8")
+        np.savez(
+            tmp / "tres_versoes" / "99_sintetica.npz", classe="SINTETICA", id_captura=np.array(["99-0001"], dtype=object),
+            tempo_ms=np.arange(6000) / 30.0, modelo_pu=programada[np.newaxis, :], medida_pu=medida[np.newaxis, :],
+            programada_pu=programada[np.newaxis, :], inicio_janela=np.array(600),
+            origem_programada=np.array("TRACe+LIST:VOLTage (AmetekMX30.montar_programacao)"),
+        )
+        return tmp
+
+    # --- modelo provisório -------------------------------------------------
+    def test_modelo_ideal_reproduz_programada_pu(self):
+        import modelo_lista_fonte as modelo
+        for f0 in (50.0, 60.0):
+            prog = self._programacao_com_impulso(f0, 2400)
+            np.testing.assert_allclose(modelo.prever_forma(prog, "ideal"), prog.programada_pu(), rtol=0, atol=1e-12)
+
+    def test_modelo_atraso_de_passos_move_o_evento_20ms(self):
+        import modelo_lista_fonte as modelo
+        prog = self._programacao_com_impulso(50.0, 2400)
+        ideal = modelo.prever_forma(prog, "ideal")
+        atrasado = modelo.prever_forma(prog, "atraso_de_passos", d=1, t_inicio_s=0.080)
+        self.assertGreater(abs(ideal[2400]), 0.5)
+        self.assertLess(abs(atrasado[2400] - np.sin(2 * np.pi * 50 * 2400 / 30000.0)), 0.05)
+        self.assertGreater(abs(atrasado[3000]), 0.5)  # 100 ms
+        with self.assertRaises(ValueError):
+            modelo.prever_forma(prog, "inexistente")
+        with self.assertRaises(ValueError):
+            modelo.prever_forma(prog, "atraso_de_passos", nao_existe=1)
+
+    def test_modelo_confrontar_poe_a_hipotese_verdadeira_primeiro(self):
+        import modelo_lista_fonte as modelo
+        prog = self._programacao_com_impulso(50.0, 2400)
+        medida = modelo.prever_forma(prog, "atraso_de_passos", d=1, t_inicio_s=0.080)
+        ranking = modelo.confrontar(prog, medida)
+        self.assertEqual(ranking[0]["nome"], "passo_atrasado_1_a_partir_de_80ms")
+        self.assertLess(ranking[0]["rms_residuo_pu"], 1e-9)
+        self.assertGreater(ranking[-1]["rms_residuo_pu"], ranking[0]["rms_residuo_pu"])
+
+    # --- diag_ciclos_trace.py ----------------------------------------------
+    def test_diag_ciclos_detecta_o_ciclo_trocado_e_o_instante(self):
+        script = _carregar_script("diag_ciclos_trace")
+        prog = self._programacao_com_impulso(50.0, 2400)
+        programada = prog.programada_pu()
+        n = prog.pontos_por_ciclo
+        medida = programada.copy()
+        # O defeito de 07/10: o impulso do ciclo 4 sai um ciclo (20 ms) depois.
+        medida[4 * n : 5 * n] = programada[3 * n : 4 * n]
+        medida[5 * n : 6 * n] = programada[4 * n : 5 * n]
+        sessao = self._sessao_sintetica(medida, programada)
+        capturas = script.carregar_sessao(sessao, usar_forma_bancada=False)
+        self.assertEqual(len(capturas), 1)
+        r = script.analisar_captura(capturas[0])
+        self.assertEqual(r["troca"]["ciclos_trocados"], [4, 5])
+        self.assertEqual(r["troca"]["primeiro_ciclo"], 4)
+        self.assertEqual(r["troca"]["explicado_por"], "k-1")
+        self.assertAlmostEqual(r["troca"]["instante_ciclo_ms"], 80.0, places=6)
+        self.assertEqual(r["troca"]["primeira_amostra_divergente"], 2400)
+        self.assertEqual({c["estado"] for c in r["ciclos_detalhe"] if c["ciclo"] not in (4, 5)}, {"ok"})
+        self.assertGreater(r["residuo_no_instante"]["max_abs_pu"], 0.5)
+        self.assertAlmostEqual(r["residuo_no_instante"]["instante_ms"], 100.0, delta=0.2)
+        texto = script.montar_markdown("sintetica", [r])
+        self.assertIn("99-0001", texto)
+        self.assertIn("k-1", texto)
+
+    def test_diag_ciclos_sessao_sem_defeito_nao_acusa_troca(self):
+        script = _carregar_script("diag_ciclos_trace")
+        prog = self._programacao_com_impulso(60.0, 2400)
+        programada = prog.programada_pu()
+        ruido = np.random.default_rng(0).normal(0, 0.003, programada.size)
+        sessao = self._sessao_sintetica(programada + ruido, programada, f0=60.0)
+        capturas = script.carregar_sessao(sessao, usar_forma_bancada=False)
+        r = script.analisar_captura(capturas[0])
+        self.assertIsNone(r["troca"])
+        self.assertEqual({c["estado"] for c in r["ciclos_detalhe"]}, {"ok"})
+
+    def test_diag_ciclos_nao_escreve_na_pasta_da_sessao(self):
+        script = _carregar_script("diag_ciclos_trace")
+        prog = self._programacao_com_impulso(50.0, 2400)
+        programada = prog.programada_pu()
+        sessao = self._sessao_sintetica(programada.copy(), programada)
+        antes = sorted(str(p.relative_to(sessao)) for p in sessao.rglob("*"))
+        saida = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, saida, ignore_errors=True)
+        with mock.patch("sys.stdout"):
+            codigo = script.main([str(sessao), "--saida", str(saida), "--sem-forma-bancada"])
+        self.assertEqual(codigo, 0)
+        self.assertEqual(sorted(str(p.relative_to(sessao)) for p in sessao.rglob("*")), antes)
+        self.assertEqual(len(list(saida.glob("diag_ciclos_trace-*.json"))), 1)
+        self.assertEqual(len(list(saida.glob("diag_ciclos_trace-*.md"))), 1)
+
+    # --- diag_marcadores_trace.py ------------------------------------------
+    def test_marcadores_sao_unicos_e_dentro_do_limite_de_pico(self):
+        script = _carregar_script("diag_marcadores_trace")
+        for f0 in (50.0, 60.0):
+            forma, marcas = script.forma_marcadores(f0, 0.45)
+            self.assertEqual(len({m["pos"] for m in marcas}), len(marcas))
+            self.assertEqual(len({round(m["amp"], 6) for m in marcas}), len(marcas))
+            self.assertLessEqual(float(np.max(np.abs(forma))) * 127.0 * math.sqrt(2.0), script.MAX_PICO_V)
+        plano = script.planejar([50.0, 60.0], list(script.VARIANTES), [40.0, 80.0], 127.0, 0.45)
+        self.assertEqual(len(plano), 10)
+        self.assertEqual(sum(item["escritas_trace"] for item in plano), 110)
+        self.assertTrue(all(item["pico_reconstruido_v"] <= script.MAX_PICO_V for item in plano))
+        # 80 ms: ponto 0 do ciclo 4 a 50 Hz; a 60 Hz o primeiro ciclo que começa depois é o 5.
+        self.assertEqual(script.ciclo_do_instante(80.0, 50.0), 4)
+        self.assertEqual(script.ciclo_do_instante(80.0, 60.0), 5)
+
+    def test_marcadores_recusa_tensao_sem_folga_de_pico(self):
+        script = _carregar_script("diag_marcadores_trace")
+        with self.assertRaises(SystemExit):
+            script.amplitude_maxima_pu(270.0, 0.45)
+        self.assertLessEqual(script.amplitude_maxima_pu(220.0, 0.45), 0.45)
+
+    def test_marcadores_exige_probe_e_bench_mode_sem_simulado(self):
+        script = _carregar_script("diag_marcadores_trace")
+        saida = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, saida, ignore_errors=True)
+        import os
+        ambiente = {k: v for k, v in os.environ.items() if k not in {"VOLTAGE_PROBE_ATTENUATION", "BENCH_MODE"}}
+        with mock.patch.dict("os.environ", ambiente, clear=True):
+            with self.assertRaises(SystemExit):  # sem --probe
+                script.main(["--simulado", "--saida", str(saida)])
+            with self.assertRaises(SystemExit):  # real sem BENCH_MODE=1
+                script.main(["--probe", "500", "--saida", str(saida)])
+        self.assertEqual(list(saida.iterdir()), [])  # nada gravado, nenhum instrumento aberto
+
+    def _rodar_simulado(self, simular, *extra):
+        script = _carregar_script("diag_marcadores_trace")
+        saida = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, saida, ignore_errors=True)
+        with mock.patch("sys.stdout"):
+            codigo = script.main(["--simulado", "--probe", "500", "--vrms", "127", "--simular", simular,
+                                  "--saida", str(saida), *extra])
+        self.assertEqual(codigo, 0)
+        dados = json.loads(next(saida.glob("diag_marcadores_trace-*.json")).read_text(encoding="utf-8"))
+        return dados["capturas"]
+
+    def test_marcadores_simulado_ideal_recupera_cada_marcador_no_seu_ciclo(self):
+        capturas = self._rodar_simulado("ideal", "--frequencias", "50,60", "--variantes", "marcadores")
+        self.assertEqual([c["rotulo"] for c in capturas], ["marcadores@50Hz", "marcadores@60Hz"])
+        for c in capturas:
+            n_marc = len(c["marcadores_programados"])
+            self.assertEqual(len(c["observados"]), n_marc)
+            self.assertEqual([o["k"] for o in c["observados"]], list(range(n_marc)))
+            self.assertTrue(all(o["troca_ciclos"] == 0 and o["atraso_amostras"] == 0 for o in c["observados"]))
+            self.assertIsNone(c["resumo"]["troca_de_passo"])
+            self.assertEqual(c["resumo"]["espurios"], [])
+            self.assertEqual(c["hipoteses"][0]["nome"], "ideal")
+
+    def test_marcadores_simulado_recupera_a_troca_de_passo_e_o_instante(self):
+        capturas = self._rodar_simulado("atraso_de_passos:d=1,t_inicio_s=0.1", "--frequencias", "50,60", "--variantes", "marcadores")
+        for c, ciclo_100ms in zip(capturas, (5, 6)):
+            troca = c["resumo"]["troca_de_passo"]
+            self.assertEqual(troca["primeiro_ciclo_medido"], ciclo_100ms)
+            self.assertAlmostEqual(troca["instante_ms"], 100.0, places=6)
+            self.assertEqual(troca["deslocamento_ciclos"], 1)
+            for o in c["observados"]:
+                esperado = 1 if o["ciclo_medido"] >= ciclo_100ms else 0
+                self.assertEqual(o["troca_ciclos"], esperado)
+                self.assertEqual(o["k"], o["ciclo_medido"] - esperado)
+            self.assertEqual(c["hipoteses"][0]["nome"], "passo_atrasado_1_a_partir_de_100ms")
+
+    def test_marcadores_simulado_atraso_global_em_amostras_e_variantes_de_evento(self):
+        capturas = self._rodar_simulado("ideal", "--frequencias", "50", "--variantes", "marcadores", "--atraso-simulado", "3")
+        self.assertEqual({o["atraso_amostras"] for o in capturas[0]["observados"]}, {3})
+        capturas = self._rodar_simulado("atraso_de_passos:d=1,t_inicio_s=0.08", "--frequencias", "50", "--variantes", "fronteira,meio_ciclo")
+        self.assertEqual([c["rotulo"] for c in capturas],
+                         ["fronteira@50Hz/ciclo2", "fronteira@50Hz/ciclo4", "meio_ciclo@50Hz/ciclo2", "meio_ciclo@50Hz/ciclo4"])
+        for c in capturas:
+            ciclos_vistos = [o["ciclo_medido"] for o in c["observados"]]
+            if c.get("ciclo_evento") == 2:
+                self.assertEqual(ciclos_vistos, [2])  # antes de 80 ms: sem cópia
+            else:
+                self.assertEqual(ciclos_vistos, [5])  # com a troca desde 80 ms o evento do ciclo 4 sai no 5
+                self.assertEqual(c["resumo"]["troca_de_passo"]["instante_ms"], 100.0)
+
+
 if __name__ == "__main__":
     unittest.main()
