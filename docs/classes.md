@@ -62,3 +62,15 @@ Posição: 80 ms (60 Hz). A 50 Hz o 80 ms cai na fronteira de ciclo e a fonte to
 ## 4. Classe 05 e o teto do CSINusoid
 
 `MAX_CSINE_THD_PCT = 20` (`ametek_orm.py:156`). Perfil `literatura`: 5/10/15/20 % por CSINusoid e 30 % por TRACe (`usar_trace`, `05.py:69`). Perfil `norma`: todos ≤ 20 %, todos por CSINusoid. O nível de 2 % e o rms da CSINusoid interna **não foram verificados na bancada**.
+
+### Nível de 30 % da 05 (por TRACe): rms e fundamental
+
+O modelo do nível de 30 % (soma 1 + 3.ª/5.ª/7.ª) tem fundamental 1 pu e rms `sqrt((1+thd²)/2)` = 0,738 pu; os níveis ≤ 20 % (CSINusoid) têm rms 0,707 pu e fundamental 0,98–1,00 pu. A fonte emite, no de 30 %, o rms do próprio modelo (`montar_programacao` põe o rms CA do ciclo em `LIST:VOLTage`): `LIST:VOLTage` = 1,044 × a tensão base e pico de 0,825 pu. Programada × modelo: correlação do distúrbio 1,0000. A diferença de rms é entre níveis, não entre modelo e programada; `gerar()` não muda (`docs/correlacao_disturbio.md` §7).
+
+## 5. Classe 06 e a média por ciclo da TRACe
+
+Na TRACe/LIST cada ciclo é uma TRACe de média zero (a fonte remove o componente DC, manual `TRACe:DATA`). O flicker `sin(2π f0 t)·(1 + m·sin(2π f_fl t))` tem, por ciclo, uma média não nula (vazamento espectral das bandas laterais f0 ± f_fl) que cresce com `f_fl`/`f0`: rms 0,002–0,032 pu, até 0,044 pu. Esse é todo o desvio entre modelo e programada (correlação do distúrbio 0,77–1,00, mediana 0,90–0,97 conforme a frequência e o sorteio; 0,9999 depois de tirar a média de cada ciclo do modelo). Não há comando de offset por passo de `LIST` no manual extraído, então a programação não consegue reproduzi-la. Detalhe em `CHANGELOG/v1.15.md`. **Nada foi mudado** na programação ou no `gerar()` da 06.
+
+## 6. Classe 09 e o impulso em 100 ms
+
+`diag_ciclos_trace.py` e `modelo_lista_fonte.py` aceitam a 09 sorteada (teste sintético `PendentesCorrelacaoDisturbioTests`). Com início sorteado, 100 ms cai dentro do evento rotulado em ~18 % das capturas. Mecanismo da cópia: **NÃO VERIFICADO** (`docs/quirks.md` A25).

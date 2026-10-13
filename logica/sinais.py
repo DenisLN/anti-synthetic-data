@@ -506,6 +506,56 @@ def correlacao_disturbio(
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))), None
 
 
+def _residuo_sem_fundamental(x: np.ndarray, *, fs_hz: float, f0_hz: float) -> np.ndarray:
+    """``x`` menos a sua própria fundamental ajustada por mínimos quadrados
+    (``a·sin + b·cos`` em ``f0_hz``, o que dá amplitude e fase livres) mais uma
+    constante. Projeção linear: ``projeção(k·x) = k·projeção(x)``."""
+    t = np.arange(x.size, dtype=np.float64) / float(fs_hz)
+    w = 2.0 * np.pi * float(f0_hz) * t
+    base = np.column_stack([np.sin(w), np.cos(w), np.ones_like(w)])
+    coef, *_ = np.linalg.lstsq(base, x, rcond=None)
+    return x - base @ coef
+
+
+def correlacao_disturbio_fundamental_ajustada(
+    esperado: np.ndarray, capturado: np.ndarray, *, fs_hz: float, f0_hz: float,
+) -> Tuple[Optional[float], Optional[str]]:
+    """Como ``correlacao_disturbio``, mas em vez de subtrair dos dois a MESMA
+    senoide nominal de 1 pu, tira de CADA sinal a sua própria fundamental
+    (amplitude e fase ajustadas por mínimos quadrados na janela inteira, em
+    ``f0_hz``) antes do Pearson dos resíduos.
+
+    Por quê: a fonte emite a fundamental 0,2–1,4 % acima ou abaixo do
+    programado e a métrica nominal deixa essa diferença no resíduo capturado;
+    em classes de distúrbio pequeno (09, rms 0,0235 pu) isso custa até
+    0,05–0,06. Esta variante mede só a FORMA do que sobra, indiferente a erro
+    de amplitude/fase da fundamental e de escala.
+
+    Ressalva: o ajuste usa a janela toda, então em distúrbios grandes ou que
+    mexem na fundamental (02/03/04, 18) parte do evento é absorvida no ajuste
+    (igualmente nos dois sinais). É um complemento, não substituto, da
+    ``correlacao_disturbio``.
+
+    Caso degenerado como na métrica nominal: resíduo esperado ~ 0 (classes 01 e
+    19, em que só restam fundamental e constante, aqui sem distinguir o offset
+    DC porque a constante também é ajustada), resíduo capturado ~ 0 ou formas
+    incompatíveis devolvem ``(None, motivo)``."""
+    esperado = np.asarray(esperado, dtype=np.float64)
+    capturado = np.asarray(capturado, dtype=np.float64)
+    if esperado.shape != capturado.shape or esperado.ndim != 1 or esperado.size < 4:
+        return None, f"formas incompatíveis ({esperado.shape} x {capturado.shape})"
+    a = _residuo_sem_fundamental(esperado, fs_hz=fs_hz, f0_hz=f0_hz)
+    b = _residuo_sem_fundamental(capturado, fs_hz=fs_hz, f0_hz=f0_hz)
+    rms_esp = float(np.sqrt(np.mean(np.square(a))))
+    if rms_esp < LIMITE_RESIDUO_DEGENERADO_PU:
+        return None, (f"resíduo esperado sem a fundamental ~ 0 (rms {rms_esp:.2e} pu): "
+                      "sem componente de distúrbio (classe 01) ou só offset DC (19)")
+    rms_cap = float(np.sqrt(np.mean(np.square(b))))
+    if rms_cap < LIMITE_RESIDUO_DEGENERADO_PU:
+        return None, "resíduo capturado sem a fundamental ~ 0"
+    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))), None
+
+
 # ---------------------------------------------------------------------------
 # Forma "programada" das classes NATIVAS (v1.16)
 # ---------------------------------------------------------------------------

@@ -238,10 +238,14 @@ def _correlacoes(captura: Captura, esperado: Optional[np.ndarray]) -> Optional[d
         janela = captura.sinal[captura.inicio_nominal : captura.inicio_nominal + n]
         lag, total = analisar_offset(esperado, janela, captura.fs_hz)
         valor, motivo = _correlacao_disturbio_alinhada(esperado, captura.sinal, captura.inicio_nominal, lag, md)
+        ajustada, motivo_ajustada = _correlacao_disturbio_alinhada(
+            esperado, captura.sinal, captura.inicio_nominal, lag, md, fundamental_ajustada=True,
+        )
     except Exception as exc:  # noqa: BLE001 - relatório nunca cai por isto
         print(f"AVISO: {captura.id_captura}: correlações não calculadas ({exc})")
         return None
-    return {"total": total, "disturbio": valor, "motivo": motivo, "lag_ms": lag / captura.fs_hz * 1000.0}
+    return {"total": total, "disturbio": valor, "motivo": motivo, "lag_ms": lag / captura.fs_hz * 1000.0,
+            "disturbio_fund_ajustada": ajustada, "motivo_fund_ajustada": motivo_ajustada}
 
 
 def ler_capturas(
@@ -427,9 +431,12 @@ def tabela_metadados(captura: Captura) -> str:
     if captura.correlacoes:
         c = captura.correlacoes
         disturbio = f"{c['disturbio']:.3f}" if c["disturbio"] is not None else f"n/a ({_e(c['motivo'])})"
+        aj = c.get("disturbio_fund_ajustada")
+        ajustada = f"{aj:.3f}" if aj is not None else f"n/a ({_e(c.get('motivo_fund_ajustada'))})"
         linhas.append(("Correlação com o esperado",
                        f"total {c['total']:.3f} · só do distúrbio {disturbio} "
-                       f"(após alinhar; lag {c['lag_ms']:.2f} ms)"))
+                       f"(após alinhar; lag {c['lag_ms']:.2f} ms) · "
+                       f"distúrbio com a fundamental ajustada {ajustada}"))
     validacao = md.get("validacao_fisica")
     if isinstance(validacao, dict):
         if validacao.get("ok"):

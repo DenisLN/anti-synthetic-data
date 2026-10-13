@@ -8149,5 +8149,284 @@ class DiagnosticoRetrieveTests(unittest.TestCase):
         self.assertIn("set diagnostico retrieve", cli.HELP_TEXT)
 
 
+class PendentesCorrelacaoDisturbioTests(unittest.TestCase):
+    """v1.15, pendentes da correlação do distúrbio (05 contra o diagnóstico,
+    correlação com a fundamental ajustada, 09 nas ferramentas da cópia em 100
+    ms e a perda da 06 na TRACE por ciclo). Sem hardware."""
+
+    T = np.arange(6000, dtype=np.float64) / 30_000.0
+    FS = 30_000.0
+
+    # -- 05 contra o diagnóstico -------------------------------------------
+
+    def test_05_niveis_por_csine_ficam_dentro_do_teto_de_20_pct_em_todos_os_perfis(self):
+        import dataclasses
+        teto = AmetekMX30.MAX_CSINE_THD_PCT / 100.0
+        for perfil in ("norma", "literatura", "fronteira"):
+            experimento = _load_experimento("05")
+            experimento.config = dataclasses.replace(experimento.config, perfil=perfil)
+            for indice, thd in enumerate(experimento.NIVEIS_THD):
+                if experimento.usar_trace(indice):
+                    self.assertGreater(thd, teto)
+                else:
+                    self.assertLessEqual(thd, teto)
+                    sinais.corte_da_senoide_clipada(thd)  # não levanta dentro do alcance do CSINe
+        with self.assertRaises(ValueError):
+            sinais.corte_da_senoide_clipada(0.30)
+
+    def test_05_modelo_csine_usa_a_fase_sorteada_da_forma_programada(self):
+        experimento = _load_experimento("05")
+        for f0 in (50.0, 60.0):
+            for seed in range(6):
+                voltage, p = experimento.gerar(self.T, f0, 1, np.random.default_rng(seed))
+                tau = p["fase_graus"] / (360.0 * f0)
+                np.testing.assert_allclose(voltage, sinais.senoide_clipada_pu(self.T, f0, tau, p["thd"]), atol=1e-12)
+                # a fase é a da senoide base: o modelo correlaciona com a senoide
+                # clipada de MESMA fase (>0,9999) e quase nada com a fase trocada em 90 graus
+                corte = sinais.corte_da_senoide_clipada(p["thd"])
+                mesma = np.clip(np.sin(2 * np.pi * f0 * (self.T + tau)), -corte, corte)
+                outra = np.clip(np.sin(2 * np.pi * f0 * (self.T + tau) + math.pi / 2), -corte, corte)
+                self.assertGreater(np.corrcoef(voltage, mesma)[0, 1], 0.9999)
+                self.assertLess(abs(np.corrcoef(voltage, outra)[0, 1]), 0.2)
+                programada = sinais.forma_programada_nativa(
+                    "05", t=self.T, f0_hz=f0, base_voltage_rms=127.0, parametros=p, quantizar=lambda v: v,
+                )
+                np.testing.assert_allclose(programada, voltage, atol=1e-12)
+
+    def test_05_sem_a_normalizacao_por_rms_o_modelo_ficaria_errado(self):
+        # O diagnóstico: sem escalar ao rms da senoide a fundamental sai ~5 % menor
+        # (THD 5 %) e a correlação do distúrbio contra a captura cai de 0,97 a 0,67.
+        for thd in (0.05, 0.10, 0.20):
+            modelo = sinais.senoide_clipada_pu(self.T, 60.0, 0.0, thd)
+            corte = sinais.corte_da_senoide_clipada(thd)
+            sem_escala = np.clip(np.sin(2 * np.pi * 60.0 * self.T), -corte, corte)
+            self.assertAlmostEqual(float(np.sqrt(np.mean(modelo ** 2))), 1 / math.sqrt(2.0), delta=2e-3)
+            self.assertLess(float(np.sqrt(np.mean(sem_escala ** 2))), 1 / math.sqrt(2.0) - 0.01)
+
+    def test_05_nivel_de_30_por_trace_a_fonte_emite_o_rms_do_proprio_modelo(self):
+        # O modelo do nível de 30 % tem rms sqrt((1+thd^2)/2) = 0,738 (fundamental
+        # 1 pu), não 0,707 como os níveis do CSINe. montar_programacao põe esse
+        # rms no LIST:VOLTage, então a programada reproduz o modelo (corr. 1,000)
+        # e a fonte emite 1,044 x a tensão base nesse nível: a diferença é entre
+        # níveis, não entre modelo e programada (docs/correlacao_disturbio.md).
+        experimento = _load_experimento("05")
+        indice = list(experimento.NIVEIS_THD).index(0.30)
+        for f0 in (50.0, 60.0):
+            for seed in range(4):
+                voltage, p = experimento.gerar(self.T, f0, indice, np.random.default_rng(seed))
+                programacao = AmetekMX30.montar_programacao(voltage, base_voltage_rms=127.0, frequency_hz=f0)
+                programada = programacao.programada_pu()
+                self.assertLess(float(np.max(np.abs(programada - voltage))), 2e-3)
+                valor, _ = sinais.correlacao_disturbio(
+                    voltage, programada, fs_hz=self.FS, f0_hz=f0, fase_graus=p["fase_graus"],
+                )
+                self.assertGreater(valor, 0.9999)
+                self.assertAlmostEqual(float(np.sqrt(np.mean(voltage ** 2))), math.sqrt((1 + 0.30 ** 2) / 2), delta=2e-3)
+                self.assertAlmostEqual(
+                    float(np.max(programacao.list_voltages_rms)) / 127.0, math.sqrt(1 + 0.30 ** 2), delta=2e-3,
+                )
+                self.assertLess(programacao.pico_reconstruido_v, 425.0)
+
+    # -- correlação com a fundamental ajustada -----------------------------
+
+    def _09(self, f0=60.0, seed=5):
+        experimento = _load_experimento("09")
+        voltage, p = experimento.gerar(self.T, f0, 0, np.random.default_rng(seed))
+        return voltage, p
+
+    def test_fundamental_ajustada_amplitude_1_pct_maior_da_quase_1(self):
+        for f0 in (50.0, 60.0):
+            esperado, p = self._09(f0)
+            tau = p["fase_graus"] / (360.0 * f0)
+            fundamental = np.sin(2 * np.pi * f0 * (self.T + tau))
+            capturado = esperado + 0.01 * fundamental  # fundamental 1 % maior, distúrbio igual
+            nominal, _ = sinais.correlacao_disturbio(
+                esperado, capturado, fs_hz=self.FS, f0_hz=f0, fase_graus=p["fase_graus"],
+            )
+            ajustada, motivo = sinais.correlacao_disturbio_fundamental_ajustada(
+                esperado, capturado, fs_hz=self.FS, f0_hz=f0,
+            )
+            self.assertIsNone(motivo)
+            self.assertGreater(ajustada, 0.9999)
+            self.assertLess(nominal, 0.99)  # a métrica nominal paga o 1 % (a 09 tem distúrbio pequeno)
+            # e o mesmo para 1 % no ganho do sinal inteiro e para um desvio de fase de 1 grau
+            escalado, _ = sinais.correlacao_disturbio_fundamental_ajustada(
+                esperado, 1.01 * esperado, fs_hz=self.FS, f0_hz=f0,
+            )
+            self.assertGreater(escalado, 0.9999)
+            fase = np.sin(2 * np.pi * f0 * (self.T + tau) + math.radians(1.0))
+            defasado, _ = sinais.correlacao_disturbio_fundamental_ajustada(
+                esperado, esperado - fundamental + fase, fs_hz=self.FS, f0_hz=f0,
+            )
+            self.assertGreater(defasado, 0.999)
+
+    def test_fundamental_ajustada_distingue_distubio_diferente(self):
+        esperado, p = self._09(60.0)
+        outro, _ = self._09(60.0, seed=6)
+        valor, _ = sinais.correlacao_disturbio_fundamental_ajustada(esperado, outro, fs_hz=self.FS, f0_hz=60.0)
+        self.assertLess(abs(valor), 0.6)
+        # sinal trocado no distúrbio: -1
+        tau = p["fase_graus"] / (360.0 * 60.0)
+        fundamental = np.sin(2 * np.pi * 60.0 * (self.T + tau))
+        invertido = fundamental - (esperado - fundamental)
+        valor, _ = sinais.correlacao_disturbio_fundamental_ajustada(esperado, invertido, fs_hz=self.FS, f0_hz=60.0)
+        self.assertLess(valor, -0.999)
+
+    def test_fundamental_ajustada_degenerados_como_na_metrica_nominal(self):
+        fundamental = np.sin(2 * np.pi * 60.0 * self.T)
+        # 01: só a fundamental
+        valor, motivo = sinais.correlacao_disturbio_fundamental_ajustada(
+            fundamental, 1.02 * fundamental, fs_hz=self.FS, f0_hz=60.0,
+        )
+        self.assertIsNone(valor)
+        self.assertTrue(motivo)
+        # 19: fundamental + offset DC puro
+        valor, motivo = sinais.correlacao_disturbio_fundamental_ajustada(
+            fundamental + 0.05, fundamental + 0.05, fs_hz=self.FS, f0_hz=60.0,
+        )
+        self.assertIsNone(valor)
+        self.assertTrue(motivo)
+        # capturado só com a fundamental (sem distúrbio) e formas incompatíveis
+        esperado, _ = self._09(60.0)
+        valor, motivo = sinais.correlacao_disturbio_fundamental_ajustada(
+            esperado, fundamental, fs_hz=self.FS, f0_hz=60.0,
+        )
+        self.assertIsNone(valor)
+        self.assertTrue(motivo)
+        valor, motivo = sinais.correlacao_disturbio_fundamental_ajustada(
+            esperado, esperado[:-1], fs_hz=self.FS, f0_hz=60.0,
+        )
+        self.assertIsNone(valor)
+        self.assertIn("incompat", motivo)
+
+    def _sessao_09_com_fundamental_1_pct_maior(self):
+        import analisar_sessao
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        (tmp / "metadata").mkdir()
+        voltage, p = self._09(60.0)
+        md = {"classe": "OSCILLATORY_TRANSIENT", "fs_hz": self.FS, "id_captura": "09-0001", "f0_hz": 60.0,
+              "parametros": {}, "pontos": 6000, "seed": 5, "simulado": False, "nivel_indice": 0,
+              "sorteio_posicao": True, "fase_graus": p["fase_graus"], "tensao_base_rms": 127.0}
+        esperado = analisar_sessao._reconstruir_esperado("09", md)
+        np.testing.assert_allclose(esperado, voltage, atol=1e-12)
+        fundamental = np.sin(2 * np.pi * 60.0 * (self.T + p["fase_graus"] / (360.0 * 60.0)))
+        np.savez(
+            tmp / "09_oscillatory_transient_cap01.npz", tempo_ms=self.T * 1000.0,
+            tensao_pu=(esperado + 0.01 * fundamental).reshape(1, -1), classe="OSCILLATORY_TRANSIENT",
+            id_captura=np.array(["09-0001"], dtype=object),
+        )
+        (tmp / "metadata" / "09_oscillatory_transient.jsonl").write_text(json.dumps(md) + "\n", encoding="utf-8")
+        return tmp, md, esperado, esperado + 0.01 * fundamental
+
+    def test_analisar_sessao_expoe_a_correlacao_com_a_fundamental_ajustada(self):
+        import io
+        import analisar_sessao
+        tmp, _, _, _ = self._sessao_09_com_fundamental_1_pct_maior()
+        relatorio = analisar_sessao.analisar_sessao(tmp)
+        linha = relatorio[0]
+        self.assertGreater(linha["correlacao_disturbio_fundamental_ajustada"], 0.9999)
+        self.assertLess(linha["correlacao_disturbio"], 0.99)
+        self.assertIsNone(linha["correlacao_disturbio_fundamental_ajustada_motivo"])
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as saida:
+            self.assertEqual(analisar_sessao.main([str(tmp)]), 0)
+        self.assertIn("fund.aj.", saida.getvalue())
+        self.assertIn("1.000", saida.getvalue())
+
+    def test_html_mostra_a_correlacao_com_a_fundamental_ajustada(self):
+        import relatorio_html
+        _, md, esperado, medida = self._sessao_09_com_fundamental_1_pct_maior()
+        captura = relatorio_html.Captura(
+            arquivo=Path("09_oscillatory_transient_cap01.npz"), linha=0, id_captura="09-0001", classe="OSCILLATORY_TRANSIENT",
+            sinal=medida, fs_hz=self.FS, f0_hz=60.0, metadado=md, inicio_nominal=0, pontos_nominais=6000,
+            recorte={"origem": "teste"},
+        )
+        correlacoes = relatorio_html._correlacoes(captura, esperado)
+        self.assertGreater(correlacoes["disturbio_fund_ajustada"], 0.9999)
+        self.assertLess(correlacoes["disturbio"], 0.99)
+        captura.correlacoes = correlacoes
+        self.assertIn("fundamental ajustada 1.000", relatorio_html.tabela_metadados(captura))
+
+    # -- 09 nas ferramentas da cópia em 100 ms -----------------------------
+
+    def _sessao_09_sorteada(self, f0, seed, hipotese):
+        import gerar_tres_versoes as gtv
+        import modelo_lista_fonte as modelo
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        (tmp / "metadata").mkdir()
+        (tmp / "tres_versoes").mkdir()
+        registro = {
+            "id_captura": "09-0001", "classe": "OSCILLATORY_TRANSIENT", "pontos": 6000, "fs_hz": self.FS, "f0_hz": f0,
+            "tensao_base_rms": 127.0, "inicio_janela": 600, "seed": seed, "parametros": {}, "nivel_indice": 0,
+            "sorteio_posicao": True, "perfil": "literatura",
+            "tres_versoes": {"arquivo": "tres_versoes/09_osc.npz", "programada": "TRACe+LIST"},
+        }
+        versoes = gtv.reconstruir_versoes(registro)
+        programacao = AmetekMX30.montar_programacao(versoes["forma_bancada"], base_voltage_rms=127.0, frequency_hz=f0)
+        self.assertIn("TRACe", versoes["origem"])
+        if hipotese:
+            medida = modelo.prever_forma(programacao, hipotese[0], **hipotese[1])
+        else:
+            medida = programacao.programada_pu()
+        (tmp / "metadata" / "09_osc.jsonl").write_text(json.dumps(registro) + "\n", encoding="utf-8")
+        np.savez(
+            tmp / "tres_versoes" / "09_osc.npz", classe="OSCILLATORY_TRANSIENT", id_captura=np.array(["09-0001"], dtype=object),
+            tempo_ms=np.arange(6000) / 30.0, modelo_pu=versoes["modelo"][np.newaxis, :], medida_pu=medida[np.newaxis, :],
+            programada_pu=programacao.programada_pu()[np.newaxis, :], inicio_janela=np.array(600),
+            origem_programada=np.array(versoes["origem"]),
+        )
+        return tmp, programacao, medida
+
+    def test_ferramentas_da_copia_em_100ms_rodam_numa_09_sorteada_e_acusam_a_copia(self):
+        import modelo_lista_fonte as modelo
+        script = _carregar_script("diag_ciclos_trace")
+        copia = ("copia_no_instante", {"t_s": 0.100, "ganho": 0.5, "modo": "somar"})
+        hipoteses = {"ideal": ("ideal", {}), "copia_de_meio_ganho_em_100ms": copia}
+        for f0 in (50.0, 60.0):
+            for seed in (3, 11):
+                sessao, programacao, medida = self._sessao_09_sorteada(f0, seed, copia)
+                capturas = script.carregar_sessao(sessao, classes=["09"], usar_forma_bancada=True)
+                self.assertEqual(len(capturas), 1)
+                self.assertIsNotNone(capturas[0].forma_bancada_pu)  # reconstruída do metadata sorteado
+                r = script.analisar_captura(capturas[0])
+                self.assertGreater(r["residuo_no_instante"]["max_abs_pu"], 0.1)
+                self.assertAlmostEqual(r["residuo_no_instante"]["instante_ms"], 100.0, delta=2.5)
+                ranking = modelo.confrontar(programacao, medida, hipoteses)
+                self.assertEqual(ranking[0]["nome"], "copia_de_meio_ganho_em_100ms")
+                self.assertLess(ranking[0]["rms_residuo_pu"], 1e-9)
+                self.assertGreater(ranking[1]["rms_residuo_pu"], 0.01)
+                # controle: sem a cópia, nada é acusado
+                sessao, programacao, medida = self._sessao_09_sorteada(f0, seed, None)
+                r = script.analisar_captura(script.carregar_sessao(sessao, classes=["09"], usar_forma_bancada=True)[0])
+                self.assertIsNone(r["troca"])
+                self.assertLess(r["residuo_no_instante"]["max_abs_pu"], 1e-6)
+
+    # -- 06: o que a TRACE por ciclo não reproduz ---------------------------
+
+    def test_06_a_perda_na_trace_e_so_a_media_por_ciclo_que_a_fonte_remove(self):
+        experimento = _load_experimento("06")
+        piores = []
+        for f0 in (50.0, 60.0):
+            n = int(round(self.FS / f0))
+            for seed in range(12):
+                voltage, p = experimento.gerar(self.T, f0, seed % 3, np.random.default_rng(seed))
+                programada = AmetekMX30.montar_programacao(voltage, base_voltage_rms=127.0, frequency_hz=f0).programada_pu()
+                ciclos = voltage.reshape(-1, n)
+                sem_media = (ciclos - ciclos.mean(axis=1, keepdims=True)).reshape(-1)
+                completo, _ = sinais.correlacao_disturbio(
+                    voltage, programada, fs_hz=self.FS, f0_hz=f0, fase_graus=p["fase_graus"],
+                )
+                sem_dc, _ = sinais.correlacao_disturbio(
+                    sem_media, programada, fs_hz=self.FS, f0_hz=f0, fase_graus=p["fase_graus"],
+                )
+                self.assertGreater(sem_dc, 0.999)          # a TRACE reproduz o modelo sem a média de cada ciclo
+                self.assertLessEqual(completo, sem_dc + 1e-9)
+                piores.append((completo, p["flicker_hz"]))
+        piores.sort()
+        self.assertLess(piores[0][0], 0.95)                # a perda existe (flicker alto)
+        self.assertGreater(piores[0][1], 17.0)             # e cresce com a frequência do flicker
+
+
 if __name__ == "__main__":
     unittest.main()
