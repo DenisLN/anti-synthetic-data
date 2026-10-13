@@ -1,8 +1,12 @@
+import contextlib
 import importlib.util
+import io
 import json
 import logging
 import math
+import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -7384,6 +7388,173 @@ class RunListaTests(unittest.TestCase):
     def test_help_documenta_a_lista(self):
         self.assertIn("run 01-07,09-20", self.cli.HELP_TEXT)
         self.assertIn("EXECUTAR-CLASSES-", self.cli.HELP_TEXT)
+
+
+class VerificadorSessaoBancadaTests(unittest.TestCase):
+    """Spec 20: ``scripts/verificar_sessao_bancada.py`` numa sessão SINTÉTICA
+    (formato v1.15: ``metadata/*.jsonl`` + um ``.npz`` por captura) e o
+    ``diag_acdc_amplitude.py --simulado``."""
+
+    FS = 30_000.0
+    MARGEM_ANTES = 600
+    TOTAL = 8100
+
+    @classmethod
+    def setUpClass(cls):
+        caminho = PROJECT_ROOT / "scripts" / "verificar_sessao_bancada.py"
+        spec = importlib.util.spec_from_file_location("verificar_sessao_bancada_teste", caminho)
+        cls.v = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = cls.v  # @dataclass com `from __future__ import annotations` exige
+        spec.loader.exec_module(cls.v)
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="verificador_"))
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        (self.tmp / "metadata").mkdir()
+        self.linhas = {}
+
+    def _gravar(self, id_captura, nome_arquivo, registro, metadado):
+        np.savez(
+            self.tmp / nome_arquivo, classe="X", id_captura=np.array([id_captura], dtype=object),
+            tempo_ms=np.arange(registro.size) / self.FS * 1000.0, tensao_pu=registro[np.newaxis, :],
+        )
+        self.linhas.setdefault(nome_arquivo.split("_")[0], []).append(metadado)
+        for classe, registros in self.linhas.items():
+            (self.tmp / "metadata" / f"{classe}.jsonl").write_text(
+                "\n".join(json.dumps(r) for r in registros) + "\n", encoding="utf-8",
+            )
+
+    def _base(self, id_captura, inicio_janela, pre_trigger_s, f0=60.0):
+        previsto = int(round(pre_trigger_s * self.FS)) + self.MARGEM_ANTES
+        return {
+            "id_captura": id_captura, "fs_hz": self.FS, "f0_hz": f0, "pontos": 6000,
+            "amostras_totais": self.TOTAL, "margem_amostras_antes": self.MARGEM_ANTES,
+            "pre_trigger_s": pre_trigger_s, "inicio_janela": inicio_janela,
+            "indice_trigger": inicio_janela + int(round(pre_trigger_s * self.FS)),
+            "pre_trigger_desvio_amostras": inicio_janela + int(round(pre_trigger_s * self.FS)) - previsto,
+        }
+
+    def _sag(self, numero, t0, d, nivel=0.5, fase_graus=123.4, desvio=1, f0=60.0):
+        iw = self.MARGEM_ANTES + desvio
+        r = (np.arange(self.TOTAL) - iw) / self.FS
+        x = np.sin(2 * np.pi * f0 * r + np.deg2rad(fase_graus))
+        x[(r >= t0) & (r < t0 + d)] *= nivel
+        id_captura = f"02-{numero:04d}"
+        meta = dict(self._base(id_captura, iw, t0, f0), inicio_disturbio_s=t0, duracao_s=d, parametros={"sag_pu": nivel})
+        self._gravar(id_captura, f"02_sag_{numero}.npz", x, meta)
+        return id_captura
+
+    def _deriva(self, numero, inicio_hz, fim_hz, salto_graus=0.0, fase_graus=40.0):
+        iw = self.MARGEM_ANTES
+        k = np.arange(self.TOTAL) - iw
+        freq = np.where(k < 3000, inicio_hz, fim_hz)
+        fase = np.zeros(self.TOTAL)
+        fase[1:] = 2 * np.pi * np.cumsum(freq[:-1]) / self.FS
+        fase += np.deg2rad(salto_graus) * (k >= 3000)
+        x = np.sin(fase + np.deg2rad(fase_graus))
+        id_captura = f"18-{numero:04d}"
+        meta = dict(self._base(id_captura, iw, 0.0), parametros={"start_hz": inicio_hz, "end_hz": fim_hz})
+        self._gravar(id_captura, f"18_frequency_drift_{numero}.npz", x, meta)
+        return id_captura
+
+    def test_largura_do_pulso_medida_bate_com_a_programada(self):
+        casos = [(0.0167, 0.0083), (0.0476, 0.1032), (0.0300, 0.0400), (0.0170, 0.1650)]
+        for numero, (t0, d) in enumerate(casos, start=1):
+            for nivel in (0.1, 0.5, 0.9):
+                self._sag(numero * 10 + int(nivel * 10), t0, d, nivel=nivel, fase_graus=17.0 * numero)
+        resultados = self.v.verificar_capturas(self.v.carregar_sessao(self.tmp))
+        larguras = [r for r in resultados if r.verificacao == "largura_pulse"]
+        self.assertEqual(len(larguras), len(casos) * 3)
+        for r in larguras:
+            self.assertIsNotNone(r.ok, r.nota)
+            self.assertLessEqual(abs(r.valor), 1.5, (r.id_captura, r.nota))
+            self.assertTrue(r.ok, (r.id_captura, r.nota))
+
+    def test_largura_errada_e_reprovada(self):
+        # O metadata diz 100 ms, mas o sinal tem 60 ms de afundamento.
+        self._sag(1, 0.040, 0.060)
+        captura = self.v.carregar_sessao(self.tmp)[0]
+        captura.metadado["duracao_s"] = 0.100
+        r = [x for x in self.v.verificar_capturas([captura]) if x.verificacao == "largura_pulse"][0]
+        self.assertFalse(r.ok)
+        self.assertAlmostEqual(r.valor, -40.0, delta=1.5)
+
+    def test_pre_trigger_desvio_do_campo_e_limite(self):
+        self._sag(1, 0.0476, 0.1032, desvio=1)
+        self._sag(2, 0.0300, 0.0500, desvio=-2)
+        self._sag(3, 0.0300, 0.0500, desvio=5)
+        resultados = {
+            r.id_captura: r for r in self.v.verificar_capturas(self.v.carregar_sessao(self.tmp))
+            if r.verificacao == "pre_trigger"
+        }
+        self.assertEqual([resultados[f"02-000{i}"].valor for i in (1, 2, 3)], [1.0, -2.0, 5.0])
+        self.assertEqual([resultados[f"02-000{i}"].ok for i in (1, 2, 3)], [True, True, False])
+
+    def test_pre_trigger_sem_o_campo_e_calculado_do_metadata(self):
+        meta = self._base("02-0001", 601, 0.0476)
+        del meta["pre_trigger_desvio_amostras"]
+        self.assertEqual(self.v.desvio_do_pre_trigger(meta), 1)
+        del meta["indice_trigger"]
+        self.assertIsNone(self.v.desvio_do_pre_trigger(meta))
+
+    def test_fase_continua_da_18_da_salto_zero_nos_dois_sentidos_e_a_50_e_60_hz(self):
+        for numero, (a, b) in enumerate([(57.0, 63.0), (63.0, 57.0), (47.0, 53.0), (53.0, 47.0)], start=1):
+            self._deriva(numero, a, b, fase_graus=33.0 * numero)
+        resultados = [
+            r for r in self.v.verificar_capturas(self.v.carregar_sessao(self.tmp)) if r.verificacao == "fase_18"
+        ]
+        self.assertEqual(len(resultados), 4)
+        for r in resultados:
+            self.assertTrue(r.ok, (r.id_captura, r.valor, r.nota))
+            self.assertLess(abs(r.valor), 1.5, r.id_captura)
+
+    def test_salto_de_fase_injetado_na_18_e_detectado(self):
+        self._deriva(1, 57.0, 63.0, salto_graus=40.0)
+        self._deriva(2, 47.0, 53.0, salto_graus=-60.0)
+        resultados = {
+            r.id_captura: r for r in self.v.verificar_capturas(self.v.carregar_sessao(self.tmp))
+            if r.verificacao == "fase_18"
+        }
+        self.assertAlmostEqual(resultados["18-0001"].valor, 40.0, delta=3.0)
+        self.assertAlmostEqual(resultados["18-0002"].valor, -60.0, delta=3.0)
+        self.assertFalse(resultados["18-0001"].ok)
+        self.assertFalse(resultados["18-0002"].ok)
+
+    def test_main_codigos_de_saida_e_json(self):
+        saida = self.tmp / "saida.json"
+        self._sag(1, 0.0476, 0.1032)
+        self._deriva(1, 57.0, 63.0)
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            codigo = self.v.main([str(self.tmp), "--json", str(saida)])
+        self.assertEqual(codigo, 0, buffer.getvalue())
+        self.assertIn("fase_18: 1/1 OK", buffer.getvalue())
+        self.assertIn("largura_pulse: 1/1 OK", buffer.getvalue())
+        self.assertEqual(len(json.loads(saida.read_text(encoding="utf-8"))), 4)
+        self._deriva(2, 47.0, 53.0, salto_graus=90.0)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(self.v.main([str(self.tmp)]), 1)
+
+    def test_main_sessao_sem_nada_a_verificar_sai_com_2(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(self.v.main([str(self.tmp)]), 2)
+
+    def test_pasta_que_nao_e_sessao_levanta(self):
+        with self.assertRaises(FileNotFoundError):
+            self.v.carregar_sessao(self.tmp / "nao_existe")
+
+    def test_diag_acdc_amplitude_simulado_continua_passando(self):
+        saida = self.tmp / "diag"
+        ambiente = {k: v for k, v in os.environ.items() if k != "BENCH_MODE"}
+        r = subprocess.run(
+            [sys.executable, str(PROJECT_ROOT / "scripts" / "diag_acdc_amplitude.py"), "--simulado",
+             "--probe", "500", "--vrms", "127", "--hz", "60", "--testar-compensacao", "--saida", str(saida)],
+            capture_output=True, text=True, env=ambiente, timeout=300,
+        )
+        self.assertEqual(r.returncode, 0, r.stdout[-2000:] + r.stderr[-2000:])
+        self.assertIn("ACDC / STEP / off 0", r.stdout)
+        self.assertIn("V_prog=", r.stdout)
+        self.assertTrue(list(saida.glob("diag_acdc_amplitude-*.json")))
 
 
 if __name__ == "__main__":

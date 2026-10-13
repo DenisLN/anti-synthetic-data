@@ -1869,6 +1869,19 @@ class AmetekMX30:
             logger.exception("Não foi possível confirmar shutdown da AMETEK")
 
     def measure_voltage(self) -> float:
+        # ATENÇÃO (ACDC): com ``SOURce:MODE ACDC`` (classe 19) esta leitura é o
+        # RMS TOTAL (CA + CC), não só a componente alternada, apesar do texto
+        # do manual ("ac rms voltage", Manual.txt:3031). Evidência: sessão
+        # run02 de 2026-10-07, transcrição linha 8310 (offset de 5,58 V já
+        # programado, antes do degrau CA: a fonte leu 5,491 V); a CA é
+        # sqrt(MEAS^2 - offset^2). Interpretação a partir de UMA leitura
+        # pré-degrau e da consistência das 3 capturas (relatório
+        # acdc_amplitude_VERIFICAR, §1.3); ``MEASure:VOLTage:DC?`` fecha a
+        # dúvida (scripts/diag_acdc_amplitude.py). Usos hoje: a verificação da
+        # cadeia de medição (``mestre.verificar_cadeia_de_medicao``, sempre em
+        # AC, sem efeito) e o log de ``set diagnostico on``
+        # (``_log_diagnostico``, campo ``tensao_v``), que em ACDC registra o
+        # RMS total.
         return float(self.query("MEASure:VOLTage:AC?"))
 
     def measure_current(self) -> float:
