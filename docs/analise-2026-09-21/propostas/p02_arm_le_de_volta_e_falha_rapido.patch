@@ -1,0 +1,306 @@
+diff --git a/logica/ametek_orm.py b/logica/ametek_orm.py
+index c3f5eef..60aa585 100644
+--- a/logica/ametek_orm.py
++++ b/logica/ametek_orm.py
+@@ -68,6 +68,11 @@ class AmetekMX30:
+     # Teto documentado do CSINe nativo (cap. 6.4 do manual SCPI). Acima disso,
+     # a classe 05 (HARMONICS) desvia para TRACe (gerar() + program_capture()).
+     MAX_CSINE_THD_PCT = 20.0
++    # Tolerância relativa do readback numérico de arm() (VOLTage:TRIGgered?,
++    # PULSe:WIDTh?). A fonte arredonda o que recebe; 0,5% é folgado para
++    # arredondamento e apertado o bastante para pegar um valor PRESO de
++    # outra classe (242 V contra 220 V = 10%).
++    TOLERANCIA_READBACK = 0.005
+ 
+     def __init__(
+         self,
+@@ -357,6 +362,25 @@ class AmetekMX30:
+             self._sim["trigger_state"] = "IDLE"
+         elif upper in {"ABORT", "ABOR", "*RST"}:
+             self._sim["trigger_state"] = "IDLE"
++        # Modos e valor de transiente: o simulador precisa responder às
++        # consultas de readback que arm() faz (ver arm()), senão o modo
++        # simulado deixaria de exercitar exatamente a validação nova.
++        if upper.startswith(("VOLTAGE:MODE ", "VOLT:MODE ")):
++            self._sim["voltage_mode"] = upper.rsplit(None, 1)[-1]
++        elif upper.startswith(("FUNCTION:MODE ", "FUNC:MODE ", "SOURCE:FUNCTION:MODE ")):
++            self._sim["function_mode"] = upper.rsplit(None, 1)[-1]
++        elif upper.startswith(("FREQUENCY:MODE ", "FREQ:MODE ", "SOURCE:FREQUENCY:MODE ")):
++            self._sim["frequency_mode"] = upper.rsplit(None, 1)[-1]
++        elif upper.startswith(("VOLTAGE:TRIGGERED ", "VOLT:TRIG ")):
++            try:
++                self._sim["voltage_triggered"] = float(command.split()[-1])
++            except ValueError:
++                pass
++        elif upper.startswith(("PULSE:WIDTH ", "PULS:WIDT ")):
++            try:
++                self._sim["pulse_width"] = float(command.split()[-1])
++            except ValueError:
++                pass
+ 
+     def _simulate_query(self, command: str) -> str:
+         upper = command.upper()
+@@ -370,6 +394,16 @@ class AmetekMX30:
+             return "1" if self._sim["output"] else "0"
+         if upper in {"TRIGGER:STATE?", "TRIG:STATE?"}:
+             return str(self._sim["trigger_state"])
++        if upper in {"VOLTAGE:MODE?", "VOLT:MODE?"}:
++            return str(self._sim.get("voltage_mode", "FIX"))
++        if upper in {"FUNCTION:MODE?", "FUNC:MODE?", "SOURCE:FUNCTION:MODE?"}:
++            return str(self._sim.get("function_mode", "FIX"))
++        if upper in {"FREQUENCY:MODE?", "FREQ:MODE?", "SOURCE:FREQUENCY:MODE?"}:
++            return str(self._sim.get("frequency_mode", "FIX"))
++        if upper in {"VOLTAGE:TRIGGERED?", "VOLT:TRIG?"}:
++            return str(self._sim.get("voltage_triggered", 0.0))
++        if upper in {"PULSE:WIDTH?", "PULS:WIDT?"}:
++            return str(self._sim.get("pulse_width", 0.0))
+         if upper == "TRACE:CATALOG?":
+             return ",".join(sorted(self._sim["trace_names"]))
+         list_axis = self._list_axis_for_points_query(upper)
+@@ -1086,6 +1120,9 @@ class AmetekMX30:
+         # ABORt aqui não desliga OUTPUT (a saída fica ligada durante toda a
+         # bateria — ver energize_baseline()). Só reseta o sistema de trigger.
+         self.write("ABORt")
++        # O caminho LIST tem a própria validação (arm_transient lê 9
++        # parâmetros): zera a expectativa do caminho nativo.
++        self._transiente_esperado = {}
+         # Retorna ao modo FIXed antes de reprogramar o LIST. O Rev 5.53
+         # rejeita (-113) comandos LIST quando o instrumento ainda está em
+         # FUNCtion:MODE LIST de uma captura anterior. *CLS limpa erros
+@@ -1279,21 +1316,8 @@ class AmetekMX30:
+         sem tolerar a consulta que estoura, a PRIMEIRA tentativa derrubava a
+         bateria inteira (visto na bancada na classe 05/HARMONICS, logo depois
+         de ``FUNCtion:SHAPe CSINusoid``)."""
+-        idle_deadline = time.monotonic() + timeout_s
+-        last_state = ""
+-        while time.monotonic() < idle_deadline:
+-            state = self._query_tolerante("TRIGger:STATe?")
+-            if state is None:
+-                continue
+-            last_state = state
+-            if last_state.startswith("IDLE"):
+-                break
+-            time.sleep(0.05)
+-        else:
+-            raise TimeoutError(
+-                f"AMETEK não estava IDLE antes do INIT em {timeout_s:.1f} s; "
+-                f"último estado={last_state!r}"
+-            )
++        last_state = self.aguardar_idle(timeout_s)
++        self._conferir_transiente_programado()
+         # *WAI (cap. 5.14/7.7 do manual): comandos que afetam "list and
+         # trigger actions" são processados EM PARALELO pela Rev. 5.53 — o
+         # mesmo motivo documentado em configure_harmonics_csine() para
+@@ -1323,7 +1347,79 @@ class AmetekMX30:
+             if last_state.startswith(("ARM", "WTRIG")):
+                 return
+             time.sleep(0.05)
+-        raise TimeoutError(f"AMETEK não entrou em ARM/WTRIG; último estado={last_state!r}")
++        raise TimeoutError(
++            f"AMETEK não entrou em ARM/WTRIG; último estado={last_state!r}. "
++            f"{self._pista_de_init_ignorado(last_state)}"
++        )
++
++    def _pista_de_init_ignorado(self, ultimo_estado: str) -> str:
++        """Mensagem de diagnóstico para o INIT que não teve efeito.
++
++        Manual p. 129: "If the trigger system is not in the Idle state, the
++        initiate commands are ignored"; Apêndice C, p. 214: ``-220 "Init
++        ignored"``. A assinatura observada na bancada (relatório 01 §1.3 B5,
++        classe 05) é exatamente esta: nenhum erro no INIT e o estado preso em
++        IDLE. Lê a fila de forma TOLERANTE (a fonte pode já estar muda) só
++        para enriquecer a mensagem — nunca troca a exceção original."""
++        try:
++            erros = self.check_errors()
++        except Exception:  # noqa: BLE001 - diagnóstico best-effort
++            return "Não foi possível ler SYSTem:ERRor? para diagnosticar."
++        if any(codigo == -220 for codigo, _ in erros):
++            return (
++                f"Fila SCPI contém -220 'Init ignored' ({erros}): o INITiate foi "
++                "descartado porque o sistema de trigger não estava Idle (manual "
++                "p. 129). Suspeite do falso IDLE documentado na p. 132."
++            )
++        if erros:
++            return f"Fila SCPI após o INIT: {erros}."
++        if ultimo_estado.startswith("IDLE"):
++            return (
++                "Fila SCPI limpa e estado preso em IDLE — assinatura de INITiate "
++                "ignorado em silêncio (manual p. 129)."
++            )
++        return "Fila SCPI limpa."
++
++    def _conferir_transiente_programado(self) -> None:
++        """Lê de volta o transiente nativo recém-programado e recusa divergência.
++
++        Simetria com ``arm_transient()``, que já lê 9 parâmetros do caminho
++        LIST e é justamente o caminho que funcionou nas duas sessões de
++        2026-09-16 (relatório 01 §1.2). Consulta só cabeçalhos que a Rev. 5.53
++        implementa como QUERY: ``VOLTage:MODE?``, ``VOLTage:TRIGgered?``,
++        ``PULSe:WIDTh?``, ``FUNCtion:MODE?`` e ``SOURce:FREQuency:MODE?``.
++        ``FUNCtion:SHAPe?`` e ``SOURce:MODE?`` ficam de fora de propósito: a
++        Rev. 5.53 aceita os dois como COMANDO e não como QUERY, devolvendo
++        ``-113`` (ver docstring de ``aguardar_resposta``)."""
++        if not self._transiente_esperado:
++            return
++        lidos: Dict[str, str] = {}
++        divergencias: Dict[str, str] = {}
++        for consulta, esperado in self._transiente_esperado.items():
++            resposta = self.query(consulta).strip()
++            lidos[consulta] = resposta
++            if isinstance(esperado, str):
++                # A Rev. 5.53 responde na forma curta ("FIX", "PULS"): aceita
++                # qualquer prefixo comum de 3+ letras nos dois sentidos.
++                obtido = resposta.upper().strip('"')
++                alvo = esperado.upper()
++                if not (obtido.startswith(alvo) or alvo.startswith(obtido)) or not obtido:
++                    divergencias[consulta] = f"esperado {esperado!r}, lido {resposta!r}"
++                continue
++            try:
++                valor = float(resposta)
++            except (TypeError, ValueError):
++                divergencias[consulta] = f"esperado {esperado!r}, resposta não numérica {resposta!r}"
++                continue
++            alvo = float(esperado)
++            if abs(valor - alvo) > max(1e-6, abs(alvo) * self.TOLERANCIA_READBACK):
++                divergencias[consulta] = f"esperado {alvo:.6g}, lido {valor:.6g}"
++        if divergencias:
++            raise InstrumentHardwareError(
++                "A AMETEK NÃO aplicou o transiente nativo programado "
++                f"({divergencias}); leitura completa={lidos}. Captura recusada em vez "
++                "de gravar dado rotulado errado (H-NATIVO, relatório 01 §1.2)."
++            )
+ 
+     def arm_transient(self, timeout_s: float = 20.0) -> None:
+         # program_capture() já envia ABORt antes de configurar a lista. Não
+diff --git a/tests/test_offline.py b/tests/test_offline.py
+index 536af78..5e059ca 100644
+--- a/tests/test_offline.py
++++ b/tests/test_offline.py
+@@ -1940,5 +1940,127 @@ class CaminhoNativoIntegridadeTests(unittest.TestCase):
+         self.assertEqual(escritas(sem_log.command_log), escritas(com_log.command_log))
+ 
+ 
++class ArmLeDeVoltaTests(unittest.TestCase):
++    """P02 — ``arm()`` (caminho nativo) lê de volta o que foi escrito.
++
++    Assimetria que deixou H-NATIVO passar em silêncio por duas sessões
++    (relatório 01 §1.2): ``arm_transient()`` (LIST) lê 9 parâmetros do
++    instrumento e recusa divergência; ``arm()`` (nativo) não lia nada.
++    NÃO consultamos ``FUNCtion:SHAPe?``/``SOURce:MODE?``: a Rev. 5.53 não os
++    implementa como QUERY e devolve ``-113`` (documentado na docstring de
++    ``aguardar_resposta``) — o relatório 01 recomenda ler ``FUNCtion:SHAPe?``
++    e nisso ele está errado para este firmware."""
++
++    def _fonte(self, **kwargs):
++        kwargs.setdefault("max_voltage_rms", 300.0)
++        kwargs.setdefault("max_peak_v", 425.0)
++        kwargs.setdefault("max_current_a", 0.5)
++        return AmetekMX30(simulated=True, **kwargs)
++
++    def test_arm_consulta_os_parametros_do_step(self):
++        fonte = self._fonte()
++        fonte.trigger_step(127.0)
++        fonte.command_log.clear()
++        fonte.arm(timeout_s=2.0)
++        consultas = [c.upper() for c in fonte.command_log if c.endswith("?")]
++        self.assertIn("VOLTAGE:MODE?", consultas)
++        self.assertIn("VOLTAGE:TRIGGERED?", consultas)
++        self.assertIn("FUNCTION:MODE?", consultas)
++        self.assertIn("SOURCE:FREQUENCY:MODE?", consultas)
++        self.assertNotIn("SOURCE:FUNCTION:SHAPE?", consultas)
++        self.assertNotIn("SOURCE:MODE?", consultas)
++
++    def test_arm_consulta_pulse_width_so_em_modo_pulse(self):
++        fonte = self._fonte()
++        fonte.trigger_step(127.0)
++        fonte.command_log.clear()
++        fonte.arm(timeout_s=2.0)
++        self.assertNotIn("PULSE:WIDTH?", [c.upper() for c in fonte.command_log])
++        fonte.trigger()  # devolve o simulador ao estado IDLE, como na bancada
++        fonte.trigger_pulse(12.7, width_s=0.060)
++        fonte.command_log.clear()
++        fonte.arm(timeout_s=2.0)
++        self.assertIn("PULSE:WIDTH?", [c.upper() for c in fonte.command_log])
++
++    def test_arm_recusa_quando_voltage_triggered_nao_pegou(self):
++        """O caso exato da sessão 2: a classe escreveu 220 V e a fonte
++        continuou com 242 V (nível anterior). Sem readback isso virou dado
++        rotulado errado; com readback vira falha de captura."""
++        fonte = self._fonte()
++        fonte.trigger_pulse(220.0, width_s=0.060)
++        original = fonte.query
++
++        def query_valor_preso(command):
++            if command.strip().upper().startswith("VOLTAGE:TRIGGERED?"):
++                return "242.0"
++            return original(command)
++
++        fonte.query = query_valor_preso
++        with self.assertRaises(InstrumentHardwareError) as ctx:
++            fonte.arm(timeout_s=2.0)
++        mensagem = str(ctx.exception)
++        self.assertIn("VOLTage:TRIGgered", mensagem)
++        self.assertIn("242", mensagem)
++
++    def test_arm_recusa_quando_function_mode_ficou_em_list(self):
++        """Candidato n.º 2 de H-NATIVO: lista de forma residual de uma classe
++        waveform anterior ainda ativa no *TRG nativo."""
++        fonte = self._fonte()
++        fonte.trigger_step(127.0)
++        original = fonte.query
++
++        def query_modo_residual(command):
++            if command.strip().upper().startswith("FUNCTION:MODE?"):
++                return "LIST"
++            return original(command)
++
++        fonte.query = query_modo_residual
++        with self.assertRaises(InstrumentHardwareError) as ctx:
++            fonte.arm(timeout_s=2.0)
++        self.assertIn("FUNCtion:MODE", str(ctx.exception))
++
++    def test_arm_aceita_abreviacoes_do_firmware(self):
++        """A Rev. 5.53 responde 'FIX'/'PULS'/'STEP' (forma curta SCPI)."""
++        fonte = self._fonte()
++        fonte.trigger_pulse(12.7, width_s=0.060)
++        original = fonte.query
++
++        def query_abreviado(command):
++            upper = command.strip().upper()
++            if upper == "VOLTAGE:MODE?":
++                return "PULS"
++            if upper == "FUNCTION:MODE?":
++                return "FIX"
++            if upper == "SOURCE:FREQUENCY:MODE?":
++                return "FIX"
++            return original(command)
++
++        fonte.query = query_abreviado
++        fonte.arm(timeout_s=2.0)  # não deve levantar
++
++    def test_arm_relata_init_ignorado_lendo_a_fila(self):
++        """Manual p. 129: "If the trigger system is not in the Idle state, the
++        initiate commands are ignored" e p. 214 ``-220 "Init ignored"``.
++        Assinatura observada na classe 05 (relatório 01 §1.3 B5): INIT sem
++        erro e o estado nunca sai de IDLE."""
++        fonte = self._fonte()
++        fonte.trigger_step(127.0)
++        original = fonte.query
++        fila = ['0,"No error"', '-220,"Init ignored"', '0,"No error"']
++
++        def query_preso_em_idle(command):
++            upper = command.strip().upper()
++            if upper.startswith(("TRIGGER:STATE?", "TRIG:STATE?")):
++                return "IDLE"
++            if upper.startswith(("SYST", "SYSTEM")):
++                return fila.pop(0) if fila else '0,"No error"'
++            return original(command)
++
++        fonte.query = query_preso_em_idle
++        with self.assertRaises(TimeoutError) as ctx:
++            fonte.arm(timeout_s=0.3)
++        self.assertIn("220", str(ctx.exception))
++
++
+ if __name__ == "__main__":
+     unittest.main()

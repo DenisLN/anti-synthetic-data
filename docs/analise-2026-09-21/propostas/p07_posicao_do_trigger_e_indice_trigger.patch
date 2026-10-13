@@ -1,0 +1,222 @@
+diff --git a/logica/oscilloscope_orm.py b/logica/oscilloscope_orm.py
+index f24be17..4522ca8 100644
+--- a/logica/oscilloscope_orm.py
++++ b/logica/oscilloscope_orm.py
+@@ -209,8 +209,15 @@ class KeysightDSOX4034A(SCPIMixin, Instrument):
+             ":ACQuire:DIGitizer OFF",
+             ":TIMebase:MODE MAIN",
+             f":TIMebase:RANGe {duration_s:.12g}",
+-            ":TIMebase:REFerence LEFT",
+-            f":TIMebase:POSition {(-pre_trigger_s) or 0.0:.12g}",
++        ):
++            self.write(command)
++            errors = self.check_errors()
++            if errors:
++                raise OscilloscopeError(
++                    f"Keysight rejeitou {command!r} durante configuração da aquisição: {errors}"
++                )
++        self._programar_referencia_horizontal(duration_s=duration_s, pre_trigger_s=pre_trigger_s)
++        for command in (
+             ":ACQuire:POINts:ANALog:AUTO ON",
+             ":ACQuire:SRATe:ANALog:AUTO ON",
+             ":WAVeform:POINts:MODE NORMal",
+@@ -253,6 +260,53 @@ class KeysightDSOX4034A(SCPIMixin, Instrument):
+                 f"Keysight aceitou janela {actual_range} s; esperado {duration_s} s"
+             )
+ 
++    def _programar_referencia_horizontal(self, *, duration_s: float, pre_trigger_s: float) -> None:
++        """Põe a referência horizontal EXATAMENTE na borda esquerda da janela.
++
++        ``:TIMebase:REFerence LEFT`` NÃO é a borda: o manual ([KS] p. 1337) diz
++        "LEFT -- one division from the left side of the screen", e uma divisão
++        é 10% do ``RANGe`` ([KS] p. 1335). Com ``:TIMebase:POSition
++        -pre_trigger`` isso punha o trigger em ``pre_trigger + RANGe/10``
++        dentro do registro — o "atraso de 20 ms" do v1.7 e o "atraso de
++        100 ms" do v1.10 são esse mesmo artefato (H-REF10, relatório 01 §1.1).
++
++        ``:TIMebase:REFerence CUSTom`` + ``:TIMebase:REFerence:LOCation 0.0``
++        ([KS] p. 1337-1338: "0.0 is the left edge") resolve na origem. Se o
++        firmware não aceitar, caímos para ``LEFT`` COMPENSANDO a divisão no
++        comando — e registramos qual dos dois valeu (``referencia_horizontal_
++        efetiva``, gravada no metadata). Em nenhum dos casos o deslocamento
++        fica desconhecido; ``get_waveform()`` ainda confere pela preamble."""
++        self.referencia_horizontal_efetiva = "CUSTOM"
++        try:
++            for command in (":TIMebase:REFerence CUSTom", ":TIMebase:REFerence:LOCation 0.0"):
++                self.write(command)
++                errors = self.check_errors()
++                if errors:
++                    raise OscilloscopeError(f"{command!r} rejeitado: {errors}")
++            referencia = str(self.ask(":TIMebase:REFerence?")).strip().upper()
++            location = float(self.ask(":TIMebase:REFerence:LOCation?"))
++            if not referencia.startswith("CUST") or abs(location) > 1e-6:
++                raise OscilloscopeError(
++                    f"referência horizontal lida de volta como {referencia!r}/{location!r}"
++                )
++        except (OscilloscopeError, ValueError, TypeError) as exc:
++            self.referencia_horizontal_efetiva = "LEFT"
++            logger.warning(
++                "Firmware não aceitou :TIMebase:REFerence CUSTom (%s). Usando LEFT com a "
++                "divisão COMPENSADA em :TIMebase:POSition (%+.6g s). A posição do trigger "
++                "continua conhecida, mas confira indice_trigger no metadata.",
++                exc, duration_s / 10.0,
++            )
++            self.write(":TIMebase:REFerence LEFT")
++            self.assert_no_errors("referência horizontal LEFT")
++        # Com CUSTom/LOCation 0 a referência JÁ é a borda esquerda: POSition é
++        # só -pre_trigger. Com LEFT, a referência está 1 divisão adiante, e a
++        # borda esquerda cai em POSition - RANGe/10 — por isso a soma.
++        compensacao = 0.0 if self.referencia_horizontal_efetiva == "CUSTOM" else duration_s / 10.0
++        posicao = -pre_trigger_s + compensacao
++        self.write(f":TIMebase:POSition {posicao or 0.0:.12g}")
++        self.assert_no_errors("posição da base de tempo")
++
+     def setup_external_trigger(
+         self,
+         *,
+@@ -389,11 +443,23 @@ class KeysightDSOX4034A(SCPIMixin, Instrument):
+             raise OscilloscopeError(
+                 f"Preamble indica somente {actual_rate} Sa/s; mínimo 30000 Sa/s"
+             )
++        # x_origin é o instante (relativo ao TRIGGER) da PRIMEIRA amostra
++        # ([KS] p. 1476, com XREFerence sempre 0 na p. 1477). Antes,
++        # ``time_axis -= time_axis[0]`` jogava fora exatamente essa
++        # informação — a única que diz onde o trigger caiu no registro
++        # (H-REF10). Agora ela é preservada como índice e gravada no
++        # metadata; o eixo devolvido continua começando em zero para não
++        # mudar nem o formato do .npz nem _validar_captura().
++        self.ultimo_x_origin = float(x_origin)
++        self.ultimo_x_increment = float(x_increment)
++        self.ultimo_indice_trigger = int(round(-x_origin / x_increment))
+         time_axis -= time_axis[0]
+         target_time = np.arange(expected_points, dtype=np.float64) / 30_000.0
+-        if time_axis[-1] + x_increment < 0.2 - (0.5 / 30_000.0):
++        cobertura_minima = expected_points / 30_000.0
++        if time_axis[-1] + x_increment < cobertura_minima - (0.5 / 30_000.0):
+             raise OscilloscopeError(
+-                f"Waveform cobre apenas {time_axis[-1] + x_increment:.9f} s; esperado 0.2 s"
++                f"Waveform cobre apenas {time_axis[-1] + x_increment:.9f} s; "
++                f"esperado {cobertura_minima:.9f} s ({expected_points} pontos a 30 kSa/s)"
+             )
+         target_values = np.interp(target_time, time_axis, values)
+         return target_time, target_values
+diff --git a/tests/test_offline.py b/tests/test_offline.py
+index d3bdfe8..d4f4b1f 100644
+--- a/tests/test_offline.py
++++ b/tests/test_offline.py
+@@ -21,7 +21,7 @@ if str(LOGICA_DIR) not in sys.path:
+ from ametek_orm import (  # noqa: E402
+     AmetekMX30, CommunicationError, InstrumentHardwareError, ParameterOutOfBoundsError,
+ )
+-from oscilloscope_orm import KeysightDSOX4034A  # noqa: E402
++from oscilloscope_orm import KeysightDSOX4034A, OscilloscopeError  # noqa: E402
+ from sinais import ruido_awgn, snr_medida  # noqa: E402
+ import sinais  # noqa: E402
+ import mestre  # noqa: E402
+@@ -93,10 +93,11 @@ def _load_gerar(experiment_id: str):
+ class ScriptedVisaConnection:
+     def __init__(self, adapter):
+         self.adapter = adapter
++        self.pontos = 6000
+ 
+     def query_binary_values(self, command, **kwargs):
+         self.adapter.commands.append(command)
+-        return (20 + np.arange(6000, dtype=np.int64) % 200).astype(np.uint8)
++        return (20 + np.arange(self.pontos, dtype=np.int64) % 200).astype(np.uint8)
+ 
+     def close(self):
+         pass
+@@ -169,6 +170,11 @@ class ScriptedAdapter(Adapter):
+         self.last_command = ""
+         self.channel_scale = 10.0
+         self.timebase_range = 0.2
++        # Firmware que ACEITA :TIMebase:REFerence CUSTom ([KS] p. 1337-1338).
++        # Para exercitar o caminho de fallback, os testes trocam estes dois.
++        self.referencia_horizontal = "CUST"
++        self.referencia_location = "0"
++        self.preamble = "0,0,6000,1,3.333333333333e-5,0,0,0.01,0,128"
+ 
+     def write(self, command, **kwargs):
+         self.last_command = command
+@@ -194,8 +200,12 @@ class ScriptedAdapter(Adapter):
+             return str(self.channel_scale)
+         if "TIMEBASE:RANGE?" in command:
+             return str(self.timebase_range)
++        if "TIMEBASE:REFERENCE:LOCATION?" in command:
++            return self.referencia_location
++        if "TIMEBASE:REFERENCE?" in command:
++            return self.referencia_horizontal
+         if "WAVEFORM:PREAMBLE?" in command:
+-            return "0,0,6000,1,3.333333333333e-5,0,0,0.01,0,128"
++            return self.preamble
+         return "0"
+ 
+ 
+@@ -2594,5 +2604,67 @@ class PastaDeSessaoPorRunTests(unittest.TestCase):
+             shutil.rmtree(tmp_dir, ignore_errors=True)
+ 
+ 
++class PosicaoDoTriggerTests(unittest.TestCase):
++    """P07 — H-REF10 (relatório 01 §0 ACHADO 1, confirmada em 02 A1-A6).
++
++    ``:TIMebase:REFerence LEFT`` põe a referência a UMA DIVISÃO da borda
++    esquerda ([KS] p. 1337), ou seja 10% do ``RANGe`` ([KS] p. 1335), e
++    ``get_waveform()`` descartava ``x_origin`` — o único campo da preamble que
++    diz onde o trigger caiu ([KS] p. 1476). Resultado: o trigger caía em
++    ``pre_trigger + janela/10`` e ninguém sabia."""
++
++    def test_referencia_horizontal_e_a_borda_esquerda_de_verdade(self):
++        adapter = ScriptedAdapter()
++        scope = KeysightDSOX4034A(adapter)
++        scope.initialize_safe()
++        scope.configure_acquisition(pre_trigger_s=0.060)
++        joined = chr(10).join(adapter.commands)
++        self.assertIn(":TIMebase:REFerence CUSTom", joined)
++        self.assertIn(":TIMebase:REFerence:LOCation 0", joined)
++        # com a referência na borda esquerda, POSition volta a ser só
++        # -pre_trigger (sem compensação de 1 divisão)
++        self.assertIn(":TIMebase:POSition -0.06", joined)
++        self.assertEqual(scope.referencia_horizontal_efetiva, "CUSTOM")
++
++    def test_fallback_compensa_a_divisao_quando_custom_nao_existe(self):
++        """Se o firmware não aceitar CUSTom, a posição do trigger continua
++        CONHECIDA: compensa-se a divisão no comando e o desvio fica
++        registrado — nunca se deixa o erro de 10% em silêncio."""
++        adapter = ScriptedAdapter()
++        adapter.referencia_horizontal = "LEFT"  # firmware ignorou o CUSTom
++        scope = KeysightDSOX4034A(adapter)
++        scope.initialize_safe()
++        with self.assertLogs("KeysightDSOX4034A", level="WARNING"):
++            scope.configure_acquisition(duration_s=0.2, pre_trigger_s=0.060)
++        joined = chr(10).join(adapter.commands)
++        self.assertIn(":TIMebase:REFerence LEFT", joined)
++        # -(0,060) + 0,200/10 = -0,04
++        self.assertIn(":TIMebase:POSition -0.04", joined)
++        self.assertEqual(scope.referencia_horizontal_efetiva, "LEFT")
++
++    def test_get_waveform_calcula_indice_do_trigger_pela_preamble(self):
++        adapter = ScriptedAdapter()
++        # x_origin = -0,4 s, x_increment = 1/30000 -> trigger na amostra 12000
++        adapter.preamble = "0,0,30000,1,3.3333333333333e-5,-0.4,0,0.01,0,128"
++        adapter.connection.pontos = 30000
++        scope = KeysightDSOX4034A(adapter)
++        scope.initialize_safe()
++        tempo, valores = scope.get_waveform(1, expected_points=30000)
++        self.assertEqual(scope.ultimo_indice_trigger, 12000)
++        self.assertAlmostEqual(scope.ultimo_x_origin, -0.4, places=9)
++        self.assertEqual(tempo.shape, (30000,))
++
++    def test_cobertura_minima_acompanha_a_janela_pedida(self):
++        """O teste antigo era chumbado em 0,2 s: com margin on (janela maior)
++        ele aceitava um registro curto demais. Passa a exigir
++        ``expected_points/30000``."""
++        adapter = ScriptedAdapter()
++        adapter.preamble = "0,0,6000,1,3.3333333333333e-5,-0.02,0,0.01,0,128"
++        scope = KeysightDSOX4034A(adapter)
++        scope.initialize_safe()
++        with self.assertRaises(OscilloscopeError):
++            scope.get_waveform(1, expected_points=8100)
++
++
+ if __name__ == "__main__":
+     unittest.main()

@@ -1,0 +1,475 @@
+diff --git a/logica/mestre.py b/logica/mestre.py
+index 31c1868..02bd037 100644
+--- a/logica/mestre.py
++++ b/logica/mestre.py
+@@ -19,7 +19,7 @@ import numpy as np
+ from ametek_orm import (
+     AmetekMX30, CommunicationError, FalhaFatalDeInstrumento, ParameterOutOfBoundsError,
+ )
+-from sinais import ruido_awgn, snr_medida, tempo
++from sinais import comparar_fisicamente, ruido_awgn, snr_medida, tempo
+ 
+ 
+ logging.basicConfig(
+@@ -168,6 +168,23 @@ def validate_bench_configuration(require_output: bool = True) -> None:
+         )
+ 
+ 
++class ValidacaoFisicaError(ValueError):
++    """A captura saiu do instrumento, mas não corresponde ao que a classe
++    pediu (nível base, profundidade do evento ou conteúdo harmônico).
++
++    Determinística por natureza: repetir a mesma classe com a mesma
++    configuração produziria o mesmo desvio — por isso entra em
++    ``Bancada.ERROS_DETERMINISTICOS`` e não é retentada. As capturas
++    suspeitas continuam GRAVADAS, com ``validacao_fisica.ok=false`` no
++    metadata: dado marcado é melhor que dado apagado, e é o que permite
++    diagnosticar o problema depois."""
++
++
++VALIDACAO_FISICA = env_bool("VALIDACAO_FISICA", default=True)
++VALIDACAO_TOL_ENVELOPE = env_float("VALIDACAO_TOL_ENVELOPE", 0.15)
++VALIDACAO_TOL_THD = env_float("VALIDACAO_TOL_THD", 0.20)
++
++
+ @dataclass(frozen=True)
+ class Config:
+     """Parâmetros passados para cada experimento — nunca importados por eles."""
+@@ -416,7 +433,7 @@ class Bancada:
+     # relatório 01 §3 P1 caminho #4). A lista é DELIBERADAMENTE estreita:
+     # ``ValueError`` em geral (ex.: contagem de pontos da captura) pode ser
+     # intermitente e continua ganhando as 3 tentativas.
+-    ERROS_DETERMINISTICOS = (ParameterOutOfBoundsError,)
++    ERROS_DETERMINISTICOS = (ParameterOutOfBoundsError, ValidacaoFisicaError)
+ 
+     def executar_bateria(self, scripts: List[Path]) -> List[ResultadoClasse]:
+         """Roda cada classe isoladamente: uma falha de EXPERIMENTO (RMS fora
+@@ -662,6 +679,49 @@ class ExperimentoBase(ABC):
+         """Hook opcional, chamado uma vez antes do laço de capturas (bancada
+         real), para ajustes que não mudam entre capturas."""
+ 
++    def forma_esperada_para_validacao(
++        self, capture_index: int, t: np.ndarray, seed: int
++    ) -> Optional[np.ndarray]:
++        """Forma de onda que a classe PEDIU nesta captura, em pu, para a
++        validação física pós-captura.
++
++        Padrão: reexecuta ``gerar()`` com um rng novo da MESMA seed (mesma
++        técnica de ``analisar_sessao.py``). ``ExperimentoWaveform`` devolve a
++        forma REALMENTE programada (já escalada por
++        ``limite_pico_bancada_pu``), que pode diferir de ``gerar()``."""
++        try:
++            voltage_pu, _ = self.gerar(
++                t, self.config.grid_frequency_hz, capture_index, np.random.default_rng(seed),
++            )
++        except Exception:  # noqa: BLE001 - validação nunca derruba a captura
++            logger.warning("[%s] não foi possível reconstruir a forma esperada", self.id, exc_info=True)
++            return None
++        return np.asarray(voltage_pu, dtype=np.float64)
++
++    def _validar_fisicamente(
++        self, capture_index: int, t: np.ndarray, seed: int, medido_pu: np.ndarray
++    ) -> Optional[dict]:
++        """Compara o que saiu do instrumento com o que a classe pediu.
++
++        Complemento do readback SCPI de ``arm()``: aquele confere o que a
++        fonte DIZ ter programado, este confere o que ela FEZ. H-NATIVO
++        (relatório 01 §1.2) passou em silêncio por não existir nenhum dos
++        dois."""
++        if not VALIDACAO_FISICA:
++            return None
++        esperado = self.forma_esperada_para_validacao(capture_index, t, seed)
++        if esperado is None:
++            return None
++        try:
++            return comparar_fisicamente(
++                esperado, medido_pu,
++                fs_hz=self.config.fs_hz, f0=self.config.grid_frequency_hz,
++                tol_envelope=VALIDACAO_TOL_ENVELOPE, tol_thd=VALIDACAO_TOL_THD,
++            )
++        except Exception:  # noqa: BLE001
++            logger.warning("[%s] validação física não pôde ser calculada", self.id, exc_info=True)
++            return None
++
+     def tensao_rms_programada(self, capture_index: int) -> Optional[float]:
+         """Tensão rms que ESTA captura vai pedir à fonte, quando ela é
+         conhecida antes de programar nada. ``None`` = desconhecida (a
+@@ -1115,6 +1175,7 @@ class ExperimentoBase(ABC):
+         )
+         ids: List[str] = []
+         metadados: List[dict] = []
++        capturas_invalidas: List[Tuple[str, List[str]]] = []
+         tempo_ms_eixo = None
+         if not simulated:
+             # Gravação incremental: cada captura vai para o disco assim que
+@@ -1175,6 +1236,17 @@ class ExperimentoBase(ABC):
+                     metadados[-1]["margem_amostras_depois"] = margem_amostras
+                     metadados[-1]["amostras_totais"] = pontos_efetivos
+                 if not simulated:
++                    validacao = self._validar_fisicamente(
++                        capture_index, t, seed, measured_voltage_pu,
++                    )
++                    if validacao is not None:
++                        metadados[-1]["validacao_fisica"] = validacao
++                        if not validacao["ok"]:
++                            capturas_invalidas.append((capture_id, validacao["motivos"]))
++                            logger.error(
++                                "[%s] captura %s NÃO corresponde ao que foi programado: %s",
++                                self.id, capture_id, "; ".join(validacao["motivos"]),
++                            )
+                     self._salvar_captura(
+                         tempo_ms=tempo_ms_eixo,
+                         tensao_limpa_captura=tensao_limpa[posicao],
+@@ -1208,6 +1280,15 @@ class ExperimentoBase(ABC):
+             # as nativas, não.
+             self.fonte.restaurar_forma_e_modo_padrao()
+             self._finalizar_gravacao(parcial=False)
++            if capturas_invalidas:
++                # Os dados já estão no disco, marcados. A exceção existe para
++                # o operador SABER — silêncio aqui seria exatamente o que
++                # deixou duas sessões inteiras com rótulo errado.
++                raise ValidacaoFisicaError(
++                    f"[{self.id}] {len(capturas_invalidas)} de {total} capturas não "
++                    f"correspondem ao programado: {capturas_invalidas}. Os arquivos foram "
++                    "GRAVADOS com validacao_fisica.ok=false no metadata."
++                )
+         else:
+             self._salvar_classe(
+                 tempo_ms=tempo_ms_eixo, tensao_limpa=tensao_limpa,
+@@ -1287,6 +1368,12 @@ class ExperimentoWaveform(ExperimentoBase):
+     """Classes que precisam de forma de onda arbitrária (TRACe/LIST) — sempre
+     ``gerar()`` + ``program_capture``/``arm_transient``, também na bancada real."""
+ 
++    def forma_esperada_para_validacao(self, capture_index, t, seed):
++        forma = getattr(self, "_forma_programada_pu", None)
++        if forma is not None:
++            return np.asarray(forma, dtype=np.float64)
++        return super().forma_esperada_para_validacao(capture_index, t, seed)
++
+     def limite_pico_bancada_pu(self) -> Optional[float]:
+         """Override para classes cujo pico especificado em ``gerar()`` pode
+         exceder o range físico da fonte na tensão de comissionamento (ex.:
+@@ -1319,6 +1406,10 @@ class ExperimentoWaveform(ExperimentoBase):
+                     self.id, pico_atual_pu, limite_pico_pu, fator,
+                 )
+                 voltage_pu = voltage_pu * fator
++        # Forma REALMENTE programada (já escalada): é contra ela, e não
++        # contra gerar(), que a validação física deve comparar — a classe 08
++        # é reduzida por limite_pico_bancada_pu() só na captura física.
++        self._forma_programada_pu = voltage_pu
+         expected_peak_v = float(np.max(np.abs(voltage_pu))) * self.config.base_voltage_rms * math.sqrt(2.0)
+         self.fonte.program_capture(
+             voltage_pu,
+diff --git a/logica/sinais.py b/logica/sinais.py
+index c52c9db..d966aeb 100644
+--- a/logica/sinais.py
++++ b/logica/sinais.py
+@@ -119,3 +119,153 @@ def snr_medida(limpo: np.ndarray, ruidoso: np.ndarray) -> float:
+     potencia_sinal = float(np.mean(np.square(limpo)))
+     potencia_ruido = float(np.mean(np.square(ruidoso - limpo)))
+     return 10.0 * math.log10(potencia_sinal / potencia_ruido)
++
++
++def envelope_rms_meio_ciclo(x: np.ndarray, *, fs_hz: float, f0: float) -> np.ndarray:
++    """Rms de cada meio ciclo da onda — o "envelope" que revela sag, swell,
++    interrupção e flicker sem depender de alinhamento nem de fase.
++
++    Meio ciclo (e não ciclo inteiro) porque os distúrbios das classes 02/03/04
++    duram 60 ms e precisam ser vistos com resolução melhor que um período."""
++    x = np.asarray(x, dtype=np.float64)
++    n = int(round(fs_hz / (2.0 * f0)))
++    if n < 2 or x.size < n:
++        raise ValueError(f"Registro curto demais para um meio ciclo ({x.size} amostras, n={n})")
++    blocos = x[: (x.size // n) * n].reshape(-1, n)
++    return np.sqrt(np.mean(np.square(blocos), axis=1))
++
++
++def fator_de_crista_do_ciclo_mediano(x: np.ndarray, *, fs_hz: float, f0: float) -> float:
++    """Pico/rms de UM ciclo em regime (o ciclo cujo rms está mais perto da
++    mediana do envelope).
++
++    É a sonda de FORMA de onda: uma senoide limpa dá 1,414; a senoide clipada
++    do CSINe dá menos. Medido no ciclo mediano e não no registro inteiro para
++    não depender de quanto de margem/evento o registro carrega — a classe 05
++    da sessão 1 mediu 1,459 (senoide limpa) onde a referência de 09/09 media
++    1,344 (clipada), diferença de 8,6% que este número pega."""
++    x = np.asarray(x, dtype=np.float64)
++    envelope = envelope_rms_meio_ciclo(x, fs_hz=fs_hz, f0=f0)
++    n = int(round(fs_hz / (2.0 * f0)))
++    alvo = float(np.median(envelope))
++    bloco = int(np.argmin(np.abs(envelope - alvo)))
++    inicio = bloco * n
++    ciclo = x[inicio : inicio + 2 * n]
++    if ciclo.size < 2 * n:
++        ciclo = x[max(0, x.size - 2 * n):]
++    rms = float(np.sqrt(np.mean(np.square(ciclo))))
++    if rms <= 1e-12:
++        return 0.0
++    return float(np.max(np.abs(ciclo))) / rms
++
++
++def thd_medida(x: np.ndarray, *, fs_hz: float, f0: float, max_harmonica: int = 40) -> float:
++    """THD (fração, não %) por FFT sobre um número INTEIRO de ciclos.
++
++    Sonda de conteúdo harmônico — a única com sensibilidade para separar a
++    senoide clipada do CSINe a 5% (THD 5,05% na referência de 2026-09-09)
++    da senoide limpa que a sessão 1 gravou no lugar dela (THD 0,98%). O
++    fator de crista sozinho só difere 5% entre os dois casos, dentro do
++    espalhamento de uma medida real."""
++    x = np.asarray(x, dtype=np.float64)
++    amostras_por_ciclo = fs_hz / f0
++    ciclos = int(x.size // amostras_por_ciclo)
++    if ciclos < 2:
++        raise ValueError("THD exige pelo menos 2 ciclos completos")
++    n = int(round(ciclos * amostras_por_ciclo))
++    janela_inteira = x[:n] - np.mean(x[:n])
++    espectro = np.abs(np.fft.rfft(janela_inteira))
++    fundamental = espectro[ciclos]
++    if fundamental <= 1e-12:
++        return 0.0
++    harmonicas = [
++        espectro[ciclos * ordem]
++        for ordem in range(2, max_harmonica + 1)
++        if ciclos * ordem < espectro.size
++    ]
++    return float(np.sqrt(np.sum(np.square(harmonicas))) / fundamental)
++
++
++def comparar_fisicamente(
++    esperado: np.ndarray,
++    capturado: np.ndarray,
++    *,
++    fs_hz: float,
++    f0: float,
++    tol_envelope: float = 0.15,
++    tol_crista: float = 0.10,
++    tol_thd: float = 0.20,
++    piso_thd: float = 0.01,
++) -> dict:
++    """Confere se a captura FÍSICA corresponde à forma que a classe pediu.
++
++    Independente do MECANISMO: não importa por que a fonte não aplicou o valor
++    (erro 19, INIT ignorado, lista residual, firmware) — se o que saiu não é o
++    que foi pedido, a captura é marcada. Três sondas, todas insensíveis a
++    alinhamento e a quanto de margem o registro tem:
++
++    * **mediana do envelope** — nível de regime. Pega a sessão inteira a
++      127 V onde 220 V foram programados (razão 0,578).
++    * **mínimo e máximo do envelope** — profundidade/altura do evento. Pega
++      SAG que não aconteceu (mínimo 0,707 onde se esperava 0,07) e
++      interrupção que virou elevação (máximo 0,78 onde se esperava 0,707).
++    * **THD do registro** — conteúdo harmônico. Pega a CSINe que não foi
++      aplicada (5,05% de referência contra 0,98% medidos na sessão 1). O
++      ``piso_thd`` de 1% absorve quantização do osciloscópio, então uma
++      classe sem harmônicos programados nunca é reprovada por ruído.
++    * **fator de crista do ciclo mediano** — forma de onda grosseira
++      (complementa a THD; tolerância folgada de propósito).
++
++    Devolve ``{"ok": bool, "motivos": [...], ...}``; nunca levanta por
++    divergência (quem chama decide), só por registro curto demais."""
++    esperado = np.asarray(esperado, dtype=np.float64)
++    capturado = np.asarray(capturado, dtype=np.float64)
++    env_esperado = envelope_rms_meio_ciclo(esperado, fs_hz=fs_hz, f0=f0)
++    env_capturado = envelope_rms_meio_ciclo(capturado, fs_hz=fs_hz, f0=f0)
++    mediana_esperada = float(np.median(env_esperado))
++    # Piso absoluto: para interrupção o mínimo esperado é ~0 e uma tolerância
++    # puramente relativa seria impossível de satisfazer (ou de violar).
++    piso = max(0.05 * mediana_esperada, 1e-6)
++
++    medidas = {
++        "mediana": (float(np.median(env_capturado)), mediana_esperada),
++        "mínimo": (float(np.min(env_capturado)), float(np.min(env_esperado))),
++        "máximo": (float(np.max(env_capturado)), float(np.max(env_esperado))),
++    }
++    motivos = []
++    for nome, (medido, alvo) in medidas.items():
++        limite = max(tol_envelope * abs(alvo), piso)
++        if abs(medido - alvo) > limite:
++            motivos.append(
++                f"{nome} do envelope: medido {medido:.4f} pu, esperado {alvo:.4f} pu "
++                f"(tolerância {limite:.4f})"
++            )
++    thd_esperada = thd_medida(esperado, fs_hz=fs_hz, f0=f0)
++    thd_obtida = thd_medida(capturado, fs_hz=fs_hz, f0=f0)
++    limite_thd = max(tol_thd * thd_esperada, piso_thd)
++    if abs(thd_obtida - thd_esperada) > limite_thd:
++        motivos.append(
++            f"THD: medida {thd_obtida:.2%}, esperada {thd_esperada:.2%} "
++            f"(tolerância {limite_thd:.2%})"
++        )
++    crista_esperada = fator_de_crista_do_ciclo_mediano(esperado, fs_hz=fs_hz, f0=f0)
++    crista_medida = fator_de_crista_do_ciclo_mediano(capturado, fs_hz=fs_hz, f0=f0)
++    if crista_esperada > 0 and abs(crista_medida - crista_esperada) > tol_crista * crista_esperada:
++        motivos.append(
++            f"fator de crista: medido {crista_medida:.4f}, esperado {crista_esperada:.4f} "
++            f"(tolerância relativa {tol_crista:.2%})"
++        )
++    return {
++        "ok": not motivos,
++        "motivos": motivos,
++        "envelope_mediana_medida": medidas["mediana"][0],
++        "envelope_mediana_esperada": medidas["mediana"][1],
++        "envelope_minimo_medido": medidas["mínimo"][0],
++        "envelope_minimo_esperado": medidas["mínimo"][1],
++        "envelope_maximo_medido": medidas["máximo"][0],
++        "envelope_maximo_esperado": medidas["máximo"][1],
++        "crista_medida": crista_medida,
++        "crista_esperada": crista_esperada,
++        "thd_medida": thd_obtida,
++        "thd_esperada": thd_esperada,
++    }
+diff --git a/tests/test_offline.py b/tests/test_offline.py
+index 267f500..46a3c55 100644
+--- a/tests/test_offline.py
++++ b/tests/test_offline.py
+@@ -2221,8 +2221,12 @@ class ErroDeterministicoEPreValidacaoTests(unittest.TestCase):
+         tempo_s = np.arange(pontos, dtype=np.float64) / experimento.config.fs_hz
+ 
+         def _stub(capture_index, t, rng):
++            # devolve a MESMA forma que gerar() produz para este nível: a
++            # validação física (P05) reprovaria uma captura incoerente, e o
++            # que este teste exercita é a seleção de níveis, não ela.
+             parametros = experimento.configurar(capture_index)
+-            return tempo_s, np.sin(2.0 * np.pi * 60.0 * tempo_s), None, parametros
++            nivel = experimento.NIVEIS[capture_index % len(experimento.NIVEIS)]
++            return tempo_s, np.sin(2.0 * np.pi * 60.0 * tempo_s) * nivel, None, parametros
+ 
+         experimento._capturar_real = _stub
+         experimento._preparar_acquisicao_real = lambda: None
+@@ -2322,5 +2326,136 @@ class ErroDeterministicoEPreValidacaoTests(unittest.TestCase):
+             shutil.rmtree(tmp_dir, ignore_errors=True)
+ 
+ 
++class ValidacaoFisicaTests(unittest.TestCase):
++    """P05 — validação FÍSICA pós-captura, independente do mecanismo.
++
++    H-NATIVO (relatório 01 §1.2) produziu, por duas sessões, dado rotulado
++    errado sem um único erro SCPI. Um readback SCPI (P02) cobre o que a fonte
++    DIZ; isto cobre o que ela FEZ, comparando a captura com a forma que a
++    classe pediu. É deliberadamente insensível a alinhamento: compara
++    estatísticas do envelope rms de meio ciclo (mediana/min/max) e o fator de
++    crista do ciclo mediano, não amostra a amostra."""
++
++    FS = 30_000.0
++    F0 = 60.0
++
++    def _t(self, pontos=6000):
++        return np.arange(pontos, dtype=np.float64) / self.FS
++
++    def test_captura_fiel_passa(self):
++        t = self._t()
++        esperado = np.sin(2.0 * np.pi * self.F0 * t)
++        capturado = esperado * 1.02  # ganho de 2%, dentro da tolerância
++        resultado = sinais.comparar_fisicamente(esperado, capturado, fs_hz=self.FS, f0=self.F0)
++        self.assertTrue(resultado["ok"], resultado)
++
++    def test_tensao_base_errada_e_reprovada(self):
++        """Sessão 2: configurada para 220 V, as classes nativas saíram a
++        127 V (razão 0,578)."""
++        t = self._t()
++        esperado = np.sin(2.0 * np.pi * self.F0 * t)
++        capturado = esperado * (127.0 / 220.0)
++        resultado = sinais.comparar_fisicamente(esperado, capturado, fs_hz=self.FS, f0=self.F0)
++        self.assertFalse(resultado["ok"])
++        self.assertTrue(any("mediana" in m for m in resultado["motivos"]), resultado["motivos"])
++
++    def test_distúrbio_ausente_e_reprovado(self):
++        """Classe 02/SAG da sessão 2: 0 de 50 capturas tinham qualquer
++        evento (relatório 01 §1.3 A3)."""
++        t = self._t()
++        esperado = np.sin(2.0 * np.pi * self.F0 * t)
++        esperado[sinais.janela(t, 0.060, 0.060)] *= 0.1
++        capturado = np.sin(2.0 * np.pi * self.F0 * t)  # sem sag nenhum
++        resultado = sinais.comparar_fisicamente(esperado, capturado, fs_hz=self.FS, f0=self.F0)
++        self.assertFalse(resultado["ok"])
++        self.assertTrue(any("mínimo" in m for m in resultado["motivos"]), resultado["motivos"])
++
++    def test_disturbio_invertido_e_reprovado(self):
++        """Classe 04 da sessão 2: interrupção virou elevação de 1,1 pu."""
++        t = self._t()
++        esperado = np.sin(2.0 * np.pi * self.F0 * t)
++        esperado[sinais.janela(t, 0.060, 0.060)] *= 0.02
++        capturado = np.sin(2.0 * np.pi * self.F0 * t)
++        capturado[sinais.janela(t, 0.060, 0.060)] *= 1.1
++        resultado = sinais.comparar_fisicamente(esperado, capturado, fs_hz=self.FS, f0=self.F0)
++        self.assertFalse(resultado["ok"])
++
++    def test_harmonicos_ausentes_sao_reprovados_pela_thd(self):
++        """Classe 05 da sessão 1: THD medida 0,98% contra 5% programado —
++        a senoide clipada simplesmente não foi aplicada (relatório 01 §1.2)."""
++        t = self._t()
++        w = 2.0 * np.pi * self.F0
++        esperado = np.sin(w * t) + 0.04 * np.sin(3 * w * t) + 0.02 * np.sin(5 * w * t)
++        capturado = np.sin(w * t) + 0.008 * np.sin(3 * w * t)  # THD ~0,8%
++        resultado = sinais.comparar_fisicamente(esperado, capturado, fs_hz=self.FS, f0=self.F0)
++        self.assertFalse(resultado["ok"])
++        self.assertTrue(any("THD" in m for m in resultado["motivos"]), resultado["motivos"])
++
++    def test_ruido_de_quantizacao_nao_reprova_classe_sem_harmonicos(self):
++        """O piso de 1% da THD existe para isso: a classe 01/NORMAL não pode
++        ser reprovada pelo ruído de 8 bits do osciloscópio."""
++        t = self._t()
++        rng = np.random.default_rng(7)
++        esperado = np.sin(2.0 * np.pi * self.F0 * t)
++        capturado = esperado + rng.normal(0.0, 0.004, size=esperado.size)
++        resultado = sinais.comparar_fisicamente(esperado, capturado, fs_hz=self.FS, f0=self.F0)
++        self.assertTrue(resultado["ok"], resultado)
++
++    def test_margem_extra_no_registro_nao_reprova(self):
++        """A captura real tem margem de senoide nominal antes/depois do
++        evento; a comparação não pode depender de recorte nem alinhamento."""
++        t = self._t()
++        esperado = np.sin(2.0 * np.pi * self.F0 * t)
++        esperado[sinais.janela(t, 0.060, 0.060)] *= 0.5
++        t_longo = np.arange(8100, dtype=np.float64) / self.FS
++        capturado = np.sin(2.0 * np.pi * self.F0 * t_longo)
++        capturado[sinais.janela(t_longo, 0.0805, 0.060)] *= 0.5
++        resultado = sinais.comparar_fisicamente(esperado, capturado, fs_hz=self.FS, f0=self.F0)
++        self.assertTrue(resultado["ok"], resultado)
++
++    def test_classe_marca_metadata_e_falha_sem_retry_quando_invalida(self):
++        tmp_dir = Path(tempfile.mkdtemp())
++        try:
++            config = mestre.Config(
++                fs_hz=30_000.0, points=6_000, duration_s=0.2, grid_frequency_hz=60.0,
++                base_voltage_rms=220.0, snr_levels_db=(), base_seed=1,
++                capture_current=False, current_base_a=None, results_dir=tmp_dir / "resultados",
++                sim_captures_per_class=1, real_captures_per_class=1, disturbance_start_s=0.06,
++                capturas_override=2,
++            )
++            fonte = mestre.AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=425.0)
++            bancada = mestre.Bancada(fonte, mock.Mock(), config)
++
++            class _Classe(mestre.ExperimentoNativo):
++                id = "01"
++                nome = "NORMAL"
++
++                def gerar(self, t, f0, capture_index, rng):
++                    return np.sin(2.0 * np.pi * f0 * t), {}
++
++                def configurar(self, capture_index):
++                    return {}
++
++            experimento = _Classe(bancada)
++            experimento.osc = mock.Mock()
++            tempo_s = np.arange(6000, dtype=np.float64) / 30_000.0
++            # a "fonte" entrega 127 V onde a classe pediu 220 V
++            experimento._capturar_real = lambda ci, t, rng: (
++                tempo_s, np.sin(2.0 * np.pi * 60.0 * tempo_s) * (127.0 / 220.0), None, {},
++            )
++            experimento._preparar_acquisicao_real = lambda: None
++            with self.assertRaises(mestre.ValidacaoFisicaError):
++                experimento.executar()
++            metadata = config.results_dir / "metadata" / "01_normal.jsonl"
++            registros = [
++                json.loads(l) for l in metadata.read_text(encoding="utf-8").splitlines() if l.strip()
++            ]
++            self.assertEqual(len(registros), 2, "capturas suspeitas ainda são gravadas, com a marca")
++            self.assertFalse(registros[0]["validacao_fisica"]["ok"])
++            self.assertIn(mestre.ValidacaoFisicaError, mestre.Bancada.ERROS_DETERMINISTICOS)
++        finally:
++            shutil.rmtree(tmp_dir, ignore_errors=True)
++
++
+ if __name__ == "__main__":
+     unittest.main()
