@@ -43,6 +43,7 @@ Seed opcional: variável `BASE_SEED` antes do `START_BENCH`, ou `set seed N` na 
 | `native` | **sim** | `preflight_new.run_native_commands`: STEP, PULSe, CSINe, `LIST:FREQuency`, ACDC, `MEASure:*`, canal 2. Pede `ENERGIZAR-COMANDOS` |
 | `run <NN\|nome>` | **sim** | uma classe (`run 02`, `run SAG`). Pede `EXECUTAR-CLASSE-<NN>` |
 | `run all` | **sim** | as 20 classes (menos `BATERIA_EXCLUIR`), resiliente por classe. Pede `EXECUTAR-20-CLASSES` e mostra capturas planejadas e gravações de TRACe |
+| `run <lista>` | **sim** | uma lista por intervalos e/ou ids soltos, na ordem numérica (`run 01-07,09-20`, `run 2,5,8`; espaços ignorados). Passa por `Bancada.executar_bateria`, com os mesmos ganchos e resumo do `run all`. Ignora `BATERIA_EXCLUIR` (roda o que foi pedido). Pede `EXECUTAR-CLASSES-<lista normalizada>` (ex.: `EXECUTAR-CLASSES-01-07,09-20`, case-sensitive) e mostra as capturas de cada classe escolhida e a estimativa de TRACe só delas. Lista inválida (id fora de 01-20, intervalo invertido ou vazio, item vazio) é recusada com código 1 antes de qualquer confirmação, sem energizar (`cli.py`, `parsear_lista_classes`) |
 | `set diagnostico on\|off` | não | log extra de estado da fonte em pontos-chave; com `on` abre um terminal com `tail -f` da transcrição SCPI (opt-out: `DIAGNOSTICO_ABRIR_TERMINAL=0`) |
 | `set capturas <N>` / `set capturas padrao` | não | piso global de capturas: cada classe roda `max(N, padrão da classe)`, por nível nas classes com níveis (`Config.capturas`, `mestre.py:730`). Com `set capturas` ativo, 04/06/09/19 cobrem o intervalo do parâmetro e a 08 faz caracterização (rampa de amplitude). `padrao` (ou `off`) desfaz |
 | `set seed <N>` / `set seed padrao` | não | seed base (inteiro ≥ 0) dos próximos `run`; `padrao` volta à do início da CLI |
@@ -75,7 +76,7 @@ Ordem recomendada para uma sessão do zero: `comm` → `trigger` → `native` �
 5. Saída desligada ao fechar. **Confira OUTPUT OFF no painel da AMETEK.**
 6. Com `set html on` / `set recalibracao on`, os ganchos rodam depois (falha só avisa).
 
-Tempo e TRACes: com os padrões, `run all` planeja **50 capturas** e **468 gravações de TRACe** a 60 Hz (**390** a 50 Hz; 13 classes × 3 capturas × ciclos da janela; medido rodando `capturas_efetivas_da_classe`). A fonte travou na ~280.ª gravação de TRACe de uma mesma conexão em 2026-09-16 (`ESCRITAS_TRACE_REFERENCIA_TRAVA`, `mestre.py:3003`); a CLI só **avisa**. Com sorteio ligado, cada captura TRACe regrava a Flash (não reaproveita o cache) e a estimativa é exata; cada TRACe leva ≥ 1 s de espera.
+Para ficar abaixo da trava, rode por listas (`run 01-07` e depois `run 09-20`; cada `run` abre uma conexão nova com a fonte via `Bancada.from_env`, `mestre.py:969`, em `cli.py` `_executar_scripts`) em vez de `run all` numa conexão só. Tempo e TRACes: com os padrões, `run all` planeja **50 capturas** e **468 gravações de TRACe** a 60 Hz (**390** a 50 Hz; 13 classes × 3 capturas × ciclos da janela; medido rodando `capturas_efetivas_da_classe`). A fonte travou na ~280.ª gravação de TRACe de uma mesma conexão em 2026-09-16 (`ESCRITAS_TRACE_REFERENCIA_TRAVA`, `mestre.py:3003`); a CLI só **avisa**. Com sorteio ligado, cada captura TRACe regrava a Flash (não reaproveita o cache) e a estimativa é exata; cada TRACe leva ≥ 1 s de espera.
 
 ## 6. Limites por tensão e frequência
 
