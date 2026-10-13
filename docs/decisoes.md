@@ -43,6 +43,9 @@ Por que o código é como é. Cada linha: decisão, motivo, onde está, fonte. "
 | v1.15 | `set recalibracao` e `set html` (OFF por padrão) | automatizar o fim do run sem mexer no JSON sem pedir | `cli.py:129-147` |
 | v1.15 | Geradores de PNG descontinuados; só o relatório HTML gera figuras | decisão do dono | `descontinuar_imagens.md` |
 | v1.15 | Versão segue v1.15 (em andamento, sem tag) | decisão do dono, 2026-10-12 | `docs/versionamento.md` |
+| v1.15 | Compostas sorteiam também sag em 11/12, swell em 13/14 e THD em 13/15/16; faixa do swell = extremos de `swell_niveis` | componente compartilhado: sortear só na 10 deixaria as outras com uma forma de nível por classe e THD fixo no teto da faixa | `perfis.py:113-134`, `docs/perfis.md` |
+| v1.15 | `norma` sorteia sag 0,15-0,85, swell 1,15-1,75, THD 2-20 %; `fronteira` não sorteia sag/swell (alterna os pares) | extremos dos níveis discretos de cada perfil; a fronteira existe para estressar o limite | `perfis.py:116-120`, `docs/perfis.md` |
+| v1.15 | 16 com interrupção fixa em 0,05 pu; 17 com oscilação fixa em 300 Hz | sortear a interrupção a tiraria da faixa de interrupção em parte das capturas; a 17 já sorteia os entalhes | `16.py:29`, `17.py:37` |
 
 ## Segurança e hardware
 
