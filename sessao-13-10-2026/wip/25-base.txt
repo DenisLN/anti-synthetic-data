@@ -1,0 +1,1 @@
+4beba9b merge: scripts de diagnóstico leem o formato novo via sessao_io

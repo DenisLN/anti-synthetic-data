@@ -1,0 +1,776 @@
+diff --git a/logica/analisar_sessao.py b/logica/analisar_sessao.py
+index f25268e..8557717 100644
+--- a/logica/analisar_sessao.py
++++ b/logica/analisar_sessao.py
+@@ -225,6 +225,8 @@ def analisar_sessao(sessao_dir: Path) -> List[Dict]:
+     blocos_simulados: set = set()
+ 
+     for captura in sessao_io.ler_capturas(sessao_dir, metadados=metadados, versoes=("medida",)):
++        if captura.espelho:
++            continue  # mesma captura de outro perfil: analisada uma vez, sob o perfil de origem
+         if captura.grandeza != "Tensão" or "medida" not in captura.versoes:
+             continue
+         # Um arquivo por captura (formato antigo): o nome do arquivo. Um por
+diff --git a/logica/cli.py b/logica/cli.py
+index aaafbc8..80f7bfe 100644
+--- a/logica/cli.py
++++ b/logica/cli.py
+@@ -134,8 +134,13 @@ Comandos disponíveis (nenhum energiza a saída sem pedir confirmação própria
+                        fronteira) na mesma sessão, cada classe uma vez por
+                        perfil, e gravam tudo no mesmo NN_classe.npz
+                        comprimido (chaves <perfil>/<versão>; SNRs em
+-                       snr_XXdb/NN_classe.npz). A confirmação soma as
+-                       capturas e as gravações de TRACe dos três perfis. norma = IEEE 1159 (flicker 2-7 %, inter-
++                       snr_XXdb/NN_classe.npz). Classes cujo gerar() não
++                       depende do perfil (01, 04, 07, 08, 09, 17, 18, 19;
++                       perfis.classes_independentes_do_perfil) são
++                       capturadas UMA vez (perfil literatura) e o metadata
++                       dos outros perfis aponta para a mesma captura (mesmo
++                       arquivo, índice e SHA-256). A confirmação conta só o
++                       que roda de fato. norma = IEEE 1159 (flicker 2-7 %, inter-
+                        harmônicas 0,5-2 %, THD até 20 %, sag 0,15-0,85 pu,
+                        swell 1,15-1,75 pu); literatura = as faixas de
+                        sempre (padrão, reproduz o dataset anterior);
+@@ -409,7 +414,7 @@ class SessaoCLI:
+     def _texto_dos_perfis() -> str:
+         if not mestre.PERFIL_TODOS:
+             return ""
+-        return f", nos perfis {', '.join(mestre.perfis_da_rodada())} (cada classe roda uma vez por perfil)"
++        return f", nos perfis {', '.join(mestre.perfis_da_rodada())} (classes que dependem do perfil: uma vez por perfil; as demais, uma só vez)"
+ 
+     @staticmethod
+     def _capturas_das_classes(scripts: Optional[List[Path]] = None) -> List[tuple]:
+@@ -427,10 +432,15 @@ class SessaoCLI:
+             if base is None:
+                 info = mestre.capturas_efetivas_da_classe(experimento_cls)
+             else:
++                # Só o que roda de fato: classe cujo gerar() não depende do perfil
++                # entra uma vez (sob o perfil canônico); os outros perfis são
++                # a mesma captura (perfis.plano_de_perfis).
++                plano = perfis.plano_de_perfis(script_path.stem, perfis_rodada, base.sorteio_posicao)
+                 partes = {
+                     perfil: mestre.capturas_efetivas_da_classe(experimento_cls, replace(base, perfil=perfil))
+-                    for perfil in perfis_rodada
++                    for perfil, _ in plano
+                 }
++                espelhos = {perfil: e for perfil, e in plano if e}
+                 primeiro = next(iter(partes.values()))
+                 info = {
+                     "padrao": primeiro["padrao"],
+@@ -440,6 +450,8 @@ class SessaoCLI:
+                     "escritas_trace": sum(i["escritas_trace"] for i in partes.values()),
+                     "escritas_trace_exatas": all(i["escritas_trace_exatas"] for i in partes.values()),
+                     "por_perfil": {perfil: i["total"] for perfil, i in partes.items()},
++                    "espelhos": espelhos,
++                    "evitadas": (len(perfis_rodada) - len(partes)) * primeiro["total"] if espelhos else 0,
+                 }
+             linhas.append((script_path.stem, nome, info))
+         return linhas
+@@ -448,6 +460,9 @@ class SessaoCLI:
+     def _descrever_capturas(info: dict) -> str:
+         if "por_perfil" in info:
+             partes = " + ".join(f"{n} {perfil}" for perfil, n in info["por_perfil"].items())
++            if info.get("espelhos"):
++                iguais = ", ".join(p for e in info["espelhos"].values() for p in e)
++                partes += f"; igual em {iguais}, sem recaptura"
+             return f"{info['total']} ({partes})"
+         if info["niveis"] > 1:
+             return f"{info['total']} ({info['niveis']} níveis x {info['por_nivel']})"
+@@ -467,7 +482,11 @@ class SessaoCLI:
+         else:
+             quantidade = f"até {escritas} gravações na Flash da AMETEK nesta bateria"
+         if linhas and "por_perfil" in linhas[0][2]:
+-            quantidade += f", somadas nos {len(linhas[0][2]['por_perfil'])} perfis"
++            evitadas = sum(info.get("evitadas", 0) for _, _, info in linhas)
++            quantidade += (
++                f", só o que roda de fato nos perfis da rodada (as classes que não dependem do "
++                f"perfil entram uma vez; {evitadas} capturas repetidas evitadas)"
++            )
+         texto = (
+             f"TRACe: {quantidade} "
+             f"(referência: a fonte travou na ~{mestre.ESCRITAS_TRACE_REFERENCIA_TRAVA}.ª "
+diff --git a/logica/mestre.py b/logica/mestre.py
+index 5053468..92ff814 100644
+--- a/logica/mestre.py
++++ b/logica/mestre.py
+@@ -775,6 +775,10 @@ class Config:
+     # Perfil de faixas lido por gerar() das classes 02/03/05/06/10-16/20
+     # (logica/perfis.py). O padrão reproduz o dataset anterior à v1.15.
+     perfil: str = perfis.PERFIL_PADRAO
++    # Perfis que são a MESMA captura deste (``set perfil todos`` numa classe
++    # cujo gerar() não depende do perfil: ``perfis.plano_de_perfis``). Vazio =
++    # captura própria. Só ``Bancada`` preenche; ver ``ArquivoDaClasse.espelhar``.
++    perfis_espelho: Tuple[str, ...] = ()
+     # Início, duração e fase sorteados em gerar() (ver ``Sorteio``). False =
+     # posições fixas anteriores à v1.15.
+     sorteio_posicao: bool = True
+@@ -1159,6 +1163,15 @@ class Bancada:
+             return tuple(perfis.PERFIS)
+         return (perfis.perfil_da_config(self.config),)
+ 
++    @staticmethod
++    def _config_do_perfil(config_original: "Config", perfil: str, espelhos: Tuple[str, ...]) -> "Config":
++        """``config_original`` com ``perfil`` e ``perfis_espelho`` postos (a
++        mesma instância se nada muda)."""
++        if perfis.perfil_da_config(config_original) == perfil \
++                and tuple(getattr(config_original, "perfis_espelho", ())) == tuple(espelhos):
++            return config_original
++        return replace(config_original, perfil=perfil, perfis_espelho=tuple(espelhos))
++
+     def _executar_classe_no_perfil(
+         self, class_id: str, script_path: Path, experimento_cls: type, rotulo: str,
+     ) -> Tuple[bool, Optional[str], int, int, int, int]:
+@@ -1256,10 +1269,16 @@ class Bancada:
+             config_original = self.config
+             self._manter_arquivos_classe = True
+             try:
+-                for perfil in lista_perfis:
++                for perfil, espelhos in perfis.plano_de_perfis(
++                    class_id, lista_perfis, getattr(config_original, "sorteio_posicao", True),
++                ):
+                     rotulo = f" [perfil {perfil}]" if varios else ""
+-                    if perfis.perfil_da_config(config_original) != perfil:
+-                        self.config = replace(config_original, perfil=perfil)
++                    if espelhos:
++                        logger.info(
++                            "[%s] gerar() não depende do perfil: capturada uma vez (perfil %s); %s "
++                            "apontam para a mesma captura no metadata.", class_id, perfil, ", ".join(espelhos),
++                        )
++                    self.config = self._config_do_perfil(config_original, perfil, espelhos)
+                     try:
+                         sucesso, ultimo_erro, desc, inval, pul, tentativas_feitas = (
+                             self._executar_classe_no_perfil(class_id, script_path, experimento_cls, rotulo)
+@@ -1271,7 +1290,10 @@ class Bancada:
+                     puladas += pul
+                     if not sucesso:
+                         ok_geral = False
+-                        motivos.append(f"perfil {perfil}: {ultimo_erro}" if varios else str(ultimo_erro))
++                        motivos.append(
++                            f"perfil {perfil}{' (e ' + ', '.join(espelhos) + ', mesma captura)' if espelhos else ''}: "
++                            f"{ultimo_erro}" if varios else str(ultimo_erro)
++                        )
+                         logger.error(
+                             "[%s]%s FALHOU definitivamente após %d tentativa(s)%s — classe abortada, "
+                             "bateria continua", class_id, rotulo, tentativas_feitas,
+@@ -1328,9 +1350,10 @@ class Bancada:
+         executados: List["ExperimentoBase"] = []
+         self._manter_arquivos_classe = True
+         try:
+-            for perfil in lista:
+-                if perfis.perfil_da_config(config_original) != perfil:
+-                    self.config = replace(config_original, perfil=perfil)
++            for perfil, espelhos in perfis.plano_de_perfis(
++                str(getattr(experimento_cls, "id", "")), lista, getattr(config_original, "sorteio_posicao", True),
++            ):
++                self.config = self._config_do_perfil(config_original, perfil, espelhos)
+                 experimento = experimento_cls(self)
+                 executados.append(experimento)
+                 experimento.executar()
+@@ -2447,7 +2470,7 @@ class ExperimentoBase(ABC):
+         if gravacao["linhas"] == 0:
+             arquivo.encerrar_perfil(gravacao["perfil"])
+             return
+-        self._gravar_arquivos_da_classe(arquivo)
++        self._gravar_arquivos_da_classe(arquivo, parcial=parcial)
+         arquivo.encerrar_perfil(gravacao["perfil"])
+         if parcial:
+             logger.error(
+@@ -2457,10 +2480,16 @@ class ExperimentoBase(ABC):
+                 arquivo.nome_arquivo,
+             )
+ 
+-    def _gravar_arquivos_da_classe(self, arquivo: "sessao_io.ArquivoDaClasse") -> None:
++    def _gravar_arquivos_da_classe(self, arquivo: "sessao_io.ArquivoDaClasse", *, parcial: bool = False) -> None:
+         """Dados primeiro (todos os ``.part`` antes de qualquer promoção), o
+         metadata depois — o metadata sobrevivente nunca descreve dado que não
+-        foi gravado."""
++        foi gravado. Com ``config.perfis_espelho`` (classe independente do
++        perfil num ``set perfil todos``) e a classe terminada (não ``parcial``),
++        os outros perfis são declarados espelho desta captura antes de gravar
++        (``ArquivoDaClasse.espelhar``: mesmo arquivo, índice e SHA-256)."""
++        espelhos = tuple(getattr(self.config, "perfis_espelho", ()))
++        if espelhos and not parcial:
++            arquivo.espelhar(perfis.perfil_da_config(self.config), espelhos)
+         arquivo.consolidar()
+         metadata_dir = Path(self.config.results_dir) / "metadata"
+         metadata_dir.mkdir(parents=True, exist_ok=True)
+diff --git a/logica/perfis.py b/logica/perfis.py
+index f971359..07edd73 100644
+--- a/logica/perfis.py
++++ b/logica/perfis.py
+@@ -25,7 +25,7 @@ captura em ``FAIXAS_SORTEADAS`` (``composto``); ``FAIXAS`` vale desligado.
+ from __future__ import annotations
+ 
+ import os
+-from typing import Dict, Optional, Tuple
++from typing import Dict, List, Optional, Sequence, Tuple
+ 
+ PERFIS: Tuple[str, ...] = ("norma", "literatura", "fronteira")
+ PERFIL_PADRAO = "literatura"
+@@ -193,4 +193,58 @@ def composto(config, componente: str, capture_index: int, rng) -> float:
+     intervalo = FAIXAS_SORTEADAS[componente][perfil_da_config(config)]
+     if intervalo is None:
+         return nivel(config, componente, capture_index)
+-    return float(rng.uniform(*intervalo))
+\ No newline at end of file
++    return float(rng.uniform(*intervalo))
++
++# ---------------------------------------------------------------- independência
++
++# Perfil sob o qual uma captura compartilhada é gravada (``set perfil todos``).
++PERFIL_CANONICO = PERFIL_PADRAO
++CLASSES: Tuple[str, ...] = tuple(f"{n:02d}" for n in range(1, 21))
++
++
++def _valor_efetivo(componente: str, perfil: str, sorteio_posicao: bool) -> object:
++    """O que ``gerar()`` realmente lê do ``componente`` no ``perfil``: o
++    intervalo sorteado das compostas (``composto``, sorteio ligado) ou, sem
++    intervalo (fronteira de sag/swell) e com o sorteio desligado, o nível
++    discreto de ``FAIXAS``."""
++    if sorteio_posicao and componente in FAIXAS_SORTEADAS:
++        intervalo = FAIXAS_SORTEADAS[componente][perfil]
++        if intervalo is not None:
++            return ("intervalo", intervalo)
++    return ("niveis", FAIXAS[componente][perfil])
++
++
++def depende_do_perfil(class_id: str, sorteio_posicao: bool = True) -> bool:
++    """``True`` se o ``gerar()`` da classe muda com o perfil. Derivado das
++    tabelas acima: uma classe depende do perfil se algum componente que ela
++    lê (``COMPONENTES_POR_CLASSE``; classe fora da tabela não lê nenhum) tem
++    valor efetivo diferente em algum par de perfis. Com o sorteio desligado,
++    por exemplo, a 16 (só ``thd_composto``, igual nos três) não depende; com
++    ele ligado depende (a norma sorteia THD a partir de 2 %). Testado contra
++    o ``gerar()`` real em ``tests/test_offline.py`` (``PerfisCompartilhadosTests``)."""
++    for componente in COMPONENTES_POR_CLASSE.get(str(class_id), ()):
++        valores = {_valor_efetivo(componente, perfil, sorteio_posicao) for perfil in PERFIS}
++        if len(valores) > 1:
++            return True
++    return False
++
++
++def classes_independentes_do_perfil(sorteio_posicao: bool = True) -> Tuple[str, ...]:
++    """Classes (``01``..``20``) cujo ``gerar()`` é igual nos três perfis."""
++    return tuple(c for c in CLASSES if not depende_do_perfil(c, sorteio_posicao))
++
++
++def plano_de_perfis(
++    class_id: str, lista_perfis: Sequence[str], sorteio_posicao: bool = True,
++) -> List[Tuple[str, Tuple[str, ...]]]:
++    """O que ``set perfil todos`` realmente captura para a classe: lista de
++    ``(perfil_a_rodar, perfis_espelho)``. Classe dependente do perfil: um item
++    por perfil, sem espelhos. Classe independente com mais de um perfil: UM
++    item, sob o perfil canônico (``literatura``; o primeiro da lista se ela
++    não o tiver), com os demais perfis como espelhos (a mesma captura,
++    registrada no metadata dos outros perfis)."""
++    lista = [validar(p) for p in lista_perfis]
++    if len(lista) > 1 and not depende_do_perfil(class_id, sorteio_posicao):
++        canonico = PERFIL_CANONICO if PERFIL_CANONICO in lista else lista[0]
++        return [(canonico, tuple(p for p in lista if p != canonico))]
++    return [(p, ()) for p in lista]
+diff --git a/logica/recortar_margem.py b/logica/recortar_margem.py
+index 845c8ce..3f97698 100644
+--- a/logica/recortar_margem.py
++++ b/logica/recortar_margem.py
+@@ -167,6 +167,8 @@ def recortar_sessao(
+     for origem_dir in diretorios_de_dados(sessao_dir)[1:]:
+         nivel = sessao_io.nivel_da_pasta_snr(origem_dir.name)
+         for captura in sessao_io.ler_pasta(origem_dir, metadados):
++            if captura.espelho:
++                continue  # mesma captura de outro perfil (set perfil todos)
+             inicio, pontos, info = calcular_recorte(captura.sinal.size, captura.metadado)
+             janela = captura.sinal[inicio : inicio + pontos]
+             if nivel is not None:
+@@ -181,7 +183,13 @@ def recortar_sessao(
+     capturas = sessao_io.ler_pasta(sessao_dir, metadados, versoes=sessao_io.VERSOES)
+     capturas.sort(key=lambda c: (c.classe_id, c.perfil, c.id_captura))
+     arquivos: Dict[str, "sessao_io.ArquivoDaClasse"] = {}
++    espelhos: Dict[str, Dict[str, List[str]]] = {}  # classe -> origem -> perfis espelho
+     for captura in capturas:
++        if captura.espelho:  # mesma captura de outro perfil: só se re-espelha
++            espelhos.setdefault(captura.classe_id, {}).setdefault(str(captura.perfil_de_origem), [])
++            if captura.perfil not in espelhos[captura.classe_id][str(captura.perfil_de_origem)]:
++                espelhos[captura.classe_id][str(captura.perfil_de_origem)].append(captura.perfil)
++            continue
+         if captura.grandeza != "Tensão" or "medida" not in captura.versoes:
+             continue
+         medida = captura.versoes["medida"]
+@@ -209,7 +217,10 @@ def recortar_sessao(
+         relatorio.append({
+             "arquivo": captura.arquivo.name, "id_captura": captura.id_captura, "perfil": captura.perfil, **info,
+         })
+-    for arquivo in arquivos.values():
++    for classe_id, arquivo in arquivos.items():
++        for origem, destinos in espelhos.get(classe_id, {}).items():
++            if origem in arquivo.perfis:
++                arquivo.espelhar(origem, destinos)
+         try:
+             arquivo.consolidar()
+         except ValueError as exc:
+@@ -228,6 +239,11 @@ def recortar_sessao(
+                 registro = json.loads(linha)
+                 chave = (str(registro.get("perfil") or sessao_io.PERFIL_LEGADO), str(registro["id_captura"]))
+                 novo = metadados_saida.get(chave, registro)
++                origem = registro.get("perfil_de_origem")
++                if novo is registro and origem and origem != chave[0] \
++                        and (origem, chave[1]) in metadados_saida:
++                    # Espelho (captura compartilhada): a mesma linha da origem recortada.
++                    novo = dict(metadados_saida[(origem, chave[1])], perfil=chave[0])
+                 linhas.append(json.dumps(novo, ensure_ascii=False, sort_keys=True))
+             destino = saida_dir / "metadata" / jsonl_path.name
+             parcial = destino.with_suffix(".jsonl.part")
+diff --git a/logica/relatorio_html.py b/logica/relatorio_html.py
+index b238919..9b2d84a 100644
+--- a/logica/relatorio_html.py
++++ b/logica/relatorio_html.py
+@@ -107,6 +107,12 @@ class Captura:
+     detalhes: List[Tuple[float, float]] = field(default_factory=list)
+     detalhes_automaticos: bool = True
+     correlacoes: Optional[dict] = None  # total e do distúrbio (físicas, com forma esperada)
++    # Captura compartilhada entre perfis (set perfil todos, classe independente
++    # do perfil): os dados existem uma vez, no perfil de origem.
++    compartilhada: bool = False
++    perfil_de_origem: str = ""
++    perfis_compartilhados: Tuple[str, ...] = ()
++    outros_perfis: Tuple[str, ...] = ()  # espelhos já cobertos por esta figura
+ 
+     @property
+     def tempo_ms(self) -> np.ndarray:
+@@ -126,7 +132,8 @@ class Captura:
+         """Rótulo da captura: o arquivo (formato 1) ou arquivo · perfil · id
+         (formato 2, onde um arquivo tem todas as capturas da classe)."""
+         if self.formato == "classe":
+-            return f"{self.arquivo.stem} · {self.perfil} · {self.id_captura}"
++            extra = f" (= {', '.join(self.outros_perfis)})" if self.outros_perfis else ""
++            return f"{self.arquivo.stem} · {self.perfil} · {self.id_captura}{extra}"
+         return self.arquivo.stem
+ 
+     @property
+@@ -321,8 +328,27 @@ def ler_capturas(
+             metadado=md, inicio_nominal=inicio, pontos_nominais=pontos, recorte=recorte,
+             grandeza=c.grandeza, perfil=c.perfil, formato=c.formato, versao=principal,
+             sobrepostas={v: a for v, a in c.versoes.items() if v != principal and c.grandeza == "Tensão"},
++            compartilhada=c.compartilhada, perfil_de_origem=c.perfil_de_origem or "",
++            perfis_compartilhados=tuple(c.perfis_compartilhados),
+         ))
+-    return resultado
++    return _sem_figuras_repetidas(resultado)
++
++
++def _sem_figuras_repetidas(capturas: List[Captura]) -> List[Captura]:
++    """Uma captura compartilhada entre perfis é UMA figura: o espelho (perfil
++    sem bloco próprio) só fica quando a captura de origem não está na lista
++    (ex. ``--perfis norma``); do contrário a figura da origem passa a dizer
++    quais outros perfis ela cobre (``outros_perfis``)."""
++    origens = {(c.arquivo, c.id_captura, c.perfil): c for c in capturas}
++    saida: List[Captura] = []
++    for c in capturas:
++        if c.compartilhada and c.perfil != c.perfil_de_origem:
++            origem = origens.get((c.arquivo, c.id_captura, c.perfil_de_origem))
++            if origem is not None:
++                origem.outros_perfis = (*origem.outros_perfis, c.perfil)
++                continue
++        saida.append(c)
++    return saida
+ 
+ 
+ # ---------------------------------------------------------------- figuras
+@@ -443,6 +469,18 @@ def tabela_metadados(captura: Captura) -> str:
+     ]
+     if captura.perfil:
+         linhas.append(("Perfil", _e(captura.perfil)))
++    if captura.compartilhada:
++        md_ = captura.metadado or {}
++        if captura.perfil == captura.perfil_de_origem:
++            cobertos = ", ".join([captura.perfil, *captura.outros_perfis]) if captura.outros_perfis \
++                else ", ".join(captura.perfis_compartilhados)
++            texto = f"mesma captura nos perfis {cobertos} (gerar() não depende do perfil; capturada uma vez)"
++        else:
++            texto = (f"esta captura é a do perfil {captura.perfil_de_origem} "
++                     f"(compartilhada com {', '.join(captura.perfis_compartilhados)}; capturada uma vez)")
++        if md_.get("sha256_captura"):
++            texto += f" · SHA-256 {md_['sha256_captura'][:16]}…"
++        linhas.append(("Captura compartilhada", _e(texto)))
+     if captura.formato == "classe" or captura.sobrepostas or captura.versao != "medida":
+         desenhadas = ", ".join([captura.versao, *captura.sobrepostas])
+         linhas.append(("Versões desenhadas", _e(desenhadas)))
+@@ -531,9 +569,15 @@ def resumo_sessao(sessao_dir: Path, dados_dir: Path, capturas: Sequence[Captura]
+         ("Dados", _e("sem ruído" if dados_dir == sessao_dir else dados_dir.name)),
+         ("Capturas", _e(f"{len(capturas)} em {len(classes)} classe(s)")),
+     ]
+-    perfis_presentes = sorted({c.perfil for c in capturas if c.perfil})
++    perfis_presentes = sorted({p for c in capturas for p in (c.perfil, *c.outros_perfis) if p})
+     if perfis_presentes:
+         itens.append(("Perfis", _e(", ".join(perfis_presentes))))
++    compartilhadas = [c for c in capturas if c.compartilhada and c.perfil == c.perfil_de_origem]
++    if compartilhadas:
++        itens.append(("Capturas compartilhadas", _e(
++            f"{len(compartilhadas)} figura(s) valem para mais de um perfil (classe cujo gerar() "
++            "não depende do perfil; desenhada uma vez, sob o perfil de origem)"
++        )))
+     validadas = [c for c in capturas if isinstance((c.metadado or {}).get("validacao_fisica"), dict)]
+     if validadas:
+         ok = sum(1 for c in validadas if c.metadado["validacao_fisica"].get("ok"))
+diff --git a/logica/sessao_io.py b/logica/sessao_io.py
+index 2c77cd1..16bf102 100644
+--- a/logica/sessao_io.py
++++ b/logica/sessao_io.py
+@@ -20,6 +20,8 @@ Este módulo não importa ``mestre`` (nem hardware).
+ 
+ from __future__ import annotations
+ 
++import copy
++import hashlib
+ import json
+ import os
+ import re
+@@ -67,6 +69,34 @@ def chave(perfil: str, item: str) -> str:
+     return f"{perfil}/{item}"
+ 
+ 
++# Capturas compartilhadas entre perfis (``set perfil todos``, v1.15): classes
++# cujo ``gerar()`` não depende do perfil (``perfis.depende_do_perfil``) são
++# capturadas UMA vez, sob um perfil canônico; os outros perfis ficam como
++# "espelhos" dele. No ``.npz``: ``compartilhadas_perfis`` (os espelhos) e
++# ``compartilhadas_origem`` (o perfil cujo bloco guarda os dados, mesma ordem).
++# No metadata: uma linha por perfil, todas com o mesmo ``arquivo_classe``,
++# ``indice_no_arquivo`` e ``sha256_captura``.
++CHAVE_ESPELHOS = "compartilhadas_perfis"
++CHAVE_ORIGENS = "compartilhadas_origem"
++
++
++def hash_captura(medida, modelo=None, programada=None, pontos: Optional[int] = None) -> str:
++    """SHA-256 dos arrays de UMA captura: ``medida``, ``modelo`` e
++    ``programada`` em float64 little-endian, na ordem, cada um precedido do
++    rótulo e do tamanho. Versão ausente (``None``) conta como ``NaN`` de
++    ``pontos`` amostras (como fica gravada no ``.npz``)."""
++    medida = np.asarray(medida)
++    if pontos is None:
++        pontos = int((modelo if modelo is not None else medida).size)
++    resumo = hashlib.sha256()
++    for rotulo, valores in (("medida", medida), ("modelo", modelo), ("programada", programada)):
++        v = np.full(pontos, np.nan) if valores is None else np.asarray(valores)
++        v = np.ascontiguousarray(v, dtype="<f8")
++        resumo.update(f"{rotulo}:{v.size};".encode("ascii"))
++        resumo.update(v.tobytes())
++    return resumo.hexdigest()
++
++
+ # ---------------------------------------------------------------- escrita
+ 
+ def gravar_npz(destino: Path, *, comprimido: bool = True, **arrays) -> None:
+@@ -105,6 +135,8 @@ class ArquivoDaClasse:
+         self.spool = spool
+         self._ordem: List[str] = []
+         self._capturas: Dict[str, List[dict]] = {}
++        # perfil espelho -> perfil de origem (cujo bloco guarda os dados)
++        self._espelhos: Dict[str, str] = {}
+ 
+     # -- nomes ----------------------------------------------------------
+ 
+@@ -123,9 +155,55 @@ class ArquivoDaClasse:
+     def total(self) -> int:
+         return sum(len(v) for v in self._capturas.values())
+ 
++    @property
++    def espelhos(self) -> Dict[str, str]:
++        """Perfis sem bloco próprio -> perfil de origem (capturas compartilhadas)."""
++        return {a: o for a, o in self._espelhos.items() if self._capturas.get(o)}
++
+     def registros(self) -> List[dict]:
+-        """Metadata de todas as capturas, perfil a perfil, na ordem gravada."""
+-        return [c["metadado"] for p in self._ordem for c in self._capturas[p] if c["metadado"] is not None]
++        """Metadata de todas as capturas, perfil a perfil, na ordem gravada;
++        no fim, as linhas dos perfis espelho (cópia da linha da origem com o
++        ``perfil`` trocado e ``captura_compartilhada``)."""
++        saida = [c["metadado"] for p in self._ordem for c in self._capturas[p] if c["metadado"] is not None]
++        for espelho, origem in self.espelhos.items():
++            for c in self._capturas[origem]:
++                if c["metadado"] is None:
++                    continue
++                linha = copy.deepcopy(c["metadado"])
++                linha["perfil"] = espelho
++                saida.append(linha)
++        return saida
++
++    def espelhar(self, origem: str, destinos: Sequence[str]) -> None:
++        """Declara que ``destinos`` (perfis) são a MESMA captura de ``origem``
++        (um bloco já completo): grava nos metadados da origem os campos
++        ``captura_compartilhada``, ``perfil_de_origem``,
++        ``compartilhada_com_perfis`` e ``sha256_captura``; ``registros()`` e o
++        ``.npz`` passam a trazer os espelhos. Substitui um espelhamento
++        anterior da mesma origem."""
++        if not self._capturas.get(origem):
++            raise ValueError(f"[{self.id}] não há capturas do perfil {origem} para espelhar")
++        destinos = [d for d in destinos if d != origem]
++        for d in destinos:
++            if self._capturas.get(d):
++                raise ValueError(f"[{self.id}] o perfil {d} tem bloco próprio; não pode ser espelho de {origem}")
++        for a in [a for a, o in self._espelhos.items() if o == origem]:
++            del self._espelhos[a]
++        for d in destinos:
++            self._espelhos[d] = origem
++        grupo = [origem, *destinos]
++        for c in self._capturas[origem]:
++            if c["metadado"] is None:
++                continue
++            c["metadado"].update({
++                "captura_compartilhada": bool(destinos),
++                "perfil_de_origem": origem,
++                "compartilhada_com_perfis": grupo,
++                "sha256_captura": hash_captura(c["medida"], c["modelo"], c["programada"], c["pontos"]),
++            })
++            if not destinos:
++                for chave_ in ("captura_compartilhada", "perfil_de_origem", "compartilhada_com_perfis", "sha256_captura"):
++                    c["metadado"].pop(chave_, None)
+ 
+     # -- acumulação -----------------------------------------------------
+ 
+@@ -135,6 +213,10 @@ class ArquivoDaClasse:
+         if perfil not in self._capturas:
+             self._ordem.append(perfil)
+         self._capturas[perfil] = []
++        # Um bloco novo desfaz o espelhamento que dependia dele (ou que o
++        # tornava espelho): a captura é refeita.
++        for a in [a for a, o in self._espelhos.items() if o == perfil or a == perfil]:
++            del self._espelhos[a]
+         self._apagar_spool(perfil)
+ 
+     def adicionar(
+@@ -280,6 +362,7 @@ class ArquivoDaClasse:
+             "perfis": _como_texto(perfis),
+             "tempo_ms": primeira["tempo_ms"],
+             "tempo_janela_ms": np.arange(primeira["pontos"], dtype=np.float64) / primeira["fs_hz"] * 1000.0,
++            **self._arrays_espelhos(),
+         }
+         for perfil in perfis:
+             bloco = self._capturas[perfil]
+@@ -292,13 +375,19 @@ class ArquivoDaClasse:
+             arrays[chave(perfil, "inicio_janela")] = np.array([c["inicio_janela"] for c in bloco], dtype=np.int64)
+         return arrays
+ 
++    def _arrays_espelhos(self) -> Dict[str, np.ndarray]:
++        espelhos = self.espelhos
++        if not espelhos:
++            return {}
++        return {CHAVE_ESPELHOS: _como_texto(espelhos), CHAVE_ORIGENS: _como_texto(espelhos.values())}
++
+     def _arrays_snr(self) -> Dict[float, Dict[str, np.ndarray]]:
+         niveis = sorted({n for p in self.perfis for c in self._capturas[p] for n in c["snr"]})
+         saida: Dict[float, Dict[str, np.ndarray]] = {}
+         for nivel in niveis:
+             arrays: Dict[str, np.ndarray] = {
+                 "formato_npz": np.array(FORMATO_NPZ), "classe": np.array(self.nome),
+-                "perfis": _como_texto(self.perfis),
++                "perfis": _como_texto(self.perfis), **self._arrays_espelhos(),
+             }
+             for perfil in self.perfis:
+                 bloco = self._capturas[perfil]
+@@ -315,7 +404,7 @@ class ArquivoDaClasse:
+             return None
+         arrays: Dict[str, np.ndarray] = {
+             "formato_npz": np.array(FORMATO_NPZ), "classe": np.array(self.nome),
+-            "perfis": _como_texto(self.perfis),
++            "perfis": _como_texto(self.perfis), **self._arrays_espelhos(),
+         }
+         for perfil in self.perfis:
+             bloco = self._capturas[perfil]
+@@ -389,7 +478,11 @@ def recuperar_parcial(sessao_dir: Path) -> List[Path]:
+                 for c in ler_pasta(pasta_nivel, classes=[class_id]):
+                     if nivel is not None and c.formato == "classe":
+                         snr_antigo.setdefault(c.chave, {})[nivel] = c.sinal
++            espelhos_antigos: Dict[str, str] = {}
+             for captura in ler_pasta(sessao_dir, versoes=VERSOES, classes=[class_id], perfis=None):
++                if captura.formato == "classe" and captura.espelho and captura.arquivo == existente:
++                    espelhos_antigos[captura.perfil] = str(captura.perfil_de_origem)
++                    continue  # espelho: dado só no bloco da origem (re-espelhado abaixo)
+                 if captura.formato != "classe" or captura.perfil in novos or captura.arquivo != existente:
+                     continue
+                 snr = snr_antigo.get(captura.chave, {})
+@@ -401,6 +494,13 @@ def recuperar_parcial(sessao_dir: Path) -> List[Path]:
+                     origem_programada=captura.origem_programada,
+                     inicio_janela=captura.inicio_janela or 0, snr=snr, metadado=captura.metadado,
+                 )
++            # Espelhos cuja origem e cujo próprio perfil não foram refeitos continuam valendo.
++            por_origem: Dict[str, List[str]] = {}
++            for espelho, origem in espelhos_antigos.items():
++                if origem not in novos and espelho not in novos and origem in bruto.perfis:
++                    por_origem.setdefault(origem, []).append(espelho)
++            for origem, destinos in por_origem.items():
++                bruto.espelhar(origem, destinos)
+         caminho = bruto.consolidar()
+         if caminho is not None:
+             gravados.append(caminho)
+@@ -409,7 +509,11 @@ def recuperar_parcial(sessao_dir: Path) -> List[Path]:
+             anteriores = []
+             if destino.is_file():
+                 for linha in destino.read_text(encoding="utf-8").splitlines():
+-                    if linha.strip() and json.loads(linha).get("perfil", PERFIL_LEGADO) not in novos:
++                    if not linha.strip():
++                        continue
++                    anterior = json.loads(linha)
++                    if anterior.get("perfil", PERFIL_LEGADO) not in novos \
++                            and anterior.get("perfil_de_origem") not in novos:
+                         anteriores.append(linha)
+             novas = [json.dumps(r, ensure_ascii=False, sort_keys=True) for r in bruto.registros()]
+             parcial = destino.with_suffix(".jsonl.part")
+@@ -490,11 +594,24 @@ class CapturaSessao:
+     inicio_janela: Optional[int] = None
+     tempo_ms: Optional[np.ndarray] = None
+     metadado: Optional[dict] = None
++    # Captura compartilhada entre perfis (``set perfil todos``, classe cujo
++    # gerar() não depende do perfil): os dados existem UMA vez, no bloco de
++    # ``perfil_de_origem``; ``perfis_compartilhados`` lista todos os perfis
++    # que apontam para ela (origem primeiro).
++    compartilhada: bool = False
++    perfil_de_origem: Optional[str] = None
++    perfis_compartilhados: Tuple[str, ...] = ()
+ 
+     @property
+     def chave(self) -> Tuple[str, str]:
+         return (self.perfil, self.id_captura)
+ 
++    @property
++    def espelho(self) -> bool:
++        """``True`` quando o perfil desta captura não tem bloco próprio: ela
++        é a captura de ``perfil_de_origem`` vista sob outro perfil."""
++        return self.compartilhada and self.perfil != self.perfil_de_origem
++
+ 
+ def classe_do_arquivo(caminho: Path) -> str:
+     return caminho.name.split("_", 1)[0]
+@@ -626,13 +743,27 @@ def _ler_formato2(dados, caminho, class_id, metadados, versoes, perfis_filtro, s
+                   max_por_bloco, limite_padrao, contagem, saida, avisar) -> None:
+     classe = str(dados["classe"])
+     tempo_ms = np.asarray(dados["tempo_ms"], dtype=np.float64) if "tempo_ms" in dados.files else None
+-    for perfil in [str(p) for p in np.atleast_1d(dados["perfis"])]:
++    reais = [str(p) for p in np.atleast_1d(dados["perfis"])]
++    # (perfil pedido, perfil cujo bloco guarda os dados): os espelhos de uma
++    # captura compartilhada apontam para o bloco da origem.
++    blocos = [(p, p) for p in reais]
++    if CHAVE_ESPELHOS in dados.files:
++        for espelho, origem in zip(np.atleast_1d(dados[CHAVE_ESPELHOS]), np.atleast_1d(dados[CHAVE_ORIGENS])):
++            if str(origem) in reais:
++                blocos.append((str(espelho), str(origem)))
++    grupos: Dict[str, List[str]] = {}
++    for perfil, origem in blocos:
++        grupos.setdefault(origem, []).append(perfil)
++    if len(blocos) > len(reais):  # ordem canônica dos perfis, com os espelhos no lugar
++        ordem = {p: i for i, p in enumerate(("norma", "literatura", "fronteira"))}
++        blocos.sort(key=lambda b: ordem.get(b[0], len(ordem)))
++    for perfil, origem in blocos:
+         if perfis_filtro and perfil not in perfis_filtro:
+             continue
+-        ids = [str(i) for i in np.atleast_1d(dados[chave(perfil, "id_captura")])]
++        ids = [str(i) for i in np.atleast_1d(dados[chave(origem, "id_captura")])]
+         if not ids:
+             continue
+-        itens = [i for i in ("medida", "tensao_pu", "corrente_pu") if chave(perfil, i) in dados.files]
++        itens = [i for i in ("medida", "tensao_pu", "corrente_pu") if chave(origem, i) in dados.files]
+         if not itens:
+             continue
+         item_sinal = itens[0]
+@@ -649,16 +780,19 @@ def _ler_formato2(dados, caminho, class_id, metadados, versoes, perfis_filtro, s
+             continue
+         contagem[(class_id, perfil)] = ja + len(linhas)
+         if item_sinal == "medida":
+-            carregar = [v for v in versoes if chave(perfil, v) in dados.files]
++            carregar = [v for v in versoes if chave(origem, v) in dados.files]
+             if not carregar:
+                 continue
+         else:
+             carregar = [item_sinal]
+-        matrizes = {v: np.atleast_2d(dados[chave(perfil, v)]) for v in carregar}
+-        origens = np.atleast_1d(dados[chave(perfil, "origem_programada")]) \
+-            if chave(perfil, "origem_programada") in dados.files else None
+-        inicios = np.atleast_1d(dados[chave(perfil, "inicio_janela")]) \
+-            if chave(perfil, "inicio_janela") in dados.files else None
++        matrizes = {v: np.atleast_2d(dados[chave(origem, v)]) for v in carregar}
++        origens = np.atleast_1d(dados[chave(origem, "origem_programada")]) \
++            if chave(origem, "origem_programada") in dados.files else None
++        inicios = np.atleast_1d(dados[chave(origem, "inicio_janela")]) \
++            if chave(origem, "inicio_janela") in dados.files else None
++        compartilhados = tuple(grupos[origem]) if len(grupos[origem]) > 1 else ()
++        if compartilhados:  # origem primeiro, depois a ordem do arquivo
++            compartilhados = (origem, *[p for p in compartilhados if p != origem])
+         for linha in linhas:
+             if item_sinal == "medida":
+                 versoes_linha = {v: np.asarray(m[linha]) for v, m in matrizes.items() if _tem_valor(m[linha])}
+@@ -675,6 +809,8 @@ def _ler_formato2(dados, caminho, class_id, metadados, versoes, perfis_filtro, s
+                 inicio_janela=int(inicios[linha]) if inicios is not None else None,
+                 tempo_ms=tempo_ms if item_sinal != "tensao_pu" else None,
+                 metadado=buscar_metadado(metadados, perfil, ids[linha]),
++                compartilhada=bool(compartilhados), perfil_de_origem=origem if compartilhados else None,
++                perfis_compartilhados=compartilhados,
+             ))
+ 
+ 
+diff --git a/scripts/diag_ciclos_trace.py b/scripts/diag_ciclos_trace.py
+index dbaf88d..1c29594 100644
+--- a/scripts/diag_ciclos_trace.py
++++ b/scripts/diag_ciclos_trace.py
+@@ -108,7 +108,8 @@ def carregar_sessao(sessao_dir: Path, *, classes: Optional[Sequence[str]] = None
+     sessao_dir = Path(sessao_dir)
+     filtro = sorted({c.zfill(2) for c in classes}) if classes else None
+     lidas = sessao_io.ler_capturas(sessao_dir, versoes=("medida", "modelo", "programada"), classes=filtro)
+-    lidas = [c for c in lidas if c.metadado is not None and not c.metadado.get("simulado")]
++    # espelho = a mesma captura de outro perfil (set perfil todos): vista uma vez, sob a origem
++    lidas = [c for c in lidas if c.metadado is not None and not c.metadado.get("simulado") and not c.espelho]
+     multiplos_perfis = len({c.perfil for c in lidas}) > 1
+     capturas: List[CapturaSessao] = []
+     for lida in lidas:
+diff --git a/scripts/gerar_ruido_janela.py b/scripts/gerar_ruido_janela.py
+index a3c8241..df8d62a 100644
+--- a/scripts/gerar_ruido_janela.py
++++ b/scripts/gerar_ruido_janela.py
+@@ -83,7 +83,13 @@ def gerar_sessao(
+     linhas: List[dict] = []
+     metadados_saida: Dict[Tuple[str, str], dict] = {}
+     por_arquivo: Dict[Path, List[sessao_io.CapturaSessao]] = {}
++    espelhos: Dict[Path, Dict[str, List[str]]] = {}  # arquivo -> origem -> perfis espelho
+     for captura in sessao_io.ler_pasta(sessao_dir, metadados, versoes=("medida",)):
++        if captura.espelho:  # mesma captura de outro perfil: o ruído é gerado uma vez, na origem
++            destinos = espelhos.setdefault(captura.arquivo, {}).setdefault(str(captura.perfil_de_origem), [])
++            if captura.perfil not in destinos:
++                destinos.append(captura.perfil)
++            continue
+         if captura.grandeza == "Tensão" and "medida" in captura.versoes:
+             por_arquivo.setdefault(captura.arquivo, []).append(captura)
+ 
+@@ -126,6 +132,9 @@ def gerar_sessao(
+                 "margem_bancada": (resultado["metadata"]["ruido_janela"]["bancada"] or {}).get("margem"),
+             })
+         if escritor is not None:
++            for origem, destinos in espelhos.get(npz_path, {}).items():
++                if origem in escritor.perfis:
++                    escritor.espelhar(origem, destinos)
+             escritor.consolidar(so_snr=True)
+             continue
+         # Formato antigo (um .npz por captura, ou o simulado empilhado): mesma
+@@ -150,8 +159,13 @@ def gerar_sessao(
+                 continue
+             registro = json.loads(texto)
+             chave = (str(registro.get("perfil") or sessao_io.PERFIL_LEGADO), str(registro["id_captura"]))
++            origem = registro.get("perfil_de_origem")
+             if chave in metadados_saida:  # só as que têm .npz limpo na sessão
+                 saidas.append(json.dumps(metadados_saida[chave], ensure_ascii=False, sort_keys=True))
++            elif origem and origem != chave[0] and (origem, chave[1]) in metadados_saida:
++                # Espelho (captura compartilhada): a linha da origem, sob o perfil dele.
++                espelho = dict(metadados_saida[(origem, chave[1])], perfil=chave[0])
++                saidas.append(json.dumps(espelho, ensure_ascii=False, sort_keys=True))
+         if saidas:
+             (saida / "metadata" / jsonl_path.name).write_text("\n".join(saidas) + "\n", encoding="utf-8")
+ 
+diff --git a/scripts/verificar_sessao_bancada.py b/scripts/verificar_sessao_bancada.py
+index 7f99bc7..4db5697 100644
+--- a/scripts/verificar_sessao_bancada.py
++++ b/scripts/verificar_sessao_bancada.py
+@@ -94,7 +94,7 @@ def carregar_sessao(pasta: Path) -> List[Captura]:
+             registro=np.asarray(lida.sinal, dtype=np.float64), arquivo=lida.arquivo.name,
+             perfil=lida.perfil, inicio_janela=lida.inicio_janela,
+         )
+-        for lida in lidas if lida.formato != "empilhado" and lida.metadado is not None
++        for lida in lidas if lida.formato != "empilhado" and lida.metadado is not None and not lida.espelho
+     ]
+     multiplos_perfis = len({c.perfil for c in capturas}) > 1
+     for c in capturas:
