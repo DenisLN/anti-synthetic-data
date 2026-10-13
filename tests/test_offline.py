@@ -7953,5 +7953,201 @@ class VerificadorSessaoBancadaTests(unittest.TestCase):
         self.assertTrue(list(saida.glob("diag_acdc_amplitude-*.json")))
 
 
+class DiagnosticoRetrieveTests(unittest.TestCase):
+    """v1.15 — ``set diagnostico retrieve``: ler de volta as TRACEs gravadas
+    (``AmetekMX30.ler_trace``) sem violar o quirk A2 (nunca consultar a fonte
+    colado a um ``TRACe:DATA``)."""
+
+    def setUp(self):
+        self.tmp_dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp_dir, ignore_errors=True)
+
+    @staticmethod
+    def _programada(fonte, seno_pu=1.0):
+        t = np.arange(6000) / 30_000.0
+        forma = seno_pu * np.sin(2 * np.pi * 60.0 * t)
+        fonte.program_capture(forma, base_voltage_rms=127.0, frequency_hz=60.0)
+        return fonte.ultima_programacao
+
+    def test_ler_trace_simulado_devolve_o_que_foi_gravado(self):
+        fonte = mestre.AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=425.0)
+        programacao = self._programada(fonte)
+        for indice, nome in enumerate(programacao.trace_names):
+            lido = fonte.ler_trace(nome)
+            self.assertEqual(lido.shape, (1024,))
+            np.testing.assert_array_equal(lido, programacao.traces[indice])
+
+    def test_ler_trace_recusa_tamanho_errado_e_resposta_ilegivel(self):
+        from ametek_orm import LeituraTraceError
+        fonte = mestre.AmetekMX30(simulated=True)
+        fonte.write("TRACe:DEFine CURTA")
+        fonte.write("TRACe:DATA CURTA,0.1,0.2,0.3")
+        fonte.write("*CLS")
+        with self.assertRaisesRegex(LeituraTraceError, "3 valores"):
+            fonte.ler_trace("CURTA")
+        with self.assertRaises(LeituraTraceError):  # nunca gravada: resposta vazia
+            fonte.ler_trace("NAO_EXISTE")
+
+    def test_leitura_nunca_e_o_comando_seguinte_a_um_trace_data(self):
+        fonte = mestre.AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=425.0)
+        programacao = self._programada(fonte)
+        # Colado a uma escrita de TRACe: recusado, nada é enviado.
+        fonte.write(programacao.comando_trace(0))
+        enviados = len(fonte.command_log)
+        with self.assertRaisesRegex(Exception, "escrita de TRACe"):
+            fonte.ler_trace(programacao.trace_names[0])
+        self.assertEqual(len(fonte.command_log), enviados)
+        # No fluxo normal a leitura vem depois de comandos de outro tipo.
+        fonte.write("*CLS")
+        for nome in programacao.trace_names:
+            fonte.ler_trace(nome)
+        log = fonte.command_log
+        leituras = [i for i, c in enumerate(log) if c.upper().startswith("TRACE:DATA?")]
+        self.assertEqual(len(leituras), len(programacao.trace_names))
+        for i in leituras:
+            self.assertFalse(log[i - 1].upper().startswith("TRACE:DATA "), log[i - 1][:30])
+        # E nenhuma escrita de TRACe depois da primeira leitura.
+        self.assertFalse(
+            any(c.upper().startswith(("TRACE:DATA ", "TRACE:DEFINE")) for c in log[leituras[0]:])
+        )
+
+    def test_espera_minima_desde_a_ultima_escrita_de_trace(self):
+        class Recurso:
+            def __init__(self):
+                self.timeout = 5000
+                self.timeouts_vistos = []
+                self.ultimo = ""
+
+            def flush(self, *args):
+                pass
+
+            def write_raw(self, payload):
+                if payload != b"\x04":
+                    self.ultimo = payload.decode().strip()
+
+            def read(self):
+                self.timeouts_vistos.append(self.timeout)
+                if self.ultimo.upper().startswith("TRACE:DATA?"):
+                    return ",".join(["0.5"] * 1024)
+                return "0"
+
+        recurso = Recurso()
+        fonte = mestre.AmetekMX30(visa_resource=recurso)
+        fonte._raw_write("TRACe:DATA T1," + ",".join(["0.5"] * 1024))
+        fonte._raw_write("*CLS")
+        with mock.patch("ametek_orm.time.sleep") as dormir:
+            lido = fonte.ler_trace("T1", espera_minima_s=2.0, timeout_s=9.0)
+        self.assertEqual(lido.size, 1024)
+        dormir.assert_called_once()
+        self.assertGreater(dormir.call_args[0][0], 1.5)
+        self.assertLessEqual(dormir.call_args[0][0], 2.0)
+        self.assertEqual(recurso.timeouts_vistos[-1], 9000)  # timeout próprio...
+        self.assertEqual(recurso.timeout, 5000)               # ...restaurado
+        # A própria leitura não conta como escrita: a segunda não espera de novo.
+        with mock.patch("ametek_orm.time.sleep") as dormir:
+            with mock.patch("ametek_orm.time.monotonic", return_value=fonte._t_ultima_escrita_trace + 30.0):
+                fonte.ler_trace("T1", espera_minima_s=2.0)
+        dormir.assert_not_called()
+
+    def _executar_waveform(self, *, retrieve, lido_adulterado=None):
+        config = _config_bancada(
+            self.tmp_dir, base_voltage_rms=127.0, diagnostico_retrieve=retrieve,
+            diagnostico_retrieve_espera_s=2.0,
+        )
+        fonte = mestre.AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=425.0)
+        if lido_adulterado is not None:
+            original = fonte.ler_trace
+            fonte.ler_trace = lambda nome, **kw: lido_adulterado(original(nome, **kw))
+        # O readback de arm_transient() exige estado que o simulador não modela.
+        fonte.arm_transient = lambda *args, **kwargs: None
+        fonte.trigger = lambda: fonte.command_log.append("*TRG")
+        osc = mock.Mock()
+        osc.medir_extremos = lambda canal: (100.0, -100.0)
+        experimento = _carregar_classe("07")(mestre.Bancada(fonte, osc, config))
+        experimento._calcular_margem = lambda **kw: (0, 0, kw["config_points"])
+        experimento._preparar_acquisicao_real = lambda: None
+        t = mestre.tempo(config)
+        # O osciloscópio devolve exatamente a forma programada (passa na validação física).
+        osc.get_waveform.side_effect = lambda *a, **k: (
+            t, experimento._forma_programada_pu * 127.0 * math.sqrt(2.0),
+        )
+        original_capturar = experimento._capturar_real
+
+        def _capturar(capture_index, tt, rng):
+            experimento._pontos_efetivos_captura_atual = tt.size
+            return original_capturar(capture_index, tt, rng)
+
+        experimento._capturar_real = _capturar
+        experimento.executar()
+        metadata = config.results_dir / "metadata" / f"{experimento.id}_{experimento.nome.lower()}.jsonl"
+        registros = [json.loads(linha) for linha in metadata.read_text(encoding="utf-8").splitlines()]
+        return fonte, registros
+
+    def test_sessao_com_retrieve_grava_pasta_separada_com_enviado_igual_a_lido(self):
+        fonte, registros = self._executar_waveform(retrieve=True)
+        self.assertTrue(registros)
+        for registro in registros:
+            info = registro["diagnostico_trace"]
+            self.assertIsNone(info["erro"])
+            self.assertEqual(info["desvio_max"], 0.0)
+            self.assertEqual(info["traces_lidas"], info["traces_programadas"])
+            arquivo = self.tmp_dir / info["arquivo"]
+            self.assertEqual(arquivo.parent.name, "diagnostico_trace")
+            with np.load(arquivo, allow_pickle=True) as dados:
+                np.testing.assert_array_equal(dados["enviado"], dados["lido"])
+                self.assertEqual(dados["enviado"].shape[1], 1024)
+                self.assertEqual(dados["list_voltage_rms"].shape[0], dados["enviado"].shape[0])
+        # Nada de diagnóstico dentro dos .npz da captura.
+        for npz in self.tmp_dir.glob("*.npz"):
+            with np.load(npz, allow_pickle=True) as dados:
+                self.assertNotIn("lido", dados.files)
+        # Ordem: leituras depois do disparo e nenhuma colada a TRACe:DATA.
+        log = fonte.command_log
+        primeira = next(i for i, c in enumerate(log) if c.upper().startswith("TRACE:DATA?"))
+        self.assertTrue(any(c.upper() == "*TRG" for c in log[:primeira]))
+        for i, c in enumerate(log):
+            if c.upper().startswith("TRACE:DATA?"):
+                self.assertFalse(log[i - 1].upper().startswith("TRACE:DATA "))
+
+    def test_desligado_por_padrao_nao_le_nem_grava(self):
+        fonte, registros = self._executar_waveform(retrieve=False)
+        self.assertFalse(any(c.upper().startswith("TRACE:DATA?") for c in fonte.command_log))
+        self.assertNotIn("diagnostico_trace", registros[0])
+        self.assertFalse((self.tmp_dir / "diagnostico_trace").exists())
+
+    def test_desvio_aparece_no_metadata(self):
+        _, registros = self._executar_waveform(retrieve=True, lido_adulterado=lambda v: v + 0.25)
+        for registro in registros:
+            self.assertAlmostEqual(registro["diagnostico_trace"]["desvio_max"], 0.25, places=6)
+
+    def test_leitura_com_erro_nao_derruba_a_captura(self):
+        from ametek_orm import LeituraTraceError
+
+        def _falha(_valores):
+            raise LeituraTraceError("timeout simulado")
+
+        _, registros = self._executar_waveform(retrieve=True, lido_adulterado=_falha)
+        self.assertTrue(registros)  # a captura foi gravada mesmo assim
+        info = registros[0]["diagnostico_trace"]
+        self.assertIn("timeout simulado", info["erro"])
+        self.assertEqual(info["traces_lidas"], 0)
+        self.assertIsNone(info["desvio_max"])
+
+    def test_cli_set_diagnostico_retrieve_liga_desliga_e_help_menciona(self):
+        import cli
+        antes = mestre.DIAGNOSTICO_RETRIEVE
+        self.addCleanup(setattr, mestre, "DIAGNOSTICO_RETRIEVE", antes)
+        sessao = cli.SessaoCLI.__new__(cli.SessaoCLI)
+        saida = io.StringIO()
+        with contextlib.redirect_stdout(saida):
+            self.assertEqual(sessao.cmd_set(["diagnostico", "retrieve"]), 0)
+            self.assertTrue(mestre.DIAGNOSTICO_RETRIEVE)
+            self.assertEqual(sessao.cmd_set(["diagnostico", "retrieve", "off"]), 0)
+            self.assertFalse(mestre.DIAGNOSTICO_RETRIEVE)
+            self.assertEqual(sessao.cmd_set(["diagnostico", "retrieve", "talvez"]), 1)
+        self.assertIn("diagnostico retrieve: ON", saida.getvalue())
+        self.assertIn("set diagnostico retrieve", cli.HELP_TEXT)
+
+
 if __name__ == "__main__":
     unittest.main()

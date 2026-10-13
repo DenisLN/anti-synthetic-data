@@ -91,6 +91,8 @@ Em `montar_programacao` (`:1322`): ciclos de `30000/f0` amostras (12 a 60 Hz →
 
 Apagar TRACes: `TRACe:DELete:ALL` (`clear_all_traces :1266`): só com OUTPUT OFF, antes de `energize_baseline`; espera 15 s sem consultar.
 
+Ler de volta uma TRACe (só diagnóstico, `set diagnostico retrieve`; `ametek_orm.py:1353`): `TRACe:DATA? <nome>` → 1024 valores separados por vírgula, "normalized values in the range of ±1" (manual p. 147, §6.2.7). **O manual é ambíguo**: a descrição do `TRACe[:DATA]` (p. 126) diz `Query Syntax: none`, e a p. 147 diz que, "when queried, trace data is returned as normalized values". A sintaxe `TRACe:DATA? <nome>` e o formato (lista NRf separada por vírgula, sem bloco `#`) são, portanto, **NÃO VERIFICADOS na fonte real**; `ler_trace` aceita só uma lista numérica de exatamente 1024 valores finitos (`LeituraTraceError` caso contrário). Regras de segurança: nunca como comando seguinte a uma escrita de TRACe (recusa), espera mínima de 2 s desde a última escrita de TRACe/DEFine/DELete (quirk A2), timeout próprio de 15 s restaurado depois, e só depois de a captura terminar.
+
 Manual: TRACe 126-127, LIST 90-97 e 153-154, `SOURce:MODE` 79/98, `INSTrument:COUPle` 53.
 
 ### 2.6 Comandos que **não** funcionam ou **não** são usados
