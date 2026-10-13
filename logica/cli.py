@@ -82,7 +82,16 @@ Comandos disponíveis (nenhum energiza a saída sem pedir confirmação própria
                        Keysight. Pede ENERGIZAR-COMANDOS.                   [ON]
   run <NN|nome>       Roda UMA classe (ex.: "run 02" ou "run SAG"). Pede
                        EXECUTAR-CLASSE-<NN>.                                [ON]
-  run all             Roda a bateria completa das 20 classes, sequencialmente,
+  run <lista>         Roda uma LISTA de classes por intervalos e/ou ids
+                       soltos, na ordem numérica: "run 01-07,09-20",
+                       "run 2,5,8", "run 10-16" (espaços são ignorados).
+                       Mesma execução e ganchos do run all (resumo final,
+                       set recalibracao/html). Ignora BATERIA_EXCLUIR: roda
+                       exatamente o que foi pedido. Mostra as capturas de
+                       cada classe e a estimativa de TRACe das escolhidas.
+                       Pede EXECUTAR-CLASSES-<lista normalizada>, ex.:
+                       EXECUTAR-CLASSES-01-07,09-20.                        [ON]
+  run all            Roda a bateria completa das 20 classes, sequencialmente,
                        sem parar numa falha isolada (ver Prioridade 1 do
                        CHANGELOG). Pede EXECUTAR-20-CLASSES.                [ON]
                        Pula as classes de BATERIA_EXCLUIR (padrão: nenhuma
@@ -162,6 +171,59 @@ por padrão) — não é mais opt-in ("set margin on|off" foi descontinuado, nã
 existe mais modo sem margem para captura real). Ajustável só por variável de
 ambiente antes de iniciar a sessão, nunca em runtime.
 """.strip("\n")
+
+# Classes da bateria (experimentos_nativos/NN.py e experimentos_waveform/NN.py,
+# 01 a 20; ver mestre._experiment_scripts()).
+TOTAL_CLASSES = 20
+
+
+def _id_de_classe(token: str) -> int:
+    if not (token.isascii() and token.isdigit()):
+        raise ValueError(f"{token!r} não é um id de classe (use números de 01 a {TOTAL_CLASSES:02d})")
+    numero = int(token)
+    if not 1 <= numero <= TOTAL_CLASSES:
+        raise ValueError(f"classe {token} inexistente (as classes são 01 a {TOTAL_CLASSES:02d})")
+    return numero
+
+
+def parsear_lista_classes(texto: str) -> List[int]:
+    """Converte "01-07,09-20", "2,5,8" ou "10-16" em ids ordenados e sem
+    repetição. Função pura: não abre instrumento nem lê arquivo. Recusa
+    (ValueError com o motivo) id fora de 01-20, intervalo invertido
+    ("07-01"), intervalo incompleto ("01-"), item vazio ("01,,02", vírgula
+    sobrando) e lista vazia."""
+    if not texto.strip():
+        raise ValueError("lista vazia")
+    ids = set()
+    for parte in texto.split(","):
+        parte = parte.strip()
+        if not parte:
+            raise ValueError("item vazio na lista (vírgula sobrando ou repetida)")
+        if "-" in parte:
+            inicio_txt, _, fim_txt = parte.partition("-")
+            if not inicio_txt.strip() or not fim_txt.strip():
+                raise ValueError(f"intervalo incompleto {parte!r} (use inicio-fim, ex.: 01-07)")
+            inicio, fim = _id_de_classe(inicio_txt.strip()), _id_de_classe(fim_txt.strip())
+            if inicio > fim:
+                raise ValueError(f"intervalo invertido {parte!r} (o início é maior que o fim)")
+            ids.update(range(inicio, fim + 1))
+        else:
+            ids.add(_id_de_classe(parte))
+    return sorted(ids)
+
+
+def normalizar_lista_classes(ids: List[int]) -> str:
+    """Forma canônica usada na confirmação: sequências viram intervalo.
+    [1..7, 9..20] -> "01-07,09-20"; [2, 5, 8] -> "02,05,08"."""
+    partes = []
+    i = 0
+    while i < len(ids):
+        j = i
+        while j + 1 < len(ids) and ids[j + 1] == ids[j] + 1:
+            j += 1
+        partes.append(f"{ids[i]:02d}" if j == i else f"{ids[i]:02d}-{ids[j]:02d}")
+        i = j + 1
+    return ",".join(partes)
 
 
 class SessaoCLI:
@@ -558,7 +620,36 @@ class SessaoCLI:
             return 1
         if args[0].lower() == "all":
             return self._run_all()
+        texto = "".join(args)
+        if "," in texto or "-" in texto:
+            return self._run_lista(texto)
         return self._run_uma(args[0])
+
+    def _run_lista(self, texto: str) -> int:
+        """``run 01-07,09-20``: valida TUDO antes de qualquer confirmação ou
+        contato com a bancada (recusa sem energizar)."""
+        try:
+            ids = parsear_lista_classes(texto)
+        except ValueError as exc:
+            print(f"Lista de classes recusada: {exc}. Exemplos: run 01-07,09-20 | run 2,5,8 | "
+                  "run 10-16. Nada foi energizado.")
+            return 1
+        mapa = {script.stem: script for script in mestre._experiment_scripts()}
+        scripts = [mapa[f"{numero:02d}"] for numero in ids]
+        normalizada = normalizar_lista_classes(ids)
+        linhas = self._capturas_das_classes(scripts)
+        total_capturas = sum(info["total"] for _, _, info in linhas)
+        print(f"Classes escolhidas ({len(linhas)}), na ordem numérica, capturas planejadas:")
+        for classe_id, nome, info in linhas:
+            print(f"  {classe_id}  {nome:30s} {self._descrever_capturas(info)} capturas")
+        if not self.confirmar(
+            f"Vai energizar a saída e rodar as classes {normalizada} ({len(linhas)} classes, "
+            f"{total_capturas} capturas planejadas). {self._aviso_escritas_trace(linhas)} "
+            "Confirme fisicamente probe, cabos, E-stop e EUT.",
+            f"EXECUTAR-CLASSES-{normalizada}",
+        ):
+            return 1
+        return self._executar_scripts(scripts)
 
     def _run_uma(self, alvo: str) -> int:
         script_path = self._resolver_classe(alvo)
@@ -625,10 +716,16 @@ class SessaoCLI:
             "EXECUTAR-20-CLASSES",
         ):
             return 1
+        return self._executar_scripts(mestre.scripts_da_bateria_fisica())
+
+    def _executar_scripts(self, scripts: List[Path]) -> int:
+        """Corpo comum de ``run all`` e ``run <lista>``: uma pasta de sessão,
+        a saída ligada só durante ``executar_bateria`` (que isola falhas de
+        experimento e aborta em falha de infraestrutura), resumo final e os
+        ganchos de fim de run. Quem chama já confirmou a execução."""
         self._garantir_pasta_sessao()
         self.autorizar_saida(True)
         try:
-            scripts = mestre.scripts_da_bateria_fisica()
             with mestre.Bancada.from_env(require_output=True) as bancada:
                 resultados = bancada.executar_bateria(scripts)
         except Exception as exc:
