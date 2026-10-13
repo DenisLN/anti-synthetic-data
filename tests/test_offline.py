@@ -4479,7 +4479,7 @@ class RelatorioERecalibracaoTests(unittest.TestCase):
         pico programado pelo código e dividir pelo VMAX/VMIN gravado devolve
         os mesmos fatores (o JSON da v1.12)."""
         recalibrar = _carregar_script("recalibrar_extremos")
-        sessao = PROJECT_ROOT / "docs" / "analise-2026-09-30" / "dados" / "sessao_2026-09-30_15-26-05"
+        sessao = PROJECT_ROOT / "tests" / "fixtures" / "sessao_2026-09-30_15-26-05"
         por_condicao, ignoradas, _ = recalibrar.coletar([sessao])
         self.assertEqual(set(por_condicao), {"127V_60Hz"})
         medidos = por_condicao["127V_60Hz"]
@@ -4495,7 +4495,7 @@ class RelatorioERecalibracaoTests(unittest.TestCase):
 
     def test_calibracao_atual_nunca_ficou_abaixo_da_v1_12(self):
         recalibrar = _carregar_script("recalibrar_extremos")
-        sessao = PROJECT_ROOT / "docs" / "analise-2026-09-30" / "dados" / "sessao_2026-09-30_15-26-05"
+        sessao = PROJECT_ROOT / "tests" / "fixtures" / "sessao_2026-09-30_15-26-05"
         por_condicao, _, _ = recalibrar.coletar([sessao])
         atuais = mestre.carregar_fatores_extremo(CALIBRACAO_REAL, tensao_rms=127.0, frequencia_hz=60.0)
         for classe_id, valores in por_condicao["127V_60Hz"].items():
