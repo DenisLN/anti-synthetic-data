@@ -29,9 +29,12 @@ inclusive nas interrompidas via erro tratado).
 | `criada_em` | ISO 8601 com fuso, no primeiro uso da pasta no processo |
 | `modo` | `bancada` ou `simulado` |
 | `git_commit` | `git rev-parse HEAD` (`null` se o git não respondeu) |
-| `git_sujo` | `true` se `git status --porcelain --untracked-files=no` não é vazio (mesmo critério do `-dirty` de `git describe`; arquivo novo não rastreado NÃO conta); `null` se o git não respondeu |
+| `git_sujo` | `true` se há alteração rastreada não commitada em qualquer arquivo (`git status --porcelain --untracked-files=no`) OU arquivo novo não ignorado dentro de `logica/`, `experimentos_nativos/`, `experimentos_waveform/` ou `scripts/` (`mestre.PASTAS_DO_CODIGO`); arquivo novo fora dessas pastas não conta; `null` se o git não respondeu. Recalculado a cada pasta de sessão (= a cada `run` da CLI), não uma vez por processo |
+| `arquivos_nao_rastreados` | lista (ordenada) dos arquivos novos não ignorados dentro de `PASTAS_DO_CODIGO` que tornaram a árvore suja; `[]` se nenhum (v1.15, acrescentado) |
 | `versao_codigo` | `git describe --always --dirty --tags` |
 | `numpy_versao`, `python_versao` | versões do ambiente que gravou |
+| `perfil` | perfil de faixas (`norma`, `literatura` ou `fronteira`) em vigor no início do run desta pasta (v1.15, acrescentado) |
+| `perfis_usados_na_cli` | lista, na ordem, do perfil de cada run desta CLI até esta pasta, inclusive (v1.15, acrescentado); a pasta do primeiro run tem uma entrada, a do terceiro, três |
 | `calibracao_extremos.origem` | caminho do arquivo copiado |
 | `calibracao_extremos.copia_na_sessao` | nome da cópia dentro da pasta (`calibracao_extremos.json`) |
 | `calibracao_extremos.sha256` | SHA-256 da cópia |
@@ -60,6 +63,8 @@ Nenhum campo existente foi removido. Campos novos:
 | `snr_bancada_db` | só física | SNR do ruído próprio da bancada nesta captura (potência da janela / ruído medido na margem anterior por segunda diferença); `null` no simulado |
 | `snr_efetivo_db` | toda captura | por nível: sinal / (ruído da bancada + ruído acrescentado); no simulado igual a `snr_medido_db` |
 | `ruido_janela` | toda captura | `inicio_janela`, `amostras`, `potencia_referencia_pu2`, `margens_com_ruido` (sempre `false`: os `snr_XXdb/` têm só a janela) e `bancada` (`margem`, `amostras`, `ruido_rms_pu`, `media_da_margem_pu`, `snr_db`) |
+| `ruido_janela.sementes_por_snr_db` | toda captura com níveis de SNR (v1.15, acrescentado) | semente do AWGN de cada nível, com a mesma chave de `snr_medido_db` (`"20.0"`, ...): para `seed = 2020000` e níveis 20/30 dB: `{"20.0": 52040000, "30.0": 52050000}`. Com ela e `potencia_referencia_pu2`, o vetor de ruído se reproduz (`numpy.random.default_rng(semente).normal(0, 1, pontos)`, escalado para a potência de referência / 10^(snr/10)) |
+| `ruido_janela.formula_semente` | idem | texto da fórmula: `seed + round(snr_db*1000) + 50000000` (`sinais.semente_do_ruido`, `sinais.FORMULA_SEMENTE_RUIDO`) |
 
 Capturas simuladas não têm trigger nem registro bruto: não têm `inicio_janela`; a procedência delas está em `sessao.json`.
 

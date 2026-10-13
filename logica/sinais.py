@@ -166,6 +166,9 @@ def snr_medida(limpo: np.ndarray, ruidoso: np.ndarray) -> float:
 # 50 ms depois) não entram no arquivo com ruído.
 SEMENTE_BASE_RUIDO = 50_000_000
 MINIMO_AMOSTRAS_RUIDO_BANCADA = 100
+# Identificador textual da fórmula de semente_do_ruido, gravado em
+# ruido_janela.formula_semente (rastreabilidade; não é lido por código).
+FORMULA_SEMENTE_RUIDO = "seed + round(snr_db*1000) + 50000000"
 
 
 def semente_do_ruido(seed: int, snr_db: float) -> int:
@@ -245,11 +248,14 @@ def ruido_na_janela(
     janelas: Dict[float, np.ndarray] = {}
     acrescentado: Dict[str, float] = {}
     efetivo: Dict[str, float] = {}
+    sementes: Dict[str, int] = {}
     for snr_db in niveis_db:
         # Mesmo sorteio da seed, mas escalado para a potência EXATA
         # P_ref / 10**(snr/10) na janela: o SNR acrescentado é o nominal por
         # construção (e não só em esperança, como em ruido_awgn).
-        ruido = np.random.default_rng(semente_do_ruido(seed, snr_db)).normal(0.0, 1.0, size=limpa.shape)
+        semente = semente_do_ruido(seed, snr_db)
+        sementes[str(snr_db)] = semente
+        ruido = np.random.default_rng(semente).normal(0.0, 1.0, size=limpa.shape)
         ruido *= math.sqrt(potencia_ref / (10.0 ** (snr_db / 10.0)) / float(np.mean(np.square(ruido))))
         ruidosa = limpa + ruido
         janelas[snr_db] = ruidosa
@@ -270,6 +276,10 @@ def ruido_na_janela(
                 "potencia_referencia_pu2": potencia_ref,
                 "margens_com_ruido": False,
                 "bancada": detalhe_bancada,
+                # Semente de cada nível (chave = snr_medido_db) e a fórmula
+                # que a produz: reproduz o vetor de ruído sem o código de hoje.
+                "sementes_por_snr_db": sementes,
+                "formula_semente": FORMULA_SEMENTE_RUIDO,
             },
         },
     }
