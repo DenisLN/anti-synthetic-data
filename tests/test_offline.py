@@ -3290,6 +3290,18 @@ class TerminalDeDiagnosticoTests(unittest.TestCase):
     ``scpi_transcricao.log`` (P06) da pasta da sessão em tempo real, sem
     nunca derrubar a sessão se o console não puder ser aberto."""
 
+    def setUp(self):
+        # Desde a v1.15 (spec 14) cada pasta de sessão recalcula a procedência com
+        # `git`, que também passa por subprocess.Popen; estes testes contam só
+        # os Popen do terminal, então a procedência fica fixa aqui.
+        procedencia = {
+            "git_commit": "abc", "git_sujo": False, "arquivos_nao_rastreados": [],
+            "versao_codigo": "abc", "numpy_versao": np.__version__, "python_versao": "3",
+        }
+        patch = mock.patch.object(mestre, "info_do_codigo", return_value=procedencia)
+        patch.start()
+        self.addCleanup(patch.stop)
+
     def _sessao(self, tmp_dir):
         import cli
         sessao = cli.SessaoCLI()
@@ -7004,4 +7016,173 @@ class RmsCaEPicoPrevistoTests(unittest.TestCase):
         alvo = np.concatenate([forma[i * n:(i + 1) * n] - forma[i * n:(i + 1) * n].mean() for i in range(programacao.ciclos)])
         # a fonte remove o DC de cada TRACE: o que resta é o modelo sem a média do ciclo
         self.assertLess(float(np.max(np.abs(programacao.programada_pu() - alvo))), 0.05)
+
+
+class RastreabilidadeRuidoEArvoreTests(unittest.TestCase):
+    """v1.15 (spec 14): semente de cada nível do ruído gravada em
+    ``ruido_janela``; procedência do código recalculada a cada pasta de sessão
+    e com arquivos não rastreados em ``PASTAS_DO_CODIGO``; perfis dos runs da
+    CLI em ``sessao.json``."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self._cache = mock.patch.object(mestre, "_INFO_CODIGO_CACHE", None)
+        self._cache.start()
+        self.addCleanup(self._cache.stop)
+
+    def _repo_git(self):
+        """Repositório git temporário que imita a estrutura do projeto."""
+        repo = self.tmp / "repo"
+        for pasta in ("logica", "docs", "scripts", "experimentos_nativos", "experimentos_waveform"):
+            (repo / pasta).mkdir(parents=True)
+        (repo / ".gitignore").write_text("__pycache__/\n", encoding="utf-8")
+        (repo / "logica" / "base.py").write_text("X = 1\n", encoding="utf-8")
+        self._git(repo, "init", "-q")
+        self._git(repo, "add", "logica/base.py", ".gitignore")
+        self._git(repo, "commit", "-q", "-m", "base")
+        return repo
+
+    @staticmethod
+    def _git(repo, *args):
+        import subprocess
+        subprocess.run(
+            ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", *args],
+            cwd=str(repo), check=True, capture_output=True,
+        )
+
+    def _config_simulada(self, results_dir):
+        return mestre.Config(
+            fs_hz=30_000.0, points=6_000, duration_s=0.2, grid_frequency_hz=60.0,
+            base_voltage_rms=127.0, snr_levels_db=(20.0, 30.0, 40.0), base_seed=1234,
+            capture_current=False, current_base_a=None, results_dir=results_dir,
+            sim_captures_per_class=1, real_captures_per_class=1, disturbance_start_s=0.06,
+            capturas_override=1,
+        )
+
+    # -- semente do ruído --------------------------------------------------
+
+    def test_semente_gravada_reproduz_o_vetor_de_ruido(self):
+        registro = np.sin(2.0 * np.pi * 60.0 * np.arange(8000) / 30_000.0)
+        seed = 777
+        resultado = sinais.ruido_na_janela(registro, 600, 6000, (20.0, 30.0, 40.0), seed, simulado=True)
+        rj = resultado["metadata"]["ruido_janela"]
+        self.assertEqual(rj["formula_semente"], "seed + round(snr_db*1000) + 50000000")
+        self.assertEqual(set(rj["sementes_por_snr_db"]), {"20.0", "30.0", "40.0"})
+        json.dumps(rj)  # serializável como o metadata exige
+        limpa = registro[600:6600]
+        potencia = float(np.mean(np.square(limpa)))
+        for snr_db in (20.0, 30.0, 40.0):
+            semente = rj["sementes_por_snr_db"][str(snr_db)]
+            self.assertEqual(semente, seed + int(round(snr_db * 1000.0)) + 50_000_000)
+            # Reconstrução SÓ a partir da semente gravada e da fórmula de potência.
+            ruido = np.random.default_rng(semente).normal(0.0, 1.0, size=limpa.shape)
+            ruido *= math.sqrt(potencia / (10.0 ** (snr_db / 10.0)) / float(np.mean(np.square(ruido))))
+            np.testing.assert_allclose(resultado["janelas"][snr_db] - limpa, ruido, rtol=0, atol=1e-12)
+
+    def test_mesma_seed_mesmo_ruido_e_semente_registrada(self):
+        registro = np.sin(2.0 * np.pi * 50.0 * np.arange(8000) / 30_000.0)
+        a = sinais.ruido_na_janela(registro, 600, 6000, (30.0,), 5, simulado=True)
+        b = sinais.ruido_na_janela(registro, 600, 6000, (30.0,), 5, simulado=True)
+        np.testing.assert_array_equal(a["janelas"][30.0], b["janelas"][30.0])
+        self.assertEqual(a["metadata"]["ruido_janela"]["sementes_por_snr_db"], {"30.0": 5 + 30_000 + 50_000_000})
+
+    def test_sessao_simulada_grava_sementes_em_ruido_janela(self):
+        config = self._config_simulada(self.tmp / "sim")
+        fonte = mestre.AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=425.0)
+        bancada = mestre.Bancada(fonte, None, config)
+
+        class _Classe(mestre.ExperimentoNativo):
+            id = "01"
+            nome = "NORMAL"
+
+            def gerar(self, t, f0, capture_index, rng):
+                return np.sin(2.0 * np.pi * f0 * t), {}
+
+            def configurar(self, capture_index):
+                return {}
+
+        _Classe(bancada).executar()
+        pasta = config.results_dir
+        registros = [json.loads(l) for l in (pasta / "metadata" / "01_normal.jsonl").read_text(encoding="utf-8").splitlines()]
+        self.assertTrue(registros)
+        for registro in registros:
+            rj = registro["ruido_janela"]
+            self.assertEqual(rj["formula_semente"], "seed + round(snr_db*1000) + 50000000")
+            self.assertEqual(
+                rj["sementes_por_snr_db"],
+                {str(s): registro["seed"] + int(round(s * 1000)) + 50_000_000 for s in (20.0, 30.0, 40.0)},
+            )
+
+    # -- procedência do código ---------------------------------------------
+
+    def test_arquivo_novo_em_pasta_do_codigo_acende_git_sujo(self):
+        repo = self._repo_git()
+        with mock.patch.object(mestre, "PROJECT_ROOT", repo):
+            # Arquivo novo fora das pastas do código não conta.
+            (repo / "docs" / "nota.md").write_text("nota\n", encoding="utf-8")
+            limpo = mestre.info_do_codigo(recalcular=True)
+            self.assertFalse(limpo["git_sujo"])
+            self.assertEqual(limpo["arquivos_nao_rastreados"], [])
+            # Arquivo novo em logica/ conta e aparece na lista.
+            (repo / "logica" / "novo.py").write_text("Y = 2\n", encoding="utf-8")
+            sujo = mestre.info_do_codigo(recalcular=True)
+            self.assertTrue(sujo["git_sujo"])
+            self.assertEqual(sujo["arquivos_nao_rastreados"], ["logica/novo.py"])
+            # Recalcula: sem o arquivo, a árvore volta a estar limpa.
+            (repo / "logica" / "novo.py").unlink()
+            self.assertFalse(mestre.info_do_codigo(recalcular=True)["git_sujo"])
+
+    def test_cada_pasta_do_codigo_conta_e_ignorado_nao(self):
+        repo = self._repo_git()
+        with mock.patch.object(mestre, "PROJECT_ROOT", repo):
+            for pasta in ("scripts", "experimentos_nativos", "experimentos_waveform"):
+                (repo / pasta / "novo.py").write_text("Z = 3\n", encoding="utf-8")
+                self.assertTrue(mestre.info_do_codigo(recalcular=True)["git_sujo"], pasta)
+                (repo / pasta / "novo.py").unlink()
+            (repo / "logica" / "__pycache__").mkdir()
+            (repo / "logica" / "__pycache__" / "x.pyc").write_bytes(b"\0")
+            self.assertFalse(mestre.info_do_codigo(recalcular=True)["git_sujo"])
+
+    def test_cache_sem_recalcular_mantem_o_valor_do_processo(self):
+        repo = self._repo_git()
+        with mock.patch.object(mestre, "PROJECT_ROOT", repo):
+            self.assertFalse(mestre.info_do_codigo(recalcular=True)["git_sujo"])
+            (repo / "logica" / "novo.py").write_text("Y = 2\n", encoding="utf-8")
+            self.assertFalse(mestre.info_do_codigo()["git_sujo"])  # cache do processo
+            self.assertTrue(mestre.info_do_codigo(recalcular=True)["git_sujo"])
+
+    def test_preparar_pasta_recalcula_entre_runs_e_grava_perfis(self):
+        repo = self._repo_git()
+        with mock.patch.object(mestre, "PROJECT_ROOT", repo), mock.patch("builtins.print"):
+            primeira = mestre.preparar_pasta_da_sessao(self.tmp / "run01", bancada=True, perfis_usados=["literatura"])
+            (repo / "logica" / "novo.py").write_text("Y = 2\n", encoding="utf-8")
+            segunda = mestre.preparar_pasta_da_sessao(
+                self.tmp / "run02", bancada=True, perfis_usados=["literatura", "norma"],
+            )
+        self.assertFalse(primeira["git_sujo"])
+        self.assertTrue(segunda["git_sujo"])
+        sessao = json.loads((self.tmp / "run02" / "sessao.json").read_text(encoding="utf-8"))
+        self.assertTrue(sessao["git_sujo"])
+        self.assertEqual(sessao["arquivos_nao_rastreados"], ["logica/novo.py"])
+        self.assertEqual(sessao["perfis_usados_na_cli"], ["literatura", "norma"])
+        self.assertEqual(sessao["perfil"], mestre.PERFIL)
+
+    def test_cli_grava_perfil_de_cada_run_na_sua_pasta(self):
+        import cli
+        sessao_cli = cli.SessaoCLI()
+        with mock.patch.object(mestre, "RESULTS_DIR", self.tmp / "resultados"), \
+                mock.patch.object(mestre, "SESSION_RESULTS_DIR", None), \
+                mock.patch.object(mestre, "configurar_log_de_sessao"), \
+                mock.patch("builtins.print"):
+            with mock.patch.object(mestre, "PERFIL", "literatura"):
+                sessao_cli._garantir_pasta_sessao()
+            with mock.patch.object(mestre, "PERFIL", "norma"):
+                sessao_cli._garantir_pasta_sessao()
+        primeira, segunda = sorted((self.tmp / "resultados").glob("sessao_*"))
+        self.assertTrue(segunda.name.endswith("_run02"))
+        s1 = json.loads((primeira / "sessao.json").read_text(encoding="utf-8"))
+        s2 = json.loads((segunda / "sessao.json").read_text(encoding="utf-8"))
+        self.assertEqual((s1["perfil"], s1["perfis_usados_na_cli"]), ("literatura", ["literatura"]))
+        self.assertEqual((s2["perfil"], s2["perfis_usados_na_cli"]), ("norma", ["literatura", "norma"]))
 

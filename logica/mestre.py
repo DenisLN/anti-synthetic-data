@@ -117,17 +117,28 @@ _VERSAO_CACHE: Optional[str] = None
 _INFO_CODIGO_CACHE: Optional[Dict[str, object]] = None
 
 
-def info_do_codigo() -> Dict[str, object]:
-    """Procedência do código desta execução: commit (``git rev-parse HEAD``),
-    se a árvore tem alteração rastreada não commitada, versões do numpy e do
-    Python. ``git_commit``/``git_sujo`` ficam ``None`` quando o git não
-    responde — nunca impede uma sessão.
+# Pastas cujos arquivos NÃO rastreados também tornam a árvore "suja" (são o
+# código que gera e grava as sessões). Fora delas, arquivo novo não conta (ex.:
+# notas em docs/), como no -dirty de ``git describe``.
+PASTAS_DO_CODIGO = ("logica", "experimentos_nativos", "experimentos_waveform", "scripts")
 
-    "Sujo" = ``git status --porcelain --untracked-files=no`` não vazio, o
-    mesmo critério do ``-dirty`` de ``git describe`` (arquivo novo ainda não
-    adicionado ao git não conta)."""
+
+def info_do_codigo(*, recalcular: bool = False) -> Dict[str, object]:
+    """Procedência do código desta execução: commit (``git rev-parse HEAD``),
+    se a árvore está suja, versões do numpy e do Python. ``git_commit``/
+    ``git_sujo`` ficam ``None`` quando o git não responde — nunca impede uma
+    sessão.
+
+    "Sujo" = alteração rastreada não commitada em QUALQUER arquivo
+    (``git status --porcelain --untracked-files=no``) OU arquivo não rastreado
+    (e não ignorado) dentro de ``PASTAS_DO_CODIGO``. ``arquivos_nao_rastreados``
+    diz quais são esses arquivos novos.
+
+    O resultado fica em cache no processo; ``recalcular=True`` refaz a conta
+    (``preparar_pasta_da_sessao`` faz isso a cada pasta de sessão, ou seja, a
+    cada ``run`` da CLI)."""
     global _INFO_CODIGO_CACHE
-    if _INFO_CODIGO_CACHE is not None:
+    if _INFO_CODIGO_CACHE is not None and not recalcular:
         return dict(_INFO_CODIGO_CACHE)
     import platform
     import subprocess
@@ -143,9 +154,15 @@ def info_do_codigo() -> Dict[str, object]:
 
     commit = _git("rev-parse", "HEAD") or None
     status = _git("status", "--porcelain", "--untracked-files=no")
+    novos = _git("ls-files", "--others", "--exclude-standard", "--", *PASTAS_DO_CODIGO)
+    if status is None or novos is None:
+        sujo = None
+    else:
+        sujo = bool(status or novos)
     _INFO_CODIGO_CACHE = {
         "git_commit": commit,
-        "git_sujo": None if status is None else bool(status),
+        "git_sujo": sujo,
+        "arquivos_nao_rastreados": sorted(novos.splitlines()) if novos else [],
         "versao_codigo": versao_do_codigo(),
         "numpy_versao": np.__version__,
         "python_versao": platform.python_version(),
@@ -178,12 +195,19 @@ PASTA_TRES_VERSOES = "tres_versoes"
 _SESSOES_PREPARADAS: Dict[Path, Dict[str, object]] = {}
 
 
-def preparar_pasta_da_sessao(results_dir: Path, *, bancada: bool) -> Dict[str, object]:
+def preparar_pasta_da_sessao(
+    results_dir: Path, *, bancada: bool, perfis_usados: Optional[Sequence[str]] = None,
+) -> Dict[str, object]:
     """Uma vez por processo e pasta: copia a ``calibracao_extremos.json`` EM
     USO para dentro da sessão e grava ``sessao.json`` (commit, árvore suja,
-    numpy, Python, caminho e SHA-256 da calibração). A calibração muda depois
-    das sessões (relatório do professor, pergunta 11): sem a cópia, o ``k``
-    recalculado a partir do código de hoje deixa de bater com o gravado.
+    numpy, Python, caminho e SHA-256 da calibração, perfil de faixas). A
+    calibração muda depois das sessões (relatório do professor, pergunta 11):
+    sem a cópia, o ``k`` recalculado a partir do código de hoje deixa de bater
+    com o gravado.
+
+    A procedência é recalculada aqui (``info_do_codigo(recalcular=True)``), ou
+    seja, a cada pasta nova = a cada ``run`` da CLI. ``perfis_usados`` são os
+    perfis dos runs da CLI até este (inclusive); sem ele, só o perfil atual.
 
     Árvore suja numa sessão de BANCADA é avisada em destaque, sem bloquear
     (não há mecanismo de bloqueio no fluxo; o operador decide)."""
@@ -192,7 +216,7 @@ def preparar_pasta_da_sessao(results_dir: Path, *, bancada: bool) -> Dict[str, o
     if chave in _SESSOES_PREPARADAS:
         return _SESSOES_PREPARADAS[chave]
     results_dir.mkdir(parents=True, exist_ok=True)
-    codigo = info_do_codigo()
+    codigo = info_do_codigo(recalcular=True)
     copia = results_dir / NOME_CALIBRACAO_NA_SESSAO
     parcial = copia.with_suffix(".json.part")
     shutil.copyfile(CALIBRACAO_EXTREMOS_PATH, parcial)
@@ -202,6 +226,8 @@ def preparar_pasta_da_sessao(results_dir: Path, *, bancada: bool) -> Dict[str, o
         "criada_em": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "modo": "bancada" if bancada else "simulado",
         **codigo,
+        "perfil": PERFIL,
+        "perfis_usados_na_cli": list(perfis_usados) if perfis_usados else [PERFIL],
         "calibracao_extremos": {
             "origem": str(CALIBRACAO_EXTREMOS_PATH),
             "copia_na_sessao": NOME_CALIBRACAO_NA_SESSAO,
@@ -215,9 +241,10 @@ def preparar_pasta_da_sessao(results_dir: Path, *, bancada: bool) -> Dict[str, o
     _SESSOES_PREPARADAS[chave] = info
     if bancada and codigo["git_sujo"]:
         aviso = (
-            "ATENÇÃO: árvore git SUJA (alterações rastreadas não commitadas; "
-            f"versão {codigo['versao_codigo']}). Esta sessão NÃO é reproduzível "
-            "só pelo commit. Commit limpo antes de uma sessão de coleta."
+            "ATENÇÃO: árvore git SUJA (alterações rastreadas não commitadas ou "
+            f"arquivos novos em {', '.join(PASTAS_DO_CODIGO)}; versão {codigo['versao_codigo']}). "
+            f"Arquivos novos: {codigo.get('arquivos_nao_rastreados') or 'nenhum'}. Esta sessão NÃO é "
+            "reproduzível só pelo commit. Commit limpo antes de uma sessão de coleta."
         )
         logger.warning(aviso)
         print("\n" + "!" * 78 + f"\n{aviso}\n" + "!" * 78 + "\n")

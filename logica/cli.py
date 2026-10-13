@@ -172,6 +172,9 @@ class SessaoCLI:
         # "set seed padrao".
         self._seed_inicial = mestre.BASE_SEED
         self._runs_nesta_sessao = 0
+        # Perfil de faixas de cada run desta CLI, na ordem (vai para sessao.json
+        # de cada pasta, em "perfis_usados_na_cli").
+        self._perfis_usados: List[str] = []
         # Janela de "tail -f" da transcrição SCPI (ver
         # _abrir_terminal_de_diagnostico) — no máximo uma por vez; a do run
         # anterior é fechada antes de abrir a do run atual.
@@ -217,7 +220,11 @@ class SessaoCLI:
         print(f"Sessão gravando em: {sessao_dir}")
         # Cópia da calibração + sessao.json (commit, numpy) e aviso de árvore
         # suja em destaque, já no início do run (ver mestre.preparar_pasta_da_sessao).
-        mestre.preparar_pasta_da_sessao(sessao_dir, bancada=mestre.BENCH_MODE)
+        # A procedência (árvore suja, arquivos novos) é recalculada aqui, a cada run.
+        self._perfis_usados.append(mestre.PERFIL)
+        mestre.preparar_pasta_da_sessao(
+            sessao_dir, bancada=mestre.BENCH_MODE, perfis_usados=list(self._perfis_usados),
+        )
         if mestre.DIAGNOSTICO_MODE and mestre.BENCH_MODE and DIAGNOSTICO_ABRIR_TERMINAL:
             self._abrir_terminal_de_diagnostico(sessao_dir / "scpi_transcricao.log")
 
