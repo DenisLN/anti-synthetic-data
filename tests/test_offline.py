@@ -6957,9 +6957,6 @@ class PreflightUnicoTests(unittest.TestCase):
             self.assertIn("linha de teste lowvoltage", baixa_log)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class RmsCaEPicoPrevistoTests(unittest.TestCase):
     """Spec 11 (v1.15): LIST:VOLTage com o rms da componente CA do ciclo e
@@ -7186,3 +7183,6 @@ class RastreabilidadeRuidoEArvoreTests(unittest.TestCase):
         self.assertEqual((s1["perfil"], s1["perfis_usados_na_cli"]), ("literatura", ["literatura"]))
         self.assertEqual((s2["perfil"], s2["perfis_usados_na_cli"]), ("norma", ["literatura", "norma"]))
 
+
+if __name__ == "__main__":
+    unittest.main()
