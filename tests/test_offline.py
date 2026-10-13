@@ -7538,5 +7538,52 @@ class AssinaturaPortavelTests(unittest.TestCase):
                     )
 
 
+class ComposicaoSorteadaRepresentacaoTests(unittest.TestCase):
+    """Revisão das compostas sorteadas (spec 19): o limite da oscilação de
+    2400 Hz (classes 12/14) e do flicker de 25 Hz (11/15) depois da TRACe por
+    ciclo, com sag/swell neutros (a TRACe por ciclo tira o DC de um ciclo com
+    borda no meio e isso já vale para 02/03, não é da composta)."""
+
+    T = np.arange(6000, dtype=np.float64) / 30000.0
+
+    def _pior_erro(self, classe_id, componente, valor, f0, n=12):
+        import dataclasses
+        import perfis
+        salvo = {chave: dict(v) for chave, v in perfis.FAIXAS_SORTEADAS.items()}
+        try:
+            perfis.FAIXAS_SORTEADAS["sag_composto"]["literatura"] = (1.0, 1.0)
+            perfis.FAIXAS_SORTEADAS["swell_composto"]["literatura"] = (1.0, 1.0)
+            perfis.FAIXAS_SORTEADAS[componente]["literatura"] = (valor, valor)
+            experimento = _load_experimento(classe_id)
+            experimento.config = dataclasses.replace(experimento.config, perfil="literatura", sorteio_posicao=True)
+            pior = 0.0
+            for indice in range(n):
+                forma, _ = experimento.gerar(
+                    self.T, f0, indice, np.random.default_rng(experimento.seed_da_captura(indice)),
+                )
+                programada = AmetekMX30.montar_programacao(
+                    forma, base_voltage_rms=127.0, frequency_hz=f0,
+                ).programada_pu()
+                pior = max(pior, float(np.max(np.abs(programada - forma))))
+            return pior
+        finally:
+            for chave, v in salvo.items():
+                perfis.FAIXAS_SORTEADAS[chave].update(v)
+
+    def test_oscilacao_de_2400_hz_sobrevive_a_trace_por_ciclo(self):
+        # Medido: <= 0,035 pu (amplitude da oscilação 0,3 pu, ~12 %) em 50 e 60 Hz.
+        for classe_id in ("12", "14"):
+            for f0 in (50.0, 60.0):
+                with self.subTest(classe=classe_id, f0=f0):
+                    self.assertLess(self._pior_erro(classe_id, "oscilacao_composto_hz", 2400.0, f0), 0.05)
+
+    def test_flicker_de_25_hz_sobrevive_a_trace_por_ciclo(self):
+        # Medido: <= 0,054 pu em 50 e 60 Hz (o flicker vira degraus de 1 ciclo).
+        for classe_id in ("11", "15"):
+            for f0 in (50.0, 60.0):
+                with self.subTest(classe=classe_id, f0=f0):
+                    self.assertLess(self._pior_erro(classe_id, "flicker_composto_hz", 25.0, f0), 0.07)
+
+
 if __name__ == "__main__":
     unittest.main()
