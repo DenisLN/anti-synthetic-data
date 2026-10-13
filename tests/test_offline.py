@@ -24,6 +24,7 @@ from ametek_orm import (  # noqa: E402
 from oscilloscope_orm import KeysightDSOX4034A, OscilloscopeError  # noqa: E402
 from sinais import ruido_awgn, snr_medida  # noqa: E402
 import sinais  # noqa: E402
+from tests import assinatura_portavel  # noqa: E402
 import mestre  # noqa: E402
 import preflight_new  # noqa: E402
 
@@ -5122,22 +5123,28 @@ class PerfisDeFaixasTests(unittest.TestCase):
         aritmética do próprio numpy."""
         ref = json.loads(self.REFERENCIA.read_text(encoding="utf-8"))
         self.assertEqual(len(ref["hashes"]), 400)
-        for chave, esperado in ref["hashes"].items():
+        self.assertEqual(len(ref["portavel"]["resumos"]), 400)
+        # Assinatura PORTAVEL (por tolerancia, vale em qualquer plataforma);
+        # a exata (SHA-256) so na plataforma de origem: AssinaturaPortavelTests.
+        for chave, esperado in ref["portavel"]["resumos"].items():
             cid, f0, seed, indice = chave.split("/")
             for experimento in (_sem_sorteio(_load_experimento(cid)), self._com_perfil(cid, "literatura")):
                 self.assertEqual(
-                    self._assinatura(experimento, float(f0), int(seed), int(indice)), esperado, chave,
+                    assinatura_portavel.diferencas(
+                        assinatura_portavel.gerar_resumo(experimento, float(f0), int(seed), int(indice)), esperado,
+                    ), [], chave,
                 )
 
     def test_norma_e_fronteira_mudam_so_o_que_a_spec_manda(self):
-        ref = json.loads(self.REFERENCIA.read_text(encoding="utf-8"))["hashes"]
+        ref = json.loads(self.REFERENCIA.read_text(encoding="utf-8"))["portavel"]["resumos"]
         afetadas = {"norma": {"02", "03", "05", "06", "11", "15", "20"},
                     "fronteira": {"02", "03", "10", "11", "12", "13", "14"}}
         for perfil, esperadas in afetadas.items():
             mudou = set()
             for chave, h in ref.items():
                 cid, f0, seed, indice = chave.split("/")
-                if self._assinatura(self._com_perfil(cid, perfil), float(f0), int(seed), int(indice)) != h:
+                if not assinatura_portavel.confere(
+                        self._com_perfil(cid, perfil), float(f0), int(seed), int(indice), h):
                     mudou.add(cid)
             self.assertEqual(mudou, esperadas, perfil)
 
@@ -5397,11 +5404,14 @@ class SorteioInicioDuracaoFaseTests(unittest.TestCase):
         exige regravar o fixture e declarar a versão)."""
         ref = json.loads(self.FIXTURE.read_text(encoding="utf-8"))
         self.assertEqual(len(ref["hashes"]), 400)
-        for chave, esperado in ref["hashes"].items():
+        self.assertEqual(len(ref["portavel"]["resumos"]), 400)
+        for chave, esperado in ref["portavel"]["resumos"].items():
             cid, f0, seed, indice = chave.split("/")
             self.assertEqual(
-                PerfisDeFaixasTests._assinatura(_load_experimento(cid), float(f0), int(seed), int(indice)),
-                esperado, chave,
+                assinatura_portavel.diferencas(
+                    assinatura_portavel.gerar_resumo(_load_experimento(cid), float(f0), int(seed), int(indice)),
+                    esperado,
+                ), [], chave,
             )
 
     # -- bancada ---------------------------------------------------------
@@ -6307,12 +6317,14 @@ class Classes05_07_18Tests(unittest.TestCase):
             (PROJECT_ROOT / "tests" / "fixtures" / "gerar_literatura_34a0d82.json").read_text(encoding="utf-8")
         )
         verificados = 0
-        for chave, esperado in ref["hashes"].items():
+        for chave, esperado in ref["portavel"]["resumos"].items():
             cid, f0, seed, indice = chave.split("/")
             if cid in ("05", "07", "17", "18"):
                 experimento = _sem_sorteio(_load_experimento(cid))
                 self.assertEqual(
-                    PerfisDeFaixasTests._assinatura(experimento, float(f0), int(seed), int(indice)), esperado, chave,
+                    assinatura_portavel.diferencas(
+                        assinatura_portavel.gerar_resumo(experimento, float(f0), int(seed), int(indice)), esperado,
+                    ), [], chave,
                 )
                 verificados += 1
         self.assertEqual(verificados, 80)
@@ -7005,3 +7017,141 @@ class RmsCaEPicoPrevistoTests(unittest.TestCase):
         # a fonte remove o DC de cada TRACE: o que resta é o modelo sem a média do ciclo
         self.assertLess(float(np.max(np.abs(programacao.programada_pu() - alvo))), 0.05)
 
+
+
+
+class AssinaturaPortavelTests(unittest.TestCase):
+    """Fixtures de ``gerar()`` portaveis entre plataformas (v1.15).
+
+    Contra-prova: a assinatura por tolerancia ainda pega qualquer mudanca real
+    (uma amostra, um parametro) e ignora diferencas de ultimo bit de
+    ``np.sin``. A assinatura EXATA (SHA-256) so vale onde o fixture foi
+    gravado: pulada (skip) fora do Windows, a nao ser com ``ASD_HASH_EXATO=1``.
+    """
+
+    FIXTURES = {
+        "literatura": (PerfisDeFaixasTests.REFERENCIA, True),
+        "sorteio": (PROJECT_ROOT / "tests" / "fixtures" / "gerar_sorteio_v1_15.json", False),
+    }
+
+    @staticmethod
+    def _exato_vale_aqui():
+        import os
+        return sys.platform == "win32" or os.environ.get("ASD_HASH_EXATO") == "1"
+
+    def _verificar_exato(self, nome):
+        if not self._exato_vale_aqui():
+            self.skipTest(
+                "assinatura SHA-256 exata so vale na plataforma onde o fixture foi gravado (Windows, Python 3.11, "
+                "numpy 2.4.6): np.sin difere no ultimo bit entre plataformas. A verificacao portavel cobre esta "
+                "plataforma; ASD_HASH_EXATO=1 forca a exata."
+            )
+        caminho, sem_sorteio = self.FIXTURES[nome]
+        ref = json.loads(caminho.read_text(encoding="utf-8"))
+        self.assertEqual(len(ref["hashes"]), 400)
+        for chave, esperado in ref["hashes"].items():
+            cid, f0, seed, indice = chave.split("/")
+            exp = _load_experimento(cid)
+            if sem_sorteio:
+                exp = _sem_sorteio(exp)
+            self.assertEqual(PerfisDeFaixasTests._assinatura(exp, float(f0), int(seed), int(indice)), esperado, chave)
+
+    def test_literatura_exato_na_plataforma_de_origem(self):
+        self._verificar_exato("literatura")
+
+    def test_sorteio_exato_na_plataforma_de_origem(self):
+        self._verificar_exato("sorteio")
+
+    def _caso(self, cid="03", f0=60.0, seed=1234567, indice=2, sem_sorteio=True):
+        exp = _load_experimento(cid)
+        if sem_sorteio:
+            exp = _sem_sorteio(exp)
+        t = np.arange(6000, dtype=np.float64) / 30_000.0
+        v, p = exp.gerar(t, f0, indice, np.random.default_rng(seed))
+        return np.array(v, dtype=np.float64), p
+
+    @staticmethod
+    def _dif(v, p, ref):
+        return assinatura_portavel.diferencas(assinatura_portavel.resumo(v, p), ref)
+
+    def test_ignora_diferenca_de_ultimo_bit_como_a_de_np_sin_entre_plataformas(self):
+        for cid in ("01", "03", "09", "17"):
+            v, p = self._caso(cid)
+            ref = assinatura_portavel.resumo(v, p)
+            # ate 64 ULP em todas as amostras (os 16 ULP medidos entre o numpy do Linux e long double)
+            ruido = v + np.spacing(np.abs(v)) * np.random.default_rng(5).integers(-64, 65, v.size)
+            self.assertEqual(self._dif(ruido, p, ref), [], cid)
+            # o SHA-256 exato mudaria (por isso ele nao e portavel)
+            self.assertNotEqual(np.asarray(ruido, "<f8").tobytes(), np.asarray(v, "<f8").tobytes(), cid)
+
+    def test_pega_uma_unica_amostra_alterada(self):
+        rng = np.random.default_rng(11)
+        for cid in ("01", "03", "10", "18"):
+            v, p = self._caso(cid)
+            ref = assinatura_portavel.resumo(v, p)
+            posicoes = [0, 1, 2999, 5998, 5999] + [int(i) for i in rng.integers(0, 6000, 40)]
+            for i in posicoes:
+                for delta in (1e-7, -1e-7):
+                    w = v.copy()
+                    w[i] += delta
+                    self.assertNotEqual(self._dif(w, p, ref), [], (cid, i, delta))
+
+    def test_pega_amostra_alterada_em_1e8_pu(self):
+        v, p = self._caso("03")
+        ref = assinatura_portavel.resumo(v, p)
+        posicoes = range(0, 6000, 37)
+        achou = 0
+        for i in posicoes:
+            w = v.copy()
+            w[i] += 1e-8
+            achou += bool(self._dif(w, p, ref))
+        self.assertEqual(achou, len(posicoes))
+
+    def test_pega_forma_deslocada_ou_amplitude_trocada(self):
+        v, p = self._caso("01")
+        ref = assinatura_portavel.resumo(v, p)
+        for w in (np.roll(v, 1), v * (1.0 + 1e-7), v[::-1].copy(), v + 1e-7):
+            self.assertNotEqual(self._dif(w, p, ref), [])
+
+    def test_pega_parametro_alterado(self):
+        v, p = self._caso("03")
+        ref = assinatura_portavel.resumo(v, p)
+        self.assertTrue(p)
+        for chave, valor in p.items():
+            q = dict(p)
+            if isinstance(valor, float):
+                q[chave] = valor + 1e-6
+            elif isinstance(valor, int):
+                q[chave] = valor + 1
+            else:
+                q[chave] = str(valor) + "x"
+            self.assertIn("parametros", self._dif(v, q, ref), chave)
+        r = dict(p)
+        r["parametro_novo"] = 1
+        self.assertIn("parametros", self._dif(v, r, ref))
+        self.assertIn("parametros", self._dif(v, {}, ref))
+
+    def test_pega_numero_de_amostras_diferente(self):
+        v, p = self._caso("01")
+        ref = assinatura_portavel.resumo(v, p)
+        self.assertIn("n", self._dif(v[:-1], p, ref))
+
+    def test_fixtures_portaveis_nao_confundem_classes_diferentes(self):
+        """Entradas com resumo identico so podem ser da mesma classe e, entre
+        classes, nenhum par cai dentro da tolerancia (ela nao e frouxa demais)."""
+        for caminho, _ in self.FIXTURES.values():
+            resumos = json.loads(caminho.read_text(encoding="utf-8"))["portavel"]["resumos"]
+            grupos = {}
+            for chave, r in resumos.items():
+                grupos.setdefault(json.dumps(r, sort_keys=True), []).append(chave)
+            for grupo in grupos.values():
+                self.assertEqual(len({c.split("/")[0] for c in grupo}), 1, grupo[:4])
+            por_classe = {}
+            for chave, r in resumos.items():
+                por_classe.setdefault(chave.split("/")[0], r)
+            ids = sorted(por_classe)
+            for i, a in enumerate(ids):
+                for b in ids[i + 1:]:
+                    self.assertNotEqual(
+                        assinatura_portavel.diferencas(por_classe[a], por_classe[b]), [], (caminho.name, a, b),
+                    )

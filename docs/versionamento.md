@@ -15,6 +15,12 @@ Estado em 2026-10-12: a versão corrente é **v1.15, em andamento (não congelad
 - `set recalibracao on` altera `logica/calibracao_extremos.json` (arquivo rastreado). Depois do primeiro run a árvore está suja de fato (e a CLI ainda reporta o estado do início). Commite a calibração e reinicie a CLI antes da próxima sessão. A cópia usada em cada sessão fica na pasta e seu SHA-256 em cada captura.
 - Sem tag, `versao_codigo` é só o hash; com tag, aparece `v1.15` (exato) ou `v1.15-3-gabc1234` (3 commits depois) e `-dirty`.
 
+### 2.1 O que "reproduz byte a byte" significa por plataforma
+O `gerar()` usa `np.sin`/`np.cos`, cujo último bit depende da implementação (libm/SIMD) da plataforma. Medido (CHANGELOG/v1.15.md, "Fixtures portáveis"): neste Linux (Python 3.13, numpy 2.4.6) o array difere de uma referência em long double em até 2,2·10⁻¹⁶ pu (16 ULP) por amostra, em todas as 800 entradas dos fixtures.
+- **Garantia entre plataformas (a que vale para o dataset arquivado com DOI):** o `gerar()` reproduz, dentro de `TOL_ABS = 1e-9` pu em somas e projeções e `rtol = 1e-9` nos parâmetros, os resumos gravados em `tests/fixtures/*.json` (chave `portavel`; `tests/assinatura_portavel.py`). Isto é cerca de 4 ordens de grandeza acima da diferença entre plataformas e 3 abaixo da resolução da fonte e do osciloscópio. Parâmetros, tamanho e sorteios (PCG64) saem idênticos.
+- **Garantia bit a bit (SHA-256 dos bytes float64 + parâmetros):** só na plataforma onde os `hashes` foram gravados (Windows, Python 3.11.9, numpy 2.4.6). Nas demais plataformas os testes `*_exato_na_plataforma_de_origem` são pulados (`ASD_HASH_EXATO=1` os força).
+- NÃO VERIFICADO: que os resumos gravados no Linux passam no Windows; só a suíte rodada lá confirma.
+
 ## 3. Procedimento de congelamento (sem executar sem pedido do dono)
 
 ```powershell
