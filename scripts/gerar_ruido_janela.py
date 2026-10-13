@@ -6,7 +6,7 @@ usa): potência de referência = mean(janela**2), seed do ruído =
 `seed + round(snr*1000) + 50_000_000` com a `seed` gravada da captura. A
 janela é a nominal de `points` amostras que começa em `inicio_janela` (sessões
 antigas, sem esse campo: o mesmo recorte de `recortar_margem.calcular_recorte`).
-As margens NÃO entram nos arquivos com ruído (docs/analise-2026-10-12/snr_mudancas.md).
+As margens NÃO entram nos arquivos com ruído (`arquivo/analises:docs/analise-2026-10-12/resolvido/snr_mudancas.md`).
 
 Sem hardware e sem alterar um byte da sessão: a saída vai para uma pasta NOVA
 (`<sessao>/ruido_janela/` por padrão; recusa uma pasta que já tenha arquivos,

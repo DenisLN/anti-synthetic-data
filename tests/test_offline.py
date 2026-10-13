@@ -318,7 +318,7 @@ class AmetekTests(unittest.TestCase):
         source.disconnect()
 
     def test_write_espera_a_fonte_consumir_antes_do_proximo_comando(self):
-        """Bancada 2026-09-30 (docs/analise-2026-09-30, N1): sem controle de
+        """Bancada 2026-09-30 (`arquivo/analises:docs/analise-2026-09-30`, N1): sem controle de
         fluxo, writes em rajada eram perdidos em silêncio ou colados (-113).
         Cada write agora é seguido de uma consulta de sincronismo antes que
         qualquer outro comando saia."""
@@ -552,7 +552,7 @@ class AmetekTests(unittest.TestCase):
         source.configure_safe_baseline(
             voltage_range_rms=150.0,
             # Limite de PICO do software (validado). O VOLTage:HIGH da fonte é
-            # RMS e recebe max_voltage_rms (T12, docs/analise-2026-09-30).
+            # RMS e recebe max_voltage_rms (T12, `arquivo/analises:docs/analise-2026-09-30`).
             voltage_high_vp=100.0,
             current_limit_a=0.5,
             protection_delay_s=0.1,
@@ -5268,7 +5268,7 @@ class PerfisDeFaixasTests(unittest.TestCase):
 
 class SorteioInicioDuracaoFaseTests(unittest.TestCase):
     """v1.15 — início, duração e fase sorteados em ``gerar()``
-    (docs/analise-2026-10-12/sorteio_inicio_fase.md)."""
+    (`arquivo/analises:docs/analise-2026-10-12/pendente/sorteio_inicio_fase_VERIFICAR_BANCADA.md`)."""
 
     FIXTURE = PROJECT_ROOT / "tests" / "fixtures" / "gerar_sorteio_v1_15.json"
     CLASSES = [f"{i:02d}" for i in range(1, 21)]
@@ -5604,7 +5604,7 @@ class SorteioInicioDuracaoFaseTests(unittest.TestCase):
 
 class ParametrosSorteadosNasCompostasTests(unittest.TestCase):
     """v1.15 — compostas 10 a 16 sorteiam os parâmetros em ``gerar()`` com o
-    sorteio ligado (docs/analise-2026-10-12/compostas_sorteadas.md), e o teste
+    sorteio ligado (`arquivo/analises:docs/analise-2026-10-12/pendente/compostas_sorteadas_REVISAR.md`), e o teste
     do item f) do professor: nenhuma classe volta a ter poucas formas
     distintas no simulado."""
 
@@ -6033,7 +6033,7 @@ class TresVersoesTests(unittest.TestCase):
 
 
 class Classe08FronteiraTests(unittest.TestCase):
-    """docs/analise-2026-10-12/classe08_fronteira.md: a 50 Hz o impulso de
+    """`arquivo/analises:docs/analise-2026-10-12/pendente/classe08_fronteira_REVISAR.md`: a 50 Hz o impulso de
     80 ms (amostra 0 do 5.º ciclo) saiu em 100 ms; ele não pode mais cair
     perto de uma fronteira de ciclo, e a validação física confere a posição."""
 
@@ -6182,7 +6182,7 @@ class Classe08FronteiraTests(unittest.TestCase):
 
 class Classes05_07_18Tests(unittest.TestCase):
     """v1.15 — 05 pelo modelo do CSINe, 07/17 com entalhes contínuos e 18 em
-    f0-3..f0+3 (docs/analise-2026-10-12/classes_05_07_18.md). Valem com o
+    f0-3..f0+3 (`arquivo/analises:docs/analise-2026-10-12/pendente/classes_05_07_18_VERIFICAR.md`). Valem com o
     sorteio ligado; ``set sorteio off`` reproduz 34a0d82 (teste de bytes)."""
 
     T = np.arange(6000, dtype=np.float64) / 30_000.0

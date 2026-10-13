@@ -135,7 +135,7 @@ def coletar(
     try:
         for sessao in sessoes:
             # resultados/sessao_*/metadata/*.jsonl, ou os .jsonl soltos (como em
-            # docs/analise-2026-09-30/dados/).
+            # `arquivo/analises:docs/analise-2026-09-30/dados/`).
             pasta = Path(sessao) / "metadata"
             arquivos = sorted(pasta.glob("*.jsonl")) or sorted(Path(sessao).glob("*.jsonl"))
             if not arquivos:

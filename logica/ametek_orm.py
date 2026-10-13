@@ -395,7 +395,7 @@ class AmetekMX30:
         (``VI_ASRL_FLOW_NONE``). Comandos enviados em rajada, sem nada que
         espere a fonte processar o anterior, são perdidos em silêncio ou
         chegam colados (``-113 "Undefined header"``) — medido na bancada em
-        2026-09-30 (docs/analise-2026-09-30/ANALISE.md, N1): a rajada
+        2026-09-30 (`arquivo/analises:docs/analise-2026-09-30/ANALISE.md`, N1): a rajada
         ``FUNCtion:MODE FIXed; SOURce:FREQuency:MODE FIXed; VOLTage:MODE STEP;
         VOLTage:TRIGgered 5`` pegou 0/3 vezes sem prelúdio e 0-1/3 depois de
         ACDC/CSINe; a mesma sequência com uma consulta após cada write pegou

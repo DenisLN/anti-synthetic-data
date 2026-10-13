@@ -1,6 +1,6 @@
 """Diagnóstico do caminho nativo da AMETEK com a SAÍDA DESLIGADA.
 
-Responde às perguntas abertas de docs/analise-2026-09-30/ANALISE.md:
+Responde às perguntas abertas de `arquivo/analises:docs/analise-2026-09-30/ANALISE.md`:
 
 * N2 — por que ``PULSe:WIDTh 0.06`` é lido de volta como 0.0167 (acoplamento
   WIDTh/PERiod/DCYCle/HOLD, manual §4.21 p. 104-105)?
@@ -20,7 +20,7 @@ Segurança (não negociável):
   ``max_voltage_rms`` — nada é energizado, só registradores de programação.
 
 Rodada 2 (RELATORIO_FINAL §8 de 2026-09-21, pendências listadas em
-docs/analise-2026-09-30/ANALISE.md):
+`arquivo/analises:docs/analise-2026-09-30/ANALISE.md`):
 
 * T10/T11 (``opcoes``) — ``*OPT?``, ``SYSTem:CONFigure?``, ``*OPC?`` isolado.
 * T12 (``limite``) — ``SOURce:VOLTage:HIGH`` limita rms ou pico?
@@ -494,7 +494,7 @@ def _selecionar(argv=None):
     if args.flash:
         parser.error(
             "o T7 (--flash) foi REMOVIDO: consultar a fonte logo após TRACe:DATA travou a "
-            "interface em 2026-09-30 15:33 (ver docs/analise-2026-09-30/ANALISE.md)"
+            "interface em 2026-09-30 15:33 (ver `arquivo/analises:docs/analise-2026-09-30/ANALISE.md`)"
         )
     escolhidos = [t.strip() for t in args.so.split(",")] if args.so else list(PADRAO)
     desconhecidos = [t for t in escolhidos if t not in TESTES]

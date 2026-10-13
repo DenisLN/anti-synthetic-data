@@ -118,7 +118,7 @@ Comandos disponíveis (nenhum energiza a saída sem pedir confirmação própria
                        fronteira = sag/swell em 0,1/0,9/1,1/1,8 pu. Vale a
                        partir do próximo run; env PERFIL define o inicial. [OFF]
   set sorteio on|off  Início, duração e fase sorteados em gerar() (padrão ON;
-                       docs/analise-2026-10-12/sorteio_inicio_fase.md). ON:
+                       `arquivo/analises:docs/analise-2026-10-12/pendente/sorteio_inicio_fase_VERIFICAR_BANCADA.md`). ON:
                        o distúrbio cai em posição diferente a cada captura,
                        as classes de pulso (02/03/04) reprogramam fase de
                        disparo e pré-trigger do osciloscópio por captura e
