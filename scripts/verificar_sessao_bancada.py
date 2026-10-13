@@ -42,7 +42,7 @@ import math
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence
+from typing import List, Optional, Sequence
 
 import numpy as np
 
@@ -71,47 +71,47 @@ class Captura:
     metadado: dict
     registro: np.ndarray  # registro bruto do osciloscópio (com margens), em pu
     arquivo: str = ""
+    perfil: str = ""
+    inicio_janela: Optional[int] = None  # lido por sessao_io (formato 2 ou 1)
+    rotulo: str = ""  # id, ou "id [perfil]" quando a sessão tem mais de um perfil
 
 
 def carregar_sessao(pasta: Path) -> List[Captura]:
-    """Formato v1.15: ``metadata/*.jsonl`` (uma linha por captura) e um ``.npz``
-    por captura na raiz da sessão (``tensao_pu`` de forma (1, amostras_totais),
-    ``id_captura``). Capturas empilhadas (formato simulado) são ignoradas."""
+    """Lê a sessão com ``logica/sessao_io.py`` (formato 2, um ``NN_classe.npz``
+    por classe, e formato 1, um ``.npz`` por captura): a medida gravada de cada
+    captura (registro com a margem) e o metadata do perfil dela. Capturas
+    empilhadas (formato simulado) são ignoradas. Com mais de um perfil na
+    sessão, o rótulo traz o perfil (``02-0001 [norma]``)."""
+    import sessao_io
+
     pasta = Path(pasta)
-    metadata_dir = pasta / "metadata"
-    if not metadata_dir.is_dir():
+    if not (pasta / "metadata").is_dir():
         raise FileNotFoundError(f"{pasta} não parece uma pasta de sessão (sem metadata/)")
-    metadados: Dict[str, dict] = {}
-    for jsonl in sorted(metadata_dir.glob("*.jsonl")):
-        for linha in jsonl.read_text(encoding="utf-8").splitlines():
-            if linha.strip():
-                registro = json.loads(linha)
-                metadados[registro["id_captura"]] = registro
-    capturas: List[Captura] = []
-    for npz in sorted(pasta.glob("*.npz")):
-        dados = np.load(npz, allow_pickle=True)
-        tensao = np.asarray(dados["tensao_pu"], dtype=np.float64)
-        if tensao.ndim != 2 or tensao.shape[0] != 1:
-            continue
-        id_captura = str(dados["id_captura"][0])
-        metadado = metadados.get(id_captura)
-        if metadado is None:
-            continue
-        capturas.append(Captura(
-            id_captura=id_captura, classe_id=id_captura.split("-")[0],
-            metadado=metadado, registro=tensao[0], arquivo=npz.name,
-        ))
+    lidas = sessao_io.ler_capturas(pasta, versoes=("medida",))
+    capturas = [
+        Captura(
+            id_captura=lida.id_captura, classe_id=lida.id_captura.split("-")[0], metadado=lida.metadado,
+            registro=np.asarray(lida.sinal, dtype=np.float64), arquivo=lida.arquivo.name,
+            perfil=lida.perfil, inicio_janela=lida.inicio_janela,
+        )
+        for lida in lidas if lida.formato != "empilhado" and lida.metadado is not None
+    ]
+    multiplos_perfis = len({c.perfil for c in capturas}) > 1
+    for c in capturas:
+        c.rotulo = f"{c.id_captura} [{c.perfil}]" if multiplos_perfis else c.id_captura
     return capturas
 
 
 def janela_da_captura(captura: Captura) -> np.ndarray:
-    """Janela nominal (``pontos`` amostras) do registro: ``inicio_janela`` do
-    metadata, ou o recorte por ``indice_trigger`` e ``pre_trigger_s``."""
+    """Janela nominal (``pontos`` amostras) do registro: ``inicio_janela`` lido
+    por ``sessao_io`` (ou do metadata), ou o recorte por ``indice_trigger`` e
+    ``pre_trigger_s``."""
     m = captura.metadado
     pontos = int(m["pontos"])
     registro = captura.registro
-    if m.get("inicio_janela") is not None:
-        ini = max(0, min(int(m["inicio_janela"]), max(0, registro.size - pontos)))
+    inicio = captura.inicio_janela if captura.inicio_janela is not None else m.get("inicio_janela")
+    if inicio is not None:
+        ini = max(0, min(int(inicio), max(0, registro.size - pontos)))
         return registro[ini : ini + pontos]
     return janela_nominal(
         registro, indice_trigger=int(m.get("indice_trigger", m.get("margem_amostras_antes", 0))),
@@ -286,17 +286,17 @@ def verificar_capturas(
                     janela_da_captura(c), fs_hz=fs, start_hz=float(p["start_hz"]), end_hz=float(p["end_hz"]),
                 )
                 resultados.append(Resultado(
-                    "fase_18", c.id_captura, abs(r["salto_graus"]) <= tol_fase_graus, r["salto_graus"],
+                    "fase_18", c.rotulo, abs(r["salto_graus"]) <= tol_fase_graus, r["salto_graus"],
                     tol_fase_graus, "graus",
                     f"f1 {r['f1_medida_hz']:.2f} Hz (prog. {p['start_hz']}), f2 {r['f2_medida_hz']:.2f} Hz "
                     f"(prog. {p['end_hz']}), retas se cruzam a {r['intersecao_ms']:+.1f} ms do meio da janela", r,
                 ))
             except (KeyError, ValueError) as exc:
-                resultados.append(Resultado("fase_18", c.id_captura, None, None, tol_fase_graus, "graus", f"não calculado: {exc}"))
+                resultados.append(Resultado("fase_18", c.rotulo, None, None, tol_fase_graus, "graus", f"não calculado: {exc}"))
         if c.classe_id in CLASSES_PULSE:
             if m.get("duracao_s") is None or m.get("inicio_disturbio_s") is None:
                 resultados.append(Resultado(
-                    "largura_pulse", c.id_captura, None, None, tol_largura_ms, "ms",
+                    "largura_pulse", c.rotulo, None, None, tol_largura_ms, "ms",
                     "metadata sem inicio_disturbio_s/duracao_s (sorteio desligado ou sessão antiga)",
                 ))
             else:
@@ -305,21 +305,21 @@ def verificar_capturas(
                     inicio_s=float(m["inicio_disturbio_s"]), duracao_s=float(m["duracao_s"]),
                 )
                 if r.get("largura_s") is None:
-                    resultados.append(Resultado("largura_pulse", c.id_captura, None, None, tol_largura_ms, "ms", r["motivo"], r))
+                    resultados.append(Resultado("largura_pulse", c.rotulo, None, None, tol_largura_ms, "ms", r["motivo"], r))
                 else:
                     erro_ms = (r["largura_s"] - float(m["duracao_s"])) * 1000.0
                     resultados.append(Resultado(
-                        "largura_pulse", c.id_captura, abs(erro_ms) <= tol_largura_ms, erro_ms, tol_largura_ms, "ms",
+                        "largura_pulse", c.rotulo, abs(erro_ms) <= tol_largura_ms, erro_ms, tol_largura_ms, "ms",
                         f"programada {float(m['duracao_s']) * 1000.0:.2f} ms, medida {r['largura_s'] * 1000.0:.2f} ms", r,
                     ))
         if m.get("pre_trigger_desvio_amostras") is not None or c.classe_id in CLASSES_PULSE:
             desvio = desvio_do_pre_trigger(m)
             if desvio is None:
-                resultados.append(Resultado("pre_trigger", c.id_captura, None, None, tol_pretrigger, "amostras", "metadata sem indice_trigger"))
+                resultados.append(Resultado("pre_trigger", c.rotulo, None, None, tol_pretrigger, "amostras", "metadata sem indice_trigger"))
             else:
                 origem = "campo" if m.get("pre_trigger_desvio_amostras") is not None else "calculado do metadata"
                 resultados.append(Resultado(
-                    "pre_trigger", c.id_captura, abs(desvio) <= tol_pretrigger, float(desvio), tol_pretrigger, "amostras", origem,
+                    "pre_trigger", c.rotulo, abs(desvio) <= tol_pretrigger, float(desvio), tol_pretrigger, "amostras", origem,
                 ))
     return resultados
 

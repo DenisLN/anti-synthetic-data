@@ -61,6 +61,7 @@ class CapturaSessao:
         self, id_captura: str, classe: str, f0_hz: float, fs_hz: float, tensao_base_rms: float, inicio_janela: int,
         medida_pu: np.ndarray, programada_pu: np.ndarray, forma_bancada_pu: Optional[np.ndarray] = None,
         dc_offset_pu: float = 0.0, origem_programada: str = "", avisos: Optional[List[str]] = None,
+        perfil: str = "", rotulo: Optional[str] = None,
     ):
         self.id_captura, self.classe = id_captura, classe
         self.f0_hz, self.fs_hz, self.tensao_base_rms = f0_hz, fs_hz, tensao_base_rms
@@ -68,13 +69,17 @@ class CapturaSessao:
         self.medida_pu, self.programada_pu, self.forma_bancada_pu = medida_pu, programada_pu, forma_bancada_pu
         self.dc_offset_pu, self.origem_programada = dc_offset_pu, origem_programada
         self.avisos = list(avisos or [])
+        self.perfil = perfil
+        self.rotulo = rotulo or id_captura  # com mais de um perfil na sessão: "08-0003 [norma]"
 
 
 # ---------------------------------------------------------------------------
 # Carregamento da sessão (isolado: adaptar aqui se o formato em disco mudar)
 # ---------------------------------------------------------------------------
-def _inicio_da_janela(registro: dict, total: int, pontos: int, fs_hz: float) -> int:
-    inicio = registro.get("inicio_janela")
+def _inicio_da_janela(
+    registro: dict, total: int, pontos: int, fs_hz: float, inicio_lido: Optional[int] = None,
+) -> int:
+    inicio = inicio_lido if inicio_lido is not None else registro.get("inicio_janela")
     if inicio is None:
         indice = registro.get("indice_trigger")
         if indice is None:
@@ -85,76 +90,65 @@ def _inicio_da_janela(registro: dict, total: int, pontos: int, fs_hz: float) -> 
 
 
 def carregar_sessao(sessao_dir: Path, *, classes: Optional[Sequence[str]] = None, usar_forma_bancada: bool = True) -> List[CapturaSessao]:
-    """Lê ``metadata/*.jsonl`` + ``.npz`` (+ ``tres_versoes/`` quando existe) e
-    devolve só as capturas TRACe/LIST (programada vinda de ``montar_programacao``).
+    """Lê a sessão com ``logica/sessao_io.py`` (formato 2 e formato 1) e devolve
+    só as capturas TRACe/LIST (programada vinda de ``montar_programacao``).
 
-    * medida: ``tres_versoes/<arquivo>.npz::medida_pu`` se existir; senão o
-      ``tensao_pu`` bruto do ``.npz`` recortado em ``inicio_janela``;
-    * programada: ``tres_versoes/...::programada_pu`` se existir; senão
-      reconstruída por ``gerar_tres_versoes.reconstruir_versoes`` (metadata);
-    * forma de bancada (candidato ``k_sem_dc``): sempre por
-      ``reconstruir_versoes``; se não der, ``None`` e a captura segue sem ele.
+    * medida: a série gravada da captura (com a margem), recortada em ``inicio_janela``;
+    * programada: a gravada (formato 2: ``<perfil>/programada``; formato 1: ``tres_versoes/``
+      quando existe); senão reconstruída por ``gerar_tres_versoes.reconstruir_versoes`` (metadata);
+    * forma de bancada (candidato ``k_sem_dc``): sempre por ``reconstruir_versoes``; se não der, ``None``
+      e a captura segue sem ele.
+
+    Com mais de um perfil na sessão (``set perfil todos``), o rótulo de cada captura traz o perfil
+    (``08-0003 [norma]``); com um só, o rótulo é o id, como sempre.
     """
     import gerar_tres_versoes as gtv
+    import sessao_io
 
     sessao_dir = Path(sessao_dir)
-    registros = [r for r in gtv._registros_da_sessao(sessao_dir) if not r.get("simulado")]
-    nomes = gtv._nomes_dos_npz(sessao_dir)
-    filtro = {c.zfill(2) for c in classes} if classes else None
+    filtro = sorted({c.zfill(2) for c in classes}) if classes else None
+    lidas = sessao_io.ler_capturas(sessao_dir, versoes=("medida", "modelo", "programada"), classes=filtro)
+    lidas = [c for c in lidas if c.metadado is not None and not c.metadado.get("simulado")]
+    multiplos_perfis = len({c.perfil for c in lidas}) > 1
     capturas: List[CapturaSessao] = []
-    for registro in registros:
-        id_captura = str(registro["id_captura"])
+    for lida in lidas:
+        registro = lida.metadado
+        id_captura = lida.id_captura
         classe_id = id_captura.split("-")[0]
-        if filtro is not None and classe_id not in filtro:
-            continue
         fs_hz = float(registro.get("fs_hz", FS_PADRAO_HZ))
         pontos = int(registro["pontos"])
         avisos: List[str] = []
 
-        tres = None
-        arquivo_tres = (registro.get("tres_versoes") or {}).get("arquivo")
-        if arquivo_tres and (sessao_dir / arquivo_tres).is_file():
-            with np.load(sessao_dir / arquivo_tres, allow_pickle=True) as dados:
-                tres = {chave: np.array(dados[chave]) for chave in dados.files}
-
+        programada_gravada = lida.versoes.get("programada")
         reconstruido = None
-        if tres is None or "programada_pu" not in tres or usar_forma_bancada:
+        if programada_gravada is None or usar_forma_bancada:
             try:
                 reconstruido = gtv.reconstruir_versoes(registro)
             except Exception as exc:  # noqa: BLE001 - sem isso só falta o candidato k_sem_dc
                 avisos.append(f"forma não reconstruída do metadata ({type(exc).__name__}: {exc})")
 
-        if tres is not None and "programada_pu" in tres:
-            programada = np.asarray(tres["programada_pu"], dtype=np.float64).reshape(-1)[:pontos]
-            origem = str(tres.get("origem_programada", "")) or str((registro.get("tres_versoes") or {}).get("programada") or "")
+        if programada_gravada is not None:
+            programada = np.asarray(programada_gravada, dtype=np.float64).reshape(-1)[:pontos]
+            origem = lida.origem_programada or str((registro.get("tres_versoes") or {}).get("programada") or "")
         elif reconstruido is not None:
             programada = np.asarray(reconstruido["programada"], dtype=np.float64)
             origem = str(reconstruido["origem"])
         else:
-            avisos.append("sem programada (nem tres_versoes nem reconstrução); captura ignorada")
-            continue
+            continue  # sem programada (nem gravada nem reconstruída): captura ignorada
         if "TRACe" not in origem:
             continue  # nativa: não há ciclos de TRACE para comparar
 
-        if tres is not None and "medida_pu" in tres:
-            medida = np.asarray(tres["medida_pu"], dtype=np.float64).reshape(-1)[:pontos]
-            inicio = int(np.asarray(tres.get("inicio_janela", registro.get("inicio_janela", 0))))
-        else:
-            nome = nomes.get(id_captura)
-            if nome is None:
-                avisos.append("sem .npz da captura; ignorada")
-                continue
-            with np.load(sessao_dir / nome, allow_pickle=True) as dados:
-                bruto = np.asarray(dados["tensao_pu"], dtype=np.float64).reshape(-1)
-            inicio = _inicio_da_janela(registro, bruto.size, pontos, fs_hz)
-            medida = bruto[inicio : inicio + pontos]
+        bruto = np.asarray(lida.versoes.get("medida", lida.sinal), dtype=np.float64).reshape(-1)
+        inicio = _inicio_da_janela(registro, bruto.size, pontos, fs_hz, lida.inicio_janela)
+        medida = bruto[inicio : inicio + pontos]
+        rotulo = f"{id_captura} [{lida.perfil}]" if multiplos_perfis else id_captura
         capturas.append(CapturaSessao(
             id_captura=id_captura, classe=classe_id, f0_hz=float(registro.get("f0_hz", 60.0)), fs_hz=fs_hz,
             tensao_base_rms=float(registro.get("tensao_base_rms", 127.0)), inicio_janela=inicio,
             medida_pu=medida, programada_pu=programada,
             forma_bancada_pu=(np.asarray(reconstruido["forma_bancada"], dtype=np.float64) if reconstruido is not None else None),
             dc_offset_pu=float((registro.get("parametros") or {}).get("dc_offset_pu", 0.0)),
-            origem_programada=origem, avisos=avisos,
+            origem_programada=origem, avisos=avisos, perfil=lida.perfil, rotulo=rotulo,
         ))
     return capturas
 
@@ -234,7 +228,8 @@ def analisar_captura(
         sem_dc = {"max_abs_pu": float(janela.max()), "amostra": pos, "instante_ms": 1000.0 * pos / cap.fs_hz}
     global_pos = int(np.argmax(np.abs(residuo)))
     return {
-        "id_captura": cap.id_captura, "classe": cap.classe, "f0_hz": cap.f0_hz, "ciclos": ciclos,
+        "id_captura": cap.id_captura, "perfil": cap.perfil, "rotulo": cap.rotulo,
+        "classe": cap.classe, "f0_hz": cap.f0_hz, "ciclos": ciclos,
         "pontos_por_ciclo": n, "inicio_janela": cap.inicio_janela,
         "candidato_k_sem_dc": bancada is not None, "ciclos_detalhe": por_ciclo, "troca": troca,
         "residuo_no_instante": {"instante_ms": instante_ms, **(sem_dc or {})},
@@ -270,7 +265,7 @@ def montar_markdown(sessao: str, resultados: List[dict]) -> str:
         else:
             parte = "nenhum | - | - | - | -"
         linhas.append(
-            f"| {r['id_captura']} | {r['f0_hz']:g} | {parte} "
+            f"| {r['rotulo']} | {r['f0_hz']:g} | {parte} "
             f"| {ri.get('max_abs_pu', float('nan')):.4f} | {ri.get('instante_ms', float('nan')):.2f} "
             f"| {rg['max_abs_pu']:.4f} | {rg['instante_ms']:.2f} |"
         )
@@ -278,7 +273,7 @@ def montar_markdown(sessao: str, resultados: List[dict]) -> str:
         anormais = [c for c in r["ciclos_detalhe"] if c["estado"] != "ok"]
         if not anormais:
             continue
-        linhas += ["", f"## {r['id_captura']}: ciclos que não são simplesmente k", "",
+        linhas += ["", f"## {r['rotulo']}: ciclos que não são simplesmente k", "",
                    "| ciclo | início (ms) | estado | melhor | resíduo rms por candidato (pu) |", "|---|---|---|---|---|"]
         for c in anormais:
             res = ", ".join(f"{nome}={valor:.4f}" for nome, valor in c["residuo_rms_pu"].items())
