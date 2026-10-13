@@ -6839,5 +6839,110 @@ class CliRecalibracaoEHtmlTests(unittest.TestCase):
         self.assertIn("AVISO", saida)
 
 
+class PreflightUnicoTests(unittest.TestCase):
+    """Preflight único (spec 12): preflight.py removido, lowvoltage pede
+    ENERGIZAR-TESTE na tensão base e a CLI grava logs/preflight_new-*.log."""
+
+    def setUp(self):
+        import cli
+        self.cli = cli
+        self.sessao = cli.SessaoCLI()
+
+    def _rodar(self, metodo, args=()):
+        import io
+        from contextlib import redirect_stdout
+        saida = io.StringIO()
+        with redirect_stdout(saida):
+            codigo = metodo(list(args))
+        return codigo, saida.getvalue()
+
+    def test_preflight_py_nao_existe_e_cli_so_usa_preflight_new(self):
+        self.assertFalse((LOGICA_DIR / "preflight.py").exists())
+        self.assertFalse(hasattr(self.cli, "preflight"))
+        self.assertTrue(callable(preflight_new.run_basic_stage))
+        self.assertEqual(preflight_new.normal_waveform().shape, (mestre.POINTS,))
+
+    def test_lowvoltage_pede_energizar_teste_com_tensao_base(self):
+        pedidos = []
+
+        def recusar(aviso, esperado):
+            pedidos.append((aviso, esperado))
+            return False
+
+        with mock.patch.object(self.sessao, "confirmar", side_effect=recusar), \
+                mock.patch.object(preflight_new, "run_basic_stage") as basico:
+            codigo, _ = self._rodar(self.sessao.cmd_lowvoltage)
+        self.assertEqual(codigo, 1)
+        basico.assert_not_called()
+        self.assertEqual(pedidos[0][1], "ENERGIZAR-TESTE")
+        self.assertIn(f"{mestre.BASE_VOLTAGE_RMS:g} Vrms", pedidos[0][0])
+        self.assertNotIn("5 Vrms" if mestre.BASE_VOLTAGE_RMS != 5 else "\0", pedidos[0][0])
+
+    def test_confirmacao_e_case_sensitive(self):
+        for digitado in ("energizar-teste", "ENERGIZAR-5V", "ENERGIZAR-TESTE "):
+            with mock.patch("builtins.input", return_value=digitado), \
+                    mock.patch.object(preflight_new, "run_basic_stage") as basico, \
+                    mock.patch.object(preflight_new, "_configure_logging") as log:
+                codigo, _ = self._rodar(self.sessao.cmd_lowvoltage)
+            self.assertEqual(codigo, 1, digitado)
+            basico.assert_not_called()
+            log.assert_not_called()
+
+    def test_lowvoltage_confirmado_energiza_e_revoga(self):
+        estados = []
+
+        def basico(trigger_test, low_voltage):
+            estados.append((trigger_test, low_voltage, mestre.OUTPUT_ARMED, preflight_new.OUTPUT_ARMED))
+            return 0
+
+        with mock.patch("builtins.input", return_value="ENERGIZAR-TESTE"), \
+                mock.patch.object(preflight_new, "_configure_logging", return_value=Path("x.log")), \
+                mock.patch.object(preflight_new, "run_basic_stage", side_effect=basico):
+            codigo, _ = self._rodar(self.sessao.cmd_lowvoltage)
+        self.assertEqual(codigo, 0)
+        self.assertEqual(estados, [(False, True, True, True)])
+        self.assertFalse(mestre.OUTPUT_ARMED)
+        self.assertFalse(preflight_new.OUTPUT_ARMED)
+
+    def test_help_e_codigo_sem_energizar_5v(self):
+        self.assertIn("ENERGIZAR-TESTE", self.cli.HELP_TEXT)
+        self.assertNotIn("ENERGIZAR-5V", self.cli.HELP_TEXT)
+        self.assertNotIn("5 Vrms", self.cli.HELP_TEXT)
+
+    def test_cli_grava_log_em_arquivo_para_native_e_lowvoltage(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            logs = Path(tmp)
+            chamadas = []
+
+            def native():
+                preflight_new.logger.info("linha de teste native")
+                chamadas.append("native")
+                return 0
+
+            def basico(trigger_test, low_voltage):
+                preflight_new.logger.info("linha de teste lowvoltage")
+                return 0
+
+            try:
+                with mock.patch.object(preflight_new, "LOG_DIR", logs), \
+                        mock.patch("builtins.input", return_value="ENERGIZAR-COMANDOS"), \
+                        mock.patch.object(preflight_new, "run_native_commands", side_effect=native):
+                    self.assertEqual(self._rodar(self.sessao.cmd_native)[0], 0)
+                with mock.patch.object(preflight_new, "LOG_DIR", logs), \
+                        mock.patch("builtins.input", return_value="ENERGIZAR-TESTE"), \
+                        mock.patch.object(preflight_new, "run_basic_stage", side_effect=basico):
+                    self.assertEqual(self._rodar(self.sessao.cmd_lowvoltage)[0], 0)
+            finally:
+                for handler in list(preflight_new.logger.handlers):
+                    handler.close()
+                preflight_new.logger.handlers.clear()
+            arquivos = sorted(p.name for p in logs.glob("preflight_new-*.log"))
+            self.assertEqual(len(arquivos), 2, arquivos)
+            native_log = next(logs.glob("preflight_new-native-commands-*.log")).read_text(encoding="utf-8")
+            baixa_log = next(logs.glob("preflight_new-low-voltage-*.log")).read_text(encoding="utf-8")
+            self.assertIn("linha de teste native", native_log)
+            self.assertIn("linha de teste lowvoltage", baixa_log)
+
+
 if __name__ == "__main__":
     unittest.main()

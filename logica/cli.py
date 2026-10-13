@@ -3,7 +3,7 @@ antigo ``start_bench_windows.ps1 -Stage Full`` por comandos explícitos que o
 operador digita na ordem que quiser.
 
 Não implementa nenhuma lógica de segurança nova — reaproveita
-``mestre.Bancada.from_env()`` e as funções já validadas de ``preflight.py``/
+``mestre.Bancada.from_env()`` e as funções já validadas de
 ``preflight_new.py`` exatamente como o fluxo antigo fazia, uma invocação por
 comando. Todas as confirmações físicas obrigatórias (fator de probe, Vrms/Hz,
 a string digitada antes de energizar) continuam existindo: a probe e a
@@ -24,7 +24,6 @@ from pathlib import Path
 from typing import List, Optional
 
 import mestre
-import preflight
 import perfis
 import preflight_new
 
@@ -72,11 +71,12 @@ Comandos disponíveis (nenhum energiza a saída sem pedir confirmação própria
   trigger             Força aquisição do Keysight para validar
                        download/decodificação da waveform (BNC ainda não
                        testado aqui). Equivale à antiga etapa "Trigger".    [OFF]
-  lowvoltage          Recomissionamento em 5 Vrms: valida BNC + trigger real
+  lowvoltage          Recomissionamento na tensão base (BASE_VOLTAGE_RMS, a
+                       digitada no início): valida BNC + trigger real
                        + RMS medido. Reprograma ~12 TRACe na Flash da AMETEK
                        (~40-50s) — rode isto só quando precisar
                        re-comissionar a bancada (fiação/probe mexidas), não
-                       toda vez que ligar o sistema. Pede ENERGIZAR-5V.     [ON, 5V]
+                       toda vez que ligar o sistema. Pede ENERGIZAR-TESTE.  [ON]
   native              Preflight de comandos nativos: STEP/PULSe/CSINe/
                        LIST:FREQuency/ACDC/MEASure* da AMETEK e canal 2 do
                        Keysight. Pede ENERGIZAR-COMANDOS.                   [ON]
@@ -184,16 +184,15 @@ class SessaoCLI:
     # -- infraestrutura ----------------------------------------------------
 
     def autorizar_saida(self, autorizado: bool) -> None:
-        """Espelha o ARM_OUTPUT do ambiente nos três módulos que leram esse
-        valor na hora do import (``mestre``, ``preflight``, ``preflight_new``
+        """Espelha o ARM_OUTPUT do ambiente nos dois módulos que leram esse
+        valor na hora do import (``mestre`` e ``preflight_new``
         fazem ``from mestre import ... OUTPUT_ARMED``, uma cópia própria cada
         um) — sem isto, autorizar a saída aqui dentro do processo de longa
         duração da CLI não teria efeito nenhum nas checagens de segurança
-        dessas três funções, que continuariam vendo o valor de quando a CLI
+        dessas funções, que continuariam vendo o valor de quando a CLI
         iniciou."""
         os.environ["ARM_OUTPUT"] = "YES" if autorizado else "NO"
         mestre.OUTPUT_ARMED = autorizado
-        preflight.OUTPUT_ARMED = autorizado
         preflight_new.OUTPUT_ARMED = autorizado
 
     def _garantir_pasta_sessao(self) -> None:
@@ -506,21 +505,28 @@ class SessaoCLI:
     # -- preflights (energizam conforme o comando) -----------------------
 
     def cmd_comm(self, _args: List[str]) -> int:
-        return preflight.run(trigger_test=False, low_voltage=False)
+        return preflight_new.run_com_log(
+            "comm", lambda: preflight_new.run_basic_stage(trigger_test=False, low_voltage=False)
+        )
 
     def cmd_trigger(self, _args: List[str]) -> int:
-        return preflight.run(trigger_test=True, low_voltage=False)
+        return preflight_new.run_com_log(
+            "trigger-test", lambda: preflight_new.run_basic_stage(trigger_test=True, low_voltage=False)
+        )
 
     def cmd_lowvoltage(self, _args: List[str]) -> int:
         if not self.confirmar(
-            "Recomissionamento em 5 Vrms (~40-50s reprogramando TRACe na Flash). "
+            f"Recomissionamento na tensão base ({mestre.BASE_VOLTAGE_RMS:g} Vrms, "
+            "~40-50s reprogramando TRACe na Flash). "
             "Confirme fisicamente probe, cabos, E-stop e EUT.",
-            "ENERGIZAR-5V",
+            "ENERGIZAR-TESTE",
         ):
             return 1
         self.autorizar_saida(True)
         try:
-            return preflight.run(trigger_test=False, low_voltage=True)
+            return preflight_new.run_com_log(
+                "low-voltage", lambda: preflight_new.run_basic_stage(trigger_test=False, low_voltage=True)
+            )
         finally:
             self.autorizar_saida(False)
 
@@ -533,7 +539,7 @@ class SessaoCLI:
             return 1
         self.autorizar_saida(True)
         try:
-            return preflight_new.run_native_commands()
+            return preflight_new.run_com_log("native-commands", preflight_new.run_native_commands)
         finally:
             self.autorizar_saida(False)
 

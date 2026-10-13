@@ -31,18 +31,20 @@ resumo:
 | `status`, `list` | não | — |
 | `comm` | não | antiga etapa Communication |
 | `trigger` | não | antiga etapa Trigger |
-| `lowvoltage` | sim, 5V | antiga etapa LowVoltage — agora OPCIONAL, só para recomissionar (fiação/probe mexidas), não roda mais automaticamente dentro de nada |
+| `lowvoltage` | sim, tensão base | antiga etapa LowVoltage — agora OPCIONAL, só para recomissionar (fiação/probe mexidas), não roda mais automaticamente dentro de nada |
 | `native` | sim | antiga etapa NativeCommands (`preflight_new.py --native-commands`) |
 | `run <NN\|nome>` | sim | roda uma classe isolada |
 | `run all` | sim | bateria completa das 20 classes, resiliente por classe (ver abaixo) |
 
-> **Nota (conferida no código em 2026-10-12):** `lowvoltage` e `native` usam a
-> tensão base digitada no início (`BASE_VOLTAGE_RMS`), não 5 V; o rótulo
-> "5V"/`ENERGIZAR-5V` é herança do fluxo antigo. Para recomissionar a 5 V,
+> **Nota (v1.15, conferida no código em 2026-10-13):** `lowvoltage` e `native`
+> usam a tensão base digitada no início (`BASE_VOLTAGE_RMS`), nunca 5 V fixos.
+> O rótulo "5V" e a confirmação `ENERGIZAR-5V` foram removidos: `lowvoltage`
+> agora pede `ENERGIZAR-TESTE` e mostra a tensão real. `logica/preflight.py`
+> foi removido; só existe `logica/preflight_new.py`. Para recomissionar a 5 V,
 > inicie o `START_BENCH` digitando 5 V. Ver `docs/operacao.md`.
 
 Todas as confirmações físicas (fator de probe, Vrms/Hz, e a string digitada
-antes de energizar — `ENERGIZAR-5V`, `ENERGIZAR-COMANDOS`,
+antes de energizar — `ENERGIZAR-TESTE`, `ENERGIZAR-COMANDOS`,
 `EXECUTAR-CLASSE-<NN>`, `EXECUTAR-20-CLASSES`, todas case-sensitive) continuam
 existindo exatamente como no fluxo antigo. Não invente o fator de probe e não
 automatize essas confirmações.
@@ -54,12 +56,13 @@ serial caiu, impossível confirmar OUTPUT):
 2. não executar de novo automaticamente;
 3. entregar ao usuário o arquivo mais recente de `logs\startup-bench-*.log`
    (ou `logs\preflight_new-*.log` para falhas de `native`);
-   **Nota (conferida no código em 2026-10-12):** nenhum código gera mais
-   `logs\startup-bench-*.log`, e a CLI chama `native` sem criar
-   `logs\preflight_new-*.log` (esse só existe com `python logica\preflight_new.py`
-   direto). Hoje, entregue: para `run`/`run all`, `sessao.log` e
-   `scpi_transcricao.log` da pasta `resultados\sessao_<timestamp>[_runNN]` mais
-   recente; para `comm`/`trigger`/`lowvoltage`/`native`, a saída do terminal;
+   **Nota (conferida no código em 2026-10-13):** nenhum código gera mais
+   `logs\startup-bench-*.log`. Desde a v1.15 a CLI grava, para `comm`/
+   `trigger`/`lowvoltage`/`native`, o mesmo `logs\preflight_new-<etapa>-*.log`
+   do script direto (`preflight_new.run_com_log`). Hoje, entregue: para
+   `run`/`run all`, `sessao.log` e `scpi_transcricao.log` da pasta
+   `resultados\sessao_<timestamp>[_runNN]` mais recente; para `comm`/`trigger`/
+   `lowvoltage`/`native`, o `logs\preflight_new-*.log` mais recente;
 4. não remover validações de IDN, timeout, tamanho de waveform ou SCPI.
 
 Uma falha isolada de EXPERIMENTO (RMS fora de tolerância, timeout de trigger,
@@ -78,7 +81,7 @@ Essa restrição está **suspensa** para os módulos abaixo, e continua suspensa
 para qualquer sessão futura que precise mexer neles (autorização registrada
 em 2026-09-09, ver `CHANGELOG/v1.7.md`):
 
-- `logica/mestre.py`, `logica/ametek_orm.py`, `logica/preflight.py`,
+- `logica/mestre.py`, `logica/ametek_orm.py`,
   `logica/preflight_new.py`, `logica/cli.py`, e os scripts em `scripts/`.
 - `tests/test_offline.py` pode ser rodado e editado livremente — não toca
   hardware, roda os dois ORMs em modo simulado.
