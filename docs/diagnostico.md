@@ -12,6 +12,16 @@ Regra do projeto: comportamento que parece errado **não se corrige por palpite*
 
 A **transcrição SCPI** (`sessao.log` e `scpi_transcricao.log`) existe em todo `run`, com ou sem diagnóstico: `W` comando, `Q` consulta, `R consulta -> resposta`, com `t=` monotônico. É a primeira coisa a ler numa falha.
 
+### 1.1 `set diagnostico retrieve [on|off]`: ler de volta as TRACEs gravadas (v1.15)
+
+Independente de `on|off` acima; desligado por padrão (`mestre.DIAGNOSTICO_RETRIEVE`, `mestre.py:354`; `status` mostra `diagnostico retrieve: ON|OFF`). Nunca se conferiu o que fica na Flash depois de `TRACe:DATA`; com ele ligado, cada captura que grava TRACEs (classes waveform e a 05 nativa quando usa TRACe) lê de volta as TRACEs que programou:
+
+- **Quando** (`_ler_traces_de_diagnostico`, `mestre.py:2013`, chamado no fim de `_capturar_real`, `:2912` e `:3117`): depois de `wait_transient_complete` e depois de o osciloscópio já ter sido lido; nada é escrito na fonte até a próxima captura. Nunca entre duas escritas de TRACe e nunca logo após uma: `AmetekMX30.ler_trace` (`ametek_orm.py:1353`) recusa se o comando anterior foi `TRACe:DATA/DEFine/DELete` e espera até `DIAGNOSTICO_RETRIEVE_ESPERA_S` (padrão 2 s, o mínimo conservador do quirk A2) desde a última escrita. Valor abaixo de 2 s é aceito, com aviso no log.
+- **Onde**: `<sessao>/diagnostico_trace/<id da captura>.npz` (`nomes`, `enviado`, `lido`, ambos `(ciclos, 1024)`, e `list_voltage_rms` = `LIST:VOLTage`), fora do `.npz` da captura (`_gravar_diagnostico_trace`, `:2063`). No metadata da captura, a chave `diagnostico_trace`: `arquivo`, `traces_programadas`, `traces_lidas`, `desvio_max` e `desvio_max_por_trace` (máximo de |lido − enviado|, em unidades da TRACe enviada, pico 1), `erro`, `espera_minima_s`, `espera_efetiva_s`, `duracao_leitura_s`.
+- **Falha**: timeout, resposta ilegível ou tamanho diferente de 1024 (`LeituraTraceError`) é logada e gravada em `erro`, e a captura segue. Em seguida confere-se `*IDN?` (`aguardar_resposta`); se a fonte não responde, vale o caminho normal de `CommunicationError`/falha fatal da bateria.
+- **Custo de tempo (estimativa, NÃO VERIFICADA na bancada)**: cada TRACe devolve ~10 kB (1024 valores `%.8g`) a 115200 baud, ~1 s de linha por TRACe, ou ~12 s para os 12 ciclos de 60 Hz (10 a 50 Hz), mais a espera mínima de 2 s quando a captura gravou TRACEs agora (o cache de TRACe, que não regrava, não paga a espera). Com o sorteio ligado toda captura regrava, então cerca de +14 s por captura (~15 min a mais em 63 capturas). O que o dado diz é só o que foi medido; use para auditar uma sessão curta, não a campanha inteira.
+- **Interpretação**: o manual diz que a fonte remove a componente DC e escala a TRACe a um formato interno e devolve valores normalizados (±1) (p. 126 e 147); `desvio_max` ≠ 0 pode ser essa normalização/quantização, não erro. Se a escala devolvida for outra, só a bancada diz.
+
 ## 2. Roteiro de investigação
 
 1. Reproduza **offline** quando possível: `tests.test_offline` (instrumentos simulados e `ScriptedVisaConnection`), ou um script em `docs/analise-AAAA-MM-DD/` que importe `mestre`/`ametek_orm`/`sinais` com `sys.path.insert(0, "logica")` (exemplos: `scripts/diag_fonte_vs_osciloscopio.py`; os diagnósticos temporários de 2026-10-12 estão em `arquivo/analises:docs/analise-2026-10-12/scripts/`).

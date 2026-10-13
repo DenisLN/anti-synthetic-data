@@ -104,6 +104,14 @@ Comandos disponíveis (nenhum energiza a saída sem pedir confirmação própria
                        run/run all — para testar as hipóteses do v1.7. Com
                        "on", também abre um terminal extra acompanhando a
                        transcrição SCPI da sessão em tempo real (tail -f).   [OFF]
+  set diagnostico retrieve [on|off]
+                       Com "on" (ou sem argumento), cada captura TRACE lê de
+                       volta as TRACEs gravadas na fonte (TRACe:DATA?) DEPOIS
+                       da captura terminar e com espera mínima de 2 s
+                       (DIAGNOSTICO_RETRIEVE_ESPERA_S) desde a última escrita
+                       de TRACe, e grava <sessao>/diagnostico_trace/<id>.npz
+                       (enviado x lido) + desvio máximo no metadata. Soma
+                       alguns segundos por captura (docs/diagnostico.md).   [OFF]
   set capturas <N>    Mínimo de capturas por classe na bancada real: cada
                        classe roda max(N, padrão da classe) — ver "list".
                        Em classes com níveis discretos (SAG/SWELL/
@@ -360,6 +368,7 @@ class SessaoCLI:
             f"{mestre.ExperimentoBase.MARGEM_DEPOIS_S * 1000:.0f}ms depois (fixo, "
             f"não é mais opt-in)   "
             f"diagnostico: {'ON' if mestre.DIAGNOSTICO_MODE else 'OFF'}   "
+            f"diagnostico retrieve: {'ON' if mestre.DIAGNOSTICO_RETRIEVE else 'OFF'}   "
             f"set capturas: "
             f"{mestre.CAPTURAS_OVERRIDE if mestre.CAPTURAS_OVERRIDE is not None else 'não (padrão das classes)'}"
         )
@@ -452,7 +461,7 @@ class SessaoCLI:
 
     def cmd_set(self, args: List[str]) -> int:
         if len(args) < 2:
-            print("Uso: set diagnostico on|off   |   set capturas <N>|padrao   |   set seed <N>|padrao   |   "
+            print("Uso: set diagnostico on|off|retrieve   |   set capturas <N>|padrao   |   set seed <N>|padrao   |   "
                 "set perfil norma|literatura|fronteira   |   set sorteio on|off   |   "
                 "set recalibracao on|off   |   set html on|off")
             return 1
@@ -467,8 +476,24 @@ class SessaoCLI:
             )
             return 0
         if chave == "diagnostico":
+            if valor == "retrieve":
+                # set diagnostico retrieve [on|off]: independente do log (on/off).
+                estado = args[2].lower() if len(args) > 2 else "on"
+                if estado not in ("on", "off") or len(args) > 3:
+                    print("Uso: set diagnostico retrieve [on|off]")
+                    return 1
+                mestre.DIAGNOSTICO_RETRIEVE = estado == "on"
+                print(
+                    f"diagnostico retrieve: {'ON' if mestre.DIAGNOSTICO_RETRIEVE else 'OFF'}"
+                    + (
+                        f" (lê de volta as TRACEs após cada captura TRACE, espera mínima "
+                        f"{mestre.DIAGNOSTICO_RETRIEVE_ESPERA_S:g} s; custo de tempo por captura: docs/diagnostico.md)"
+                        if mestre.DIAGNOSTICO_RETRIEVE else ""
+                    )
+                )
+                return 0
             if valor not in ("on", "off"):
-                print("Uso: set diagnostico on|off")
+                print("Uso: set diagnostico on|off|retrieve [on|off]")
                 return 1
             mestre.DIAGNOSTICO_MODE = valor == "on"
             print(f"diagnostico: {'ON' if mestre.DIAGNOSTICO_MODE else 'OFF'}")

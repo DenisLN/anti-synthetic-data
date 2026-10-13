@@ -20,7 +20,7 @@ import numpy as np
 
 from ametek_orm import (
     AmetekMX30, CommunicationError, FalhaFatalDeInstrumento, InstrumentHardwareError,
-    ParameterOutOfBoundsError, ProgramacaoCaptura,
+    LeituraTraceError, ParameterOutOfBoundsError, ProgramacaoCaptura,
 )
 import perfis
 from sinais import (
@@ -348,6 +348,13 @@ CAPTURE_CURRENT = env_bool("CAPTURE_CURRENT", default=False)
 SESSION_RESULTS_DIR: Optional[Path] = None
 CAPTURAS_OVERRIDE: Optional[int] = None
 DIAGNOSTICO_MODE: bool = False
+# ``set diagnostico retrieve`` (v1.15): lê de volta, a cada captura TRACE, as
+# TRACEs gravadas na fonte (``TRACe:DATA?``), num ponto seguro do fluxo, e grava
+# em ``<sessao>/diagnostico_trace/``. Desligado por padrão.
+DIAGNOSTICO_RETRIEVE: bool = False
+# Espera mínima (s) entre a última escrita de TRACe e a leitura (quirk A2).
+DIAGNOSTICO_RETRIEVE_ESPERA_S: float = env_float("DIAGNOSTICO_RETRIEVE_ESPERA_S", 2.0)
+PASTA_DIAGNOSTICO_TRACE = "diagnostico_trace"
 # Perfil de faixas do dataset (v1.15; logica/perfis.py): norma|literatura|
 # fronteira. Inicial = env PERFIL (padrão literatura = dataset de sempre);
 # "set perfil" da CLI muda em runtime, vale a partir do próximo run.
@@ -753,6 +760,9 @@ class Config:
     # Início, duração e fase sorteados em gerar() (ver ``Sorteio``). False =
     # posições fixas anteriores à v1.15.
     sorteio_posicao: bool = True
+    # Leitura de volta das TRACEs gravadas (``set diagnostico retrieve``).
+    diagnostico_retrieve: bool = False
+    diagnostico_retrieve_espera_s: float = 2.0
 
     def capturas(self, simulated: bool) -> int:
         """Capturas desta classe (por nível, nas classes com ``NIVEIS``).
@@ -923,6 +933,8 @@ def _build_config() -> Config:
         disturbance_start_s=DISTURBANCE_START_S,
         capturas_override=CAPTURAS_OVERRIDE,
         diagnostico_mode=DIAGNOSTICO_MODE,
+        diagnostico_retrieve=DIAGNOSTICO_RETRIEVE,
+        diagnostico_retrieve_espera_s=DIAGNOSTICO_RETRIEVE_ESPERA_S,
         perfil=PERFIL,
         sorteio_posicao=SORTEIO_POSICAO,
     )
@@ -1998,6 +2010,99 @@ class ExperimentoBase(ABC):
             )
         return viaveis
 
+    def _ler_traces_de_diagnostico(self) -> None:
+        """``set diagnostico retrieve``: lê de volta as TRACEs que a captura
+        corrente gravou e guarda o resultado em ``self._retrieve_atual`` (o
+        arquivo e o metadata saem em ``_gravar_diagnostico_trace``).
+
+        Chamado SÓ no fim de ``_capturar_real`` (transiente concluído, registro
+        do osciloscópio lido, nada a programar até a próxima captura) e com a
+        espera mínima de ``ler_trace`` desde a última escrita de TRACe
+        (quirk A2). Falha de leitura (``LeituraTraceError``) é registrada e
+        não derruba a captura; mas depois dela confere-se que a fonte ainda
+        responde (``aguardar_resposta``): se não, ``CommunicationError`` sobe
+        pelo caminho normal de falha de infraestrutura."""
+        self._retrieve_atual = None
+        if not getattr(self.config, "diagnostico_retrieve", False):
+            return
+        programacao = self._programacao_enviada()
+        if programacao is None:
+            logger.warning("[%s] diagnostico retrieve: sem programação para ler de volta", self.id)
+            return
+        espera_s = float(self.config.diagnostico_retrieve_espera_s)
+        if espera_s < 2.0:
+            logger.warning(
+                "[%s] diagnostico retrieve: espera mínima %.2f s < 2 s (padrão conservador, "
+                "docs/quirks.md A2)", self.id, espera_s,
+            )
+        inicio = time.monotonic()
+        lidos: List[np.ndarray] = []
+        erro: Optional[str] = None
+        try:
+            for nome in programacao.trace_names:
+                lidos.append(self.fonte.ler_trace(nome, espera_minima_s=espera_s))
+        except LeituraTraceError as exc:
+            erro = str(exc)
+            logger.error(
+                "[%s] diagnostico retrieve: leitura de volta falhou (%d/%d TRACEs lidas): %s. "
+                "A captura segue.", self.id, len(lidos), len(programacao.trace_names), exc,
+            )
+        if erro is not None:
+            # Não engole mudez real: se a fonte não responde mais, isto levanta
+            # CommunicationError e vale o caminho existente de falha fatal.
+            self.fonte.aguardar_resposta("*IDN?")
+        self._retrieve_atual = {
+            "programacao": programacao,
+            "lidos": lidos,
+            "erro": erro,
+            "espera_minima_s": espera_s,
+            "duracao_s": time.monotonic() - inicio,
+            "espera_efetiva_s": float(getattr(self.fonte, "ultima_espera_leitura_trace_s", 0.0)),
+        }
+
+    def _gravar_diagnostico_trace(self, capture_id: str, metadado: dict) -> None:
+        """Grava ``<sessao>/diagnostico_trace/<id da captura>.npz`` (enviado x
+        lido + ``LIST:VOLTage``) e acrescenta ``diagnostico_trace`` ao
+        metadata da captura (desvio máximo, erro). Fora do .npz da captura, e
+        independente de ``_salvar_captura``. Nunca levanta por erro de disco."""
+        dados = getattr(self, "_retrieve_atual", None)
+        self._retrieve_atual = None
+        if not dados:
+            return
+        programacao: ProgramacaoCaptura = dados["programacao"]
+        lidos = dados["lidos"]
+        enviados = np.asarray(programacao.traces[: len(lidos)], dtype=np.float64)
+        lido = np.asarray(lidos, dtype=np.float64) if lidos else np.zeros((0, AmetekMX30.TRACE_POINTS))
+        desvios = [float(np.max(np.abs(lido[i] - enviados[i]))) for i in range(len(lidos))]
+        info = {
+            "arquivo": f"{PASTA_DIAGNOSTICO_TRACE}/{capture_id}.npz",
+            "traces_programadas": len(programacao.trace_names),
+            "traces_lidas": len(lidos),
+            "desvio_max": max(desvios) if desvios else None,
+            "desvio_max_por_trace": desvios,
+            "erro": dados["erro"],
+            "espera_minima_s": dados["espera_minima_s"],
+            "espera_efetiva_s": dados["espera_efetiva_s"],
+            "duracao_leitura_s": dados["duracao_s"],
+        }
+        pasta = self.config.results_dir / PASTA_DIAGNOSTICO_TRACE
+        final = pasta / f"{capture_id}.npz"
+        try:
+            pasta.mkdir(parents=True, exist_ok=True)
+            parcial = final.with_suffix(".npz.part")
+            with parcial.open("wb") as handle:
+                np.savez(
+                    handle, classe=self.nome, id_captura=np.array([capture_id], dtype=object),
+                    nomes=np.array(programacao.trace_names), enviado=enviados, lido=lido,
+                    list_voltage_rms=np.asarray(programacao.list_voltages_rms, dtype=np.float64),
+                )
+            os.replace(parcial, final)
+        except OSError as exc:
+            logger.error("[%s] diagnostico retrieve: não gravou %s: %s", self.id, final, exc)
+            info["erro"] = f"{info['erro'] or ''} gravação do arquivo falhou: {exc}".strip()
+            info["arquivo"] = None
+        metadado["diagnostico_trace"] = info
+
     def _ler_captura(
         self, parametros: Dict[str, float]
     ) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray], Dict[str, float]]:
@@ -2552,6 +2657,7 @@ class ExperimentoBase(ABC):
                 extremos: Dict[str, object] = {}
                 if not simulated:
                     metadados[-1].update(self._contexto_da_sessao())
+                    self._gravar_diagnostico_trace(capture_id, metadados[-1])
                     # Logo depois da aquisição, antes de qualquer outro comando
                     # ao osciloscópio: a medida é sobre o registro que ele tem.
                     extremos = self._medir_extremos_fisicos()
@@ -2801,7 +2907,10 @@ class ExperimentoNativo(ExperimentoBase):
         self.fonte.trigger()
         self.osc.wait_for_trigger_complete(timeout_s=5.0)
         self.fonte.wait_transient_complete(timeout_s=5.0)
-        return self._ler_captura(parametros)
+        resultado = self._ler_captura(parametros)
+        if self.usar_trace(capture_index):
+            self._ler_traces_de_diagnostico()
+        return resultado
 
 
 class ExperimentoWaveform(ExperimentoBase):
@@ -3002,7 +3111,11 @@ class ExperimentoWaveform(ExperimentoBase):
         self.fonte.trigger()
         self.osc.wait_for_trigger_complete(timeout_s=5.0)
         self.fonte.wait_transient_complete(timeout_s=5.0)
-        return self._ler_captura(parametros)
+        resultado = self._ler_captura(parametros)
+        # Só aqui: transiente concluído, osciloscópio já lido, nenhuma
+        # programação por vir antes da próxima captura.
+        self._ler_traces_de_diagnostico()
+        return resultado
 
 
 # ---------------------------------------------------------------------------
