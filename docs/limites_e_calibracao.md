@@ -37,7 +37,7 @@ A 03 a 230 V/50 Hz continua fora: 1,058 × 357,8 V × 1,10 = 416,4 V > 415,8 V (
 
 1. Rodar a bateria na condição (o aviso de condição sem tabela é esperado).
 2. `.\env\Scripts\python.exe scripts\recalibrar_extremos.py resultados\sessao_A [resultados\sessao_B ...]` mostra o que mudaria; com `--gravar` atualiza o JSON sem diminuir nenhum fator (`--substituir` permite diminuir: enfraquece a pré-validação, evitar). Capturas com distúrbio reduzido entram invertendo a fórmula do limite de bancada; a 08 não entra.
-3. Alternativa dentro da CLI: `set recalibracao on` (nunca diminui, nunca cria tabela de condição nova; `docs/analise-2026-10-12/cli_recalibracao_html.md`).
+3. Alternativa dentro da CLI: `set recalibracao on` (nunca diminui, nunca cria tabela de condição nova; `arquivo/analises:docs/analise-2026-10-12/resolvido/cli_recalibracao_html.md`).
 4. `git diff`, `tests.test_offline`, commitar. A sessão guarda uma cópia da calibração usada (`calibracao_extremos.json` na pasta e `calibracao_extremos_sha256` em cada captura).
 
 ## 6. Relatório offline do que cabe

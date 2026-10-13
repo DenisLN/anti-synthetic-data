@@ -14,7 +14,7 @@ A **transcrição SCPI** (`sessao.log` e `scpi_transcricao.log`) existe em todo 
 
 ## 2. Roteiro de investigação
 
-1. Reproduza **offline** quando possível: `tests.test_offline` (instrumentos simulados e `ScriptedVisaConnection`), ou um script em `docs/analise-AAAA-MM-DD/` que importe `mestre`/`ametek_orm`/`sinais` com `sys.path.insert(0, "logica")` (exemplos: `docs/analise-2026-10-12/diag_*.py`).
+1. Reproduza **offline** quando possível: `tests.test_offline` (instrumentos simulados e `ScriptedVisaConnection`), ou um script em `docs/analise-AAAA-MM-DD/` que importe `mestre`/`ametek_orm`/`sinais` com `sys.path.insert(0, "logica")` (exemplos: `scripts/diag_fonte_vs_osciloscopio.py`; os diagnósticos temporários de 2026-10-12 estão em `arquivo/analises:docs/analise-2026-10-12/scripts/`).
 2. Para dados já gravados: `logica\analisar_sessao.py`, `scripts\gerar_tres_versoes.py`, `scripts\relatorio_limites_bancada.py`, `relatorio_html.py`.
 3. Só então use hardware, com a menor energia possível e os scripts da seção 3.
 4. Registre hipóteses refutadas junto com as confirmadas.
@@ -28,10 +28,10 @@ A **transcrição SCPI** (`sessao.log` e `scpi_transcricao.log`) existe em todo 
 | `scripts/diag_fonte_vs_osciloscopio.py` | sim | `ENERGIZAR-127V` | fonte e CH1 lado a lado, direto e em degrau |
 | `scripts/diag_osciloscopio_canais.py` | não | — | só leitura dos 4 canais do Keysight (envia `:RUN`) |
 | `scripts/diag_acdc_amplitude.py` | sim | `ENERGIZAR-ACDC` | `BENCH_MODE=1`, `--probe` obrigatório; `--vrms`, `--hz`, `--offsets-pu`, `--testar-compensacao`, `--simulado` (sem hardware, ganho FICTÍCIO); mede o déficit de CA em ACDC |
-| `logica/diag_digitizer_*.py` | não (só Keysight) | — | histórico do modo Digitizer (v1.10), descartado |
+| `logica/diag_digitizer_*.py` | — | — | removidos em 2026-10-13 (modo Digitizer, v1.10, descartado; histórico no git até `d3c7ce7`) |
 | `preflight_new.py --list-diagnostics` | não | — | confirma comandos `SOURce:LIST:*` com write+leitura |
 
 Cada diagnóstico que energiza desliga a saída no `finally` (inclusive Ctrl+C). Conferir OUTPUT OFF no painel ao final. Exceções de infraestrutura: seguir `docs/operacao.md` §7.
 
 ## 4. Achados que esperam diagnóstico na bancada
-Ver a seção "NÃO VERIFICADO" de `docs/analise-2026-10-12/apresentabilidade.md` e `docs/quirks.md` (itens A3, A19, A22, K4).
+Ver a seção "NÃO VERIFICADO" de `arquivo/analises:docs/analise-2026-10-12/pendente/apresentabilidade_VERIFICAR.md` e `docs/quirks.md` (itens A3, A19, A22, K4).

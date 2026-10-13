@@ -38,13 +38,13 @@ O projeto gera o dataset rotulado de 20 classes de distúrbio de tensão (200 ms
 | `logica/recortar_margem.py` | recorta a margem de 20/50 ms (saída em `sem_margem/`) |
 | `logica/relatorio_html.py` + `logica/modelos/relatorio_capturas.html` | relatório HTML autocontido (figuras em base64) |
 | `logica/calibracao_extremos.json` | fatores de extremo por condição e por classe |
-| `logica/diag_digitizer_*.py` | sondas do osciloscópio do modo Digitizer (v1.10, descartado; só referência) |
+| `logica/diag_digitizer_*.py` | removidos em 2026-10-13 (sondas do modo Digitizer, v1.10, descartado; histórico no git até `d3c7ce7`) |
 | `experimentos_nativos/` | classes 01–05, 18, 19 (mecanismo nativo da fonte) |
 | `experimentos_waveform/` | classes 06–17, 20 (TRACe/LIST) |
 | `scripts/` | PowerShell/CMD do operador e utilitários Python offline/de diagnóstico (tabela na seção 7) |
 | `tests/test_offline.py`, `tests/fixtures/` | suíte sem hardware (`docs/testes.md`) |
 | `CHANGELOG/vX.Y.md` | histórico por versão (registro; não reescrever) |
-| `docs/` | documentação viva (este índice está no `README.md`); `docs/analise-*/` e `docs/superpowers/` são **registro datado** |
+| `docs/` | documentação viva (este índice está no `README.md`); `docs/analise-*/` e `arquivo/analises:docs/superpowers/` são **registro datado** |
 | `resultados/` | saída (gitignored) |
 | `logs/` | logs de scripts de diagnóstico e do `preflight_new.py` rodado direto (gitignored) |
 | `backups/`, `env/` | cópias locais e virtualenv (gitignored). `.claude/` e `.serena/` são pastas de ferramentas de agente, não fazem parte do projeto |

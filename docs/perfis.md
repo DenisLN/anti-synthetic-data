@@ -1,6 +1,6 @@
 # Perfis de faixas do dataset
 
-Fonte única: `logica/perfis.py` (`FAIXAS`). Escolha: `set perfil norma|literatura|fronteira` na CLI, ou a variável de ambiente `PERFIL` (inicial; simulado e bancada). Padrão: `literatura`, que reproduz o `gerar()` anterior à v1.15 (commit 34a0d82) byte a byte com `set sorteio off` (o sorteio de início/duração/fase, ligado por padrão, é independente do perfil: `docs/analise-2026-10-12/sorteio_inicio_fase.md`). O perfil vai em cada captura (`perfil` no metadata; metadata sem o campo = `literatura`).
+Fonte única: `logica/perfis.py` (`FAIXAS`). Escolha: `set perfil norma|literatura|fronteira` na CLI, ou a variável de ambiente `PERFIL` (inicial; simulado e bancada). Padrão: `literatura`, que reproduz o `gerar()` anterior à v1.15 (commit 34a0d82) byte a byte com `set sorteio off` (o sorteio de início/duração/fase, ligado por padrão, é independente do perfil: `arquivo/analises:docs/analise-2026-10-12/pendente/sorteio_inicio_fase_VERIFICAR_BANCADA.md`). O perfil vai em cada captura (`perfil` no metadata; metadata sem o campo = `literatura`).
 
 Só as classes abaixo dependem do perfil. Forma, frequência do flicker, interrupção, notch, transitórios, drift e DC não mudam entre perfis (classes 01, 04, 07, 08, 09, 17, 18, 19 idênticas nos três).
 
@@ -22,7 +22,7 @@ Só as classes abaixo dependem do perfil. Forma, frequência do flicker, interru
 Notas:
 
 - As compostas herdam o componente (`sag_composto`, `swell_composto`, `thd_composto`, `flicker_composto` em `perfis.py`). Compostas têm valor único por perfil, exceto `fronteira` para sag/swell, que alterna entre as duas fronteiras pelo `capture_index`: com 1 captura por classe (padrão da bancada) só aparece 0,1 (sag) e 1,1 (swell); `set capturas 2` ou mais cobre as duas.
-- A spec só define fronteira para sag/swell (0,1, 0,9, 1,1, 1,8 pu). THD, flicker e inter-harmônicas usam a literatura no perfil `fronteira` (escolha minha; ver `docs/analise-2026-10-12/perfis_mudancas.md`).
+- A spec só define fronteira para sag/swell (0,1, 0,9, 1,1, 1,8 pu). THD, flicker e inter-harmônicas usam a literatura no perfil `fronteira` (escolha minha; ver `arquivo/analises:docs/analise-2026-10-12/resolvido/perfis_mudancas.md`).
 - Os níveis intermediários da norma (0,325, 0,675, 1,30, 1,45, 2 % de THD, 4,5 % de flicker composto) são escolha de implementação: espaçamento uniforme dentro da faixa pedida; a spec fixa só os extremos.
 - Os níveis `2 %` de THD no CSINe e os sag/swell de fronteira não foram exercitados na bancada real.
-- Desde a v1.15, com o sorteio ligado (padrão) as compostas 10 a 16 sorteiam esses componentes por captura (FAIXAS_SORTEADAS em perfis.py): sag U(0,1; 0,9), swell U(1,1; 1,8), THD U(0,05; 0,20), flicker U(8; 25) Hz, oscilação U(300; 2400) Hz, profundidade do flicker = faixa da 06; norma e fronteira conforme a tabela de componentes; fronteira de sag/swell continua em dois níveis. Os valores da tabela valem com set sorteio off. Detalhe: docs/analise-2026-10-12/compostas_sorteadas.md.
+- Desde a v1.15, com o sorteio ligado (padrão) as compostas 10 a 16 sorteiam esses componentes por captura (FAIXAS_SORTEADAS em perfis.py): sag U(0,1; 0,9), swell U(1,1; 1,8), THD U(0,05; 0,20), flicker U(8; 25) Hz, oscilação U(300; 2400) Hz, profundidade do flicker = faixa da 06; norma e fronteira conforme a tabela de componentes; fronteira de sag/swell continua em dois níveis. Os valores da tabela valem com set sorteio off. Detalhe: `arquivo/analises:docs/analise-2026-10-12/pendente/compostas_sorteadas_REVISAR.md.`

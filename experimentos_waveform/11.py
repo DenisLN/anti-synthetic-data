@@ -10,7 +10,7 @@ from sinais import janela
 class Experimento(ExperimentoWaveform):
     id = "11"
     # Parâmetros SORTEADOS em gerar() (v1.15, com o sorteio ligado): 3 capturas
-    # por padrão na bancada (docs/analise-2026-10-12/compostas_sorteadas.md).
+    # por padrão na bancada (`arquivo/analises:docs/analise-2026-10-12/pendente/compostas_sorteadas_REVISAR.md`).
     capturas_padrao = 3
     nome = "SAG_FLICKER"
 

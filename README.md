@@ -55,7 +55,7 @@ Dentro da CLI: `help`; sequência recomendada `comm` → `trigger` → `native` 
 | [`docs/glossario.md`](docs/glossario.md) | termos |
 | [`CHANGELOG/`](CHANGELOG/) | histórico por versão (`v1.0.md` a `v1.15.md`); registro, não se reescreve |
 | [`experimentos.txt`](experimentos.txt) | especificação original das 20 classes |
-| `docs/analise-*/` | relatórios datados de cada rodada de bancada/análise (registro histórico) |
+| `arquivo/analises:docs/analise-*/` | relatórios datados de cada rodada de bancada/análise (registro histórico; fora de `docs/` desde 2026-10-13, no branch `arquivo/analises`) |
 | `docs/*.pdf` | manuais SCPI da AMETEK e do Keysight |
 
 ## Estrutura (resumo)

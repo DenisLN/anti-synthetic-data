@@ -325,8 +325,8 @@ DIAGNOSTICO_MODE: bool = False
 # fronteira. Inicial = env PERFIL (padrão literatura = dataset de sempre);
 # "set perfil" da CLI muda em runtime, vale a partir do próximo run.
 PERFIL: str = perfis.perfil_do_ambiente()
-# Sorteio de início/duração/fase em gerar() (v1.15; docs/analise-2026-10-12/
-# sorteio_inicio_fase.md). Padrão ligado; SORTEIO=0 (ou "set sorteio off")
+# Sorteio de início/duração/fase em gerar() (v1.15; `arquivo/analises:docs/analise-2026-10-12/pendente/sorteio_inicio_fase_VERIFICAR_BANCADA.md`).
+# Padrão ligado; SORTEIO=0 (ou "set sorteio off")
 # reproduz as posições fixas de antes (60 ms/80 ms, fase 0), byte a byte.
 SORTEIO_POSICAO: bool = env_bool("SORTEIO", default=True)
 
@@ -655,7 +655,7 @@ VALIDACAO_TOL_THD = env_float("VALIDACAO_TOL_THD", 0.20)
 # confirmação digitada de sempre, e o dataset simulado não é afetado. A 08
 # ficou aqui de 14:44 a 15:25 de 2026-09-30 (pico de 415,3 V no teto de
 # 415,8 V) e voltou depois de redimensionada pelos extremos MEDIDOS
-# (docs/analise-2026-09-30/ANALISE.md, T8-4: VMAX 230 V / VMIN -334 V).
+# (`arquivo/analises:docs/analise-2026-09-30/ANALISE.md`, T8-4: VMAX 230 V / VMIN -334 V).
 BATERIA_EXCLUIR = tuple(
     item.strip().zfill(2)
     for item in os.environ.get("BATERIA_EXCLUIR", "").split(",")
@@ -994,7 +994,7 @@ class Bancada:
                 voltage_range_rms=SOURCE_VOLTAGE_RANGE_RMS,
                 # Limite de PICO do software, validado por configure_safe_baseline.
                 # O VOLTage:HIGH da fonte é RMS e recebe EUT_MAX_VOLTAGE_RMS (ver
-                # lá; T12 em docs/analise-2026-09-30). A proteção de pico é de
+                # lá; T12 em `arquivo/analises:docs/analise-2026-09-30`). A proteção de pico é de
                 # software: _indices_viaveis (previsto) + medir_extremos (medido).
                 voltage_high_vp=EUT_MAX_PEAK_V,
                 current_limit_a=CURRENT_LIMIT_A,
@@ -2019,7 +2019,7 @@ class ExperimentoBase(ABC):
     # Desde 2026-09-22 (P10, pedido do dono) esta margem deixou de ser
     # opt-in — não existe mais ``set margin on|off`` nem modo "sem margem"
     # para captura física; é sempre aplicada. NÃO reduzir abaixo disto sem
-    # refazer a medida (ver docs/analise-2026-09-21/01_conclusao_investigacao.md §2(i)).
+    # refazer a medida (ver `arquivo/analises:docs/analise-2026-09-21/01_conclusao_investigacao.md` §2(i)).
     MARGEM_ANTES_S = env_float("MARGEM_ANTES_S", 0.020)
     MARGEM_DEPOIS_S = env_float("MARGEM_DEPOIS_S", 0.050)
 

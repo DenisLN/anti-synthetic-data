@@ -1,6 +1,6 @@
 # Comandos SCPI usados e sua função
 
-Extraído de `logica/ametek_orm.py` e `logica/oscilloscope_orm.py` (commit `d37e403`). "Manual" = página do **PDF** em `docs/AMETEK_MX_SCPI_Programming_Manual.pdf` / `docs/Keysight_4000X_Programmers_Guide.pdf` (texto pesquisável em `docs/analise-2026-09-21/manuais_txt/`). Onde a Rev. 5.53 (AMETEK) ou o firmware 07.30 (Keysight) difere do manual, está em `docs/quirks.md`. Nenhum experimento escreve SCPI cru: tudo passa pelos métodos da coluna "Método".
+Extraído de `logica/ametek_orm.py` e `logica/oscilloscope_orm.py` (commit `d37e403`). "Manual" = página do **PDF** em `docs/AMETEK_MX_SCPI_Programming_Manual.pdf` / `docs/Keysight_4000X_Programmers_Guide.pdf` (texto pesquisável em `docs/manuais_txt/`). Onde a Rev. 5.53 (AMETEK) ou o firmware 07.30 (Keysight) difere do manual, está em `docs/quirks.md`. Nenhum experimento escreve SCPI cru: tudo passa pelos métodos da coluna "Método".
 
 ## 1. Camada de transporte (AMETEK)
 

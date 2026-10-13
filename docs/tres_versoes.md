@@ -25,7 +25,7 @@ Todas são vetores de 6000 amostras a 30 kSa/s, em pu do pico nominal (`tensao_b
 | 18 | `LIST:FREQuency` de 2 pontos | `start_hz` na 1.ª metade da janela e `end_hz` na 2.ª, fase contínua |
 | 19 | STEP + `SOURce:VOLTage:OFFSet` | senoide na base mais o offset enviado |
 
-Início e duração vêm do metadata (`inicio_disturbio_s`, `duracao_s`); sem sorteio, de `INICIO_S`/`DURACAO_S` da classe. A programada **não** inclui o que a fonte faz de diferente do pedido (por exemplo, o déficit de 5 a 6 % de amplitude em ACDC da classe 19, `docs/analise-2026-10-12/acdc_amplitude.md`): isso é a diferença programada contra medida.
+Início e duração vêm do metadata (`inicio_disturbio_s`, `duracao_s`); sem sorteio, de `INICIO_S`/`DURACAO_S` da classe. A programada **não** inclui o que a fonte faz de diferente do pedido (por exemplo, o déficit de 5 a 6 % de amplitude em ACDC da classe 19, `arquivo/analises:docs/analise-2026-10-12/pendente/acdc_amplitude_VERIFICAR.md`): isso é a diferença programada contra medida.
 
 No **simulado** não há limite de bancada: a programada é a ideal do dataset (na 08, 5 a 10 pu, que a fonte real não emitiria).
 
@@ -51,7 +51,7 @@ O script lê `metadata/*.jsonl` (seed, `nivel_indice`, `f0_hz`, `tensao_base_rms
 
 ## O que não está confirmado
 
-- Que a fonte escale a TRACe ao rms de `LIST:VOLTage` é do manual (p. 126); a forma exata na saída só a bancada confirma. Nas 99 capturas de 07/10 a programada ficou mais perto da medida que o modelo em 70, empatou em 28 e perdeu em 1 por 0,0001 pu (`docs/analise-2026-10-12/tres_versoes_mudancas.md`).
+- Que a fonte escale a TRACe ao rms de `LIST:VOLTage` é do manual (p. 126); a forma exata na saída só a bancada confirma. Nas 99 capturas de 07/10 a programada ficou mais perto da medida que o modelo em 70, empatou em 28 e perdeu em 1 por 0,0001 pu (`arquivo/analises:docs/analise-2026-10-12/resolvido/tres_versoes_mudancas.md`).
 - A senoide clipada da CSINusoid (corte e escala) é uma suposição: o THD é o pedido, o rms é o da senoide. Na 05 a 127 V o pico medido (0,954 pu) fica 3 % acima do da programada (0,926 pu).
 - 18: a continuidade da fase na troca de passo do `LIST:FREQuency`.
 - A largura de pulso do PULSe e o instante exato de aplicação (resolução da fonte) não entram.
