@@ -85,7 +85,7 @@ Manual: `VOLTage:MODE` 90-153, `VOLTage:TRIGgered` 108-109, `PULSe:WIDTh` 104-10
 | lista | `SOURce:LIST:FUNCtion:SHAPe TCC00,…`, `SOURce:LIST:VOLTage v0,…`, `SOURce:LIST:DWELl d,…` (cada um com `check_errors` e `…:POINts?` igual ao nº de ciclos) |
 | modos | `SOURce:LIST:REPeat 0,0,…`, `SOURce:LIST:COUNt 1`, `SOURce:LIST:STEP AUTO`, `FUNCtion:MODE LIST`, `VOLTage:MODE LIST`, `TRIGger:SOURce BUS`, `TRIGger:SYNChronize:SOURce PHASe`, `TRIGger:SYNChronize:PHASe 0`, `OUTPut:TTLTrg:MODE TRIG`, `OUTPut:TTLTrg:SOURce BOT`, `OUTPut:TTLTrg ON` |
 
-Em `montar_programacao` (`:1322`): ciclos de `30000/f0` amostras (12 a 60 Hz → 500 amostras; 10 a 50 Hz → 600), cada um reamostrado a 1024 pontos, média removida, normalizado pelo pico; o rms do ciclo vai em `LIST:VOLTage`; `DWELl` = 1 ciclo exato. O nome da TRACe é `TCC00…`.
+Em `montar_programacao` (`:1322`): ciclos de `30000/f0` amostras (12 a 60 Hz → 500 amostras; 10 a 50 Hz → 600), cada um reamostrado a 1024 pontos, média removida, normalizado pelo pico, com reamostragem periódica (ciclo fechado); o rms da componente CA do ciclo (sem a média, como a fonte escala a TRACe sem DC) vai em `LIST:VOLTage`; `DWELl` = 1 ciclo exato. O nome da TRACe é `TCC00…`.
 
 `arm_transient` (`:1716`) espera `IDLE`, lê 9 consultas de volta (`OUTPut:STATe?`, `FUNCtion:MODE?`, `VOLTage:MODE?`, `SOURce:FREQuency:MODE?`, `SOURce:LIST:FUNCtion|VOLTage|DWELl|REPeat:POINts?`, `TRIGger:SOURce?`), compara com o esperado, e então `*WAI`, `INITiate:IMMediate`. **Não** repetir `ABORt` aqui. Depois: `trigger`, `wait_transient_complete`.
 
