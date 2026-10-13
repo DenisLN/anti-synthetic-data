@@ -25,7 +25,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 EXPERIMENT_DIRS = (PROJECT_ROOT / "experimentos_nativos", PROJECT_ROOT / "experimentos_waveform")
 if str(PROJECT_ROOT / "logica") not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT / "logica"))
-from sinais import correlacao_disturbio, janela_nominal  # noqa: E402
+from sinais import (  # noqa: E402
+    correlacao_disturbio, correlacao_disturbio_fundamental_ajustada, janela_nominal,
+)
 
 # Valores usados só quando o metadata é ANTIGO e não os traz. Enquanto
 # estiveram chumbados no código (60 Hz na chamada de gerar() e 127 V em
@@ -185,14 +187,23 @@ def _reconstruir_esperado(class_id: str, metadado: dict) -> np.ndarray:
 
 def _correlacao_disturbio_alinhada(
     esperado: np.ndarray, registro: np.ndarray, inicio_janela: int, lag: int, metadado: dict,
+    fundamental_ajustada: bool = False,
 ) -> Tuple[Optional[float], Optional[str]]:
     """Correlação só da componente de distúrbio (``sinais.correlacao_disturbio``)
     com a janela da captura re-alinhada pelo ``lag`` de ``analisar_offset``:
     desloca o início da janela no registro bruto (sem perder amostras nas
     bordas, enquanto houver margem) e usa a senoide nominal com a fase do
-    modelo (metadata ``fase_graus``; sem sorteio, 0)."""
+    modelo (metadata ``fase_graus``; sem sorteio, 0). Com
+    ``fundamental_ajustada`` usa ``correlacao_disturbio_fundamental_ajustada``
+    (a fundamental de cada sinal ajustada, em vez da senoide nominal; mesmo
+    recorte e mesmo lag)."""
     n = len(esperado)
     inicio = max(0, min(int(inicio_janela) + int(lag), max(0, registro.size - n)))
+    if fundamental_ajustada:
+        return correlacao_disturbio_fundamental_ajustada(
+            esperado, registro[inicio : inicio + n], fs_hz=float(metadado["fs_hz"]),
+            f0_hz=float(metadado.get("f0_hz", F0_PADRAO_HZ)),
+        )
     return correlacao_disturbio(
         esperado, registro[inicio : inicio + n], fs_hz=float(metadado["fs_hz"]),
         f0_hz=float(metadado.get("f0_hz", F0_PADRAO_HZ)),
@@ -289,6 +300,9 @@ def analisar_sessao(sessao_dir: Path) -> List[Dict]:
         corr_disturbio, motivo_disturbio = _correlacao_disturbio_alinhada(
             esperado, capturado, inicio_janela, lag, metadado,
         )
+        corr_ajustada, motivo_ajustada = _correlacao_disturbio_alinhada(
+            esperado, capturado, inicio_janela, lag, metadado, fundamental_ajustada=True,
+        )
         pico_esperado = float(np.max(np.abs(esperado)))
         pico_capturado = float(np.max(np.abs(capturado)))
         relatorio.append({
@@ -302,6 +316,8 @@ def analisar_sessao(sessao_dir: Path) -> List[Dict]:
             "correlacao": corr,
             "correlacao_disturbio": corr_disturbio,
             "correlacao_disturbio_motivo": motivo_disturbio,
+            "correlacao_disturbio_fundamental_ajustada": corr_ajustada,
+            "correlacao_disturbio_fundamental_ajustada_motivo": motivo_ajustada,
             "pico_esperado": pico_esperado,
             "pico_capturado": pico_capturado,
             "razao_pico": pico_capturado / pico_esperado if pico_esperado else float("nan"),
@@ -318,16 +334,20 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     relatorio = analisar_sessao(args.sessao_dir)
-    print(f"{'arquivo':<40}{'lag (ms)':>12}{'correlação':>12}{'corr. distúrbio':>17}{'razão pico':>12}")
+    print(f"{'arquivo':<40}{'lag (ms)':>12}{'correlação':>12}{'corr. distúrbio':>17}{'corr. dist. fund.aj.':>22}{'razão pico':>12}")
     for linha in relatorio:
         if "erro" in linha:
             print(f"{linha['classe']:<40}  ERRO: {linha['erro']}")
             continue
         cd = linha["correlacao_disturbio"]
         cd_txt = "n/a" if cd is None else f"{cd:.3f}"
-        print(f"{linha['classe']:<40}{linha['lag_ms']:>12.2f}{linha['correlacao']:>12.3f}{cd_txt:>17}{linha['razao_pico']:>12.3f}")
+        ca = linha["correlacao_disturbio_fundamental_ajustada"]
+        ca_txt = "n/a" if ca is None else f"{ca:.3f}"
+        print(f"{linha['classe']:<40}{linha['lag_ms']:>12.2f}{linha['correlacao']:>12.3f}{cd_txt:>17}{ca_txt:>22}{linha['razao_pico']:>12.3f}")
         if cd is None:
             print(f"{'':<40}  corr. distúrbio n/a: {linha['correlacao_disturbio_motivo']}")
+        if ca is None:
+            print(f"{'':<40}  corr. dist. fund.aj. n/a: {linha['correlacao_disturbio_fundamental_ajustada_motivo']}")
     return 0
 
 
