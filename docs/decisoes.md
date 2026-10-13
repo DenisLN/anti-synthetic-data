@@ -36,6 +36,7 @@ Por que o código é como é. Cada linha: decisão, motivo, onde está, fonte. "
 | v1.15 | Início, duração e fase sorteados; sub-fluxo da seed | o distúrbio caía sempre no mesmo ponto; parâmetros antigos não podem mudar | `mestre.py:765-855` |
 | v1.15 | Parâmetros das compostas 10–16 sorteados | compostas eram cópias da mesma onda | `perfis.composto`, `arquivo/analises:docs/analise-2026-10-12/pendente/compostas_sorteadas_REVISAR.md` |
 | v1.15 | Três versões (modelo / programada / medida) | separar limite da bancada de física da fonte | `docs/tres_versoes.md` |
+| v1.15 | Um `NN_classe.npz` comprimido por classe, com perfis e versões; SNRs em arquivos por classe e nível; `set perfil todos` | pedido do dono (2026-10-13): tudo da mesma classe no mesmo arquivo; o `run all` percorre os três perfis na mesma sessão. Substitui "físico = 1 por captura" da v1.8. Cada captura vai antes para `parcial/` (atômica), para não perder o que foi feito se a classe for interrompida | `sessao_io.py`, `docs/dataset.md`, `CHANGELOG/v1.15.md` |
 | v1.15 | Regra de extremos por frequência | a resposta da saída depende da frequência | `mestre.py:514`, `regra_por_frequencia.md` |
 | v1.15 | Classe 08 fora da fronteira de ciclo + conferência de posição | impulso a +20 ms a 50 Hz | `08.py`, `classe08_fronteira.md` |
 | v1.15 | 05 pelo modelo CSINe; 07/17 entalhes contínuos; 18 em f0 ± 3 Hz | alinhar modelo, fonte e norma | `classes_05_07_18.md` |

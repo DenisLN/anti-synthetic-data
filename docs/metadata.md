@@ -17,9 +17,13 @@ Decisão: o `.jsonl` continua sendo a fonte; o `.json` é derivado dele (gravado
 fim da classe, na mesma operação que promove o `.jsonl.part`). Trocar o formato obrigaria
 a reescrever 4 leitores (`recortar_margem`, `analisar_sessao`, `relatorio_html`,
 `recalibrar_extremos`) e quebraria a leitura das sessões de 07/10, sem ganho de informação.
-Os leitores usam `glob("*.jsonl")`, que não casa `NN_classe.json`. Se o processo morrer
-no meio de uma classe, só o `.jsonl.part` existe (o `.json` aparece quando a classe fecha,
-inclusive nas interrompidas via erro tratado).
+Os leitores usam `glob("*.jsonl")`, que não casa `NN_classe.json`. Com `set perfil todos`
+(v1.15) o `.jsonl` da classe tem as linhas de TODOS os perfis, perfil a perfil, e é reescrito
+inteiro (`.jsonl.part` -> `os.replace`) ao fim de cada perfil e ao interromper a classe, junto
+com o `NN_classe.npz` (`mestre._gravar_arquivos_da_classe`). Se o processo morrer no meio de
+um perfil, o metadata das capturas já feitas está em `parcial/NN_classe/` (campo
+`metadado_json` de cada captura) e `sessao_io.recuperar_parcial` o devolve ao `.jsonl`; o
+`.json` aparece quando a classe fecha, inclusive nas interrompidas via erro tratado.
 
 ## `sessao.json`
 
@@ -34,6 +38,8 @@ inclusive nas interrompidas via erro tratado).
 | `versao_codigo` | `git describe --always --dirty --tags` |
 | `numpy_versao`, `python_versao` | versões do ambiente que gravou |
 | `perfil` | perfil de faixas (`norma`, `literatura` ou `fronteira`) em vigor no início do run desta pasta (v1.15, acrescentado) |
+| `perfis_da_rodada` | lista dos perfis que o run percorre: um com `set perfil norma\|literatura\|fronteira`, os três com `set perfil todos`; `perfil` vale então `"todos"` (v1.15, acrescentado) |
+| `formato_npz` | formato dos `.npz` da pasta: `2` = um `NN_classe.npz` comprimido por classe, com perfis e versões (`docs/dataset.md` §2; v1.15, acrescentado) |
 | `perfis_usados_na_cli` | lista, na ordem, do perfil de cada run desta CLI até esta pasta, inclusive (v1.15, acrescentado); a pasta do primeiro run tem uma entrada, a do terceiro, três |
 | `calibracao_extremos.origem` | caminho do arquivo copiado |
 | `calibracao_extremos.copia_na_sessao` | nome da cópia dentro da pasta (`calibracao_extremos.json`) |
@@ -58,7 +64,9 @@ Nenhum campo existente foi removido. Campos novos:
 | `validacao_fisica.posicao_evento` (08) | só física | `inicio_previsto_amostra`, `pico_medido_amostra`, `desvio_amostras` (medido menos previsto), `tolerancia_amostras` (10) e `desvio_pico_pu`; fora da tolerância a captura é marcada inválida (`ok = false`, motivo "posição do impulso") |
 | `git_commit`, `git_sujo`, `numpy_versao` | só física | cópia da procedência (o `.jsonl` sobrevive sozinho se for copiado sem a pasta) |
 | `calibracao_extremos_sha256` | só física | SHA-256 da calibração usada na captura; deve bater com `sessao.json` |
-| `tres_versoes` | captura gravada pela v1.15 (em andamento) em diante | `{arquivo, programada}`: onde estão modelo/programada/medida desta captura e como a programada foi obtida (`docs/tres_versoes.md`) |
+| `tres_versoes` | captura gravada pela v1.15 (em andamento) em diante | `{arquivo, programada}`: onde estão modelo/programada/medida desta captura (o `NN_classe.npz`) e como a programada foi obtida (`docs/tres_versoes.md`) |
+| `arquivo_classe` | toda captura (formato 2) | nome do `NN_classe.npz` que guarda a captura (na pasta da sessão). Uma classe gravada com vários perfis tem as capturas de todos eles no mesmo arquivo (v1.15, acrescentado) |
+| `indice_no_arquivo` | toda captura (formato 2) | linha da captura dentro do bloco do `perfil` no arquivo: `dados["<perfil>/medida"][indice_no_arquivo]`, 0-based. O mesmo `id_captura` existe em cada perfil de uma sessão `set perfil todos`; a chave única da captura é `(perfil, id_captura)` (v1.15, acrescentado) |
 | `snr_medido_db` | toda captura | SNR **acrescentado** por nível (`"20.0"`, `"30.0"`, `"40.0"`): janela limpa contra ruído somado, medido só na janela rotulada |
 | `snr_bancada_db` | só física | SNR do ruído próprio da bancada nesta captura (potência da janela / ruído medido na margem anterior por segunda diferença); `null` no simulado |
 | `snr_efetivo_db` | toda captura | por nível: sinal / (ruído da bancada + ruído acrescentado); no simulado igual a `snr_medido_db` |
