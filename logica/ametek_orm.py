@@ -1316,7 +1316,9 @@ class AmetekMX30:
     def _resample_cycle(cycle: np.ndarray) -> np.ndarray:
         source_x = np.arange(len(cycle), dtype=np.float64) / len(cycle)
         target_x = np.arange(AmetekMX30.TRACE_POINTS, dtype=np.float64) / AmetekMX30.TRACE_POINTS
-        return np.interp(target_x, source_x, cycle)
+        # period=1.0: o ciclo é fechado (a amostra seguinte à última é a
+        # primeira), sem repetir a última amostra nos ~2 últimos pontos.
+        return np.interp(target_x, source_x, cycle, period=1.0)
 
     @classmethod
     def montar_programacao(
@@ -1329,8 +1331,9 @@ class AmetekMX30:
     ) -> ProgramacaoCaptura:
         """Função pura (sem SCPI, sem estado) que decide o que ``program_capture``
         programa: ciclos de ``FS_HZ / frequency_hz`` amostras, cada um sem a
-        componente DC, reamostrado para ``TRACE_POINTS`` pontos, sem a média,
-        normalizado pelo pico, mais o rms do ciclo para ``SOURce:LIST:VOLTage``.
+        componente DC, reamostrado (periódico) para ``TRACE_POINTS`` pontos, sem a
+        média, normalizado pelo pico, mais o rms da componente CA do ciclo para
+        ``SOURce:LIST:VOLTage``.
         ``program_capture()`` envia exatamente isto e
         ``ProgramacaoCaptura.programada_pu()`` reconstrói a forma emitida,
         offline. Levanta ``ValueError`` nas mesmas condições de antes."""
@@ -1368,7 +1371,12 @@ class AmetekMX30:
         for index in range(ciclos):
             start = index * pontos_por_ciclo
             cycle = waveform[start : start + pontos_por_ciclo] - dc_component
-            cycle_rms_pu = float(np.sqrt(np.mean(np.square(cycle))))
+            # rms da componente CA do ciclo (sem a média): a fonte remove o DC
+            # da TRACE e a escala para o rms de LIST:VOLTage (manual p. 126);
+            # com o rms "com média" a amplitude CA saía inflada nos ciclos de
+            # média != 0 (degrau a meio ciclo: classes 10, 11, 12, 16).
+            cycle_ca = cycle - np.mean(cycle)
+            cycle_rms_pu = float(np.sqrt(np.mean(np.square(cycle_ca))))
             voltage_rms = base_voltage_rms * math.sqrt(2.0) * cycle_rms_pu
             list_voltages.append(voltage_rms)
             trace = cls._resample_cycle(cycle)
@@ -1378,13 +1386,20 @@ class AmetekMX30:
                 trace = np.zeros(cls.TRACE_POINTS, dtype=np.float64)
             else:
                 trace /= scale
-                # O pico físico real do ciclo reconstruído é o pico em pu
-                # (scale, antes da normalização) multiplicado pela tensão base
-                # de pico. A abordagem anterior (voltage_rms / trace_rms)
-                # infla incorretamente o resultado porque voltage_rms já
-                # incorpora o fator sqrt(2), levando a uma superestimativa de
-                # ~17% para senoide de 60 Hz reamostrada a 1024 pontos.
-                cycle_peak_v = scale * base_voltage_rms * math.sqrt(2.0)
+                # Pico físico emitido: a fonte escala a TRACE (pico 1) para o
+                # rms programado, então o pico é voltage_rms / rms(trace
+                # normalizada) — o mesmo fator que programada_pu() aplica. Com
+                # o rms CA no LIST:VOLTage isto coincide com scale · base · √2
+                # (pico CA do modelo, a menos da reamostragem); a forma
+                # explícita não depende dessa igualdade e não subestima o pico
+                # se o rms programado divergir do da TRACE.
+                # Calculado sobre os números como enviados (%.8g), que são os
+                # que programada_pu() reconstrói.
+                enviada = _como_enviado(trace)
+                rms_trace = float(np.sqrt(np.mean(np.square(enviada))))
+                cycle_peak_v = (
+                    float(np.max(np.abs(enviada))) * float(f"{voltage_rms:.8g}") / rms_trace
+                )
                 reconstructed_peak_v = max(reconstructed_peak_v, cycle_peak_v + pico_dc_v)
             traces.append(_como_enviado(trace))
             pico_acumulado.append(reconstructed_peak_v)

@@ -5829,9 +5829,10 @@ class TresVersoesTests(unittest.TestCase):
     def test_programada_de_senoide_pura_e_a_senoide(self):
         senoide = np.sin(2.0 * np.pi * 50.0 * self.T)
         programada = AmetekMX30.montar_programacao(senoide, base_voltage_rms=127.0, frequency_hz=50.0).programada_pu()
-        # Até ~1,3e-3 pu nas últimas amostras do ciclo: _resample_cycle repete a
-        # última amostra do ciclo nos ~2 últimos dos 1024 pontos (np.interp não extrapola).
-        np.testing.assert_allclose(programada, senoide, atol=2e-3)
+        # Com a interpolação periódica em _resample_cycle (ciclo fechado) o erro
+        # é só o da reamostragem 600 -> 1024 -> 600 (~1e-5 pu medido); antes,
+        # até 1,3e-3 pu nas últimas amostras (np.interp repetia a última).
+        np.testing.assert_allclose(programada, senoide, atol=1e-4)
 
     def test_programada_soma_o_offset_dc_enviado(self):
         senoide = np.sin(2.0 * np.pi * 60.0 * self.T) + 0.0895731
@@ -6946,3 +6947,61 @@ class PreflightUnicoTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RmsCaEPicoPrevistoTests(unittest.TestCase):
+    """Spec 11 (v1.15): LIST:VOLTage com o rms da componente CA do ciclo e
+    previsão de pico igual ao pico que a fonte emite (docs/tres_versoes.md)."""
+
+    T = np.arange(6000, dtype=np.float64) / 30_000.0
+    MARGEM = 1e-9
+
+    @staticmethod
+    def _degrau(f0, nivel, meio=0.5):
+        """Senoide de amplitude 1 com degrau de amplitude (nivel) na segunda
+        parte de cada ciclo: média do ciclo != 0 e degrau a meio ciclo."""
+        t = RmsCaEPicoPrevistoTests.T
+        fase = (t * f0) % 1.0
+        return np.sin(2.0 * np.pi * f0 * t) * np.where(fase < meio, 1.0, nivel) + np.where(fase < meio, 0.0, 0.3)
+
+    def test_list_voltage_e_o_rms_da_componente_ca_do_ciclo(self):
+        for f0 in (50.0, 60.0):
+            forma = self._degrau(f0, 0.4)
+            programacao = AmetekMX30.montar_programacao(forma, base_voltage_rms=127.0, frequency_hz=f0)
+            n = programacao.pontos_por_ciclo
+            for i, rms_v in enumerate(programacao.list_voltages_rms):
+                ciclo = forma[i * n:(i + 1) * n]
+                esperado = 127.0 * np.sqrt(2.0) * float(np.std(ciclo))
+                self.assertAlmostEqual(float(rms_v), esperado, delta=1e-6 * esperado)
+                com_media = 127.0 * np.sqrt(2.0) * float(np.sqrt(np.mean(ciclo ** 2)))
+                self.assertLess(float(rms_v), com_media)
+
+    def test_pico_previsto_nao_subestima_o_pico_de_programada_em_degraus(self):
+        import dataclasses
+        casos = [(f"degrau f0={f0:g} nivel={nivel}", self._degrau(f0, nivel), f0)
+                 for f0 in (50.0, 60.0) for nivel in (0.2, 0.4, 0.8)]
+        for classe_id in ("10", "11", "12", "16"):
+            for f0 in (50.0, 60.0):
+                for sorteio in (False, True):
+                    experimento = _load_experimento(classe_id)
+                    experimento.config = dataclasses.replace(experimento.config, sorteio_posicao=sorteio)
+                    forma, _ = experimento.gerar(self.T, f0, 0, np.random.default_rng(31 + int(sorteio)))
+                    casos.append((f"{classe_id} f0={f0:g} sorteio={sorteio}", np.asarray(forma), f0))
+        for nome, forma, f0 in casos:
+            for base in (127.0, 230.0):
+                with self.subTest(nome, base=base):
+                    programacao = AmetekMX30.montar_programacao(forma, base_voltage_rms=base, frequency_hz=f0)
+                    pico_programada_v = float(np.max(np.abs(programacao.programada_pu()))) * base * np.sqrt(2.0)
+                    self.assertGreaterEqual(programacao.pico_reconstruido_v + self.MARGEM, pico_programada_v)
+                    self.assertGreaterEqual(programacao.pico_acumulado_v[-1] + self.MARGEM, pico_programada_v)
+                    # e a previsão não é folgada à toa: fica a menos de 1% do pico emitido
+                    self.assertLess(programacao.pico_reconstruido_v, pico_programada_v * 1.01)
+
+    def test_programada_de_degrau_aproxima_o_modelo_sem_a_media_do_ciclo(self):
+        forma = self._degrau(60.0, 0.4)
+        programacao = AmetekMX30.montar_programacao(forma, base_voltage_rms=127.0, frequency_hz=60.0)
+        n = programacao.pontos_por_ciclo
+        alvo = np.concatenate([forma[i * n:(i + 1) * n] - forma[i * n:(i + 1) * n].mean() for i in range(programacao.ciclos)])
+        # a fonte remove o DC de cada TRACE: o que resta é o modelo sem a média do ciclo
+        self.assertLess(float(np.max(np.abs(programacao.programada_pu() - alvo))), 0.05)
+
