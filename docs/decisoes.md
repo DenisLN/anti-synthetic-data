@@ -34,7 +34,7 @@ Por que o código é como é. Cada linha: decisão, motivo, onde está, fonte. "
 | v1.15 | Perfis de faixas (`set perfil`) | pergunta do professor sobre a IEEE 1159; `literatura` reproduz 34a0d82 byte a byte | `perfis.py`, `docs/perfis.md` |
 | v1.15 | Metadata `.json` legível ao lado do `.jsonl`; `sessao.json`; cópia da calibração; commit/numpy gravados | rastreabilidade para arquivar (Zenodo) | `docs/metadata.md` |
 | v1.15 | Início, duração e fase sorteados; sub-fluxo da seed | o distúrbio caía sempre no mesmo ponto; parâmetros antigos não podem mudar | `mestre.py:765-855` |
-| v1.15 | Parâmetros das compostas 10–16 sorteados | compostas eram cópias da mesma onda | `perfis.composto`, `docs/analise-2026-10-12/compostas_sorteadas.md` |
+| v1.15 | Parâmetros das compostas 10–16 sorteados | compostas eram cópias da mesma onda | `perfis.composto`, `arquivo/analises:docs/analise-2026-10-12/pendente/compostas_sorteadas_REVISAR.md` |
 | v1.15 | Três versões (modelo / programada / medida) | separar limite da bancada de física da fonte | `docs/tres_versoes.md` |
 | v1.15 | Regra de extremos por frequência | a resposta da saída depende da frequência | `mestre.py:514`, `regra_por_frequencia.md` |
 | v1.15 | Classe 08 fora da fronteira de ciclo + conferência de posição | impulso a +20 ms a 50 Hz | `08.py`, `classe08_fronteira.md` |

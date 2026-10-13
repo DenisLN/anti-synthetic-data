@@ -47,11 +47,11 @@ Nenhum campo existente foi removido. Campos novos:
 |---|---|---|
 | `inicio_janela` | só captura física com `indice_trigger` | índice da amostra, dentro do registro bruto, onde começa a janela nominal de `pontos` amostras: `round(indice_trigger - pre_trigger_s * fs_hz)`, limitado a `[0, amostras_totais - pontos]` (a mesma conta de `sinais.janela_nominal`) |
 | `inicio_janela_ajustado` | idem | `true` se o limite agiu (registro curto demais; janela empurrada para dentro) |
-| `inicio_disturbio_s`, `duracao_s`, `fase_graus` | simulada e física, com `sorteio_posicao` verdadeiro | início e duração do distúrbio dentro da janela de 200 ms e fase da senoide base em t = 0 (`sin(2π·f0·t + fase)`), sorteados em `gerar()` (v1.15; `docs/analise-2026-10-12/sorteio_inicio_fase.md`). Ausentes quando a classe não tem o item (início/duração: 01, 05, 06, 15, 18, 19, 20) e na 08 |
+| `inicio_disturbio_s`, `duracao_s`, `fase_graus` | simulada e física, com `sorteio_posicao` verdadeiro | início e duração do distúrbio dentro da janela de 200 ms e fase da senoide base em t = 0 (`sin(2π·f0·t + fase)`), sorteados em `gerar()` (v1.15; `arquivo/analises:docs/analise-2026-10-12/pendente/sorteio_inicio_fase_VERIFICAR_BANCADA.md`). Ausentes quando a classe não tem o item (início/duração: 01, 05, 06, 15, 18, 19, 20) e na 08 |
 | `sorteio_posicao` | toda captura | `true` se o sorteio estava ligado; metadata anterior não tem o campo (= `false`) |
 | `pre_trigger_s` | só física | passa a ser o pré-trigger **efetivo da captura** (nas 02/03/04 com sorteio, igual a `inicio_disturbio_s`); `inicio_janela` e os leitores já o usam |
 | `pre_trigger_desvio_amostras` | só física, pré-trigger sorteado | `indice_trigger` medido menos o previsto (`round(pre_trigger_s·fs) + margem_amostras_antes`) |
-| `parametros.inicio_impulso_s` (08) | só física | instante do impulso programado (80 ms; 90 ms a 50 Hz com `sorteio_posicao`; `docs/analise-2026-10-12/classe08_fronteira.md`) |
+| `parametros.inicio_impulso_s` (08) | só física | instante do impulso programado (80 ms; 90 ms a 50 Hz com `sorteio_posicao`; `arquivo/analises:docs/analise-2026-10-12/pendente/classe08_fronteira_REVISAR.md`) |
 | `validacao_fisica.posicao_evento` (08) | só física | `inicio_previsto_amostra`, `pico_medido_amostra`, `desvio_amostras` (medido menos previsto), `tolerancia_amostras` (10) e `desvio_pico_pu`; fora da tolerância a captura é marcada inválida (`ok = false`, motivo "posição do impulso") |
 | `git_commit`, `git_sujo`, `numpy_versao` | só física | cópia da procedência (o `.jsonl` sobrevive sozinho se for copiado sem a pasta) |
 | `calibracao_extremos_sha256` | só física | SHA-256 da calibração usada na captura; deve bater com `sessao.json` |

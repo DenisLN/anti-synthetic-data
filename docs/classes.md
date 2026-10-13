@@ -57,7 +57,7 @@ O modelo (`gerar()`) é um impulso unidirecional de 5 a 10 pu somado à senoide,
 2. **Velocidade**: o datasheet dá 200 µs para 10–90 % do fundo de escala; o impulso de 50 µs acaba antes da subida. Mede-se a resposta do amplificador ao degrau.
 3. **Representação**: cada TRACe tem 1024 pontos por ciclo (19,5 µs a 50 Hz); o impulso ocupa 3–4 pontos.
 
-Posição: 80 ms (60 Hz). A 50 Hz o 80 ms cai na fronteira de ciclo e a fonte tocou o impulso a 100 ms (3 capturas de 07/10); com o sorteio ligado o impulso vai para 90 ms (meio do mesmo ciclo), nunca a menos de 30 amostras (1 ms) de uma fronteira (`08.py:34,81-98`). A validação física confere que o maior desvio da senoide está a ≤ 10 amostras do início previsto (`conferir_posicao_do_evento`, `08.py:180`); senão a captura é marcada inválida. Mecanismo do deslocamento: **NÃO VERIFICADO** (`docs/analise-2026-10-12/classe08_fronteira.md`). A 08 fica fora do sorteio de posição/fase porque o sobressinal foi calibrado para um ponto de partida.
+Posição: 80 ms (60 Hz). A 50 Hz o 80 ms cai na fronteira de ciclo e a fonte tocou o impulso a 100 ms (3 capturas de 07/10); com o sorteio ligado o impulso vai para 90 ms (meio do mesmo ciclo), nunca a menos de 30 amostras (1 ms) de uma fronteira (`08.py:34,81-98`). A validação física confere que o maior desvio da senoide está a ≤ 10 amostras do início previsto (`conferir_posicao_do_evento`, `08.py:180`); senão a captura é marcada inválida. Mecanismo do deslocamento: **NÃO VERIFICADO** (`arquivo/analises:docs/analise-2026-10-12/pendente/classe08_fronteira_REVISAR.md`). A 08 fica fora do sorteio de posição/fase porque o sobressinal foi calibrado para um ponto de partida.
 
 ## 4. Classe 05 e o teto do CSINusoid
 

@@ -86,7 +86,7 @@ em 2026-09-09, ver `CHANGELOG/v1.7.md`):
 Nenhuma outra restrição foi suspensa. Em especial, os limites físicos abaixo
 continuam absolutos.
 
-### Autorização de 2026-10-07 (tarefas em `docs/TAREFAS_NUVEM_2026-10-07.md`)
+### Autorização de 2026-10-07 (tarefas em `arquivo/analises:docs/TAREFAS_NUVEM_2026-10-07.md`)
 
 O dono autorizou, para cumprir essas tarefas (capturas padrão por classe,
 seed na CLI, capturas = max(CLI, padrão), 220/380 V), editar também:
@@ -181,7 +181,7 @@ byte o `gerar()` de 34a0d82. Limites e validações abaixo intactos.
 `glossario`). Arquivos `.md` são livres para editar, **mas todo fato sobre
 comportamento deve ser conferido no código (`arquivo:linha`)**; se o CHANGELOG
 divergir do código, vale o código e a divergência é documentada. Relatórios
-datados (`docs/analise-*/`, `docs/superpowers/`) e `CHANGELOG/vX.Y.md` fechados
+datados (`arquivo/analises:docs/analise-*/`, `arquivo/analises:docs/superpowers/`; branch `arquivo/analises`, fora de `docs/` desde 2026-10-13) e `CHANGELOG/vX.Y.md` fechados
 são registro histórico: não se reescrevem.
 
 ## Como escrever sobre mudanças no código

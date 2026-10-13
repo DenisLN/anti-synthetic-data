@@ -55,7 +55,7 @@ Seed opcional: variável `BASE_SEED` antes do `START_BENCH`, ou `set seed N` na 
 
 `set perfil`, `set sorteio`, `set seed` e `set capturas` valem a partir do **próximo** `run`.
 
-> **Aviso verificado no código — o rótulo "5 V" é histórico.** `lowvoltage` e `native` chamam `preflight.run(low_voltage=True)` / `preflight_new.run_native_commands()`, que usam `BASE_VOLTAGE_RMS` (a tensão digitada no início, `preflight.py:65-90`, `preflight_new.py:185-189`). Não há nenhum código que force 5 V. Com `START_BENCH` iniciado em 127 V, `lowvoltage` programa e mede **127 V**, apesar do texto `ENERGIZAR-5V`. Para um recomissionamento a 5 V de fato, inicie o `START_BENCH` digitando 5 V. Não foi testado no hardware; é leitura do código (achado registrado em `docs/analise-2026-10-12/apresentabilidade.md`).
+> **Aviso verificado no código — o rótulo "5 V" é histórico.** `lowvoltage` e `native` chamam `preflight.run(low_voltage=True)` / `preflight_new.run_native_commands()`, que usam `BASE_VOLTAGE_RMS` (a tensão digitada no início, `preflight.py:65-90`, `preflight_new.py:185-189`). Não há nenhum código que force 5 V. Com `START_BENCH` iniciado em 127 V, `lowvoltage` programa e mede **127 V**, apesar do texto `ENERGIZAR-5V`. Para um recomissionamento a 5 V de fato, inicie o `START_BENCH` digitando 5 V. Não foi testado no hardware; é leitura do código (achado registrado em `arquivo/analises:docs/analise-2026-10-12/pendente/apresentabilidade_VERIFICAR.md`).
 
 Sem hardware (`BENCH_MODE=0`): `status`, `list` e `run` funcionam em modo simulado; `comm`, `trigger`, `lowvoltage`, `native` exigem bancada.
 
