@@ -7512,6 +7512,12 @@ class DiagnosticoCopiaEm100msTests(unittest.TestCase):
             "tres_versoes": {"arquivo": "tres_versoes/99_sintetica.npz", "programada": "TRACe+LIST"},
         }
         (tmp / "metadata" / "99_sintetica.jsonl").write_text(json.dumps(registro) + "\n", encoding="utf-8")
+        # Formato 1 (como as sessões de 07/10): o .npz da captura na raiz, com o registro
+        # inteiro (margem + janela), e tres_versoes/ com modelo e programada.
+        np.savez(
+            tmp / "99_sintetica.npz", classe="SINTETICA", id_captura=np.array(["99-0001"], dtype=object),
+            tempo_ms=np.arange(600 + 6000) / 30.0, tensao_pu=np.concatenate([np.zeros(600), medida])[np.newaxis, :],
+        )
         np.savez(
             tmp / "tres_versoes" / "99_sintetica.npz", classe="SINTETICA", id_captura=np.array(["99-0001"], dtype=object),
             tempo_ms=np.arange(6000) / 30.0, modelo_pu=programada[np.newaxis, :], medida_pu=medida[np.newaxis, :],
@@ -8271,6 +8277,10 @@ class PendentesCorrelacaoDisturbioTests(unittest.TestCase):
         else:
             medida = programacao.programada_pu()
         (tmp / "metadata" / "09_osc.jsonl").write_text(json.dumps(registro) + "\n", encoding="utf-8")
+        np.savez(  # formato 1: o registro inteiro na raiz (a janela começa em inicio_janela = 600)
+            tmp / "09_osc.npz", classe="OSCILLATORY_TRANSIENT", id_captura=np.array(["09-0001"], dtype=object),
+            tempo_ms=np.arange(600 + 6000) / 30.0, tensao_pu=np.concatenate([np.zeros(600), medida])[np.newaxis, :],
+        )
         np.savez(
             tmp / "tres_versoes" / "09_osc.npz", classe="OSCILLATORY_TRANSIENT", id_captura=np.array(["09-0001"], dtype=object),
             tempo_ms=np.arange(6000) / 30.0, modelo_pu=versoes["modelo"][np.newaxis, :], medida_pu=medida[np.newaxis, :],
@@ -8837,3 +8847,205 @@ class NpzPorClasseTests(unittest.TestCase):
                 codigo = sessao._executar_scripts([Path("01.py"), Path("02.py")])
         self.assertEqual(codigo, 0)
         self.assertEqual(perfis_vistos, ["norma", "literatura", "fronteira"] * 2)
+
+
+class SessaoFormatoNovoScriptsTests(unittest.TestCase):
+    """Os dois scripts de diagnóstico sobre uma sessão no formato 2 (um
+    ``NN_classe.npz`` por classe com ``<perfil>/<versão>``, ``set perfil todos``),
+    lida pelo leitor único ``logica/sessao_io.py``; e o ``diag_ciclos_trace``
+    sobre o formato 1 sem ``tres_versoes/`` (programada reconstruída pelo
+    metadata, como as sessões de 07/10). Sessões sintéticas gravadas com
+    ``sessao_io.ArquivoDaClasse``, como a bancada faz."""
+
+    FS = 30_000.0
+    MARGEM = 600
+    TOTAL = 8100
+    PONTOS = 6000
+
+    @classmethod
+    def setUpClass(cls):
+        spec = importlib.util.spec_from_file_location(
+            "verificar_formato2_teste", PROJECT_ROOT / "scripts" / "verificar_sessao_bancada.py",
+        )
+        cls.v = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = cls.v  # @dataclass com `from __future__ import annotations` exige
+        spec.loader.exec_module(cls.v)
+        cls.diag = _carregar_script("diag_ciclos_trace")
+
+    def setUp(self):
+        import sessao_io
+        self.io = sessao_io
+        self.tmp = Path(tempfile.mkdtemp(prefix="formato2_scripts_"))
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+
+    # -- sessão sintética no formato 2 -------------------------------------
+
+    def _sessao_formato_2(self, perfis=("norma", "fronteira")):
+        """Classe 99 (TRACe: capturas 1 e 2; a 2 tem a cópia de 2 ciclos
+        (4 e 5) SÓ no perfil norma) e classe 02 (afundamentos; a 2 tem a
+        duração errada SÓ no perfil fronteira). Metadata de cada perfil em
+        ``metadata/``, como a bancada grava."""
+        pasta = self.tmp / "sessao_formato_2"
+        (pasta / "metadata").mkdir(parents=True)
+        programada = DiagnosticoCopiaEm100msTests._programacao_com_impulso(50.0, 2400).programada_pu()
+        n = 600  # pontos por ciclo a 50 Hz em 30 kHz
+        defeito = programada.copy()
+        defeito[4 * n : 5 * n] = programada[3 * n : 4 * n]
+        defeito[5 * n : 6 * n] = programada[4 * n : 5 * n]
+        arq99 = self.io.ArquivoDaClasse(pasta, "99", "SINTETICA", spool=False)
+        arq02 = self.io.ArquivoDaClasse(pasta, "02", "SAG", spool=False)
+        for perfil in perfis:
+            arq99.iniciar_perfil(perfil)
+            for numero in (1, 2):
+                janela = defeito if (numero == 2 and perfil == "norma") else programada
+                id_captura = f"99-{numero:04d}"
+                arq99.adicionar(
+                    perfil, id_captura=id_captura, medida=np.concatenate([np.zeros(self.MARGEM), janela]),
+                    tempo_ms=np.arange(self.MARGEM + self.PONTOS) / self.FS * 1000.0, fs_hz=self.FS,
+                    modelo=programada, programada=programada,
+                    origem_programada="TRACe+LIST:VOLTage (teste de formato 2)",
+                    inicio_janela=self.MARGEM, pontos=self.PONTOS,
+                    metadado={
+                        "id_captura": id_captura, "classe": "SINTETICA", "perfil": perfil, "pontos": self.PONTOS,
+                        "fs_hz": self.FS, "f0_hz": 50.0, "tensao_base_rms": 127.0, "inicio_janela": self.MARGEM,
+                        "seed": numero, "parametros": {}, "simulado": False,
+                    },
+                )
+            arq02.iniciar_perfil(perfil)
+            for numero, (t0, duracao_real) in enumerate([(0.0476, 0.1032), (0.0300, 0.0400)], start=1):
+                id_captura = f"02-{numero:04d}"
+                duracao_md = 0.060 if (perfil == "fronteira" and numero == 2) else duracao_real
+                x, iw = self._sag(t0, duracao_real)
+                pre = int(round(t0 * self.FS))
+                janela = x[iw : iw + self.PONTOS]
+                arq02.adicionar(
+                    perfil, id_captura=id_captura, medida=x, tempo_ms=np.arange(self.TOTAL) / self.FS * 1000.0,
+                    fs_hz=self.FS, modelo=janela, programada=janela, origem_programada="",
+                    inicio_janela=iw, pontos=self.PONTOS,
+                    metadado={
+                        "id_captura": id_captura, "classe": "SAG", "perfil": perfil, "pontos": self.PONTOS,
+                        "fs_hz": self.FS, "f0_hz": 60.0, "amostras_totais": self.TOTAL,
+                        "margem_amostras_antes": self.MARGEM, "pre_trigger_s": t0, "inicio_janela": iw,
+                        "indice_trigger": iw + pre, "pre_trigger_desvio_amostras": iw + pre - (pre + self.MARGEM),
+                        "inicio_disturbio_s": t0, "duracao_s": duracao_md, "seed": numero,
+                        "parametros": {"sag_pu": 0.5}, "simulado": False,
+                    },
+                )
+        for arquivo in (arq99, arq02):
+            arquivo.consolidar()
+            linhas = [json.dumps(r, ensure_ascii=False) for r in arquivo.registros()]
+            (pasta / "metadata" / f"{arquivo.id}_{arquivo.nome.lower()}.jsonl").write_text(
+                "\n".join(linhas) + "\n", encoding="utf-8",
+            )
+        return pasta
+
+    def _sag(self, t0, duracao, nivel=0.5, fase_graus=123.4, desvio=1, f0=60.0):
+        """Mesmo sinal de ``VerificadorSessaoBancadaTests._sag`` (sem gravar)."""
+        iw = self.MARGEM + desvio
+        r = (np.arange(self.TOTAL) - iw) / self.FS
+        x = np.sin(2 * np.pi * f0 * r + np.deg2rad(fase_graus))
+        x[(r >= t0) & (r < t0 + duracao)] *= nivel
+        return x, iw
+
+    # -- diag_ciclos_trace.py ----------------------------------------------
+
+    def test_diag_le_o_formato_2_e_separa_os_perfis(self):
+        pasta = self._sessao_formato_2()
+        capturas = self.diag.carregar_sessao(pasta, classes=["99"], usar_forma_bancada=False)
+        self.assertEqual(
+            sorted(c.rotulo for c in capturas),
+            ["99-0001 [fronteira]", "99-0001 [norma]", "99-0002 [fronteira]", "99-0002 [norma]"],
+        )
+        por_rotulo = {c.rotulo: self.diag.analisar_captura(c) for c in capturas}
+        self.assertEqual(por_rotulo["99-0002 [norma]"]["troca"]["ciclos_trocados"], [4, 5])
+        self.assertIsNone(por_rotulo["99-0002 [fronteira]"]["troca"])
+        self.assertIsNone(por_rotulo["99-0001 [norma]"]["troca"])
+        self.assertEqual(por_rotulo["99-0002 [norma]"]["perfil"], "norma")
+        self.assertEqual(por_rotulo["99-0002 [norma]"]["rotulo"], "99-0002 [norma]")
+
+    def test_diag_com_um_so_perfil_o_rotulo_e_o_id(self):
+        pasta = self._sessao_formato_2(perfis=("norma",))
+        capturas = self.diag.carregar_sessao(pasta, classes=["99"], usar_forma_bancada=False)
+        self.assertEqual([c.rotulo for c in capturas], ["99-0001", "99-0002"])
+        self.assertEqual(self.diag.analisar_captura(capturas[1])["troca"]["ciclos_trocados"], [4, 5])
+
+    def test_diag_main_no_formato_2_rotula_por_perfil_e_nao_escreve_na_sessao(self):
+        pasta = self._sessao_formato_2()
+        antes = sorted(str(p.relative_to(pasta)) for p in pasta.rglob("*"))
+        saida = self.tmp / "saida"
+        with mock.patch("sys.stdout"):
+            codigo = self.diag.main([str(pasta), "--classes", "99", "--sem-forma-bancada", "--saida", str(saida)])
+        self.assertEqual(codigo, 0)
+        self.assertEqual(sorted(str(p.relative_to(pasta)) for p in pasta.rglob("*")), antes)
+        texto = next(saida.glob("diag_ciclos_trace-*.md")).read_text(encoding="utf-8")
+        self.assertIn("## 99-0002 [norma]: ciclos que não são simplesmente k", texto)
+        self.assertNotIn("## 99-0002 [fronteira]", texto)
+        dados = json.loads(next(saida.glob("diag_ciclos_trace-*.json")).read_text(encoding="utf-8"))
+        self.assertEqual({(c["perfil"], c["id_captura"]) for c in dados["capturas"]},
+                         {("norma", "99-0001"), ("norma", "99-0002"), ("fronteira", "99-0001"), ("fronteira", "99-0002")})
+
+    def test_diag_reconstroi_a_programada_do_formato_1_sem_tres_versoes(self):
+        """Sessão de 07/10 sem ``tres_versoes/``: a programada e a forma de
+        bancada saem de ``reconstruir_versoes`` (metadata), e a medida é a
+        programada (sem defeito), então nenhum ciclo é acusado."""
+        import gerar_tres_versoes as gtv
+        tmp = self.tmp / "formato_1"
+        (tmp / "metadata").mkdir(parents=True)
+        registro = {
+            "id_captura": "09-0001", "classe": "OSCILLATORY_TRANSIENT", "pontos": 6000, "fs_hz": self.FS, "f0_hz": 50.0,
+            "tensao_base_rms": 127.0, "inicio_janela": 600, "seed": 3, "parametros": {}, "nivel_indice": 0,
+            "sorteio_posicao": True, "perfil": "literatura",
+        }
+        versoes = gtv.reconstruir_versoes(registro)
+        programacao = AmetekMX30.montar_programacao(versoes["forma_bancada"], base_voltage_rms=127.0, frequency_hz=50.0)
+        self.assertIn("TRACe", versoes["origem"])
+        (tmp / "metadata" / "09_osc.jsonl").write_text(json.dumps(registro) + "\n", encoding="utf-8")
+        np.savez(
+            tmp / "09_osc.npz", classe="OSCILLATORY_TRANSIENT", id_captura=np.array(["09-0001"], dtype=object),
+            tempo_ms=np.arange(600 + 6000) / 30.0,
+            tensao_pu=np.concatenate([np.zeros(600), programacao.programada_pu()])[np.newaxis, :],
+        )
+        capturas = self.diag.carregar_sessao(tmp, classes=["09"])
+        self.assertEqual(len(capturas), 1)
+        self.assertEqual(capturas[0].rotulo, "09-0001")
+        self.assertIsNotNone(capturas[0].forma_bancada_pu)
+        r = self.diag.analisar_captura(capturas[0])
+        self.assertIsNone(r["troca"])
+        self.assertLess(r["residuo_no_instante"]["max_abs_pu"], 1e-9)
+
+    # -- verificar_sessao_bancada.py ---------------------------------------
+
+    def test_verificador_le_o_formato_2_com_rotulo_por_perfil(self):
+        pasta = self._sessao_formato_2()
+        capturas = self.v.carregar_sessao(pasta)
+        self.assertEqual({c.perfil for c in capturas}, {"norma", "fronteira"})
+        resultados = self.v.verificar_capturas(capturas)
+        larguras = {r.id_captura: r for r in resultados if r.verificacao == "largura_pulse"}
+        self.assertEqual(sorted(larguras), [
+            "02-0001 [fronteira]", "02-0001 [norma]", "02-0002 [fronteira]", "02-0002 [norma]",
+        ])
+        self.assertTrue(larguras["02-0001 [norma]"].ok)
+        self.assertTrue(larguras["02-0002 [norma]"].ok)
+        # só o perfil fronteira tem a duração errada no metadata: só ele reprova
+        self.assertFalse(larguras["02-0002 [fronteira]"].ok)
+        self.assertAlmostEqual(larguras["02-0002 [fronteira]"].valor, -20.0, delta=2.0)
+        self.assertEqual(len([r for r in resultados if r.verificacao == "pre_trigger"]), 4)
+
+    def test_verificador_com_um_so_perfil_o_rotulo_e_o_id(self):
+        pasta = self._sessao_formato_2(perfis=("norma",))
+        capturas = self.v.carregar_sessao(pasta)
+        self.assertEqual(sorted(c.rotulo for c in capturas if c.classe_id == "02"), ["02-0001", "02-0002"])
+
+    def test_verificador_main_no_formato_2_grava_o_json_com_perfil_e_codigo_1(self):
+        pasta = self._sessao_formato_2()
+        saida = self.tmp / "verificar.json"
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            codigo = self.v.main([str(pasta), "--json", str(saida)])
+        self.assertEqual(codigo, 1)  # há uma reprovação (fronteira, 02-0002)
+        impresso = buf.getvalue()
+        self.assertIn("02-0002 [fronteira]", impresso)
+        dados = {(d["id_captura"], d["ok"]) for d in json.loads(saida.read_text(encoding="utf-8"))
+                 if d["verificacao"] == "largura_pulse"}
+        self.assertIn(("02-0002 [fronteira]", False), dados)
+        self.assertIn(("02-0002 [norma]", True), dados)
