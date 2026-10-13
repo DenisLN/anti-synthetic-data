@@ -1,6 +1,6 @@
 # Perfis de faixas do dataset
 
-Fonte única: `logica/perfis.py` (`FAIXAS`). Escolha: `set perfil norma|literatura|fronteira` na CLI, ou a variável de ambiente `PERFIL` (inicial; simulado e bancada). Padrão: `literatura`, que reproduz o `gerar()` anterior à v1.15 (commit 34a0d82) byte a byte com `set sorteio off` (o sorteio de início/duração/fase, ligado por padrão, é independente do perfil: `arquivo/analises:docs/analise-2026-10-12/pendente/sorteio_inicio_fase_VERIFICAR_BANCADA.md`). O perfil vai em cada captura (`perfil` no metadata; metadata sem o campo = `literatura`).
+Fonte única: `logica/perfis.py` (`FAIXAS`). Escolha: `set perfil norma|literatura|fronteira` na CLI, ou a variável de ambiente `PERFIL` (inicial; simulado e bancada). `set perfil todos` (ou `PERFIL=todos`) roda os três na mesma sessão, cada classe uma vez por perfil, num único `NN_classe.npz` com as chaves `<perfil>/<versão>` (`docs/dataset.md` §2). Padrão: `literatura`, que reproduz o `gerar()` anterior à v1.15 (commit 34a0d82) byte a byte com `set sorteio off` (o sorteio de início/duração/fase, ligado por padrão, é independente do perfil: `arquivo/analises:docs/analise-2026-10-12/pendente/sorteio_inicio_fase_VERIFICAR_BANCADA.md`). O perfil vai em cada captura (`perfil` no metadata; metadata sem o campo = `literatura`).
 
 Só as classes abaixo dependem do perfil. Forma, frequência do flicker, interrupção, notch, transitórios, drift e DC não mudam entre perfis (classes 01, 04, 07, 08, 09, 17, 18, 19 idênticas nos três).
 

@@ -140,6 +140,22 @@ não mudam" da autorização acima. Editados: `experimentos_nativos/01.py`–`05
 `scripts/recalibrar_extremos.py`. `SORTEIO=0` / `set sorteio off` reproduz byte a
 byte o `gerar()` de 34a0d82. Limites e validações abaixo intactos.
 
+### Autorização de 2026-10-13 (um `.npz` por classe; `CHANGELOG/v1.15.md`)
+
+O dono autorizou gravar tudo o que é da mesma classe no mesmo `.npz`
+comprimido (perfis × versões; SNRs em arquivos à parte) e `set perfil todos`
+(`run all` / `run <lista>` percorrem os três perfis na mesma sessão). Para isso
+editou-se, além do que já estava liberado, `logica/recortar_margem.py` e
+`logica/relatorio_html.py` (leitura dos dois formatos; `--perfis`, `--versoes`,
+`--capturas`), `logica/analisar_sessao.py`, `scripts/gerar_ruido_janela.py`,
+`scripts/gerar_tres_versoes.py`, o módulo novo `logica/sessao_io.py` e, em
+`logica/mestre.py`/`logica/cli.py`, a gravação (`_salvar_captura`,
+`_finalizar_gravacao`, `_salvar_classe_simulada`), `executar_bateria` e
+`set perfil`. Não muda `gerar()`, o ruído, as validações nem os limites abaixo;
+a resiliência por classe e a gravação atômica continuam. Quebra o formato dos
+`.npz` das sessões NOVAS (aviso no `CHANGELOG/v1.15.md`); sessões gravadas antes
+não são tocadas e continuam legíveis por `logica/sessao_io.py`.
+
 ## Limites inegociáveis (não mudar em nenhuma hipótese)
 
 - `AMETEK_PORT=COM10` e `AMETEK_BAUDRATE=115200` continuam fixos e validados

@@ -31,15 +31,20 @@ No **simulado** não há limite de bancada: a programada é a ideal do dataset (
 
 ## Onde ficam
 
+> **Quebra (v1.15, formato 2):** a pasta `tres_versoes/` e os arquivos `modelo_pu`/`programada_pu`/`medida_pu` por captura **deixaram de existir** nas sessões novas. As três versões estão dentro do `NN_classe.npz` da classe (`docs/dataset.md` §2), junto com as de cada perfil. Quem lia `tres_versoes/...npz` precisa trocar para as chaves abaixo (ou para `sessao_io.ler_capturas`).
+
 | Origem | Arquivo | Conteúdo |
 |---|---|---|
-| Captura física | `<sessão>/tres_versoes/NN_classe_<rótulo>.npz` (mesmo nome do `.npz` da captura) | `modelo_pu`, `programada_pu`, `medida_pu` (cada um `(1, 6000)`), `tempo_ms`, `inicio_janela`, `origem_programada`, `classe`, `id_captura` |
-| Simulado | `<sessão>/tres_versoes/NN_classe.npz` | `modelo_pu`, `programada_pu` (cada um `(N, 6000)`), `origem_programada` (um texto por captura), `tempo_ms`, `classe`, `id_captura`. Sem `medida_pu` |
-| Sessão antiga, gerada offline | `<sessão>/tres_versoes/NN_classe_<rótulo>.npz` + `indice.json` | `modelo_pu`, `programada_pu`, `origem_programada`, `tempo_ms`, `classe`, `id_captura`. Sem `medida_pu`: a medida continua no `.npz` original, com margem |
+| Sessão nova (formato 2), física ou simulada | `<sessão>/NN_classe.npz` (um por classe, comprimido) | por `<perfil>` (`norma`, `literatura`, `fronteira`): `<perfil>/medida`, `<perfil>/modelo`, `<perfil>/programada`, `<perfil>/origem_programada`, `<perfil>/inicio_janela`, `<perfil>/id_captura`; mais `tempo_ms` (eixo da medida), `tempo_janela_ms` (eixo de 6000 pontos), `perfis`, `classe`, `formato_npz` |
+| Sessão antiga (formato 1), física | `<sessão>/tres_versoes/NN_classe_<rótulo>.npz` (mesmo nome do `.npz` da captura) | `modelo_pu`, `programada_pu`, `medida_pu` (cada um `(1, 6000)`), `tempo_ms`, `inicio_janela`, `origem_programada`, `classe`, `id_captura` |
+| Sessão antiga (formato 1), simulada | `<sessão>/tres_versoes/NN_classe.npz` | `modelo_pu`, `programada_pu` (cada um `(N, 6000)`), `origem_programada` (um texto por captura), `tempo_ms`, `classe`, `id_captura`. Sem `medida_pu` |
+| Sessão antiga, gerada offline | `<sessão>/tres_versoes/NN_classe_<rótulo>.npz` + `indice.json` (`scripts/gerar_tres_versoes.py`) | `modelo_pu`, `programada_pu`, `origem_programada`, `tempo_ms`, `classe`, `id_captura`. Sem `medida_pu`: a medida continua no `.npz` original, com margem |
 
-Cada linha do metadata ganha `tres_versoes: {arquivo, programada}` (`docs/metadata.md`). `medida_pu` é `tensao_pu` do `.npz` principal recortado em `inicio_janela` (a margem de 20 ms antes e 50 ms depois não entra). Os `.npz` com ruído (`snr_XXdb/`) e a corrente não têm as três versões.
+No formato 2, `modelo` e `programada` são `(N, 6000)`, na grade da janela rotulada; `medida` é o **registro inteiro** (`(N, 8100)` na bancada, com a margem de 20 ms antes e 50 ms depois, como era o `tensao_pu` do `.npz` por captura) e a janela rotulada é `medida[inicio_janela : inicio_janela + 6000]` (o `medida_pu` do formato 1). No simulado não há instrumento: `medida` é a própria série do dataset (6000 amostras, igual ao `modelo`) e `inicio_janela` vale 0. Uma `programada` não calculada fica como linha de `NaN`. Os `.npz` com ruído (`snr_XXdb/`) e a corrente não têm as três versões.
 
-## Como regenerar (sem hardware)
+Cada linha do metadata ganha `tres_versoes: {arquivo, programada}` (no formato 2, `arquivo` é o `NN_classe.npz`; no 1, `tres_versoes/<nome>.npz`) e `arquivo_classe`, `perfil`, `indice_no_arquivo` (`docs/metadata.md`). Leitura: `logica/sessao_io.py` (`ler_capturas(..., versoes=("medida", "modelo", "programada"))`).
+
+## Como regenerar (sem hardware, sessões do formato 1)
 
 ```powershell
 .\env\Scripts\python.exe scripts\gerar_tres_versoes.py resultados\sessao_2026-10-07_127V_50Hz
@@ -47,7 +52,7 @@ Cada linha do metadata ganha `tres_versoes: {arquivo, programada}` (`docs/metada
 .\env\Scripts\python.exe scripts\gerar_tres_versoes.py resultados\sessao_... --refazer   # saída já gerada por ele
 ```
 
-O script lê `metadata/*.jsonl` (seed, `nivel_indice`, `f0_hz`, `tensao_base_rms`, `parametros`, `sorteio_posicao` ausente = desligado, `perfil` ausente = literatura) e **só escreve na pasta nova**; recusa uma pasta que já tenha arquivos. A forma de bancada vem do que foi gravado (o `fator_disturbio_bancada` como `senoide + k * (modelo - senoide)`; na 08, `amplitude_bancada_pu`), não de código de hoje. Verificações por captura em `indice.json`: o pico da forma de bancada contra `pico_programado_v` gravado e os parâmetros de `gerar()` contra os gravados (`avisos`).
+Só para sessões do formato 1 (um `.npz` por captura): numa sessão do formato 2 o script recusa (`ValueError`), porque as três versões já estão no `NN_classe.npz`. O script lê `metadata/*.jsonl` (seed, `nivel_indice`, `f0_hz`, `tensao_base_rms`, `parametros`, `sorteio_posicao` ausente = desligado, `perfil` ausente = literatura) e **só escreve na pasta nova**; recusa uma pasta que já tenha arquivos. A forma de bancada vem do que foi gravado (o `fator_disturbio_bancada` como `senoide + k * (modelo - senoide)`; na 08, `amplitude_bancada_pu`), não de código de hoje. Verificações por captura em `indice.json`: o pico da forma de bancada contra `pico_programado_v` gravado e os parâmetros de `gerar()` contra os gravados (`avisos`).
 
 ## O que não está confirmado
 

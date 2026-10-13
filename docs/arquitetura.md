@@ -34,6 +34,7 @@ O projeto gera o dataset rotulado de 20 classes de distúrbio de tensão (200 ms
 | `logica/perfis.py` | faixas dos perfis `norma`/`literatura`/`fronteira` e `FAIXAS_SORTEADAS` |
 | `logica/cli.py` | REPL do operador (`bancada>`) |
 | `logica/preflight_new.py` | comissionamento: comunicação, trigger, baixa tensão (tensão base), comandos nativos, diagnóstico de LIST (o antigo `preflight.py` foi removido na v1.15) |
+| `logica/sessao_io.py` | formato 2 dos `.npz` (um `NN_classe.npz` comprimido por classe, com perfis e versões): `ArquivoDaClasse` (escrita, spool por captura) e `ler_capturas`/`ler_pasta` (leitura dos formatos 1 e 2, usada por `recortar_margem`, `relatorio_html`, `analisar_sessao` e `scripts/gerar_*.py`); `docs/dataset.md` |
 | `logica/analisar_sessao.py` | análise offline numérica de uma sessão (lag, correlação, correlação do distúrbio, razão de pico) |
 | `logica/recortar_margem.py` | recorta a margem de 20/50 ms (saída em `sem_margem/`) |
 | `logica/relatorio_html.py` + `logica/modelos/relatorio_capturas.html` | relatório HTML autocontido (figuras em base64) |
@@ -150,5 +151,5 @@ Uma classe isolada (`run <NN>`) usa `Bancada.from_env` + `assegurar_tensao_base(
 | `package_windows.ps1` | — | zip `..\tcc-instrumentacao-bancada.zip` sem `env`, `.venv`, `__pycache__`, `resultados`, `logs`, `backups`, `.git` |
 | `relatorio_limites_bancada.py` | não | offline: o que cabe a uma tensão/frequência/perfil |
 | `recalibrar_extremos.py` | não | offline: recalcula `calibracao_extremos.json` |
-| `gerar_tres_versoes.py`, `gerar_ruido_janela.py` | não | offline: regeneram `tres_versoes/` e `ruido_janela/` de sessões antigas |
+| `gerar_tres_versoes.py`, `gerar_ruido_janela.py` | não | offline: regeneram `tres_versoes/` (só sessões do formato 1) e `ruido_janela/` (os dois formatos) |
 | `diag_*.py` | **sim** (exceto `diag_nativo_output_off.py`) | diagnósticos; ver `docs/diagnostico.md` |

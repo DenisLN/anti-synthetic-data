@@ -1071,7 +1071,7 @@ class BateriaResilienciaTests(unittest.TestCase):
             # sim_captures_per_class=2 capturas empilhadas.
             self.assertTrue((results_dir / "01_ok.npz").exists())
             with np.load(results_dir / "01_ok.npz", allow_pickle=True) as dados:
-                self.assertEqual(dados["tensao_pu"].shape, (2, 6_000))
+                self.assertEqual(dados["literatura/medida"].shape, (2, 6_000))
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
@@ -1383,237 +1383,130 @@ class RemapeamentoNivelTests(unittest.TestCase):
 
 
 class SalvarClasseArquivoUnicoTests(unittest.TestCase):
-    def test_grava_um_npz_por_captura_com_nivel_no_nome(self):
+    """Bancada real: as capturas de uma classe vão para UM ``NN_classe.npz``
+    (formato 2, ``sessao_io``), não mais para um arquivo por captura."""
+
+    @staticmethod
+    def _config(tmp_dir, **sobrescritas):
+        base = dict(
+            fs_hz=30_000.0, points=4, duration_s=0.2, grid_frequency_hz=60.0,
+            base_voltage_rms=127.0, snr_levels_db=(), base_seed=1,
+            capture_current=False, current_base_a=None, results_dir=tmp_dir,
+            sim_captures_per_class=1, real_captures_per_class=1, disturbance_start_s=0.06,
+        )
+        base.update(sobrescritas)
+        return mestre.Config(**base)
+
+    @staticmethod
+    def _experimento(config, id_="02", nome="SAG"):
+        class _Concreta(mestre.ExperimentoWaveform):
+            def gerar(self, t, f0, capture_index, rng):
+                return np.sin(2.0 * np.pi * f0 * t), {}
+
+        _Concreta.id, _Concreta.nome = id_, nome
+        return _Concreta(mock.Mock(config=config, fonte=None, osc=None))
+
+    @staticmethod
+    def _metadado(indice, **parametros):
+        return {"id_captura": f"02-{indice + 1:04d}", "classe": "SAG", "nivel_indice": indice,
+                "parametros": parametros, "seed": indice + 1, "simulado": False,
+                "fs_hz": 30000.0, "pontos": 4, "snr_medido_db": {}}
+
+    def test_grava_um_unico_npz_por_classe_e_indexa_no_metadata(self):
         tmp_dir = Path(tempfile.mkdtemp())
         try:
-            config = mestre.Config(
-                fs_hz=30_000.0, points=4, duration_s=0.2, grid_frequency_hz=60.0,
-                base_voltage_rms=127.0, snr_levels_db=(), base_seed=1,
-                capture_current=False, current_base_a=None, results_dir=tmp_dir,
-                sim_captures_per_class=1, real_captures_per_class=1, disturbance_start_s=0.06,
-            )
-            class _Concreta(mestre.ExperimentoWaveform):
-                id = "02"
-                nome = "SAG"
-
-                def gerar(self, t, f0, capture_index, rng):
-                    return np.sin(2.0 * np.pi * f0 * t), {}
-
-            bancada_fake = mock.Mock(config=config, fonte=None, osc=None)
-            experimento = _Concreta(bancada_fake)
-            tensao = np.zeros((2, 4))
+            experimento = self._experimento(self._config(tmp_dir))
+            tensao = np.arange(8, dtype=np.float64).reshape(2, 4)
             experimento._salvar_classe(
-                tempo_ms=np.zeros(4),
-                tensao_limpa=tensao,
-                tensao_por_snr={},
-                ids=["02-0001", "02-0002"],
-                corrente=None,
-                metadados=[
-                    {"id_captura": "02-0001", "classe": "SAG", "nivel_indice": 0,
-                     "parametros": {"sag_pu": 0.1}, "seed": 1, "simulado": False,
-                     "fs_hz": 30000.0, "pontos": 4, "snr_medido_db": {}},
-                    {"id_captura": "02-0002", "classe": "SAG", "nivel_indice": 1,
-                     "parametros": {"sag_pu": 0.3}, "seed": 2, "simulado": False,
-                     "fs_hz": 30000.0, "pontos": 4, "snr_medido_db": {}},
-                ],
+                tempo_ms=np.zeros(4), tensao_limpa=tensao, tensao_por_snr={},
+                ids=["02-0001", "02-0002"], corrente=None,
+                metadados=[self._metadado(0, sag_pu=0.1), self._metadado(1, sag_pu=0.3)],
                 simulated=False,
             )
-            arquivos = sorted(p.name for p in tmp_dir.glob("02_sag*.npz"))
-            self.assertEqual(arquivos, ["02_sag_sag_pu-0.1.npz", "02_sag_sag_pu-0.3.npz"])
-            self.assertTrue((tmp_dir / "metadata" / "02_sag.jsonl").exists())
+            self.assertEqual(sorted(p.name for p in tmp_dir.glob("*.npz")), ["02_sag.npz"])
+            with np.load(tmp_dir / "02_sag.npz") as dados:
+                np.testing.assert_array_equal(dados["literatura/medida"], tensao)
+                self.assertEqual(list(dados["literatura/id_captura"]), ["02-0001", "02-0002"])
+            linhas = [json.loads(l) for l in (tmp_dir / "metadata" / "02_sag.jsonl").read_text(encoding="utf-8").splitlines()]
+            self.assertEqual([l["arquivo_classe"] for l in linhas], ["02_sag.npz", "02_sag.npz"])
+            self.assertEqual([l["indice_no_arquivo"] for l in linhas], [0, 1])
+            self.assertEqual([l["perfil"] for l in linhas], ["literatura", "literatura"])
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    def test_classe_sem_parametro_nomeavel_usa_capNN(self):
+    def test_classe_sem_parametro_nomeavel_tambem_vai_para_o_arquivo_da_classe(self):
         tmp_dir = Path(tempfile.mkdtemp())
         try:
-            config = mestre.Config(
-                fs_hz=30_000.0, points=4, duration_s=0.2, grid_frequency_hz=60.0,
-                base_voltage_rms=127.0, snr_levels_db=(), base_seed=1,
-                capture_current=False, current_base_a=None, results_dir=tmp_dir,
-                sim_captures_per_class=1, real_captures_per_class=1, disturbance_start_s=0.06,
-            )
-            class _Concreta(mestre.ExperimentoWaveform):
-                id = "01"
-                nome = "NORMAL"
-
-                def gerar(self, t, f0, capture_index, rng):
-                    return np.sin(2.0 * np.pi * f0 * t), {}
-
-            bancada_fake = mock.Mock(config=config, fonte=None, osc=None)
-            experimento = _Concreta(bancada_fake)
+            experimento = self._experimento(self._config(tmp_dir), "01", "NORMAL")
+            md = self._metadado(0)
+            md.update(id_captura="01-0001", classe="NORMAL")
             experimento._salvar_classe(
                 tempo_ms=np.zeros(4), tensao_limpa=np.zeros((1, 4)), tensao_por_snr={},
-                ids=["01-0001"], corrente=None,
-                metadados=[{"id_captura": "01-0001", "classe": "NORMAL", "nivel_indice": 0,
-                            "parametros": {}, "seed": 1, "simulado": False,
-                            "fs_hz": 30000.0, "pontos": 4, "snr_medido_db": {}}],
-                simulated=False,
+                ids=["01-0001"], corrente=None, metadados=[md], simulated=False,
             )
-            self.assertTrue((tmp_dir / "01_normal_cap01.npz").exists())
+            self.assertEqual(sorted(p.name for p in tmp_dir.glob("*.npz")), ["01_normal.npz"])
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    def test_rodada_com_capturas_diferentes_remove_arquivos_orfaos_da_rodada_anterior(self):
-        """Regressão do review: antes desta task, uma classe sempre gravava
-        UM arquivo (`{id}_{nome}.npz`) — uma nova rodada naturalmente
-        sobrescrevia esse único arquivo, órfão nunca sobrava. Agora que o
-        nome depende do parâmetro/posição de CADA captura, uma rodada com
-        um conjunto de capturas DIFERENTE (menos capturas, ou parâmetros
-        diferentes — ex.: `run 02` e depois `set capturas` + `run 02` de
-        novo) deixava os arquivos da rodada anterior, sem nenhuma captura
-        atual apontando pra eles, órfãos em `results_dir`/`snr_XXdb/`/
-        `corrente/`. `_salvar_classe()` deve limpar esses órfãos (só depois
-        que os arquivos novos já estão gravados com sucesso)."""
+    def test_rodada_nova_da_mesma_classe_substitui_a_anterior_em_todos_os_arquivos(self):
+        """Uma classe rodada de novo (mesmo perfil) não deixa nada da rodada
+        anterior: nem no .npz da classe, nem em snr_XXdb/, nem em corrente/,
+        nem no metadata (nunca houve órfãos no formato 2: o nome é fixo)."""
         tmp_dir = Path(tempfile.mkdtemp())
         try:
-            config = mestre.Config(
-                fs_hz=30_000.0, points=4, duration_s=0.2, grid_frequency_hz=60.0,
-                base_voltage_rms=127.0, snr_levels_db=(30.0,), base_seed=1,
-                capture_current=True, current_base_a=1.0, results_dir=tmp_dir,
-                sim_captures_per_class=1, real_captures_per_class=1, disturbance_start_s=0.06,
-            )
-            class _Concreta(mestre.ExperimentoWaveform):
-                id = "02"
-                nome = "SAG"
-
-                def gerar(self, t, f0, capture_index, rng):
-                    return np.sin(2.0 * np.pi * f0 * t), {}
-
-            bancada_fake = mock.Mock(config=config, fonte=None, osc=None)
-            experimento = _Concreta(bancada_fake)
-
-            # Rodada 1: 2 capturas (sag_pu 0.1 e 0.3).
+            config = self._config(tmp_dir, snr_levels_db=(30.0,), capture_current=True, current_base_a=1.0)
+            experimento = self._experimento(config)
             experimento._salvar_classe(
-                tempo_ms=np.zeros(4),
-                tensao_limpa=np.zeros((2, 4)),
-                tensao_por_snr={30.0: np.zeros((2, 4))},
-                ids=["02-0001", "02-0002"],
+                tempo_ms=np.zeros(4), tensao_limpa=np.zeros((2, 4)),
+                tensao_por_snr={30.0: np.zeros((2, 4))}, ids=["02-0001", "02-0002"],
                 corrente=np.zeros((2, 4)),
-                metadados=[
-                    {"id_captura": "02-0001", "classe": "SAG", "nivel_indice": 0,
-                     "parametros": {"sag_pu": 0.1}, "seed": 1, "simulado": False,
-                     "fs_hz": 30000.0, "pontos": 4, "snr_medido_db": {}},
-                    {"id_captura": "02-0002", "classe": "SAG", "nivel_indice": 1,
-                     "parametros": {"sag_pu": 0.3}, "seed": 2, "simulado": False,
-                     "fs_hz": 30000.0, "pontos": 4, "snr_medido_db": {}},
-                ],
+                metadados=[self._metadado(0, sag_pu=0.1), self._metadado(1, sag_pu=0.3)],
                 simulated=False,
             )
-            arquivo_orfao = tmp_dir / "02_sag_sag_pu-0.1.npz"
-            arquivo_orfao_snr = tmp_dir / "snr_30db" / "02_sag_sag_pu-0.1.npz"
-            arquivo_orfao_corrente = tmp_dir / "corrente" / "02_sag_sag_pu-0.1_corrente.npz"
-            self.assertTrue(arquivo_orfao.exists())
-            self.assertTrue(arquivo_orfao_snr.exists())
-            self.assertTrue(arquivo_orfao_corrente.exists())
-
-            # Rodada 2: 1 captura só, com um parâmetro diferente (sag_pu 0.5)
-            # — simula `set capturas` mudando o conjunto entre duas rodadas.
             experimento._salvar_classe(
-                tempo_ms=np.zeros(4),
-                tensao_limpa=np.zeros((1, 4)),
-                tensao_por_snr={30.0: np.zeros((1, 4))},
-                ids=["02-0003"],
-                corrente=np.zeros((1, 4)),
-                metadados=[
-                    {"id_captura": "02-0003", "classe": "SAG", "nivel_indice": 0,
-                     "parametros": {"sag_pu": 0.5}, "seed": 3, "simulado": False,
-                     "fs_hz": 30000.0, "pontos": 4, "snr_medido_db": {}},
-                ],
-                simulated=False,
+                tempo_ms=np.zeros(4), tensao_limpa=np.ones((1, 4)),
+                tensao_por_snr={30.0: np.ones((1, 4)) * 2}, ids=["02-0003"],
+                corrente=np.ones((1, 4)) * 3,
+                metadados=[self._metadado(2, sag_pu=0.5)], simulated=False,
             )
-
-            # Órfãos da rodada 1 devem ter sido removidos das três pastas.
-            self.assertFalse(arquivo_orfao.exists())
-            self.assertFalse(arquivo_orfao_snr.exists())
-            self.assertFalse(arquivo_orfao_corrente.exists())
-
-            # Só o arquivo da rodada 2 deve sobrar em cada pasta.
-            self.assertEqual(
-                sorted(p.name for p in tmp_dir.glob("02_sag_*.npz")),
-                ["02_sag_sag_pu-0.5.npz"],
-            )
-            self.assertEqual(
-                sorted(p.name for p in (tmp_dir / "snr_30db").glob("02_sag_*.npz")),
-                ["02_sag_sag_pu-0.5.npz"],
-            )
-            self.assertEqual(
-                sorted(p.name for p in (tmp_dir / "corrente").glob("02_sag_*.npz")),
-                ["02_sag_sag_pu-0.5_corrente.npz"],
-            )
-
-            # metadata.jsonl deve refletir só a rodada 2 (1 linha, captura 3).
+            self.assertEqual(sorted(p.name for p in tmp_dir.glob("*.npz")), ["02_sag.npz"])
+            with np.load(tmp_dir / "02_sag.npz") as dados:
+                self.assertEqual(list(dados["literatura/id_captura"]), ["02-0003"])
+                np.testing.assert_array_equal(dados["literatura/medida"], np.ones((1, 4)))
+            with np.load(tmp_dir / "snr_30db" / "02_sag.npz") as dados:
+                np.testing.assert_array_equal(dados["literatura/tensao_pu"], np.ones((1, 4)) * 2)
+            with np.load(tmp_dir / "corrente" / "02_sag_corrente.npz") as dados:
+                np.testing.assert_array_equal(dados["literatura/corrente_pu"], np.ones((1, 4)) * 3)
             linhas = (tmp_dir / "metadata" / "02_sag.jsonl").read_text(encoding="utf-8").splitlines()
             self.assertEqual(len(linhas), 1)
             self.assertIn("02-0003", linhas[0])
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    def test_capturas_reais_com_mesmo_rotulo_nao_se_sobrescrevem(self):
-        """Regressão crítica: `set capturas 5` numa classe com NIVEIS agrupa
-        5 capturas FÍSICAS no MESMO nível (mesmo `capture_index`, ver o ramo
-        `cobertura_por_nivel_ativa` de executar()), logo as 5 têm o mesmo
-        `parametros` e o mesmo rótulo. Sem desambiguação, as 5 gravavam no
-        mesmo `.npz` e 4 capturas reais eram silenciosamente descartadas —
-        exatamente o oposto do que a feature promete ("cada uma em um .npz
-        diferente")."""
+    def test_capturas_reais_com_mesmo_parametro_ficam_todas_no_arquivo_da_classe(self):
+        """`set capturas 5` agrupa N capturas FÍSICAS no mesmo nível (mesmo
+        `parametros`): no formato antigo exigiam sufixos `_02`, `_03` para não
+        se sobrescreverem; no formato 2 são linhas do mesmo array, na ordem."""
         tmp_dir = Path(tempfile.mkdtemp())
         try:
-            config = mestre.Config(
-                fs_hz=30_000.0, points=4, duration_s=0.2, grid_frequency_hz=60.0,
-                base_voltage_rms=127.0, snr_levels_db=(30.0,), base_seed=1,
-                capture_current=True, current_base_a=1.0, results_dir=tmp_dir,
-                sim_captures_per_class=1, real_captures_per_class=1, disturbance_start_s=0.06,
-            )
-            class _Concreta(mestre.ExperimentoWaveform):
-                id = "02"
-                nome = "SAG"
-
-                def gerar(self, t, f0, capture_index, rng):
-                    return np.sin(2.0 * np.pi * f0 * t), {}
-
-            bancada_fake = mock.Mock(config=config, fonte=None, osc=None)
-            experimento = _Concreta(bancada_fake)
-            # 3 capturas no nível 0.1 + 2 no nível 0.3 (o que `set capturas`
-            # produz de verdade ao agrupar por nível).
+            config = self._config(tmp_dir, snr_levels_db=(30.0,), capture_current=True, current_base_a=1.0)
+            experimento = self._experimento(config)
             niveis = [0.1, 0.1, 0.1, 0.3, 0.3]
             tensao = np.arange(5 * 4, dtype=np.float64).reshape(5, 4)
             experimento._salvar_classe(
-                tempo_ms=np.zeros(4),
-                tensao_limpa=tensao,
-                tensao_por_snr={30.0: tensao + 100.0},
-                ids=[f"02-{indice + 1:04d}" for indice in range(5)],
-                corrente=tensao + 1000.0,
-                metadados=[
-                    {"id_captura": f"02-{indice + 1:04d}", "classe": "SAG",
-                     "nivel_indice": indice // 3, "parametros": {"sag_pu": nivel},
-                     "seed": indice, "simulado": False, "fs_hz": 30000.0, "pontos": 4,
-                     "snr_medido_db": {}}
-                    for indice, nivel in enumerate(niveis)
-                ],
+                tempo_ms=np.zeros(4), tensao_limpa=tensao, tensao_por_snr={30.0: tensao + 100.0},
+                ids=[f"02-{i + 1:04d}" for i in range(5)], corrente=tensao + 1000.0,
+                metadados=[self._metadado(i, sag_pu=n) for i, n in enumerate(niveis)],
                 simulated=False,
             )
-
-            esperados = [
-                "02_sag_sag_pu-0.1.npz", "02_sag_sag_pu-0.1_02.npz", "02_sag_sag_pu-0.1_03.npz",
-                "02_sag_sag_pu-0.3.npz", "02_sag_sag_pu-0.3_02.npz",
-            ]
-            self.assertEqual(sorted(p.name for p in tmp_dir.glob("02_sag_*.npz")), sorted(esperados))
-            self.assertEqual(
-                sorted(p.name for p in (tmp_dir / "snr_30db").glob("02_sag_*.npz")),
-                sorted(esperados),
-            )
-            self.assertEqual(
-                sorted(p.name for p in (tmp_dir / "corrente").glob("02_sag_*.npz")),
-                sorted(nome.replace(".npz", "_corrente.npz") for nome in esperados),
-            )
-
-            # Cada arquivo carrega a captura CERTA — nenhuma foi sobrescrita.
-            for indice, nome in enumerate(esperados):
-                with np.load(tmp_dir / nome, allow_pickle=True) as dados:
-                    np.testing.assert_array_equal(dados["tensao_pu"], tensao[indice: indice + 1])
-                    self.assertEqual(list(dados["id_captura"]), [f"02-{indice + 1:04d}"])
-
+            self.assertEqual(sorted(p.name for p in tmp_dir.glob("*.npz")), ["02_sag.npz"])
+            self.assertEqual(sorted(p.name for p in (tmp_dir / "snr_30db").glob("*.npz")), ["02_sag.npz"])
+            self.assertEqual(sorted(p.name for p in (tmp_dir / "corrente").glob("*.npz")), ["02_sag_corrente.npz"])
+            with np.load(tmp_dir / "02_sag.npz") as dados:
+                np.testing.assert_array_equal(dados["literatura/medida"], tensao)
+                self.assertEqual(list(dados["literatura/id_captura"]), [f"02-{i + 1:04d}" for i in range(5)])
+            with np.load(tmp_dir / "snr_30db" / "02_sag.npz") as dados:
+                np.testing.assert_array_equal(dados["literatura/tensao_pu"], tensao + 100.0)
             linhas = (tmp_dir / "metadata" / "02_sag.jsonl").read_text(encoding="utf-8").splitlines()
             self.assertEqual(len(linhas), 5)
         finally:
@@ -1621,13 +1514,9 @@ class SalvarClasseArquivoUnicoTests(unittest.TestCase):
 
 
 class SalvarClasseSimuladoTests(unittest.TestCase):
-    """O dataset SIMULADO nunca teve motivo para um arquivo por captura:
-    arrays numpy não colidem, e o formato empilhado (um `.npz` por classe,
-    shape `(N, pontos)`) foi o que valeu por toda a história do projeto.
-    Task 5 aplicou o nome-por-parâmetro aos DOIS caminhos, e como muitas
-    classes repetem `parametros` entre capturas (02/03/05 ciclam 5 níveis,
-    18 alterna 2, 10-17 devolvem dicts constantes), até 2000 capturas
-    simuladas colapsavam em punhado de arquivos."""
+    """O dataset SIMULADO grava UM ``NN_classe.npz`` (formato 2): as chaves
+    ``<perfil>/medida|modelo|programada`` empilhadas ``(N, pontos)``; SNRs em
+    ``snr_XXdb/NN_classe.npz``; corrente em ``corrente/``."""
 
     def _config(self, results_dir, **overrides):
         base = dict(
@@ -1681,14 +1570,14 @@ class SalvarClasseSimuladoTests(unittest.TestCase):
             )
 
             with np.load(tmp_dir / "02_sag.npz", allow_pickle=True) as dados:
-                self.assertEqual(dados["tensao_pu"].shape, (3, 4))
-                np.testing.assert_array_equal(dados["tensao_pu"], tensao)
-                self.assertEqual(list(dados["id_captura"]), ids)
+                self.assertEqual(dados["literatura/medida"].shape, (3, 4))
+                np.testing.assert_array_equal(dados["literatura/medida"], tensao)
+                self.assertEqual(list(dados["literatura/id_captura"]), ids)
                 self.assertEqual(str(dados["classe"]), "SAG")
             with np.load(tmp_dir / "snr_30db" / "02_sag.npz", allow_pickle=True) as dados:
-                np.testing.assert_array_equal(dados["tensao_pu"], tensao + 100.0)
+                np.testing.assert_array_equal(dados["literatura/tensao_pu"], tensao + 100.0)
             with np.load(tmp_dir / "corrente" / "02_sag_corrente.npz", allow_pickle=True) as dados:
-                np.testing.assert_array_equal(dados["corrente_pu"], tensao + 1000.0)
+                np.testing.assert_array_equal(dados["literatura/corrente_pu"], tensao + 1000.0)
 
             linhas = (tmp_dir / "metadata" / "02_sag.jsonl").read_text(encoding="utf-8").splitlines()
             self.assertEqual(len(linhas), 3)
@@ -1723,9 +1612,9 @@ class SalvarClasseSimuladoTests(unittest.TestCase):
 
             self.assertEqual(sorted(p.name for p in tmp_dir.glob("*.npz")), ["02_sag.npz"])
             with np.load(tmp_dir / "02_sag.npz", allow_pickle=True) as dados:
-                self.assertEqual(dados["tensao_pu"].shape, (total, 4))
-                np.testing.assert_array_equal(dados["tensao_pu"], tensao)
-                self.assertEqual(list(dados["id_captura"]), ids)
+                self.assertEqual(dados["literatura/medida"].shape, (total, 4))
+                np.testing.assert_array_equal(dados["literatura/medida"], tensao)
+                self.assertEqual(list(dados["literatura/id_captura"]), ids)
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
@@ -1751,9 +1640,9 @@ class SalvarClasseSimuladoTests(unittest.TestCase):
             resultados = config.results_dir
             self.assertEqual(sorted(p.name for p in resultados.glob("*.npz")), ["02_sag.npz"])
             with np.load(resultados / "02_sag.npz", allow_pickle=True) as dados:
-                self.assertEqual(dados["tensao_pu"].shape, (4, 6_000))
+                self.assertEqual(dados["literatura/medida"].shape, (4, 6_000))
                 self.assertEqual(
-                    list(dados["id_captura"]),
+                    list(dados["literatura/id_captura"]),
                     ["02-0001", "02-0002", "02-0003", "02-0004"],
                 )
             linhas = (resultados / "metadata" / "02_sag.jsonl").read_text(
@@ -2426,14 +2315,19 @@ class SalvamentoIncrementalTests(unittest.TestCase):
             config = self._config(tmp_dir / "resultados")
             vistos = []
 
+            spool = config.results_dir / "parcial" / "96_teste_incremental"
+
             def observador(n):
-                vistos.append(len(list((config.results_dir).glob("96_*.npz"))))
+                vistos.append(len(list(spool.glob("*.npz"))))
 
             experimento = self._experimento(config, observador=observador)
             experimento.executar()
-            # antes da captura 1 não há nada; antes da 2 já existe 1 arquivo...
+            # Formato 2: cada captura vai para parcial/NN_classe/ (atômica) assim
+            # que sai; antes da captura 1 não há nada; antes da 2 já existe 1...
             self.assertEqual(vistos, [0, 1, 2, 3])
-            self.assertEqual(len(list(config.results_dir.glob("96_*.npz"))), 4)
+            # ...e, ao fim da classe, tudo está no 96_teste_incremental.npz e o spool some.
+            self.assertEqual(len(_capturas_gravadas(config.results_dir, "96")), 4)
+            self.assertFalse(spool.exists())
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
@@ -2444,8 +2338,9 @@ class SalvamentoIncrementalTests(unittest.TestCase):
             experimento = self._experimento(config, falhar_em=3)
             with self.assertRaises(CommunicationError):
                 experimento.executar()
-            arquivos = sorted(p.name for p in config.results_dir.glob("96_*.npz"))
+            arquivos = _capturas_gravadas(config.results_dir, "96")
             self.assertEqual(len(arquivos), 2, f"esperava 2 capturas preservadas, achei {arquivos}")
+            self.assertFalse((config.results_dir / "parcial" / "96_teste_incremental").exists())
             metadata = config.results_dir / "metadata" / "96_teste_incremental.jsonl"
             self.assertTrue(metadata.exists(), "metadata parcial precisa existir para os .npz serem usáveis")
             linhas = [l for l in metadata.read_text(encoding="utf-8").splitlines() if l.strip()]
@@ -2566,8 +2461,8 @@ class ErroDeterministicoEPreValidacaoTests(unittest.TestCase):
                 experimento.executar()
             # 1,4/1,6/1,8 x 220 V passam de 300 Vrms: só 1,1 e 1,2 rodam.
             self.assertEqual(tentativas, [1.1, 1.2])
-            arquivos = sorted(p.name for p in (tmp_dir / "resultados").glob("03_swell*.npz"))
-            self.assertEqual(len(arquivos), 2)
+            # Formato 2: um 03_swell.npz com as 2 capturas viáveis empilhadas.
+            self.assertEqual(len(_capturas_gravadas(tmp_dir / "resultados", "03")), 2)
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
@@ -3638,7 +3533,7 @@ class CapturaDescartavelTests(unittest.TestCase):
             with self.assertLogs("MestreExperimentos", level="ERROR") as captura:
                 experimento.executar()  # NÃO pode levantar
             self.assertEqual(chamadas["n"], 5, "as 5 posições do plano devem ser tentadas")
-            arquivos = sorted(p.name for p in (tmp_dir / "resultados").glob("97_*.npz"))
+            arquivos = _capturas_gravadas(tmp_dir / "resultados", "97")
             self.assertEqual(len(arquivos), 4, f"esperava 4 capturas boas, achei {arquivos}")
             self.assertTrue(
                 any("DESCARTADA" in m for m in captura.output),
@@ -3655,7 +3550,7 @@ class CapturaDescartavelTests(unittest.TestCase):
                 config, falhas={2: TimeoutError("AMETEK não entrou em ARM/WTRIG")},
             )
             experimento.executar()
-            arquivos = list((tmp_dir / "resultados").glob("97_*.npz"))
+            arquivos = _capturas_gravadas(tmp_dir / "resultados", "97")
             self.assertEqual(len(arquivos), 2)
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -4765,13 +4660,16 @@ class RecorteMargemERelatorioHtmlTests(unittest.TestCase):
         saida = self.tmp / "sem_margem"
         relatorio = recortar_margem.recortar_sessao(self.sessao, saida, empilhar=True)
         self.assertEqual(len(relatorio), 6)  # 3 capturas x (puro + snr_30db)
+        # Sessão no formato antigo (1 .npz por captura) -> saída no formato 2:
+        # um NN_classe.npz por classe, e o SNR em snr_30db/NN_classe.npz.
         for cid, nome in (("01", "normal"), ("02", "sag"), ("05", "harmonics")):
-            with np.load(saida / f"{cid}_{nome}_cap01.npz", allow_pickle=True) as dados:
-                self.assertEqual(dados["tensao_pu"].shape, (1, 6000))
-                np.testing.assert_allclose(dados["tensao_pu"][0], self.nominais[cid])
+            with np.load(saida / f"{cid}_{nome}.npz", allow_pickle=True) as dados:
+                self.assertEqual(dados["literatura/medida"].shape, (1, 6000))
+                np.testing.assert_allclose(dados["literatura/medida"][0], self.nominais[cid])
                 self.assertEqual(dados["tempo_ms"][0], 0.0)
-            with np.load(saida / "snr_30db" / f"{cid}_{nome}_cap01.npz", allow_pickle=True) as dados:
-                np.testing.assert_allclose(dados["tensao_pu"][0], self.nominais[cid] + 0.01)
+                self.assertEqual(list(dados["literatura/inicio_janela"]), [0])
+            with np.load(saida / "snr_30db" / f"{cid}_{nome}.npz", allow_pickle=True) as dados:
+                np.testing.assert_allclose(dados["literatura/tensao_pu"][0], self.nominais[cid] + 0.01)
         origens = {linha["id_captura"]: linha["origem"] for linha in relatorio}
         self.assertEqual(origens["01-0001"], "indice_trigger")
         self.assertEqual(origens["05-0001"], "margem_amostras_antes")
@@ -4782,9 +4680,9 @@ class RecorteMargemERelatorioHtmlTests(unittest.TestCase):
         self.assertEqual(md["amostras_totais"], 6000)
         self.assertEqual(md["indice_trigger"], 1800)  # 60 ms dentro da janela nominal
 
-        with np.load(saida / "empilhado" / "02_sag.npz", allow_pickle=True) as dados:
-            self.assertEqual(dados["tensao_pu"].shape, (1, 6000))
-            self.assertEqual(list(dados["id_captura"]), ["02-0001"])
+        self.assertEqual(md["arquivo_classe"], "02_sag.npz")
+        self.assertEqual(md["indice_no_arquivo"], 0)
+        self.assertFalse((saida / "empilhado").exists())  # --empilhar não faz mais nada
 
     def test_recorte_nunca_escreve_na_propria_sessao(self):
         import recortar_margem
@@ -5947,14 +5845,15 @@ class TresVersoesTests(unittest.TestCase):
             for classe_id in ("02", "10"):
                 script = next(s for s in mestre._experiment_scripts() if s.stem == classe_id)
                 mestre.Bancada._carregar_classe_experimento(script)(bancada).executar()
+            self.assertFalse((config.results_dir / "tres_versoes").exists())  # formato 2: tudo no .npz da classe
             for stem in ("02_sag", "10_sag_harmonics"):
-                with np.load(config.results_dir / "tres_versoes" / f"{stem}.npz", allow_pickle=True) as dados, np.load(config.results_dir / f"{stem}.npz", allow_pickle=True) as principal:
-                    np.testing.assert_array_equal(dados["modelo_pu"], principal["tensao_pu"])
-                    self.assertEqual(dados["programada_pu"].shape, (3, 6000))
-                    self.assertFalse(np.any(np.isnan(dados["programada_pu"])))
-                    self.assertNotIn("medida_pu", dados.files)
+                with np.load(config.results_dir / f"{stem}.npz", allow_pickle=True) as dados:
+                    # simulado: não há instrumento, a "medida" é a série do dataset (= modelo)
+                    np.testing.assert_array_equal(dados["literatura/modelo"], dados["literatura/medida"])
+                    self.assertEqual(dados["literatura/programada"].shape, (3, 6000))
+                    self.assertFalse(np.any(np.isnan(dados["literatura/programada"])))
                 linha = json.loads((config.results_dir / "metadata" / f"{stem}.jsonl").read_text(encoding="utf-8").splitlines()[0])
-                self.assertEqual(linha["tres_versoes"]["arquivo"], f"tres_versoes/{stem}.npz")
+                self.assertEqual(linha["tres_versoes"]["arquivo"], f"{stem}.npz")
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
@@ -5989,19 +5888,21 @@ class TresVersoesTests(unittest.TestCase):
             experimento.osc = mock.Mock()
             experimento._preparar_acquisicao_real = lambda: None
             experimento.executar()
-            arquivo = config.results_dir / "tres_versoes" / "95_teste_tres_cap01.npz"
+            arquivo = config.results_dir / "95_teste_tres.npz"
             with np.load(arquivo, allow_pickle=True) as dados:
-                self.assertEqual(dados["modelo_pu"].shape, (1, 6000))
-                np.testing.assert_allclose(dados["modelo_pu"][0], np.sin(2.0 * np.pi * 60.0 * self.T), atol=1e-12)
-                np.testing.assert_allclose(dados["programada_pu"][0], 0.8 * dados["modelo_pu"][0], atol=2e-3)
-                np.testing.assert_array_equal(dados["medida_pu"][0], registro[600:6600])
-                self.assertEqual(int(dados["inicio_janela"]), 600)
-                self.assertEqual(dados["tempo_ms"].shape, (6000,))
+                self.assertEqual(dados["literatura/modelo"].shape, (1, 6000))
+                np.testing.assert_allclose(dados["literatura/modelo"][0], np.sin(2.0 * np.pi * 60.0 * self.T), atol=1e-12)
+                np.testing.assert_allclose(dados["literatura/programada"][0], 0.8 * dados["literatura/modelo"][0], atol=2e-3)
+                # medida = o registro inteiro (com a folga); a janela rotulada é o recorte por inicio_janela
+                self.assertEqual(dados["literatura/medida"].shape, (1, 8100))
+                inicio = int(dados["literatura/inicio_janela"][0])
+                self.assertEqual(inicio, 600)
+                np.testing.assert_array_equal(dados["literatura/medida"][0][inicio:inicio + 6000], registro[600:6600])
+                self.assertEqual(dados["tempo_janela_ms"].shape, (6000,))
             linha = json.loads((config.results_dir / "metadata" / "95_teste_tres.jsonl").read_text(encoding="utf-8").splitlines()[0])
-            self.assertEqual(linha["tres_versoes"]["arquivo"], "tres_versoes/95_teste_tres_cap01.npz")
-            # o .npz principal (a medida com margem) continua sendo gravado como sempre
-            with np.load(config.results_dir / "95_teste_tres_cap01.npz") as principal:
-                self.assertEqual(principal["tensao_pu"].shape, (1, 8100))
+            self.assertEqual(linha["tres_versoes"]["arquivo"], "95_teste_tres.npz")
+            self.assertEqual((linha["arquivo_classe"], linha["perfil"], linha["indice_no_arquivo"]), ("95_teste_tres.npz", "literatura", 0))
+            self.assertFalse((config.results_dir / "tres_versoes").exists())
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
@@ -6508,9 +6409,9 @@ class RuidoNaJanelaTests(unittest.TestCase):
 
             _Classe(bancada).executar()
             pasta = config.results_dir
-            limpa = np.load(pasta / "02_sag.npz", allow_pickle=True)["tensao_pu"]
+            limpa = np.load(pasta / "02_sag.npz", allow_pickle=True)["literatura/medida"]
             for snr in (20, 30, 40):
-                ruidosa = np.load(pasta / f"snr_{snr}db" / "02_sag.npz", allow_pickle=True)["tensao_pu"]
+                ruidosa = np.load(pasta / f"snr_{snr}db" / "02_sag.npz", allow_pickle=True)["literatura/tensao_pu"]
                 self.assertEqual(ruidosa.shape, limpa.shape)
                 for k in range(limpa.shape[0]):
                     medido = 10.0 * math.log10(np.mean(limpa[k] ** 2) / np.mean((ruidosa[k] - limpa[k]) ** 2))
@@ -6559,17 +6460,17 @@ class RuidoNaJanelaTests(unittest.TestCase):
             experimento.executar()
 
             pasta = config.results_dir
-            nomes = sorted(p.name for p in pasta.glob("96_*.npz"))
-            self.assertEqual(len(nomes), 2)
-            for nome in nomes:
-                limpa = np.load(pasta / nome, allow_pickle=True)["tensao_pu"][0]
-                self.assertEqual(limpa.size, 8100)  # o limpo mantém as margens
+            self.assertEqual(sorted(p.name for p in pasta.glob("96_*.npz")), ["96_teste_ruido.npz"])
+            medidas = np.load(pasta / "96_teste_ruido.npz", allow_pickle=True)["literatura/medida"]
+            self.assertEqual(medidas.shape, (2, 8100))  # o limpo mantém as margens
+            for k in range(2):
+                limpa = medidas[k]
                 for snr in (20, 40):
-                    dados = np.load(pasta / f"snr_{snr}db" / nome, allow_pickle=True)
-                    self.assertEqual(dados["tensao_pu"].shape, (1, 6000))
+                    dados = np.load(pasta / f"snr_{snr}db" / "96_teste_ruido.npz", allow_pickle=True)
+                    self.assertEqual(dados["literatura/tensao_pu"].shape, (2, 6000))
                     self.assertEqual(dados["tempo_ms"].shape, (6000,))
                     janela = limpa[600:6600]
-                    medido = 10.0 * math.log10(np.mean(janela**2) / np.mean((dados["tensao_pu"][0] - janela) ** 2))
+                    medido = 10.0 * math.log10(np.mean(janela**2) / np.mean((dados["literatura/tensao_pu"][k] - janela) ** 2))
                     self.assertAlmostEqual(medido, snr, delta=1e-6)
             linhas = [json.loads(l) for l in (pasta / "metadata" / "96_teste_ruido.jsonl").read_text(encoding="utf-8").splitlines()]
             for linha in linhas:
@@ -6778,9 +6679,9 @@ class CliRecalibracaoEHtmlTests(unittest.TestCase):
         self.assertTrue(html.is_file())
         self.assertIn(str(html), saida)
         texto = html.read_text(encoding="utf-8")
-        self.assertIn("02_sag_cap01", texto)
+        self.assertIn("02_sag · literatura · 02-0001", texto)
         self.assertIn("sessao_teste (sem_margem)", texto)
-        self.assertTrue((self.sessao / "sem_margem" / "02_sag_cap01.npz").is_file())
+        self.assertTrue((self.sessao / "sem_margem" / "02_sag.npz").is_file())
         self.assertEqual({p.name: p.read_bytes() for p in self.sessao.glob("*.npz")}, antes)
 
     # -- falha não derruba a sessão ---------------------------------------
@@ -8430,3 +8331,509 @@ class PendentesCorrelacaoDisturbioTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _capturas_gravadas(pasta, classe_id, *, versoes=("medida",), perfis=None):
+    """Capturas de uma classe numa pasta de sessão, em qualquer formato
+    (``sessao_io.ler_pasta``): o que os testes antigos contavam como arquivos."""
+    import sessao_io
+    return sessao_io.ler_pasta(Path(pasta), versoes=versoes, classes=[classe_id], perfis=perfis)
+
+class NpzPorClasseTests(unittest.TestCase):
+    """Formato 2 (``logica/sessao_io.py``, ``docs/dataset.md``): UM ``NN_classe.npz``
+    comprimido por classe e sessão, com ``<perfil>/<versão>`` de todos os
+    perfis (``set perfil todos``); SNRs fora dele, em ``snr_XXdb/NN_classe.npz``."""
+
+    PERFIS = ("norma", "literatura", "fronteira")
+    ITENS = ("medida", "modelo", "programada")
+
+    def setUp(self):
+        import sessao_io
+        self.sessao_io = sessao_io
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+
+    def _config(self, pasta, **sobrescritas):
+        base = dict(
+            fs_hz=30_000.0, points=6_000, duration_s=0.2, grid_frequency_hz=60.0,
+            base_voltage_rms=127.0, snr_levels_db=(20.0, 30.0), base_seed=7,
+            capture_current=False, current_base_a=None, results_dir=pasta,
+            sim_captures_per_class=3, real_captures_per_class=1, disturbance_start_s=0.06,
+        )
+        base.update(sobrescritas)
+        return mestre.Config(**base)
+
+    def _scripts(self, *ids):
+        return [s for s in mestre._experiment_scripts() if s.stem in ids]
+
+    def _sessao_simulada_todos(self, pasta, *ids):
+        config = self._config(pasta)
+        bancada = mestre.Bancada(None, None, config)
+        with mock.patch.object(mestre, "PERFIL_TODOS", True):
+            resultados = bancada.executar_bateria(self._scripts(*ids))
+        self.assertTrue(all(r.ok for r in resultados), resultados)
+        return config
+
+    # -- escrita ------------------------------------------------------------
+
+    def test_set_perfil_todos_grava_um_npz_por_classe_com_as_nove_chaves(self):
+        config = self._sessao_simulada_todos(self.tmp / "r", "02", "05")
+        pasta = config.results_dir
+        self.assertEqual(sorted(p.name for p in pasta.glob("*.npz")), ["02_sag.npz", "05_harmonics.npz"])
+        for nome in ("02_sag.npz", "05_harmonics.npz"):
+            with np.load(pasta / nome) as dados:  # sem pickle: nada de object
+                for perfil in self.PERFIS:
+                    for item in self.ITENS:
+                        self.assertIn(f"{perfil}/{item}", dados.files)
+                    self.assertEqual(dados[f"{perfil}/medida"].shape, (3, 6000))
+                    self.assertEqual(dados[f"{perfil}/modelo"].shape, (3, 6000))
+                    self.assertEqual(dados[f"{perfil}/programada"].shape, (3, 6000))
+                    self.assertEqual(list(dados[f"{perfil}/id_captura"]), ["%s-%04d" % (nome[:2], i) for i in (1, 2, 3)])
+                self.assertEqual(list(dados["perfis"]), list(self.PERFIS))
+                self.assertEqual(int(dados["formato_npz"]), 2)
+                self.assertNotIn("tensao_pu", dados.files)
+                # SNR NÃO está no arquivo da classe
+                self.assertFalse([k for k in dados.files if "snr" in k.lower()])
+                self.assertEqual(dados["literatura/medida"].dtype, np.float64)
+        # SNRs em arquivos por classe e nível
+        for nivel in (20, 30):
+            self.assertEqual(sorted(p.name for p in (pasta / f"snr_{nivel}db").glob("*.npz")), ["02_sag.npz", "05_harmonics.npz"])
+            with np.load(pasta / f"snr_{nivel}db" / "02_sag.npz") as dados:
+                self.assertEqual(dados["norma/tensao_pu"].shape, (3, 6000))
+                self.assertEqual(list(dados["perfis"]), list(self.PERFIS))
+        # Nada de sobra: nem .part, nem spool, nem pasta tres_versoes/
+        self.assertEqual(list(pasta.rglob("*.part")), [])
+        self.assertFalse((pasta / "parcial").exists())
+        self.assertFalse((pasta / "tres_versoes").exists())
+        # metadata: 9 linhas por classe (3 perfis x 3 capturas), com o índice de cada uma
+        linhas = [json.loads(l) for l in (pasta / "metadata" / "02_sag.jsonl").read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(len(linhas), 9)
+        self.assertEqual([l["perfil"] for l in linhas], [p for p in self.PERFIS for _ in range(3)])
+        self.assertEqual([l["indice_no_arquivo"] for l in linhas], [0, 1, 2] * 3)
+        self.assertEqual({l["arquivo_classe"] for l in linhas}, {"02_sag.npz"})
+        # sessao.json avisa o formato
+        info = json.loads((pasta / "sessao.json").read_text(encoding="utf-8"))
+        self.assertEqual(info["formato_npz"], 2)
+        self.assertEqual(info["perfis_da_rodada"], list(self.PERFIS))
+
+    def test_arrays_sao_identicos_aos_de_uma_rodada_de_um_perfil_so(self):
+        """Compressão sem perda e dtypes preservados: cada bloco do arquivo de
+        `todos` é igual, bit a bit (valores e dtype), ao que uma rodada só
+        daquele perfil grava; e no simulado `medida` é a série do dataset
+        (= `modelo`)."""
+        todos = self._sessao_simulada_todos(self.tmp / "todos", "02", "10").results_dir
+        for perfil in self.PERFIS:
+            config = self._config(self.tmp / f"so_{perfil}", perfil=perfil)
+            mestre.Bancada(None, None, config).executar_bateria(self._scripts("02", "10"))
+            for nome in ("02_sag.npz", "10_sag_harmonics.npz"):
+                with np.load(todos / nome) as a, np.load(config.results_dir / nome) as b:
+                    for item in self.ITENS:
+                        self.assertEqual(a[f"{perfil}/{item}"].dtype, b[f"{perfil}/{item}"].dtype)
+                        np.testing.assert_array_equal(a[f"{perfil}/{item}"], b[f"{perfil}/{item}"])
+                    np.testing.assert_array_equal(a[f"{perfil}/medida"], a[f"{perfil}/modelo"])
+                    np.testing.assert_array_equal(a["tempo_ms"], b["tempo_ms"])
+                with np.load(todos / "snr_20db" / nome) as a, np.load(config.results_dir / "snr_20db" / nome) as b:
+                    np.testing.assert_array_equal(a[f"{perfil}/tensao_pu"], b[f"{perfil}/tensao_pu"])
+
+    def test_perfil_unico_continua_gravando_so_o_perfil_da_config(self):
+        config = self._config(self.tmp / "r", perfil="fronteira")
+        mestre.Bancada(None, None, config).executar_bateria(self._scripts("02"))
+        with np.load(config.results_dir / "02_sag.npz") as dados:
+            self.assertEqual(list(dados["perfis"]), ["fronteira"])
+            self.assertEqual([k for k in dados.files if "/" in k and not k.startswith("fronteira/")], [])
+
+    def test_perfis_rodam_em_ordem_e_a_falha_de_um_nao_apaga_os_outros(self):
+        executadas = []
+
+        class _Classe(mestre.ExperimentoWaveform):
+            id = "96"
+            nome = "TESTE_PERFIS"
+
+            def gerar(self, t, f0, capture_index, rng):
+                executadas.append(self.config.perfil)
+                if self.config.perfil == "literatura":
+                    raise RuntimeError("falha de experimento no perfil literatura")
+                return np.sin(2.0 * np.pi * f0 * t), {}
+
+        config = self._config(self.tmp / "r", snr_levels_db=(), sim_captures_per_class=2)
+        bancada = mestre.Bancada(None, None, config)
+        with mock.patch.object(mestre, "PERFIL_TODOS", True), \
+                mock.patch.object(mestre.Bancada, "_carregar_classe_experimento", staticmethod(lambda p: _Classe)), \
+                mock.patch.object(mestre.Bancada, "recuperar_estado_seguro", lambda self: None):
+            resultados = bancada.executar_bateria([Path("96.py")])
+        self.assertFalse(resultados[0].ok)
+        self.assertIn("perfil literatura", resultados[0].motivo)
+        self.assertEqual(sorted(set(executadas)), ["fronteira", "literatura", "norma"])
+        self.assertEqual(executadas[0], "norma")
+        with np.load(config.results_dir / "96_teste_perfis.npz") as dados:
+            self.assertEqual(list(dados["perfis"]), ["norma", "fronteira"])
+        self.assertEqual(bancada.config.perfil, config.perfil)  # a Bancada volta ao perfil de antes
+
+    # -- bancada: resiliência -------------------------------------------------
+
+    def _classe_fisica(self, falhar_na_chamada=None):
+        chamadas = {"n": 0}
+
+        class _Classe(mestre.ExperimentoNativo):
+            id = "96"
+            nome = "TESTE_INTERROMPIDA"
+
+            def gerar(self, t, f0, capture_index, rng):
+                return np.sin(2.0 * np.pi * f0 * t), {}
+
+            def configurar(self, capture_index):
+                return {}
+
+            @staticmethod
+            def _calcular_margem(*, captura_fisica, config_points, fs_hz):
+                return 0, 0, config_points
+
+            def _preparar_acquisicao_real(self):
+                pass
+
+            def _capturar_real(self, capture_index, t, rng):
+                chamadas["n"] += 1
+                if falhar_na_chamada is not None and chamadas["n"] == falhar_na_chamada:
+                    raise CommunicationError("serial caiu (teste)")
+                return t, np.sin(2.0 * np.pi * 60.0 * t) + 0.001 * chamadas["n"], None, {}
+
+        return _Classe, chamadas
+
+    def _bancada_fisica(self, config):
+        fonte = mestre.AmetekMX30(simulated=True, max_voltage_rms=300.0, max_peak_v=425.0)
+        return mestre.Bancada(fonte, mock.Mock(), config)
+
+    def test_bancada_com_todos_os_perfis_acumula_no_mesmo_arquivo(self):
+        classe, _ = self._classe_fisica()
+        config = self._config(self.tmp / "r", snr_levels_db=(30.0,), capturas_override=2)
+        bancada = self._bancada_fisica(config)
+        with mock.patch.object(mestre.Bancada, "_carregar_classe_experimento", staticmethod(lambda p: classe)):
+            resultados = bancada.executar_bateria([Path("96.py")], ("norma", "literatura", "fronteira"))
+        self.assertTrue(resultados[0].ok)
+        pasta = config.results_dir
+        self.assertEqual(sorted(p.name for p in pasta.glob("*.npz")), ["96_teste_interrompida.npz"])
+        with np.load(pasta / "96_teste_interrompida.npz") as dados:
+            for perfil in self.PERFIS:
+                self.assertEqual(dados[f"{perfil}/medida"].shape, (2, 6000))
+        self.assertFalse((pasta / "parcial").exists())
+        self.assertEqual(list(pasta.rglob("*.part")), [])
+        linhas = [json.loads(l) for l in (pasta / "metadata" / "96_teste_interrompida.jsonl").read_text(encoding="utf-8").splitlines()]
+        self.assertEqual([l["perfil"] for l in linhas], [p for p in self.PERFIS for _ in range(2)])
+
+    def test_interrupcao_no_meio_do_segundo_perfil_preserva_tudo_o_que_ja_foi_capturado(self):
+        classe, _ = self._classe_fisica(falhar_na_chamada=4)  # 2 de norma + 1 de literatura + falha
+        config = self._config(self.tmp / "r", snr_levels_db=(30.0,), capturas_override=2)
+        bancada = self._bancada_fisica(config)
+        with mock.patch.object(mestre.Bancada, "_carregar_classe_experimento", staticmethod(lambda p: classe)), \
+                self.assertRaises(CommunicationError):
+            bancada.executar_bateria([Path("96.py")], ("norma", "literatura", "fronteira"))
+        pasta = config.results_dir
+        with np.load(pasta / "96_teste_interrompida.npz") as dados:
+            self.assertEqual(list(dados["perfis"]), ["norma", "literatura"])
+            self.assertEqual(dados["norma/medida"].shape, (2, 6000))
+            self.assertEqual(dados["literatura/medida"].shape, (1, 6000))
+        with np.load(pasta / "snr_30db" / "96_teste_interrompida.npz") as dados:
+            self.assertEqual(dados["literatura/tensao_pu"].shape, (1, 6000))
+        linhas = (pasta / "metadata" / "96_teste_interrompida.jsonl").read_text(encoding="utf-8").splitlines()
+        self.assertEqual(len(linhas), 3)
+        self.assertFalse((pasta / "parcial").exists())
+        self.assertEqual(list(pasta.rglob("*.part")), [])
+
+    def test_morte_do_processo_deixa_o_spool_e_recuperar_parcial_promove_sem_perder_perfis(self):
+        pasta = self.tmp / "r"
+        io = self.sessao_io
+        t = np.arange(6000) / 30_000.0
+
+        def captura(arquivo, perfil, n, valor):
+            md = {"id_captura": f"96-{n:04d}", "classe": "X", "perfil": perfil, "pontos": 6000, "fs_hz": 30_000.0}
+            arquivo.adicionar(
+                perfil, id_captura=md["id_captura"], medida=np.full(6000, valor), tempo_ms=t * 1000.0, fs_hz=30_000.0,
+                modelo=np.full(6000, valor + 1), snr={30.0: np.full(6000, valor + 2)}, metadado=md,
+            )
+
+        a = io.ArquivoDaClasse(pasta, "96", "TESTE")
+        a.iniciar_perfil("norma")
+        captura(a, "norma", 1, 1.0)
+        captura(a, "norma", 2, 2.0)
+        a.consolidar()
+        a.encerrar_perfil("norma")
+        a.iniciar_perfil("literatura")
+        captura(a, "literatura", 1, 3.0)  # o processo morre aqui: sem consolidar
+        self.assertEqual(len(list((pasta / "parcial" / "96_teste").glob("*.npz"))), 1)
+        recuperados = io.recuperar_parcial(pasta)
+        self.assertEqual(recuperados, [pasta / "96_teste.npz"])
+        with np.load(pasta / "96_teste.npz") as dados:
+            self.assertEqual(sorted(str(p) for p in dados["perfis"]), ["literatura", "norma"])
+            np.testing.assert_array_equal(dados["norma/medida"][1], np.full(6000, 2.0))
+            np.testing.assert_array_equal(dados["literatura/medida"][0], np.full(6000, 3.0))
+            self.assertEqual(str(dados["classe"]), "TESTE")
+        with np.load(pasta / "snr_30db" / "96_teste.npz") as dados:
+            np.testing.assert_array_equal(dados["norma/tensao_pu"][0], np.full(6000, 3.0))
+            np.testing.assert_array_equal(dados["literatura/tensao_pu"][0], np.full(6000, 5.0))
+        self.assertFalse((pasta / "parcial").exists())
+
+    # -- leitura --------------------------------------------------------------
+
+    def test_leitura_devolve_exatamente_os_arrays_gravados_com_o_metadata_do_perfil_certo(self):
+        pasta = self._sessao_simulada_todos(self.tmp / "r", "02").results_dir
+        capturas = self.sessao_io.ler_capturas(pasta, versoes=self.ITENS)
+        self.assertEqual(len(capturas), 9)
+        with np.load(pasta / "02_sag.npz") as dados:
+            for c in capturas:
+                self.assertEqual(c.formato, "classe")
+                for item in self.ITENS:
+                    np.testing.assert_array_equal(c.versoes[item], dados[f"{c.perfil}/{item}"][c.linha])
+                self.assertEqual(c.metadado["perfil"], c.perfil)  # o mesmo id existe nos 3 perfis
+                self.assertEqual(c.metadado["id_captura"], c.id_captura)
+                self.assertEqual(c.metadado["indice_no_arquivo"], c.linha)
+        self.assertEqual(len({c.id_captura for c in capturas}), 3)
+        # filtros
+        so_norma = self.sessao_io.ler_capturas(pasta, perfis=["norma"])
+        self.assertEqual({c.perfil for c in so_norma}, {"norma"})
+        self.assertEqual([c.id_captura for c in self.sessao_io.ler_capturas(pasta, capturas="02-0002")], ["02-0002"] * 3)
+        self.assertEqual([c.linha for c in self.sessao_io.ler_capturas(pasta, perfis=["fronteira"], capturas="1,3")], [0, 2])
+        self.assertEqual([c.linha for c in self.sessao_io.ler_capturas(pasta, perfis=["fronteira"], capturas="2-3")], [1, 2])
+        snr = self.sessao_io.ler_capturas(pasta, subpasta="snr_20db", perfis=["norma"])
+        self.assertEqual([c.sinal.size for c in snr], [6000] * 3)
+        with self.assertRaises(ValueError):
+            self.sessao_io.parsear_selecao_capturas("abc")
+
+    def _sessao_antiga(self, pasta):
+        """Um .npz por captura + tres_versoes/ (o formato até a v1.15 sem tag)."""
+        (pasta / "metadata").mkdir(parents=True)
+        (pasta / "tres_versoes").mkdir()
+        (pasta / "snr_30db").mkdir()
+        registro = np.concatenate([np.zeros(600), np.sin(2.0 * np.pi * 60.0 * np.arange(6000) / 30000.0), np.zeros(1500)])
+        modelo = np.sin(2.0 * np.pi * 60.0 * np.arange(6000) / 30000.0)
+        np.savez(pasta / "02_sag_sag_pu-0.1.npz", classe="SAG", id_captura=np.array(["02-0001"], dtype=object),
+                 tempo_ms=np.arange(8100) / 30.0, tensao_pu=registro[np.newaxis, :])
+        np.savez(pasta / "snr_30db" / "02_sag_sag_pu-0.1.npz", classe="SAG", id_captura=np.array(["02-0001"], dtype=object),
+                 tempo_ms=np.arange(6000) / 30.0, tensao_pu=(modelo + 0.01)[np.newaxis, :])
+        np.savez(pasta / "tres_versoes" / "02_sag_sag_pu-0.1.npz", classe="SAG", id_captura=np.array(["02-0001"], dtype=object),
+                 tempo_ms=np.arange(6000) / 30.0, modelo_pu=modelo[np.newaxis, :], programada_pu=(0.9 * modelo)[np.newaxis, :],
+                 medida_pu=modelo[np.newaxis, :], inicio_janela=np.array(600), origem_programada=np.array("PULSe"))
+        # simulado antigo: um .npz por classe, N linhas
+        np.savez(pasta / "01_normal.npz", classe="NORMAL", id_captura=np.array(["01-0001", "01-0002"], dtype=object),
+                 tempo_ms=np.arange(6000) / 30.0, tensao_pu=np.vstack([modelo, 2 * modelo]))
+        base = {"classe": "SAG", "seed": 1, "fs_hz": 30_000.0, "pontos": 6000, "parametros": {"sag_pu": 0.1},
+                "nivel_indice": 0, "f0_hz": 60.0, "tensao_base_rms": 127.0}
+        (pasta / "metadata" / "02_sag.jsonl").write_text(json.dumps({
+            **base, "id_captura": "02-0001", "simulado": False, "pre_trigger_s": 0.0, "margem_amostras_antes": 600,
+            "margem_amostras_depois": 1500, "amostras_totais": 8100, "inicio_janela": 600,
+        }) + "\n", encoding="utf-8")
+        (pasta / "metadata" / "01_normal.jsonl").write_text(
+            "".join(json.dumps({**base, "classe": "NORMAL", "id_captura": f"01-000{i}", "simulado": True}) + "\n" for i in (1, 2)),
+            encoding="utf-8")
+        return registro, modelo
+
+    def test_sessao_antiga_continua_legivel_com_as_tres_versoes_e_o_perfil_legado(self):
+        pasta = self.tmp / "antiga"
+        registro, modelo = self._sessao_antiga(pasta)
+        capturas = self.sessao_io.ler_capturas(pasta, versoes=self.ITENS, classes=["02"])
+        self.assertEqual(len(capturas), 1)
+        c = capturas[0]
+        self.assertEqual((c.formato, c.perfil, c.id_captura, c.inicio_janela), ("por_captura", "literatura", "02-0001", 600))
+        np.testing.assert_array_equal(c.versoes["medida"], registro)
+        np.testing.assert_array_equal(c.versoes["modelo"], modelo)
+        np.testing.assert_allclose(c.versoes["programada"], 0.9 * modelo)
+        self.assertEqual(c.origem_programada, "PULSe")
+        sim = self.sessao_io.ler_capturas(pasta, classes=["01"])
+        self.assertEqual([(x.formato, x.id_captura) for x in sim], [("empilhado", "01-0001"), ("empilhado", "01-0002")])
+        snr = self.sessao_io.ler_capturas(pasta, subpasta="snr_30db")
+        np.testing.assert_allclose(snr[0].sinal, modelo + 0.01)
+
+    def test_formato_do_arquivo_distingue_os_dois(self):
+        pasta = self.tmp / "antiga"
+        self._sessao_antiga(pasta)
+        self.assertEqual(self.sessao_io.formato_do_arquivo(pasta / "02_sag_sag_pu-0.1.npz"), "legado")
+        nova = self._sessao_simulada_todos(self.tmp / "nova", "02").results_dir
+        self.assertEqual(self.sessao_io.formato_do_arquivo(nova / "02_sag.npz"), "classe")
+
+    # -- consumidores -----------------------------------------------------------
+
+    def test_recortar_margem_le_os_dois_formatos_e_grava_o_formato_2(self):
+        import recortar_margem
+        pasta = self.tmp / "antiga"
+        registro, modelo = self._sessao_antiga(pasta)
+        saida = self.tmp / "sem_margem"
+        recortar_margem.recortar_sessao(pasta, saida)
+        with np.load(saida / "02_sag.npz") as dados:
+            np.testing.assert_array_equal(dados["literatura/medida"][0], registro[600:6600])
+            np.testing.assert_array_equal(dados["literatura/modelo"][0], modelo)
+            np.testing.assert_allclose(dados["literatura/programada"][0], 0.9 * modelo)
+            self.assertEqual(list(dados["literatura/inicio_janela"]), [0])
+        with np.load(saida / "snr_30db" / "02_sag.npz") as dados:
+            np.testing.assert_allclose(dados["literatura/tensao_pu"][0], modelo + 0.01)
+        # formato 2 -> recorte -> mesmas capturas, todos os perfis
+        nova = self._sessao_simulada_todos(self.tmp / "nova", "02").results_dir
+        recortar_margem.recortar_sessao(nova, self.tmp / "nova_sem_margem")
+        with np.load(nova / "02_sag.npz") as a, np.load(self.tmp / "nova_sem_margem" / "02_sag.npz") as b:
+            for perfil in self.PERFIS:
+                np.testing.assert_array_equal(a[f"{perfil}/medida"], b[f"{perfil}/medida"])
+                np.testing.assert_array_equal(a[f"{perfil}/programada"], b[f"{perfil}/programada"])
+        linhas = (self.tmp / "nova_sem_margem" / "metadata" / "02_sag.jsonl").read_text(encoding="utf-8").splitlines()
+        self.assertEqual(len(linhas), 9)
+
+    def test_analisar_sessao_le_o_formato_2_e_acusa_o_simulado_uma_vez_por_perfil(self):
+        import analisar_sessao
+        pasta = self._sessao_simulada_todos(self.tmp / "nova", "02").results_dir
+        relatorio = analisar_sessao.analisar_sessao(pasta)
+        self.assertEqual(len(relatorio), 3)
+        self.assertEqual({l["classe"] for l in relatorio}, {f"02_sag:{p}" for p in self.PERFIS})
+        self.assertTrue(all("erro" in l for l in relatorio))
+        # bancada: uma linha por captura de cada perfil (id repetido entre perfis)
+        classe, _ = self._classe_fisica()
+        config = self._config(self.tmp / "fisica", snr_levels_db=(), capturas_override=1)
+        bancada = self._bancada_fisica(config)
+        with mock.patch.object(mestre.Bancada, "_carregar_classe_experimento", staticmethod(lambda p: classe)):
+            bancada.executar_bateria([Path("96.py")], ("norma", "literatura"))
+        with mock.patch.object(analisar_sessao, "_reconstruir_esperado", side_effect=RuntimeError("sem classe 96")):
+            relatorio = analisar_sessao.analisar_sessao(config.results_dir)
+        self.assertEqual(sorted(l["classe"] for l in relatorio),
+                         ["96_teste_interrompida:literatura:96-0001", "96_teste_interrompida:norma:96-0001"])
+
+    def test_html_seleciona_classe_perfil_versao_e_captura(self):
+        import relatorio_html
+        pasta = self._sessao_simulada_todos(self.tmp / "nova", "02", "05").results_dir
+        _, total = relatorio_html.gerar_relatorio(pasta, self.tmp / "tudo.html", dpi=40)
+        self.assertEqual(total, 18)  # simulado, 3 capturas por bloco (limite padrão = 3) x 3 perfis x 2 classes
+        caminho, total = relatorio_html.gerar_relatorio(
+            pasta, self.tmp / "sel.html", classes=["02"], perfis=["norma", "fronteira"],
+            versoes=["medida", "programada"], capturas_escolhidas="2-3", dpi=40,
+        )
+        self.assertEqual(total, 4)
+        texto = caminho.read_text(encoding="utf-8")
+        self.assertIn("02_sag · norma · 02-0002", texto)
+        self.assertIn("02_sag · fronteira · 02-0003", texto)
+        self.assertNotIn("literatura ·", texto)
+        self.assertNotIn("05_harmonics", texto)
+        self.assertNotIn("02-0001", texto)
+        self.assertIn("medida, programada", texto)  # versões desenhadas
+        _, total = relatorio_html.gerar_relatorio(
+            pasta, self.tmp / "id.html", capturas_escolhidas="05-0001", versoes=["modelo"], dpi=40,
+        )
+        self.assertEqual(total, 3)
+        # CLI
+        saida = self.tmp / "cli.html"
+        relatorio_html.main([str(pasta), "--saida", str(saida), "--classes", "05", "--perfis", "literatura",
+                             "--versoes", "modelo,programada", "--capturas", "1", "--dpi", "40"])
+        self.assertIn("05_harmonics · literatura · 05-0001", saida.read_text(encoding="utf-8"))
+        with self.assertRaises(SystemExit):
+            relatorio_html.main([str(pasta), "--versoes", "xyz"])
+        with self.assertRaises(SystemExit):
+            relatorio_html.main([str(pasta), "--perfis", "inexistente"])
+
+    def test_html_de_sessao_de_bancada_mostra_todas_as_capturas_sem_o_limite_do_simulado(self):
+        import relatorio_html
+        classe, _ = self._classe_fisica()
+        config = self._config(self.tmp / "fisica", snr_levels_db=(), capturas_override=5)
+        bancada = self._bancada_fisica(config)
+        with mock.patch.object(mestre.Bancada, "_carregar_classe_experimento", staticmethod(lambda p: classe)):
+            bancada.executar_bateria([Path("96.py")], ("norma",))
+        _, total = relatorio_html.gerar_relatorio(config.results_dir, self.tmp / "f.html", detalhes=0, dpi=30)
+        self.assertEqual(total, 5)
+
+    def test_gerar_ruido_janela_le_o_formato_2_e_grava_snr_por_classe(self):
+        gerar = _carregar_script("gerar_ruido_janela")
+        pasta = self._sessao_simulada_todos(self.tmp / "nova", "02").results_dir
+        saida = self.tmp / "ruido"
+        linhas = gerar.gerar_sessao(pasta, saida, (10.0, 25.0))
+        self.assertEqual(len(linhas), 9)
+        self.assertEqual(sorted(p.name for p in saida.rglob("*.npz")), ["02_sag.npz", "02_sag.npz"])
+        with np.load(saida / "snr_10db" / "02_sag.npz") as dados:
+            self.assertEqual(list(dados["perfis"]), list(self.PERFIS))
+            self.assertEqual(dados["fronteira/tensao_pu"].shape, (3, 6000))
+        with np.load(pasta / "02_sag.npz") as limpo, np.load(saida / "snr_25db" / "02_sag.npz") as dados:
+            janela = limpo["norma/medida"][1]
+            ruido = dados["norma/tensao_pu"][1] - janela
+            medido = 10.0 * math.log10(np.mean(janela ** 2) / np.mean(ruido ** 2))
+            self.assertAlmostEqual(medido, 25.0, delta=1e-6)
+
+    def test_gerar_tres_versoes_recusa_sessao_do_formato_2(self):
+        gerar_tres = _carregar_script("gerar_tres_versoes")
+        pasta = self._sessao_simulada_todos(self.tmp / "nova", "02").results_dir
+        with self.assertRaises(ValueError) as ctx:
+            gerar_tres._nomes_dos_npz(pasta)
+        self.assertIn("formato 2", str(ctx.exception))
+
+    # -- CLI -------------------------------------------------------------------
+
+    def _cli(self):
+        import cli
+        return cli, cli.SessaoCLI()
+
+    def test_set_perfil_todos_na_cli(self):
+        import io
+        from contextlib import redirect_stdout
+        cli, sessao = self._cli()
+        with mock.patch.object(mestre, "PERFIL", "norma"), mock.patch.object(mestre, "PERFIL_TODOS", False):
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(sessao.cmd_set(["perfil", "todos"]), 0)
+            self.assertTrue(mestre.PERFIL_TODOS)
+            self.assertEqual(mestre.perfis_da_rodada(), ("norma", "literatura", "fronteira"))
+            saida = io.StringIO()
+            with redirect_stdout(saida):
+                sessao.cmd_status([])
+            self.assertIn("perfil de faixas: todos", saida.getvalue())
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(sessao.cmd_set(["perfil", "fronteira"]), 0)
+            self.assertFalse(mestre.PERFIL_TODOS)
+            self.assertEqual(mestre.perfis_da_rodada(), ("fronteira",))
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(sessao.cmd_set(["perfil", "xyz"]), 1)
+        self.assertIn("set perfil norma|literatura|fronteira|todos", cli.HELP_TEXT)
+
+    def test_confirmacao_do_run_all_soma_capturas_e_trace_dos_tres_perfis(self):
+        import io
+        from contextlib import redirect_stdout
+        cli, sessao = self._cli()
+        sozinhos = 0
+        escritas = 0
+        with mock.patch.object(mestre, "PERFIL_TODOS", False):
+            for perfil in self.PERFIS:
+                with mock.patch.object(mestre, "PERFIL", perfil):
+                    linhas = cli.SessaoCLI._capturas_das_classes(mestre.scripts_da_bateria_fisica())
+                sozinhos += sum(i["total"] for _, _, i in linhas)
+                escritas += sum(i["escritas_trace"] for _, _, i in linhas)
+        with mock.patch.object(mestre, "PERFIL_TODOS", True):
+            mensagens = []
+            with mock.patch.object(sessao, "confirmar", side_effect=lambda aviso, esperado: mensagens.append((aviso, esperado)) or False), \
+                    redirect_stdout(io.StringIO()):
+                sessao._run_all()
+            linhas = cli.SessaoCLI._capturas_das_classes(mestre.scripts_da_bateria_fisica())
+        self.assertEqual(sum(i["total"] for _, _, i in linhas), sozinhos)
+        self.assertEqual(sum(i["escritas_trace"] for _, _, i in linhas), escritas)
+        self.assertTrue(all("por_perfil" in i for _, _, i in linhas))
+        aviso, esperado = mensagens[0]
+        self.assertEqual(esperado, "EXECUTAR-20-CLASSES")
+        self.assertIn(f"Planejadas: {sozinhos} capturas", aviso)
+        self.assertIn("norma, literatura, fronteira", aviso)
+        self.assertIn(f"{escritas} gravações", aviso)
+        self.assertIn("somadas nos 3 perfis", aviso)
+
+    def test_run_all_com_todos_roda_cada_classe_uma_vez_por_perfil(self):
+        cli, sessao = self._cli()
+        perfis_vistos = []
+
+        class _Falsa:
+            nome = "FALSA"
+
+            def __init__(self, bancada):
+                self.perfil = bancada.config.perfil
+
+            def executar(self):
+                perfis_vistos.append(self.perfil)
+
+        import io
+        from contextlib import redirect_stdout
+        with mock.patch.object(mestre, "PERFIL_TODOS", True), \
+                mock.patch.object(mestre, "SIMULATED_MODE", True), \
+                mock.patch.object(mestre, "SESSION_RESULTS_DIR", self.tmp), \
+                mock.patch.object(mestre.Bancada, "_carregar_classe_experimento", staticmethod(lambda p: _Falsa)), \
+                mock.patch.object(mestre, "scripts_da_bateria_fisica", lambda: [Path("01.py"), Path("02.py")]), \
+                mock.patch.object(sessao, "_garantir_pasta_sessao"), mock.patch.object(sessao, "autorizar_saida"), \
+                mock.patch.object(sessao, "_fim_da_sessao"):
+            with redirect_stdout(io.StringIO()):
+                codigo = sessao._executar_scripts([Path("01.py"), Path("02.py")])
+        self.assertEqual(codigo, 0)
+        self.assertEqual(perfis_vistos, ["norma", "literatura", "fronteira"] * 2)
