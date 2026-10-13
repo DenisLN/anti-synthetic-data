@@ -20,6 +20,7 @@ import os
 import subprocess
 import sys
 import traceback
+from dataclasses import replace
 from pathlib import Path
 from typing import List, Optional
 
@@ -117,10 +118,16 @@ Comandos disponíveis (nenhum energiza a saída sem pedir confirmação própria
                        seed => mesmas formas, parâmetros e plano de
                        capturas (testes reprodutíveis). Gravada no metadata
                        (base_seed). "set seed padrao" volta à do início.    [OFF]
-  set perfil norma|literatura|fronteira
+  set perfil norma|literatura|fronteira|todos
                        Perfil de faixas do dataset (logica/perfis.py,
                        docs/perfis.md), gravado em cada captura (campo
-                       "perfil"). norma = IEEE 1159 (flicker 2-7 %, inter-
+                       "perfil"). "todos": run all / run <lista> / run <NN>
+                       percorrem os TRÊS perfis (norma, literatura,
+                       fronteira) na mesma sessão, cada classe uma vez por
+                       perfil, e gravam tudo no mesmo NN_classe.npz
+                       comprimido (chaves <perfil>/<versão>; SNRs em
+                       snr_XXdb/NN_classe.npz). A confirmação soma as
+                       capturas e as gravações de TRACe dos três perfis. norma = IEEE 1159 (flicker 2-7 %, inter-
                        harmônicas 0,5-2 %, THD até 20 %, sag 0,15-0,85 pu,
                        swell 1,15-1,75 pu); literatura = as faixas de
                        sempre (padrão, reproduz o dataset anterior);
@@ -283,7 +290,7 @@ class SessaoCLI:
         # Cópia da calibração + sessao.json (commit, numpy) e aviso de árvore
         # suja em destaque, já no início do run (ver mestre.preparar_pasta_da_sessao).
         # A procedência (árvore suja, arquivos novos) é recalculada aqui, a cada run.
-        self._perfis_usados.append(mestre.PERFIL)
+        self._perfis_usados.append(mestre.PERFIL_TODOS_ROTULO if mestre.PERFIL_TODOS else mestre.PERFIL)
         mestre.preparar_pasta_da_sessao(
             sessao_dir, bancada=mestre.BENCH_MODE, perfis_usados=list(self._perfis_usados),
         )
@@ -366,7 +373,7 @@ class SessaoCLI:
         print(f"seed base: {mestre.BASE_SEED}" + (
             "" if mestre.BASE_SEED == self._seed_inicial else f" (início da sessão: {self._seed_inicial})"
         ))
-        print(f"perfil de faixas: {mestre.PERFIL}")
+        print(f"perfil de faixas: {self._descrever_perfil()}")
         print(f"sorteio de início/duração/fase: {'ON' if mestre.SORTEIO_POSICAO else 'OFF'}")
         print(
             f"recalibração automática ao fim do run: {'ON' if self.recalibracao_ao_fim else 'OFF'}   "
@@ -384,18 +391,55 @@ class SessaoCLI:
         return 0
 
     @staticmethod
+    def _descrever_perfil() -> str:
+        if mestre.PERFIL_TODOS:
+            return f"todos ({', '.join(mestre.perfis_da_rodada())}; um só NN_classe.npz por classe)"
+        return mestre.PERFIL
+
+    @staticmethod
+    def _texto_dos_perfis() -> str:
+        if not mestre.PERFIL_TODOS:
+            return ""
+        return f", nos perfis {', '.join(mestre.perfis_da_rodada())} (cada classe roda uma vez por perfil)"
+
+    @staticmethod
     def _capturas_das_classes(scripts: Optional[List[Path]] = None) -> List[tuple]:
         """(id, nome, capturas_efetivas_da_classe) de cada classe, com a
-        configuração ATUAL (set capturas, padrão da classe)."""
+        configuração ATUAL (set capturas, padrão da classe). Com
+        ``set perfil todos`` a classe roda uma vez por perfil: ``total`` e
+        ``escritas_trace`` são a SOMA dos três (o número de níveis, e com ele
+        o de capturas, muda com o perfil) e ``por_perfil`` traz o detalhe."""
         linhas = []
+        perfis_rodada = mestre.perfis_da_rodada()
+        base = mestre._build_config() if len(perfis_rodada) > 1 else None
         for script_path in scripts if scripts is not None else mestre._experiment_scripts():
             experimento_cls = mestre.Bancada._carregar_classe_experimento(script_path)
             nome = getattr(experimento_cls, "nome", script_path.stem)
-            linhas.append((script_path.stem, nome, mestre.capturas_efetivas_da_classe(experimento_cls)))
+            if base is None:
+                info = mestre.capturas_efetivas_da_classe(experimento_cls)
+            else:
+                partes = {
+                    perfil: mestre.capturas_efetivas_da_classe(experimento_cls, replace(base, perfil=perfil))
+                    for perfil in perfis_rodada
+                }
+                primeiro = next(iter(partes.values()))
+                info = {
+                    "padrao": primeiro["padrao"],
+                    "niveis": max(i["niveis"] for i in partes.values()),
+                    "por_nivel": primeiro["por_nivel"],
+                    "total": sum(i["total"] for i in partes.values()),
+                    "escritas_trace": sum(i["escritas_trace"] for i in partes.values()),
+                    "escritas_trace_exatas": all(i["escritas_trace_exatas"] for i in partes.values()),
+                    "por_perfil": {perfil: i["total"] for perfil, i in partes.items()},
+                }
+            linhas.append((script_path.stem, nome, info))
         return linhas
 
     @staticmethod
     def _descrever_capturas(info: dict) -> str:
+        if "por_perfil" in info:
+            partes = " + ".join(f"{n} {perfil}" for perfil, n in info["por_perfil"].items())
+            return f"{info['total']} ({partes})"
         if info["niveis"] > 1:
             return f"{info['total']} ({info['niveis']} níveis x {info['por_nivel']})"
         return str(info["total"])
@@ -413,6 +457,8 @@ class SessaoCLI:
             )
         else:
             quantidade = f"até {escritas} gravações na Flash da AMETEK nesta bateria"
+        if linhas and "por_perfil" in linhas[0][2]:
+            quantidade += f", somadas nos {len(linhas[0][2]['por_perfil'])} perfis"
         texto = (
             f"TRACe: {quantidade} "
             f"(referência: a fonte travou na ~{mestre.ESCRITAS_TRACE_REFERENCIA_TRAVA}.ª "
@@ -453,7 +499,7 @@ class SessaoCLI:
     def cmd_set(self, args: List[str]) -> int:
         if len(args) < 2:
             print("Uso: set diagnostico on|off   |   set capturas <N>|padrao   |   set seed <N>|padrao   |   "
-                "set perfil norma|literatura|fronteira   |   set sorteio on|off   |   "
+                "set perfil norma|literatura|fronteira|todos   |   set sorteio on|off   |   "
                 "set recalibracao on|off   |   set html on|off")
             return 1
         chave, valor = args[0].lower(), args[1].lower()
@@ -524,11 +570,21 @@ class SessaoCLI:
             print(f"seed base: {seed} (vale a partir do próximo run; gravada no metadata como base_seed)")
             return 0
         if chave == "perfil":
+            if valor == mestre.PERFIL_TODOS_ROTULO:
+                mestre.PERFIL_TODOS = True
+                print(
+                    f"perfil de faixas: todos ({', '.join(mestre.perfis_da_rodada())}) — run all / run <lista> / "
+                    "run <NN> percorrem os três na mesma sessão, um NN_classe.npz por classe (vale a partir do "
+                    "próximo run; cada captura leva o seu perfil no metadata)"
+                )
+                return 0
             try:
-                mestre.PERFIL = perfis.validar(valor)
+                novo = perfis.validar(valor)
             except ValueError as exc:
-                print(f"perfil: {exc}; mantendo {mestre.PERFIL}")
+                print(f"perfil: {exc} ou {mestre.PERFIL_TODOS_ROTULO}; mantendo {self._descrever_perfil()}")
                 return 1
+            mestre.PERFIL = novo
+            mestre.PERFIL_TODOS = False
             print(f"perfil de faixas: {mestre.PERFIL} (vale a partir do próximo run; gravado no metadata como perfil)")
             return 0
         if chave == "sorteio":
@@ -643,7 +699,8 @@ class SessaoCLI:
         for classe_id, nome, info in linhas:
             print(f"  {classe_id}  {nome:30s} {self._descrever_capturas(info)} capturas")
         if not self.confirmar(
-            f"Vai energizar a saída e rodar as classes {normalizada} ({len(linhas)} classes, "
+            f"Vai energizar a saída e rodar as classes {normalizada} ({len(linhas)} classes"
+            f"{self._texto_dos_perfis()}, "
             f"{total_capturas} capturas planejadas). {self._aviso_escritas_trace(linhas)} "
             "Confirme fisicamente probe, cabos, E-stop e EUT.",
             f"EXECUTAR-CLASSES-{normalizada}",
@@ -659,8 +716,15 @@ class SessaoCLI:
         experimento_cls = mestre.Bancada._carregar_classe_experimento(script_path)
         nome = getattr(experimento_cls, "nome", script_path.stem)
         confirmacao = f"EXECUTAR-CLASSE-{script_path.stem}"
+        extra = ""
+        if mestre.PERFIL_TODOS:
+            linhas = self._capturas_das_classes([script_path])
+            extra = (
+                f" nos 3 perfis ({self._descrever_capturas(linhas[0][2])} capturas planejadas; "
+                f"{self._aviso_escritas_trace(linhas)})"
+            )
         if not self.confirmar(
-            f"Vai energizar a saída e rodar a classe {script_path.stem} ({nome}). "
+            f"Vai energizar a saída e rodar a classe {script_path.stem} ({nome}){extra}. "
             "Confirme fisicamente probe, cabos, E-stop e EUT.",
             confirmacao,
         ):
@@ -675,13 +739,12 @@ class SessaoCLI:
                 # INTERRUPTION mediriam baseline no nível de segurança (0 V)
                 # em vez de BASE_VOLTAGE_RMS (ver Bancada.assegurar_tensao_base).
                 bancada.assegurar_tensao_base()
-                experimento = experimento_cls(bancada)
-                experimento.executar()
+                executados = bancada.executar_classe_nos_perfis(experimento_cls)
             resultado = mestre.ResultadoClasse(
                 script_path.stem, nome, ok=True,
-                descartadas=getattr(experimento, "_capturas_descartadas_count", 0),
-                invalidas=getattr(experimento, "_capturas_invalidas_count", 0),
-                puladas=getattr(experimento, "_capturas_puladas_count", 0),
+                descartadas=sum(getattr(e, "_capturas_descartadas_count", 0) for e in executados),
+                invalidas=sum(getattr(e, "_capturas_invalidas_count", 0) for e in executados),
+                puladas=sum(getattr(e, "_capturas_puladas_count", 0) for e in executados),
             )
             print(f"OK: [{resultado.id}] {resultado.nome} -> {resultado.pasta_esperada}{self._ressalvas(resultado)}")
             sucesso = True
@@ -709,7 +772,7 @@ class SessaoCLI:
         total_capturas = sum(info["total"] for _, _, info in linhas)
         if not self.confirmar(
             "Bateria completa das 20 classes, sequencial, sem parar numa falha isolada"
-            f"{excluidas or '.'} "
+            f"{self._texto_dos_perfis()}{excluidas or '.'} "
             f"Planejadas: {total_capturas} capturas. {self._aviso_escritas_trace(linhas)} "
             "Confirme que comm/trigger/native já passaram e que probe, cabos, E-stop e "
             "EUT estão conferidos.",

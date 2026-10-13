@@ -1,5 +1,6 @@
 """Análise offline de uma pasta de sessão (``resultados/sessao_*/``): para
-cada ``.npz``, reconstrói a forma esperada via ``gerar()`` + ``seed`` do
+cada captura (de todos os perfis; ``.npz`` do formato 2, um por classe, ou um
+por captura nas sessões antigas — ``sessao_io.py``), reconstrói a forma esperada via ``gerar()`` + ``seed`` do
 metadata (mesma técnica usada manualmente na investigação do
 CHANGELOG/v1.7.md), mede deslocamento por cross-correlação e razão de pico
 e correlação do distúrbio. Só numérico: as figuras ficam no relatório HTML
@@ -25,6 +26,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 EXPERIMENT_DIRS = (PROJECT_ROOT / "experimentos_nativos", PROJECT_ROOT / "experimentos_waveform")
 if str(PROJECT_ROOT / "logica") not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT / "logica"))
+import sessao_io  # noqa: E402
 from sinais import correlacao_disturbio, janela_nominal  # noqa: E402
 
 # Valores usados só quando o metadata é ANTIGO e não os traz. Enquanto
@@ -205,44 +207,45 @@ def analisar_sessao(sessao_dir: Path) -> List[Dict]:
     if not metadata_dir.is_dir():
         raise FileNotFoundError(f"{sessao_dir} não parece uma pasta de sessão (sem metadata/)")
 
-    metadados_por_id_captura: Dict[str, dict] = {}
-    for jsonl_path in metadata_dir.glob("*.jsonl"):
-        for linha in jsonl_path.read_text(encoding="utf-8").splitlines():
-            if not linha.strip():
-                continue
-            registro = json.loads(linha)
-            metadados_por_id_captura[registro["id_captura"]] = registro
+    metadados = sessao_io.carregar_metadados(sessao_dir)
 
     relatorio: List[Dict] = []
     avisos: List[str] = []
+    blocos_simulados: set = set()
 
-    for npz_path in sorted(sessao_dir.glob("*.npz")):
-        stem = npz_path.stem
-        dados = np.load(npz_path, allow_pickle=True)
-        n_capturas = dados["tensao_pu"].shape[0]
-        if n_capturas > 1:
-            # Formato simulado (_salvar_classe_simulada em mestre.py): um
-            # único .npz por classe com todas as capturas empilhadas em
-            # tensao_pu (N, pontos) — bem diferente do formato real (1 .npz
-            # por captura, sempre 1 linha), que é o único que esta ferramenta
-            # sabe analisar. Sem este check, dados["tensao_pu"][0] analisaria
-            # silenciosamente só a 1ª de até N capturas e reportaria como se
-            # fosse a classe inteira — nenhum erro, resultado enganoso.
-            relatorio.append({
-                "classe": stem,
-                "erro": (
-                    f"arquivo tem {n_capturas} capturas empilhadas (formato simulado); "
-                    "esta ferramenta só analisa capturas únicas do formato real (1 por arquivo)"
-                ),
-            })
+    for captura in sessao_io.ler_capturas(sessao_dir, metadados=metadados, versoes=("medida",)):
+        if captura.grandeza != "Tensão" or "medida" not in captura.versoes:
             continue
-        id_captura = str(dados["id_captura"][0])
-        metadado = metadados_por_id_captura.get(id_captura)
+        # Um arquivo por captura (formato antigo): o nome do arquivo. Um por
+        # classe (formato 2): arquivo, perfil e id (o mesmo id existe em cada
+        # perfil de uma sessão "set perfil todos").
+        stem = captura.arquivo.stem if captura.formato == "por_captura" \
+            else f"{captura.arquivo.stem}:{captura.perfil}:{captura.id_captura}"
+        id_captura = captura.id_captura
+        metadado = captura.metadado
+        simulada = captura.formato == "empilhado" or bool((metadado or {}).get("simulado"))
+        if simulada:
+            # Dataset simulado: milhares de capturas por arquivo. Um erro por
+            # arquivo (e perfil), nunca um por captura nem a análise da 1ª
+            # como se fosse a classe inteira.
+            bloco = (captura.arquivo, captura.perfil)
+            if bloco not in blocos_simulados:
+                blocos_simulados.add(bloco)
+                rotulo = captura.arquivo.stem if captura.formato == "empilhado" \
+                    else f"{captura.arquivo.stem}:{captura.perfil}"
+                relatorio.append({
+                    "classe": rotulo,
+                    "erro": (
+                        "arquivo do dataset simulado (capturas empilhadas, sem medição física); "
+                        "esta ferramenta só analisa capturas de bancada"
+                    ),
+                })
+            continue
         if metadado is None:
             relatorio.append({"classe": stem, "erro": f"sem metadata para id_captura={id_captura!r}"})
             continue
         class_id = id_captura.split("-")[0]
-        capturado = dados["tensao_pu"][0]
+        capturado = captura.versoes["medida"]
         amostras_totais = metadado.get("amostras_totais", metadado["pontos"])
         margem_antes = metadado.get("margem_amostras_antes", 0)
 
@@ -318,16 +321,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     relatorio = analisar_sessao(args.sessao_dir)
-    print(f"{'arquivo':<40}{'lag (ms)':>12}{'correlação':>12}{'corr. distúrbio':>17}{'razão pico':>12}")
+    print(f"{'arquivo[:perfil:id]':<52}{'lag (ms)':>12}{'correlação':>12}{'corr. distúrbio':>17}{'razão pico':>12}")
     for linha in relatorio:
         if "erro" in linha:
-            print(f"{linha['classe']:<40}  ERRO: {linha['erro']}")
+            print(f"{linha['classe']:<52}  ERRO: {linha['erro']}")
             continue
         cd = linha["correlacao_disturbio"]
         cd_txt = "n/a" if cd is None else f"{cd:.3f}"
-        print(f"{linha['classe']:<40}{linha['lag_ms']:>12.2f}{linha['correlacao']:>12.3f}{cd_txt:>17}{linha['razao_pico']:>12.3f}")
+        print(f"{linha['classe']:<52}{linha['lag_ms']:>12.2f}{linha['correlacao']:>12.3f}{cd_txt:>17}{linha['razao_pico']:>12.3f}")
         if cd is None:
-            print(f"{'':<40}  corr. distúrbio n/a: {linha['correlacao_disturbio_motivo']}")
+            print(f"{'':<52}  corr. distúrbio n/a: {linha['correlacao_disturbio_motivo']}")
     return 0
 
 
