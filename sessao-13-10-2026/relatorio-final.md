@@ -178,4 +178,4 @@ Para isso foi criado `scripts/verificar_sessao_bancada.py`, que mede os três nu
 
 ## 10. Como a rodada correu
 
-As tarefas rodaram em paralelo, até 3 de cada vez, cada uma numa cópia separada do repositório. Eu conferia e juntava cada uma no branch, o que gerou conflitos de junção (resolvidos sem perda). Em 13/10 a rodada foi pausada a seu pedido e retomada em 15/10 de onde parou. Os relatórios individuais de cada tarefa estão no zip `relatorios-individuais.zip`, junto deste arquivo.
+As tarefas rodaram em paralelo, até 3 de cada vez, cada uma numa cópia separada do repositório. Eu conferia e juntava cada uma no branch, o que gerou conflitos de junção (resolvidos sem perda). Em 13/10 a rodada foi pausada a seu pedido e retomada em 15/10 de onde parou. Os relatórios individuais de cada tarefa estão na pasta `specs/2026-10-13/relatorios-individuais/`.
