@@ -72,7 +72,7 @@ if (-not [string]::IsNullOrWhiteSpace($env:BASE_SEED)) {
 }
 
 # Range sempre 300 Vrms; todos os limites iguais ao teto do hardware.
-# 380 V (v1.13, decisão do dono: opção B — não suportado): a MX30-3Pi gera no
+# 380 V (v1.13, opção B — não suportado): a MX30-3Pi gera no
 # máximo 300 Vrms POR FASE (fase-neutro) e 425 Vp (manual §4.14 p. 84), e a
 # bancada mede UMA fase, L-N. 380 Vrms L-N (537 Vp) é impossível nesta fonte.
 # Num sistema 220/380 V, 380 V é a tensão de LINHA (fase-fase) e cada fase tem

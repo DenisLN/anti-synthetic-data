@@ -202,7 +202,7 @@ def preparar_pasta_da_sessao(
     """Uma vez por processo e pasta: copia a ``calibracao_extremos.json`` EM
     USO para dentro da sessão e grava ``sessao.json`` (commit, árvore suja,
     numpy, Python, caminho e SHA-256 da calibração, perfil de faixas). A
-    calibração muda depois das sessões (relatório do professor, pergunta 11):
+    calibração muda depois das sessões (é recalibrada a partir das medidas de cada rodada):
     sem a cópia, o ``k`` recalculado a partir do código de hoje deixa de bater
     com o gravado.
 
@@ -670,7 +670,9 @@ def extremo_previsto_com_disturbio_v(
     return margem * (fator_referencia * pico_v + fracao * (fator - fator_referencia) * pico_modelo_v)
 
 
-# Limite de bancada (v1.13, decisão do dono para 220 V: opção b). Nas classes
+# Limite de bancada (v1.13, opção b para 220 V: reduzir só o distúrbio em vez de
+# pular a captura, porque a v1.12 pulava 10, 11, 14 e 16 a 220 V com extremo
+# previsto de 423 a 499 V, acima de 415,8 V). Nas classes
 # WAVEFORM cujo extremo previsto passa do teto, a captura FÍSICA reduz só a
 # amplitude do distúrbio (forma = senoide + fração × (gerar() - senoide)) até
 # o extremo previsto caber, grava a fração e os parâmetros aplicados no
@@ -716,11 +718,10 @@ BATERIA_EXCLUIR = tuple(
 
 # Erros que invalidam só UMA captura: ExperimentoBase.executar() loga,
 # descarta a captura (não grava nada para ela) e segue para a PRÓXIMA
-# posição do plano — nunca propaga para executar_bateria(). Pedido do dono
-# em 2026-09-22, reagindo ao readback do p01/p02 ("a captura falha na
-# hora"): "não aborte a bateria de testes, apenas log e descarte — abortar
-# gasta MUITO tempo" (reexecutar a classe inteira do zero, até 3x, custava
-# exatamente isso).
+# posição do plano — nunca propaga para executar_bateria(). Decisão de projeto
+# de 2026-09-22, motivada pela medida dos ensaios p01/p02 (a captura falha na
+# hora, erro 19 e divergência de readback): não abortar a bateria por uma
+# captura, porque abortar reexecutava a classe inteira do zero, até 3x.
 #
 # - InstrumentHardwareError: erro 19 "Illegal during transient" (p01),
 #   divergência de readback (p02), ou qualquer outro assert_no_errors()
@@ -792,8 +793,8 @@ class Config:
         Simulado: ``SIM_CAPTURES_PER_CLASS``, sempre — o dataset não depende
         de padrão de bancada nem da CLI. Bancada: o MAIOR entre o valor
         global (``set capturas N`` quando o operador digitou, senão
-        ``REAL_CAPTURES_PER_CLASS``, padrão 1) e o padrão da classe — pedido
-        do dono (2026-10-07): ``set capturas 3`` numa classe de padrão 6 roda
+        ``REAL_CAPTURES_PER_CLASS``, padrão 1) e o padrão da classe (decisão de
+        projeto, v1.13): ``set capturas 3`` numa classe de padrão 6 roda
         6; numa de padrão 1, 3. A CLI avisa quando o padrão vence."""
         if simulated:
             return self.sim_captures_per_class
@@ -809,7 +810,7 @@ class Config:
 # ---------------------------------------------------------------------------
 
 # Margem mínima, em ciclos da rede, entre as bordas da janela e o distúrbio
-# (tmin da proposta 3 de atividade.tex): ao menos 1 ciclo de senoide limpa
+# (t_min do desenho do sorteio, v1.15): ao menos 1 ciclo de senoide limpa
 # antes e depois. A duração de um evento vai de meio ciclo ao que sobra.
 SORTEIO_TMIN_CICLOS = 1.0
 SORTEIO_DURACAO_MIN_CICLOS = 0.5
@@ -1553,9 +1554,9 @@ class ExperimentoBase(ABC):
     pre_trigger_s: float = 0.0
     # Capturas PADRÃO desta classe na bancada real — por nível nas classes
     # com ``NIVEIS`` (02/03/05), como ``set capturas N``. 1 = comportamento
-    # até a v1.12. Pedido do dono (2026-10-07): 3 nas classes que SORTEIAM
-    # parâmetros em ``gerar()`` (04, 06, 07, 08, 09, 17, 19, 20), 1 nas
-    # determinísticas. Não afeta o dataset simulado (``SIM_CAPTURES_PER_CLASS``)
+    # até a v1.12. Desde a v1.13: 3 nas classes que SORTEIAM
+    # parâmetros em ``gerar()`` (04, 06, 07, 08, 09, 17, 19, 20; uma captura
+    # mostra uma só realização do sorteio), 1 nas determinísticas. Não afeta o dataset simulado (``SIM_CAPTURES_PER_CLASS``)
     # nem a regra de cobertura determinística/caracterização da 08, que
     # continua exigindo ``set capturas`` digitado pelo operador
     # (``capturas_override``). Tabela completa: README, seção "Capturas por
@@ -2303,7 +2304,7 @@ class ExperimentoBase(ABC):
     # termina em 200ms (relatório 01 §2(i)); 50ms depois cobrem o retorno ao
     # regime e o sobre-pico de transição observado nas bordas do evento.
     #
-    # Desde 2026-09-22 (P10, pedido do dono) esta margem deixou de ser
+    # Desde 2026-09-22 (P10, decisão de projeto) esta margem deixou de ser
     # opt-in — não existe mais ``set margin on|off`` nem modo "sem margem"
     # para captura física; é sempre aplicada. NÃO reduzir abaixo disto sem
     # refazer a medida (ver `arquivo/analises:docs/analise-2026-09-21/01_conclusao_investigacao.md` §2(i)).
@@ -2394,8 +2395,8 @@ class ExperimentoBase(ABC):
         ``Bancada`` (uma conexão): os perfis de um ``set perfil todos`` caem no
         mesmo arquivo; uma ``Bancada`` nova, na mesma pasta, recomeça a classe
         (como a rodada nova sempre substituiu a anterior)."""
-        dono = getattr(self, "bancada", None)
-        registro = (dono if dono is not None else self).__dict__.setdefault("_arquivos_classe", {})
+        pai = getattr(self, "bancada", None)
+        registro = (pai if pai is not None else self).__dict__.setdefault("_arquivos_classe", {})
         chave = (str(Path(self.config.results_dir).resolve()), self.id)
         arquivo = registro.get(chave)
         if arquivo is None:
@@ -2408,10 +2409,10 @@ class ExperimentoBase(ABC):
         """Solta o acumulador da classe (a memória das capturas) quando esta
         execução não faz parte de uma bateria que ainda vai gravar outro
         perfil nele (``Bancada.executar_bateria`` solta no fim da classe)."""
-        dono = getattr(self, "bancada", None)
-        if dono is not None and getattr(dono, "_manter_arquivos_classe", False):
+        pai = getattr(self, "bancada", None)
+        if pai is not None and getattr(pai, "_manter_arquivos_classe", False):
             return
-        registro = (dono if dono is not None else self).__dict__.get("_arquivos_classe", {})
+        registro = (pai if pai is not None else self).__dict__.get("_arquivos_classe", {})
         registro.pop((str(Path(self.config.results_dir).resolve()), self.id), None)
 
     def _iniciar_gravacao_incremental(self) -> None:
@@ -2676,9 +2677,8 @@ class ExperimentoBase(ABC):
                         self._validar_captura(time_s, measured_voltage_pu, pontos_esperados=pontos_efetivos)
                     except ERROS_CAPTURA_DESCARTAVEL as exc:
                         # Só ESTA captura é perdida — a bateria/classe seguem para a
-                        # próxima posição do plano, sem retentar do zero (pedido do
-                        # dono em 2026-09-22: "não aborte, apenas log e descarte;
-                        # abortar a bateria gasta MUITO tempo"). Nada é gravado para
+                        # próxima posição do plano, sem retentar do zero (decisão de
+                        # projeto de 2026-09-22, ver o comentário acima). Nada é gravado para
                         # ela. Ver ERROS_CAPTURA_DESCARTAVEL para o que entra/não
                         # entra nesta lista e por quê.
                         logger.error(
@@ -3052,7 +3052,7 @@ class ExperimentoWaveform(ExperimentoBase):
     def _limitar_disturbio_para_bancada(
         self, voltage_pu: np.ndarray, parametros: Dict[str, float], capture_index: int,
     ) -> np.ndarray:
-        """Opção (b) do dono para 220 V: se o extremo previsto da forma do
+        """Opção (b) para 220 V: se o extremo previsto da forma do
         modelo passa do teto, reduz SÓ o distúrbio (a senoide base fica em
         1 pu) à maior fração que cabe pelo modelo de
         ``extremo_previsto_com_disturbio_v``. Nunca sobe nada; nunca toca

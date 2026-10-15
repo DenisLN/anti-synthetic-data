@@ -161,7 +161,8 @@ def snr_medida(limpo: np.ndarray, ruidoso: np.ndarray) -> float:
     return 10.0 * math.log10(potencia_sinal / potencia_ruido)
 
 
-# Ruído aplicado SÓ na janela rotulada (v1.15, proposta 8 de atividade.tex):
+# Ruído aplicado SÓ na janela rotulada (v1.15; a margem de captura não pertence
+# ao rótulo):
 # potência de referência = mean(janela**2); as margens de captura (20 ms antes,
 # 50 ms depois) não entram no arquivo com ruído.
 SEMENTE_BASE_RUIDO = 50_000_000
@@ -571,7 +572,7 @@ def correlacao_disturbio_fundamental_ajustada(
 
 
 # ---------------------------------------------------------------------------
-# Forma "programada" das classes NATIVAS (v1.16)
+# Forma "programada" das classes NATIVAS (v1.15)
 # ---------------------------------------------------------------------------
 # Nas classes nativas (01-05, 18, 19) a fonte gera a forma sozinha; o que o
 # código programa é um NÍVEL (STEP/PULSe), um THD (CSINe), dois pontos de

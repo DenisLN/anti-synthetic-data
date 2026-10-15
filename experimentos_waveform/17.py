@@ -11,8 +11,9 @@ from sinais import aplicar_entalhes, aplicar_entalhes_continuos, oscilacao_amort
 class Experimento(ExperimentoWaveform):
     id = "17"
     nome = "NOTCH_OSCILLATORY_TRANSIENT"
-    # Parâmetro SORTEADO em gerar(): 3 capturas por padrão na bancada (pedido
-    # do dono, 2026-10-07; CHANGELOG/v1.13.md). Não muda o dataset simulado.
+    # Parâmetro SORTEADO em gerar(): 3 capturas por padrão na bancada (uma
+    # captura mostra uma só realização do sorteio; CHANGELOG/v1.13.md). Não
+    # muda o dataset simulado.
     capturas_padrao = 3
 
     def gerar(self, t, f0, capture_index, rng):

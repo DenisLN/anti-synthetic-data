@@ -1,7 +1,7 @@
 """Gera OFFLINE o `modelo` e a `programada` de cada captura de uma sessão da
 bancada, a partir do metadata (seed, nível, k, parâmetros programados).
 
-Para sessões gravadas antes da v1.16 (sem `tres_versoes/`, um `.npz` por
+Para sessões gravadas antes da v1.15 (sem `tres_versoes/`, um `.npz` por
 captura). As sessões do formato 2 (um `NN_classe.npz` por classe, v1.15 em
 diante) já trazem modelo, programada e medida dentro dele (`logica/sessao_io.py`,
 `docs/dataset.md`): este script as recusa. Sem hardware, e
