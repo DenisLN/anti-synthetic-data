@@ -63,6 +63,13 @@ class InstrumentHardwareError(AmetekORMError):
     pass
 
 
+class LeituraTraceError(AmetekORMError):
+    """A leitura de diagnóstico de uma TRACe (``ler_trace``) falhou: timeout,
+    resposta ilegível ou com tamanho diferente de ``TRACE_POINTS``. Não é falha
+    de infraestrutura por si (não herda ``CommunicationError``): quem chama
+    registra e segue, mas deve conferir que a fonte continua respondendo."""
+
+
 class FalhaFatalDeInstrumento(AmetekORMError):
     """Infraestrutura real comprometida (serial caiu, impossível confirmar
     OUTPUT, instrumento não voltou a um estado seguro conhecido) — quem
@@ -169,6 +176,11 @@ class AmetekMX30:
     # Comandos que gravam na Flash têm espera própria, e clear_all_traces()
     # documenta que a fonte NÃO deve ser consultada durante a gravação.
     _SEM_SINCRONISMO = ("TRACE:DATA", "TRACE:DEFINE", "TRACE:DELETE")
+    # Comandos que gravam na Flash, incluindo as formas abreviadas do manual
+    # (TRAC:DATA ...): marcam o instante a partir do qual ler_trace() espera.
+    _GRAVA_FLASH = (
+        "TRACE:DATA", "TRACE:DEFINE", "TRACE:DELETE", "TRAC:DATA", "TRAC:DEF", "TRAC:DEL",
+    )
     # Bits de erro do Standard Event Status (manual p. 169): QYE, DDE, EXE, CME.
     _ESR_BITS_DE_ERRO = 0x04 | 0x08 | 0x10 | 0x20
     # Consulta de sincronismo de write(): "ESR" (padrão — 20/20 na bancada em
@@ -224,6 +236,12 @@ class AmetekMX30:
         # da fonte ([AM] p. 126). A sessão 2 travou na 280.ª; sem este
         # número no metadata não há como correlacionar exposição e falha.
         self.escritas_trace = 0
+        # Instante (time.monotonic) do último comando que grava na Flash
+        # (TRACe:DATA/DEFine/DELete). ler_trace() espera um mínimo depois dele.
+        self._t_ultima_escrita_trace: Optional[float] = None
+        # Quanto ler_trace() esperou na última chamada (s) e o que a fonte
+        # devolveu: para o metadata/teste (no simulado não dorme).
+        self.ultima_espera_leitura_trace_s = 0.0
         self._last_cycles = 0
         # Modo/forma atuais rastreados em Python — coincidem com o que
         # configure_safe_baseline() sempre programa numa conexão nova (AC,
@@ -262,6 +280,9 @@ class AmetekMX30:
             "current": max_current_a,
             "trigger_state": "IDLE",
             "trace_names": set(),
+            # Dados gravados por TRACe:DATA (nome em maiúsculas -> texto dos
+            # valores como enviados); ler_trace() simulado devolve isto.
+            "trace_data": {},
             # Um contador por eixo (FUNCTION/VOLTAGE/DWELL/REPEAT) — cada
             # SOURce:LIST:* tem sua própria consulta :POINts?, independente
             # das outras (ver _simulate_write/_simulate_query).
@@ -364,6 +385,12 @@ class AmetekMX30:
         finally:
             self._close_resource()
 
+    @classmethod
+    def _grava_flash(cls, command: str) -> bool:
+        """Comando (não consulta) que escreve TRACe na Flash."""
+        upper = command.strip().upper()
+        return upper.startswith(cls._GRAVA_FLASH) and "?" not in upper.split(",", 1)[0]
+
     def _raw_write(self, command: str, *, append_eot: Optional[bool] = None) -> None:
         command = command.strip()
         _transcrever("W", command)
@@ -375,6 +402,8 @@ class AmetekMX30:
         self.command_log.append(command)
         if self.simulated:
             self._simulate_write(command)
+            if self._grava_flash(command):
+                self._t_ultima_escrita_trace = time.monotonic()
             return
         if self._resource is None or not self._connected:
             raise CommunicationError("Recurso VISA serial da AMETEK não está aberto")
@@ -387,6 +416,9 @@ class AmetekMX30:
                 self._resource.write_raw(b"\x04")
         except Exception as exc:
             raise CommunicationError(f"Falha escrevendo {command!r}: {exc}") from exc
+        finally:
+            if self._grava_flash(command):
+                self._t_ultima_escrita_trace = time.monotonic()
 
     def write(self, command: str) -> None:
         """Envia um comando e só retorna depois que a fonte o CONSUMIU.
@@ -395,7 +427,7 @@ class AmetekMX30:
         (``VI_ASRL_FLOW_NONE``). Comandos enviados em rajada, sem nada que
         espere a fonte processar o anterior, são perdidos em silêncio ou
         chegam colados (``-113 "Undefined header"``) — medido na bancada em
-        2026-09-30 (docs/analise-2026-09-30/ANALISE.md, N1): a rajada
+        2026-09-30 (`arquivo/analises:docs/analise-2026-09-30/ANALISE.md`, N1): a rajada
         ``FUNCtion:MODE FIXed; SOURce:FREQuency:MODE FIXed; VOLTage:MODE STEP;
         VOLTage:TRIGgered 5`` pegou 0/3 vezes sem prelúdio e 0-1/3 depois de
         ACDC/CSINe; a mesma sequência com uma consulta após cada write pegou
@@ -528,6 +560,9 @@ class AmetekMX30:
                 pass
         elif upper.startswith("TRACE:DEFINE ") or upper.startswith("TRAC:DEF "):
             self._sim["trace_names"].add(command.split()[-1].upper())
+        elif upper.startswith(("TRACE:DATA ", "TRAC:DATA ")):
+            nome, _, valores = command.split(None, 1)[1].partition(",")
+            self._sim["trace_data"][nome.strip().upper()] = valores.strip()
         elif list_axis is not None:
             self._sim["list_points"][list_axis] = len(command.split(None, 1)[1].split(","))
         elif upper.startswith("INIT"):
@@ -580,6 +615,8 @@ class AmetekMX30:
             return str(self._sim.get("pulse_width", 0.0))
         if upper == "TRACE:CATALOG?":
             return ",".join(sorted(self._sim["trace_names"]))
+        if upper.startswith(("TRACE:DATA? ", "TRAC:DATA? ")):
+            return str(self._sim["trace_data"].get(upper.split(None, 1)[1].strip(), ""))
         list_axis = self._list_axis_for_points_query(upper)
         if list_axis is not None:
             return str(self._sim["list_points"].get(list_axis, 0))
@@ -1269,6 +1306,7 @@ class AmetekMX30:
         bateria depois disso e ``TRACe:DELete:ALL`` recusa com OUTPUT ligado."""
         if self.simulated:
             self._sim["trace_names"].clear()
+            self._sim["trace_data"].clear()
             return
         if self.output_enabled:
             raise InstrumentHardwareError("Recusado TRACe:DELete:ALL porque OUTPUT está ligado")
@@ -1312,11 +1350,67 @@ class AmetekMX30:
                 self.assert_no_errors(f"definição da TRACE {name}")
                 catalog.add(name)
 
+    def ler_trace(
+        self, nome: str, *, espera_minima_s: float = 2.0, timeout_s: float = 15.0,
+    ) -> np.ndarray:
+        """Lê de volta a TRACe gravada (``TRACe:DATA? <nome>``) — DIAGNÓSTICO,
+        nunca parte do fluxo normal. Devolve ``TRACE_POINTS`` valores
+        (o manual diz "normalized values in the range of ±1", p. 147).
+
+        Segurança (``docs/quirks.md`` A2; ``CHANGELOG/v1.12.md``): consultar a
+        fonte logo depois de ``TRACe:DATA`` a deixou muda até ser religada.
+        Por isso: (1) recusa se o último comando enviado foi uma escrita de
+        TRACe; (2) espera até ``espera_minima_s`` (padrão 2 s) desde a última
+        escrita de TRACe/DEFine/DELete desta conexão; (3) quem chama deve usar
+        só depois do transiente concluído e antes de nova programação —
+        ``ler_trace`` não escreve nada na Flash. O query tem timeout próprio
+        (``timeout_s``), restaurado no fim. Falha de leitura (timeout, resposta
+        ilegível, tamanho != 1024) levanta ``LeituraTraceError``, que NÃO é
+        falha de infraestrutura; a conferência de que a fonte segue viva fica
+        com o chamador (ver ``Bancada._ler_traces_de_diagnostico``)."""
+        if self.command_log and self._grava_flash(self.command_log[-1]):
+            raise AmetekORMError(
+                "ler_trace recusado: o comando anterior foi uma escrita de TRACe "
+                f"({self.command_log[-1][:40]!r}...); consultar a fonte logo depois de "
+                "TRACe:DATA a deixa muda (docs/quirks.md A2)"
+            )
+        espera_s = 0.0
+        if self._t_ultima_escrita_trace is not None:
+            espera_s = max(0.0, float(espera_minima_s) - (time.monotonic() - self._t_ultima_escrita_trace))
+        self.ultima_espera_leitura_trace_s = espera_s
+        if espera_s > 0.0 and not self.simulated:
+            time.sleep(espera_s)
+        comando = f"TRACe:DATA? {nome}"
+        timeout_anterior = None
+        if not self.simulated and self._resource is not None:
+            timeout_anterior = self._resource.timeout
+            self._resource.timeout = int(round(float(timeout_s) * 1000.0))
+        try:
+            resposta = self.query(comando)
+        except CommunicationError as exc:
+            raise LeituraTraceError(f"Sem resposta a {comando!r} em {timeout_s:.0f} s: {exc}") from exc
+        finally:
+            if timeout_anterior is not None:
+                self._resource.timeout = timeout_anterior
+        try:
+            valores = np.array([float(token) for token in resposta.split(",")], dtype=np.float64)
+        except ValueError as exc:
+            raise LeituraTraceError(
+                f"Resposta a {comando!r} não é uma lista numérica: {resposta[:80]!r}"
+            ) from exc
+        if valores.size != self.TRACE_POINTS or not np.all(np.isfinite(valores)):
+            raise LeituraTraceError(
+                f"{comando!r} devolveu {valores.size} valores; esperado {self.TRACE_POINTS} finitos"
+            )
+        return valores
+
     @staticmethod
     def _resample_cycle(cycle: np.ndarray) -> np.ndarray:
         source_x = np.arange(len(cycle), dtype=np.float64) / len(cycle)
         target_x = np.arange(AmetekMX30.TRACE_POINTS, dtype=np.float64) / AmetekMX30.TRACE_POINTS
-        return np.interp(target_x, source_x, cycle)
+        # period=1.0: o ciclo é fechado (a amostra seguinte à última é a
+        # primeira), sem repetir a última amostra nos ~2 últimos pontos.
+        return np.interp(target_x, source_x, cycle, period=1.0)
 
     @classmethod
     def montar_programacao(
@@ -1329,8 +1423,9 @@ class AmetekMX30:
     ) -> ProgramacaoCaptura:
         """Função pura (sem SCPI, sem estado) que decide o que ``program_capture``
         programa: ciclos de ``FS_HZ / frequency_hz`` amostras, cada um sem a
-        componente DC, reamostrado para ``TRACE_POINTS`` pontos, sem a média,
-        normalizado pelo pico, mais o rms do ciclo para ``SOURce:LIST:VOLTage``.
+        componente DC, reamostrado (periódico) para ``TRACE_POINTS`` pontos, sem a
+        média, normalizado pelo pico, mais o rms da componente CA do ciclo para
+        ``SOURce:LIST:VOLTage``.
         ``program_capture()`` envia exatamente isto e
         ``ProgramacaoCaptura.programada_pu()`` reconstrói a forma emitida,
         offline. Levanta ``ValueError`` nas mesmas condições de antes."""
@@ -1368,7 +1463,12 @@ class AmetekMX30:
         for index in range(ciclos):
             start = index * pontos_por_ciclo
             cycle = waveform[start : start + pontos_por_ciclo] - dc_component
-            cycle_rms_pu = float(np.sqrt(np.mean(np.square(cycle))))
+            # rms da componente CA do ciclo (sem a média): a fonte remove o DC
+            # da TRACE e a escala para o rms de LIST:VOLTage (manual p. 126);
+            # com o rms "com média" a amplitude CA saía inflada nos ciclos de
+            # média != 0 (degrau a meio ciclo: classes 10, 11, 12, 16).
+            cycle_ca = cycle - np.mean(cycle)
+            cycle_rms_pu = float(np.sqrt(np.mean(np.square(cycle_ca))))
             voltage_rms = base_voltage_rms * math.sqrt(2.0) * cycle_rms_pu
             list_voltages.append(voltage_rms)
             trace = cls._resample_cycle(cycle)
@@ -1378,13 +1478,20 @@ class AmetekMX30:
                 trace = np.zeros(cls.TRACE_POINTS, dtype=np.float64)
             else:
                 trace /= scale
-                # O pico físico real do ciclo reconstruído é o pico em pu
-                # (scale, antes da normalização) multiplicado pela tensão base
-                # de pico. A abordagem anterior (voltage_rms / trace_rms)
-                # infla incorretamente o resultado porque voltage_rms já
-                # incorpora o fator sqrt(2), levando a uma superestimativa de
-                # ~17% para senoide de 60 Hz reamostrada a 1024 pontos.
-                cycle_peak_v = scale * base_voltage_rms * math.sqrt(2.0)
+                # Pico físico emitido: a fonte escala a TRACE (pico 1) para o
+                # rms programado, então o pico é voltage_rms / rms(trace
+                # normalizada) — o mesmo fator que programada_pu() aplica. Com
+                # o rms CA no LIST:VOLTage isto coincide com scale · base · √2
+                # (pico CA do modelo, a menos da reamostragem); a forma
+                # explícita não depende dessa igualdade e não subestima o pico
+                # se o rms programado divergir do da TRACE.
+                # Calculado sobre os números como enviados (%.8g), que são os
+                # que programada_pu() reconstrói.
+                enviada = _como_enviado(trace)
+                rms_trace = float(np.sqrt(np.mean(np.square(enviada))))
+                cycle_peak_v = (
+                    float(np.max(np.abs(enviada))) * float(f"{voltage_rms:.8g}") / rms_trace
+                )
                 reconstructed_peak_v = max(reconstructed_peak_v, cycle_peak_v + pico_dc_v)
             traces.append(_como_enviado(trace))
             pico_acumulado.append(reconstructed_peak_v)
@@ -1854,6 +1961,19 @@ class AmetekMX30:
             logger.exception("Não foi possível confirmar shutdown da AMETEK")
 
     def measure_voltage(self) -> float:
+        # ATENÇÃO (ACDC): com ``SOURce:MODE ACDC`` (classe 19) esta leitura é o
+        # RMS TOTAL (CA + CC), não só a componente alternada, apesar do texto
+        # do manual ("ac rms voltage", Manual.txt:3031). Evidência: sessão
+        # run02 de 2026-10-07, transcrição linha 8310 (offset de 5,58 V já
+        # programado, antes do degrau CA: a fonte leu 5,491 V); a CA é
+        # sqrt(MEAS^2 - offset^2). Interpretação a partir de UMA leitura
+        # pré-degrau e da consistência das 3 capturas (relatório
+        # acdc_amplitude_VERIFICAR, §1.3); ``MEASure:VOLTage:DC?`` fecha a
+        # dúvida (scripts/diag_acdc_amplitude.py). Usos hoje: a verificação da
+        # cadeia de medição (``mestre.verificar_cadeia_de_medicao``, sempre em
+        # AC, sem efeito) e o log de ``set diagnostico on``
+        # (``_log_diagnostico``, campo ``tensao_v``), que em ACDC registra o
+        # RMS total.
         return float(self.query("MEASure:VOLTage:AC?"))
 
     def measure_current(self) -> float:

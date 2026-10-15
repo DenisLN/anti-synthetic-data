@@ -18,9 +18,21 @@ Para cada captura: no máximo 1 visualização completa e 3 detalhes.
   janelas escolhidas aparecem marcadas (D1, D2, D3) na visualização completa.
   ``--detalhes-manuais`` substitui a escolha automática por janelas fixas.
 
-Sem hardware: só lê os ``.npz``/``metadata/*.jsonl`` já gravados. Funciona na
-sessão original, na pasta ``sem_margem/`` de ``recortar_margem.py`` e no
-dataset simulado (arquivos com N capturas empilhadas).
+Sem hardware: só lê os ``.npz``/``metadata/*.jsonl`` já gravados
+(``sessao_io.py``: formato 2, um ``NN_classe.npz`` por classe com perfis e
+versões; e as sessões antigas, um ``.npz`` por captura). Funciona na sessão
+original, na pasta ``sem_margem/`` de ``recortar_margem.py`` e no dataset
+simulado.
+
+Seleção do que entra no HTML (todas combinam entre si):
+
+- ``--classes 02,05``: classes (prefixo ``NN``);
+- ``--perfis norma,fronteira``: perfis (``norma``, ``literatura``, ``fronteira``);
+- ``--versoes medida,modelo,programada``: versões desenhadas. A primeira
+  disponível (na ordem medida, modelo, programada) é o traço principal; as
+  outras são sobrepostas, na janela nominal. Padrão: ``medida``;
+- ``--capturas 02-0001,02-0005`` ou ``--capturas 1-3``: ids de captura e/ou
+  posições (1-based) dentro de cada classe e perfil.
 
 Uso:
     python logica/relatorio_html.py resultados/sessao_2026-09-30_14-00-00
@@ -53,6 +65,7 @@ import numpy as np
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT / "logica") not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT / "logica"))
+import sessao_io  # noqa: E402
 from recortar_margem import calcular_recorte, carregar_metadados  # noqa: E402
 
 MODELO_PADRAO = PROJECT_ROOT / "logica" / "modelos" / "relatorio_capturas.html"
@@ -68,6 +81,7 @@ COR_SINAL = "#1f5fa8"
 COR_ESPERADO = "#c2410c"
 COR_DETALHE = "#e8a33d"
 COR_MARGEM = "#9e9e9e"
+COR_VERSAO = {"modelo": "#2e7d32", "programada": "#7b1fa2"}
 
 
 @dataclass
@@ -85,9 +99,20 @@ class Captura:
     recorte: dict
     grandeza: str = "Tensão"
     esperado: Optional[np.ndarray] = None
+    perfil: str = ""
+    formato: str = "por_captura"
+    versao: str = "medida"
+    # Outras versões pedidas (modelo/programada), na grade da janela nominal.
+    sobrepostas: Dict[str, np.ndarray] = field(default_factory=dict)
     detalhes: List[Tuple[float, float]] = field(default_factory=list)
     detalhes_automaticos: bool = True
     correlacoes: Optional[dict] = None  # total e do distúrbio (físicas, com forma esperada)
+    # Captura compartilhada entre perfis (set perfil todos, classe independente
+    # do perfil): os dados existem uma vez, no perfil de origem.
+    compartilhada: bool = False
+    perfil_de_origem: str = ""
+    perfis_compartilhados: Tuple[str, ...] = ()
+    outros_perfis: Tuple[str, ...] = ()  # espelhos já cobertos por esta figura
 
     @property
     def tempo_ms(self) -> np.ndarray:
@@ -103,8 +128,20 @@ class Captura:
         return self.sinal[self.inicio_nominal : self.inicio_nominal + self.pontos_nominais]
 
     @property
+    def nome(self) -> str:
+        """Rótulo da captura: o arquivo (formato 1) ou arquivo · perfil · id
+        (formato 2, onde um arquivo tem todas as capturas da classe)."""
+        if self.formato == "classe":
+            extra = f" (= {', '.join(self.outros_perfis)})" if self.outros_perfis else ""
+            return f"{self.arquivo.stem} · {self.perfil} · {self.id_captura}{extra}"
+        return self.arquivo.stem
+
+    @property
     def ancora(self) -> str:
-        base = f"{self.arquivo.stem}-{self.linha}" if self.linha else self.arquivo.stem
+        if self.formato == "classe":
+            base = f"{self.arquivo.stem}-{self.perfil}-{self.id_captura}"
+        else:
+            base = f"{self.arquivo.stem}-{self.linha}" if self.linha else self.arquivo.stem
         return "cap-" + re.sub(r"[^A-Za-z0-9_-]+", "-", base)
 
 
@@ -214,7 +251,7 @@ def _reconstruir_esperado(captura: Captura) -> Optional[np.ndarray]:
     """Forma pedida (``gerar()`` + seed), via ``analisar_sessao``. Só para
     captura física de tensão; qualquer falha -> sem sobreposição."""
     md = captura.metadado
-    if md is None or md.get("simulado", True) or captura.grandeza != "Tensão":
+    if md is None or md.get("simulado", True) or captura.grandeza != "Tensão" or captura.versao != "medida":
         return None
     try:
         from analisar_sessao import _reconstruir_esperado as reconstruir
@@ -238,10 +275,14 @@ def _correlacoes(captura: Captura, esperado: Optional[np.ndarray]) -> Optional[d
         janela = captura.sinal[captura.inicio_nominal : captura.inicio_nominal + n]
         lag, total = analisar_offset(esperado, janela, captura.fs_hz)
         valor, motivo = _correlacao_disturbio_alinhada(esperado, captura.sinal, captura.inicio_nominal, lag, md)
+        ajustada, motivo_ajustada = _correlacao_disturbio_alinhada(
+            esperado, captura.sinal, captura.inicio_nominal, lag, md, fundamental_ajustada=True,
+        )
     except Exception as exc:  # noqa: BLE001 - relatório nunca cai por isto
         print(f"AVISO: {captura.id_captura}: correlações não calculadas ({exc})")
         return None
-    return {"total": total, "disturbio": valor, "motivo": motivo, "lag_ms": lag / captura.fs_hz * 1000.0}
+    return {"total": total, "disturbio": valor, "motivo": motivo, "lag_ms": lag / captura.fs_hz * 1000.0,
+            "disturbio_fund_ajustada": ajustada, "motivo_fund_ajustada": motivo_ajustada}
 
 
 def ler_capturas(
@@ -250,48 +291,64 @@ def ler_capturas(
     *,
     classes: Optional[Sequence[str]] = None,
     max_por_classe: Optional[int] = None,
+    perfis: Optional[Sequence[str]] = None,
+    versoes: Sequence[str] = ("medida",),
+    capturas: Optional[str] = None,
 ) -> List[Captura]:
     """Capturas de ``dados_dir`` (só os ``.npz`` dessa pasta), em ordem de
-    arquivo; ``classes`` filtra pelo prefixo ``NN_``."""
-    capturas: List[Captura] = []
-    por_classe: Dict[str, int] = {}
-    for npz_path in sorted(dados_dir.glob("*.npz")):
-        prefixo = npz_path.name.split("_", 1)[0]
-        if classes and prefixo not in classes:
-            continue
-        with np.load(npz_path, allow_pickle=True) as dados:
-            chave = "tensao_pu" if "tensao_pu" in dados.files else "corrente_pu" if "corrente_pu" in dados.files else None
-            if chave is None:
-                print(f"AVISO: {npz_path.name}: sem tensao_pu/corrente_pu; ignorado")
-                continue
-            matriz = np.atleast_2d(np.asarray(dados[chave], dtype=np.float64))
-            ids = [str(i) for i in np.atleast_1d(dados["id_captura"])] if "id_captura" in dados.files \
-                else [f"{npz_path.stem}-{k}" for k in range(matriz.shape[0])]
-            classe = str(dados["classe"]) if "classe" in dados.files else npz_path.stem
-            tempo_ms = np.asarray(dados["tempo_ms"], dtype=np.float64) if "tempo_ms" in dados.files else None
+    arquivo, perfil e posição; ``classes`` filtra pelo prefixo ``NN_``,
+    ``perfis``/``versoes``/``capturas`` como no módulo. ``max_por_classe``
+    vale por (classe, perfil). Sem ``capturas`` nem ``max_por_classe``, o
+    dataset SIMULADO (milhares de capturas por classe) mostra só as primeiras
+    ``MAX_CAPTURAS_EMPILHADAS_PADRAO`` de cada bloco."""
+    pedidas = [v for v in sessao_io.VERSOES if v in versoes]
+    if not pedidas:
+        raise ValueError(f"versoes deve conter {', '.join(sessao_io.VERSOES)}; recebido {list(versoes)!r}")
+    lidas = sessao_io.ler_pasta(
+        dados_dir, metadados, versoes=pedidas, classes=classes, perfis=perfis, capturas=capturas,
+        max_por_bloco=max_por_classe,
+        limite_padrao_empilhado=None if capturas else MAX_CAPTURAS_EMPILHADAS_PADRAO,
+        avisar=lambda mensagem: print(f"AVISO: {mensagem}"),
+    )
+    resultado: List[Captura] = []
+    for c in lidas:
+        md = c.metadado
+        principal = next((v for v in pedidas if v in c.versoes), None) if c.versoes else None
+        if c.grandeza == "Tensão" and c.versoes:
+            sinal = c.versoes[principal]
+        else:
+            sinal, principal = c.sinal, "medida"
+        fs_hz = float((md or {}).get("fs_hz", 0.0)) or (
+            1000.0 / float(np.median(np.diff(c.tempo_ms))) if c.tempo_ms is not None and c.tempo_ms.size > 1 else FS_PADRAO_HZ
+        )
+        inicio, pontos, recorte = calcular_recorte(sinal.size, md)
+        resultado.append(Captura(
+            arquivo=c.arquivo, linha=c.linha, id_captura=c.id_captura, classe=c.classe,
+            sinal=sinal, fs_hz=fs_hz, f0_hz=float((md or {}).get("f0_hz", F0_PADRAO_HZ)),
+            metadado=md, inicio_nominal=inicio, pontos_nominais=pontos, recorte=recorte,
+            grandeza=c.grandeza, perfil=c.perfil, formato=c.formato, versao=principal,
+            sobrepostas={v: a for v, a in c.versoes.items() if v != principal and c.grandeza == "Tensão"},
+            compartilhada=c.compartilhada, perfil_de_origem=c.perfil_de_origem or "",
+            perfis_compartilhados=tuple(c.perfis_compartilhados),
+        ))
+    return _sem_figuras_repetidas(resultado)
 
-        limite = max_por_classe
-        if limite is None and matriz.shape[0] > 1:
-            limite = MAX_CAPTURAS_EMPILHADAS_PADRAO
-            print(f"AVISO: {npz_path.name}: {matriz.shape[0]} capturas empilhadas; "
-                  f"só as {limite} primeiras entram (use --max-capturas-por-classe)")
-        for linha in range(matriz.shape[0]):
-            if limite is not None and por_classe.get(prefixo, 0) >= limite:
-                break
-            md = metadados.get(ids[linha])
-            fs_hz = float((md or {}).get("fs_hz", 0.0)) or (
-                1000.0 / float(np.median(np.diff(tempo_ms))) if tempo_ms is not None and tempo_ms.size > 1 else FS_PADRAO_HZ
-            )
-            inicio, pontos, recorte = calcular_recorte(matriz.shape[1], md)
-            capturas.append(Captura(
-                arquivo=npz_path, linha=linha, id_captura=ids[linha], classe=classe,
-                sinal=matriz[linha], fs_hz=fs_hz,
-                f0_hz=float((md or {}).get("f0_hz", F0_PADRAO_HZ)),
-                metadado=md, inicio_nominal=inicio, pontos_nominais=pontos, recorte=recorte,
-                grandeza="Corrente" if chave == "corrente_pu" else "Tensão",
-            ))
-            por_classe[prefixo] = por_classe.get(prefixo, 0) + 1
-    return capturas
+
+def _sem_figuras_repetidas(capturas: List[Captura]) -> List[Captura]:
+    """Uma captura compartilhada entre perfis é UMA figura: o espelho (perfil
+    sem bloco próprio) só fica quando a captura de origem não está na lista
+    (ex. ``--perfis norma``); do contrário a figura da origem passa a dizer
+    quais outros perfis ela cobre (``outros_perfis``)."""
+    origens = {(c.arquivo, c.id_captura, c.perfil): c for c in capturas}
+    saida: List[Captura] = []
+    for c in capturas:
+        if c.compartilhada and c.perfil != c.perfil_de_origem:
+            origem = origens.get((c.arquivo, c.id_captura, c.perfil_de_origem))
+            if origem is not None:
+                origem.outros_perfis = (*origem.outros_perfis, c.perfil)
+                continue
+        saida.append(c)
+    return saida
 
 
 # ---------------------------------------------------------------- figuras
@@ -341,10 +398,15 @@ def figura_completa(captura: Captura, dpi: int) -> str:
         t_trigger = (int(indice_trigger) - captura.inicio_nominal) / captura.fs_hz * 1000.0
         ax.axvline(t_trigger, color="#444", lw=0.8, ls=":")
         ax.text(t_trigger, 0.02, " trigger", transform=ax.get_xaxis_transform(), fontsize=8, color="#444")
-    ax.plot(t, captura.sinal, color=COR_SINAL, lw=0.7, label="capturado")
+    ax.plot(t, captura.sinal, color=COR_SINAL, lw=0.7, label="capturado" if captura.versao == "medida" else captura.versao)
     if captura.esperado is not None:
         t_nom = np.arange(captura.esperado.size) / captura.fs_hz * 1000.0
         ax.plot(t_nom, captura.esperado, color=COR_ESPERADO, lw=0.7, ls="--", alpha=0.85, label="esperado (gerar + seed)")
+        ax.legend(loc="lower right", fontsize=8, framealpha=0.9)
+    for rotulo, serie in captura.sobrepostas.items():
+        t_serie = np.arange(serie.size) / captura.fs_hz * 1000.0
+        ax.plot(t_serie, serie, color=COR_VERSAO.get(rotulo, "#555"), lw=0.7, ls="--", alpha=0.9, label=rotulo)
+    if captura.sobrepostas:
         ax.legend(loc="lower right", fontsize=8, framealpha=0.9)
     ax.set_xlim(t[0], t[-1])
     ax.set_xlabel("Tempo desde o início da janela nominal (ms)")
@@ -366,6 +428,10 @@ def figura_detalhe(captura: Captura, indice: int, janela: Tuple[float, float], d
     # reduzida até lá deixa os rótulos ilegíveis.
     fig, ax = plt.subplots(figsize=(3.8, 2.6))
     ax.plot(t[mascara], captura.sinal[mascara], color=COR_SINAL, lw=1.0)
+    for rotulo, serie in captura.sobrepostas.items():
+        t_serie = np.arange(serie.size) / captura.fs_hz * 1000.0
+        m_serie = (t_serie >= a) & (t_serie <= b)
+        ax.plot(t_serie[m_serie], serie[m_serie], color=COR_VERSAO.get(rotulo, "#555"), lw=0.9, ls="--", alpha=0.9)
     if captura.esperado is not None:
         t_nom = np.arange(captura.esperado.size) / captura.fs_hz * 1000.0
         m_nom = (t_nom >= a) & (t_nom <= b)
@@ -401,6 +467,23 @@ def tabela_metadados(captura: Captura) -> str:
                     + (f" (linha {captura.linha})" if captura.linha else "")),
         ("ID da captura", f"<code>{_e(captura.id_captura)}</code>"),
     ]
+    if captura.perfil:
+        linhas.append(("Perfil", _e(captura.perfil)))
+    if captura.compartilhada:
+        md_ = captura.metadado or {}
+        if captura.perfil == captura.perfil_de_origem:
+            cobertos = ", ".join([captura.perfil, *captura.outros_perfis]) if captura.outros_perfis \
+                else ", ".join(captura.perfis_compartilhados)
+            texto = f"mesma captura nos perfis {cobertos} (gerar() não depende do perfil; capturada uma vez)"
+        else:
+            texto = (f"esta captura é a do perfil {captura.perfil_de_origem} "
+                     f"(compartilhada com {', '.join(captura.perfis_compartilhados)}; capturada uma vez)")
+        if md_.get("sha256_captura"):
+            texto += f" · SHA-256 {md_['sha256_captura'][:16]}…"
+        linhas.append(("Captura compartilhada", _e(texto)))
+    if captura.formato == "classe" or captura.sobrepostas or captura.versao != "medida":
+        desenhadas = ", ".join([captura.versao, *captura.sobrepostas])
+        linhas.append(("Versões desenhadas", _e(desenhadas)))
     if md.get("parametros"):
         linhas.append(("Parâmetros", _e(_fmt(md["parametros"]))))
     for chave, rotulo in (("seed", "Seed"), ("nivel_indice", "Índice de nível")):
@@ -427,9 +510,12 @@ def tabela_metadados(captura: Captura) -> str:
     if captura.correlacoes:
         c = captura.correlacoes
         disturbio = f"{c['disturbio']:.3f}" if c["disturbio"] is not None else f"n/a ({_e(c['motivo'])})"
+        aj = c.get("disturbio_fund_ajustada")
+        ajustada = f"{aj:.3f}" if aj is not None else f"n/a ({_e(c.get('motivo_fund_ajustada'))})"
         linhas.append(("Correlação com o esperado",
                        f"total {c['total']:.3f} · só do distúrbio {disturbio} "
-                       f"(após alinhar; lag {c['lag_ms']:.2f} ms)"))
+                       f"(após alinhar; lag {c['lag_ms']:.2f} ms) · "
+                       f"distúrbio com a fundamental ajustada {ajustada}"))
     validacao = md.get("validacao_fisica")
     if isinstance(validacao, dict):
         if validacao.get("ok"):
@@ -447,13 +533,14 @@ def bloco_captura(captura: Captura, dpi: int) -> str:
     completa = figura_completa(captura, dpi)
     partes = [
         f'<section class="captura" id="{captura.ancora}">',
-        f"<h2>{_e(captura.classe)} · <code>{_e(captura.arquivo.stem)}</code></h2>",
+        f"<h2>{_e(captura.classe)} · <code>{_e(captura.nome)}</code></h2>",
         tabela_metadados(captura),
         "<figure>",
-        f'<img src="data:image/png;base64,{completa}" alt="{_e(captura.arquivo.stem)}: visualização completa">',
+        f'<img src="data:image/png;base64,{completa}" alt="{_e(captura.nome)}: visualização completa">',
         "<figcaption>Visualização completa"
         + (" — faixas cinzas: folga de captura fora da janela nominal" if captura.tem_margem else "")
         + (" — tracejado: forma esperada" if captura.esperado is not None else "")
+        + (f" — tracejado: {', '.join(captura.sobrepostas)}" if captura.sobrepostas else "")
         + "</figcaption>",
         "</figure>",
     ]
@@ -463,7 +550,7 @@ def bloco_captura(captura: Captura, dpi: int) -> str:
         for k, janela in enumerate(captura.detalhes, start=1):
             img = figura_detalhe(captura, k, janela, dpi)
             partes.append(
-                f'<figure><img src="data:image/png;base64,{img}" alt="{_e(captura.arquivo.stem)}: detalhe D{k}">'
+                f'<figure><img src="data:image/png;base64,{img}" alt="{_e(captura.nome)}: detalhe D{k}">'
                 f"<figcaption>D{k} ({origem})</figcaption></figure>"
             )
         partes.append("</div>")
@@ -482,6 +569,15 @@ def resumo_sessao(sessao_dir: Path, dados_dir: Path, capturas: Sequence[Captura]
         ("Dados", _e("sem ruído" if dados_dir == sessao_dir else dados_dir.name)),
         ("Capturas", _e(f"{len(capturas)} em {len(classes)} classe(s)")),
     ]
+    perfis_presentes = sorted({p for c in capturas for p in (c.perfil, *c.outros_perfis) if p})
+    if perfis_presentes:
+        itens.append(("Perfis", _e(", ".join(perfis_presentes))))
+    compartilhadas = [c for c in capturas if c.compartilhada and c.perfil == c.perfil_de_origem]
+    if compartilhadas:
+        itens.append(("Capturas compartilhadas", _e(
+            f"{len(compartilhadas)} figura(s) valem para mais de um perfil (classe cujo gerar() "
+            "não depende do perfil; desenhada uma vez, sob o perfil de origem)"
+        )))
     validadas = [c for c in capturas if isinstance((c.metadado or {}).get("validacao_fisica"), dict)]
     if validadas:
         ok = sum(1 for c in validadas if c.metadado["validacao_fisica"].get("ok"))
@@ -500,7 +596,7 @@ def sumario(capturas: Sequence[Captura]) -> str:
     for c in capturas:
         falhou = isinstance((c.metadado or {}).get("validacao_fisica"), dict) and not c.metadado["validacao_fisica"].get("ok")
         marca = ' <span class="falha">(validação falhou)</span>' if falhou else ""
-        itens.append(f'<li><a href="#{c.ancora}">{_e(c.arquivo.stem)}</a>{marca}</li>')
+        itens.append(f'<li><a href="#{c.ancora}">{_e(c.nome)}</a>{marca}</li>')
     return '<nav class="sumario"><h2>Capturas</h2><ol>\n' + "\n".join(itens) + "\n</ol></nav>"
 
 
@@ -532,13 +628,20 @@ def gerar_relatorio(
     max_por_classe: Optional[int] = None, detalhes: int = MAX_DETALHES,
     largura_detalhe_ms: Optional[float] = None, detalhes_manuais: Optional[Dict[str, List[Tuple[float, float]]]] = None,
     com_esperado: bool = False, dpi: int = 100, modelo: Path = MODELO_PADRAO,
+    perfis: Optional[Sequence[str]] = None, versoes: Sequence[str] = ("medida",),
+    capturas_escolhidas: Optional[str] = None,
 ) -> Tuple[Path, int]:
-    """Gera o HTML; devolve ``(caminho, número de capturas)``."""
+    """Gera o HTML; devolve ``(caminho, número de capturas)``. ``classes``,
+    ``perfis``, ``versoes`` e ``capturas_escolhidas`` selecionam o que entra
+    (ver o docstring do módulo)."""
     dados_dir = sessao_dir / f"snr_{snr}db" if snr else sessao_dir
     if not dados_dir.is_dir():
         raise FileNotFoundError(f"Pasta não encontrada: {dados_dir}")
     metadados = carregar_metadados(sessao_dir)
-    capturas = ler_capturas(dados_dir, metadados, classes=classes, max_por_classe=max_por_classe)
+    capturas = ler_capturas(
+        dados_dir, metadados, classes=classes, max_por_classe=max_por_classe,
+        perfis=perfis, versoes=versoes, capturas=capturas_escolhidas,
+    )
     if not capturas:
         raise FileNotFoundError(f"Nenhuma captura encontrada em {dados_dir}")
     manuais = detalhes_manuais or {}
@@ -547,7 +650,8 @@ def gerar_relatorio(
         c.correlacoes = _correlacoes(c, esperado)
         if com_esperado:
             c.esperado = esperado
-        janelas = manuais.get(c.arquivo.stem) or manuais.get(c.id_captura)
+        janelas = (manuais.get(f"{c.perfil}/{c.id_captura}") or manuais.get(c.arquivo.stem)
+                   or manuais.get(c.id_captura))
         if janelas is not None:
             c.detalhes, c.detalhes_automaticos = list(janelas)[:MAX_DETALHES], False
         else:
@@ -598,8 +702,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--descricao", default="", help="Texto livre logo abaixo do título (contexto para quem vai ler)")
     parser.add_argument("--snr", default=None, help="Usa snr_<SNR>db/ em vez dos dados sem ruído (ex.: 30)")
     parser.add_argument("--classes", default=None, help="Só estas classes, separadas por vírgula (ex.: 02,05,10)")
+    parser.add_argument("--perfis", default=None,
+                        help="Só estes perfis, separados por vírgula (norma, literatura, fronteira; padrão: todos os do arquivo)")
+    parser.add_argument("--versoes", default="medida",
+                        help="Versões desenhadas, separadas por vírgula: medida, modelo, programada (a primeira é o traço principal; "
+                             "as outras são sobrepostas). Padrão: medida")
+    parser.add_argument("--capturas", default=None,
+                        help="Só estas capturas: ids (02-0001) e/ou posições dentro da classe e do perfil (3 ou 1-3), separados por vírgula")
     parser.add_argument("--max-capturas-por-classe", type=int, default=None,
-                        help=f"Limite de capturas por classe (padrão: todas; {MAX_CAPTURAS_EMPILHADAS_PADRAO} em arquivo empilhado)")
+                        help=f"Limite de capturas por classe e perfil (padrão: as {MAX_CAPTURAS_EMPILHADAS_PADRAO} primeiras por classe e perfil; com --capturas, só as pedidas)")
     parser.add_argument("--detalhes", type=int, default=MAX_DETALHES, choices=range(0, MAX_DETALHES + 1),
                         help=f"Detalhes automáticos por captura (0 a {MAX_DETALHES})")
     parser.add_argument("--largura-detalhe-ms", type=float, default=None, help="Largura de cada detalhe (padrão: 2 ciclos de f0)")
@@ -616,6 +727,18 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.max_capturas_por_classe is not None and args.max_capturas_por_classe < 1:
         parser.error("--max-capturas-por-classe deve ser >= 1")
     classes = [c.strip().zfill(2) for c in args.classes.split(",") if c.strip()] if args.classes else None
+    perfis_pedidos = [p.strip().lower() for p in args.perfis.split(",") if p.strip()] if args.perfis else None
+    versoes_pedidas = [v.strip().lower() for v in args.versoes.split(",") if v.strip()]
+    for v in versoes_pedidas:
+        if v not in sessao_io.VERSOES:
+            parser.error(f"--versoes: {v!r} inválida (use {', '.join(sessao_io.VERSOES)})")
+    for p in perfis_pedidos or []:
+        if p not in ("norma", "literatura", "fronteira"):
+            parser.error(f"--perfis: {p!r} inválido (use norma, literatura, fronteira)")
+    try:
+        sessao_io.parsear_selecao_capturas(args.capturas)
+    except ValueError as exc:
+        parser.error(f"--capturas: {exc}")
     sufixo = f"_snr{args.snr}db" if args.snr else ""
     saida = args.saida or args.sessao_dir / f"relatorio_{args.sessao_dir.resolve().name}{sufixo}.html"
 
@@ -625,6 +748,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         largura_detalhe_ms=args.largura_detalhe_ms,
         detalhes_manuais=carregar_detalhes_manuais(args.detalhes_manuais),
         com_esperado=args.com_esperado, dpi=args.dpi, modelo=args.modelo,
+        perfis=perfis_pedidos, versoes=versoes_pedidas, capturas_escolhidas=args.capturas,
     )
     tamanho_mb = caminho.stat().st_size / (1024 * 1024)
     print(f"Relatório com {total} captura(s): {caminho} ({tamanho_mb:.1f} MB)")

@@ -1,7 +1,10 @@
 """Gera OFFLINE o `modelo` e a `programada` de cada captura de uma sessão da
 bancada, a partir do metadata (seed, nível, k, parâmetros programados).
 
-Para sessões gravadas antes da v1.16 (sem `tres_versoes/`). Sem hardware, e
+Para sessões gravadas antes da v1.15 (sem `tres_versoes/`, um `.npz` por
+captura). As sessões do formato 2 (um `NN_classe.npz` por classe, v1.15 em
+diante) já trazem modelo, programada e medida dentro dele (`logica/sessao_io.py`,
+`docs/dataset.md`): este script as recusa. Sem hardware, e
 sem alterar um byte da sessão: a saída vai para uma pasta NOVA
 (`<sessao>/tres_versoes/` por padrão; recusa uma pasta que já tenha arquivos,
 a menos que `--refazer`).
@@ -44,6 +47,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "logica"))
 
 import analisar_sessao  # noqa: E402
 import mestre  # noqa: E402
+import sessao_io  # noqa: E402
 
 PASTA_SAIDA_PADRAO = mestre.PASTA_TRES_VERSOES
 
@@ -79,9 +83,16 @@ def _registros_da_sessao(sessao_dir: Path) -> List[dict]:
 
 
 def _nomes_dos_npz(sessao_dir: Path) -> Dict[str, str]:
-    """`id_captura` -> nome do .npz da captura (lido de dentro do arquivo)."""
+    """`id_captura` -> nome do .npz da captura (lido de dentro do arquivo).
+    Sessão do formato 2: recusa (já tem as três versões)."""
     nomes: Dict[str, str] = {}
     for caminho in sorted(sessao_dir.glob("*.npz")):
+        if sessao_io.formato_do_arquivo(caminho) == "classe":
+            raise ValueError(
+                f"{caminho.name} é do formato 2 (um .npz por classe, com modelo, programada e medida de "
+                "cada captura): esta sessão não precisa de scripts/gerar_tres_versoes.py. Leia com "
+                "logica/sessao_io.py (ler_capturas)."
+            )
         with np.load(caminho, allow_pickle=True) as dados:
             for id_captura in np.atleast_1d(dados["id_captura"]):
                 nomes[str(id_captura)] = caminho.name

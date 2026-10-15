@@ -161,11 +161,15 @@ def snr_medida(limpo: np.ndarray, ruidoso: np.ndarray) -> float:
     return 10.0 * math.log10(potencia_sinal / potencia_ruido)
 
 
-# Ruído aplicado SÓ na janela rotulada (v1.15, proposta 8 de atividade.tex):
+# Ruído aplicado SÓ na janela rotulada (v1.15; a margem de captura não pertence
+# ao rótulo):
 # potência de referência = mean(janela**2); as margens de captura (20 ms antes,
 # 50 ms depois) não entram no arquivo com ruído.
 SEMENTE_BASE_RUIDO = 50_000_000
 MINIMO_AMOSTRAS_RUIDO_BANCADA = 100
+# Identificador textual da fórmula de semente_do_ruido, gravado em
+# ruido_janela.formula_semente (rastreabilidade; não é lido por código).
+FORMULA_SEMENTE_RUIDO = "seed + round(snr_db*1000) + 50000000"
 
 
 def semente_do_ruido(seed: int, snr_db: float) -> int:
@@ -245,11 +249,14 @@ def ruido_na_janela(
     janelas: Dict[float, np.ndarray] = {}
     acrescentado: Dict[str, float] = {}
     efetivo: Dict[str, float] = {}
+    sementes: Dict[str, int] = {}
     for snr_db in niveis_db:
         # Mesmo sorteio da seed, mas escalado para a potência EXATA
         # P_ref / 10**(snr/10) na janela: o SNR acrescentado é o nominal por
         # construção (e não só em esperança, como em ruido_awgn).
-        ruido = np.random.default_rng(semente_do_ruido(seed, snr_db)).normal(0.0, 1.0, size=limpa.shape)
+        semente = semente_do_ruido(seed, snr_db)
+        sementes[str(snr_db)] = semente
+        ruido = np.random.default_rng(semente).normal(0.0, 1.0, size=limpa.shape)
         ruido *= math.sqrt(potencia_ref / (10.0 ** (snr_db / 10.0)) / float(np.mean(np.square(ruido))))
         ruidosa = limpa + ruido
         janelas[snr_db] = ruidosa
@@ -270,6 +277,10 @@ def ruido_na_janela(
                 "potencia_referencia_pu2": potencia_ref,
                 "margens_com_ruido": False,
                 "bancada": detalhe_bancada,
+                # Semente de cada nível (chave = snr_medido_db) e a fórmula
+                # que a produz: reproduz o vetor de ruído sem o código de hoje.
+                "sementes_por_snr_db": sementes,
+                "formula_semente": FORMULA_SEMENTE_RUIDO,
             },
         },
     }
@@ -356,6 +367,7 @@ def comparar_fisicamente(
     tol_crista: float = 0.10,
     tol_thd: float = 0.20,
     piso_thd: float = 0.01,
+    fator_crista: float = 1.0,
 ) -> dict:
     """Confere se a captura FÍSICA corresponde à forma que a classe pediu.
 
@@ -374,7 +386,12 @@ def comparar_fisicamente(
       ``piso_thd`` de 1% absorve quantização do osciloscópio, então uma
       classe sem harmônicos programados nunca é reprovada por ruído.
     * **fator de crista do ciclo mediano** — forma de onda grosseira
-      (complementa a THD; tolerância folgada de propósito).
+      (complementa a THD; tolerância folgada de propósito). ``fator_crista``
+      (>= 1; v1.15, fator de extremo calibrado da classe): a fonte pode tocar
+      nos degraus/entalhes e elevar o pico do ciclo mediano até ``fator`` ×
+      o do modelo; a comparação é BILATERAL e aceita
+      ``[crista_modelo × (1 − tol), crista_modelo × fator × (1 + tol)]``. Com
+      ``fator_crista = 1`` é a comparação simétrica de sempre.
 
     Devolve ``{"ok": bool, "motivos": [...], ...}``; nunca levanta por
     divergência (quem chama decide), só por registro curto demais."""
@@ -410,10 +427,14 @@ def comparar_fisicamente(
         )
     crista_esperada = fator_de_crista_do_ciclo_mediano(esperado, fs_hz=fs_hz, f0=f0)
     crista_medida = fator_de_crista_do_ciclo_mediano(capturado, fs_hz=fs_hz, f0=f0)
-    if crista_esperada > 0 and abs(crista_medida - crista_esperada) > tol_crista * crista_esperada:
+    fator_crista = max(1.0, float(fator_crista))
+    crista_minima = crista_esperada * (1.0 - tol_crista)
+    crista_maxima = crista_esperada * fator_crista * (1.0 + tol_crista)
+    if crista_esperada > 0 and not (crista_minima <= crista_medida <= crista_maxima):
         motivos.append(
-            f"fator de crista: medido {crista_medida:.4f}, esperado {crista_esperada:.4f} "
-            f"(tolerância relativa {tol_crista:.2%})"
+            f"fator de crista: medido {crista_medida:.4f}, esperado {crista_esperada:.4f}"
+            + (f" × fator de extremo {fator_crista:.3f}" if fator_crista > 1.0 else "")
+            + f" (aceito de {crista_minima:.4f} a {crista_maxima:.4f}; tolerância relativa {tol_crista:.2%})"
         )
     return {
         "ok": not motivos,
@@ -426,6 +447,10 @@ def comparar_fisicamente(
         "envelope_maximo_esperado": medidas["máximo"][1],
         "crista_medida": crista_medida,
         "crista_esperada": crista_esperada,
+        "crista_modelo": crista_esperada,
+        "fator_extremo_crista": fator_crista,
+        "crista_minima_aceita": crista_minima,
+        "crista_maxima_aceita": crista_maxima,
         "thd_medida": thd_obtida,
         "thd_esperada": thd_esperada,
     }
@@ -496,8 +521,58 @@ def correlacao_disturbio(
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))), None
 
 
+def _residuo_sem_fundamental(x: np.ndarray, *, fs_hz: float, f0_hz: float) -> np.ndarray:
+    """``x`` menos a sua própria fundamental ajustada por mínimos quadrados
+    (``a·sin + b·cos`` em ``f0_hz``, o que dá amplitude e fase livres) mais uma
+    constante. Projeção linear: ``projeção(k·x) = k·projeção(x)``."""
+    t = np.arange(x.size, dtype=np.float64) / float(fs_hz)
+    w = 2.0 * np.pi * float(f0_hz) * t
+    base = np.column_stack([np.sin(w), np.cos(w), np.ones_like(w)])
+    coef, *_ = np.linalg.lstsq(base, x, rcond=None)
+    return x - base @ coef
+
+
+def correlacao_disturbio_fundamental_ajustada(
+    esperado: np.ndarray, capturado: np.ndarray, *, fs_hz: float, f0_hz: float,
+) -> Tuple[Optional[float], Optional[str]]:
+    """Como ``correlacao_disturbio``, mas em vez de subtrair dos dois a MESMA
+    senoide nominal de 1 pu, tira de CADA sinal a sua própria fundamental
+    (amplitude e fase ajustadas por mínimos quadrados na janela inteira, em
+    ``f0_hz``) antes do Pearson dos resíduos.
+
+    Por quê: a fonte emite a fundamental 0,2–1,4 % acima ou abaixo do
+    programado e a métrica nominal deixa essa diferença no resíduo capturado;
+    em classes de distúrbio pequeno (09, rms 0,0235 pu) isso custa até
+    0,05–0,06. Esta variante mede só a FORMA do que sobra, indiferente a erro
+    de amplitude/fase da fundamental e de escala.
+
+    Ressalva: o ajuste usa a janela toda, então em distúrbios grandes ou que
+    mexem na fundamental (02/03/04, 18) parte do evento é absorvida no ajuste
+    (igualmente nos dois sinais). É um complemento, não substituto, da
+    ``correlacao_disturbio``.
+
+    Caso degenerado como na métrica nominal: resíduo esperado ~ 0 (classes 01 e
+    19, em que só restam fundamental e constante, aqui sem distinguir o offset
+    DC porque a constante também é ajustada), resíduo capturado ~ 0 ou formas
+    incompatíveis devolvem ``(None, motivo)``."""
+    esperado = np.asarray(esperado, dtype=np.float64)
+    capturado = np.asarray(capturado, dtype=np.float64)
+    if esperado.shape != capturado.shape or esperado.ndim != 1 or esperado.size < 4:
+        return None, f"formas incompatíveis ({esperado.shape} x {capturado.shape})"
+    a = _residuo_sem_fundamental(esperado, fs_hz=fs_hz, f0_hz=f0_hz)
+    b = _residuo_sem_fundamental(capturado, fs_hz=fs_hz, f0_hz=f0_hz)
+    rms_esp = float(np.sqrt(np.mean(np.square(a))))
+    if rms_esp < LIMITE_RESIDUO_DEGENERADO_PU:
+        return None, (f"resíduo esperado sem a fundamental ~ 0 (rms {rms_esp:.2e} pu): "
+                      "sem componente de distúrbio (classe 01) ou só offset DC (19)")
+    rms_cap = float(np.sqrt(np.mean(np.square(b))))
+    if rms_cap < LIMITE_RESIDUO_DEGENERADO_PU:
+        return None, "resíduo capturado sem a fundamental ~ 0"
+    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))), None
+
+
 # ---------------------------------------------------------------------------
-# Forma "programada" das classes NATIVAS (v1.16)
+# Forma "programada" das classes NATIVAS (v1.15)
 # ---------------------------------------------------------------------------
 # Nas classes nativas (01-05, 18, 19) a fonte gera a forma sozinha; o que o
 # código programa é um NÍVEL (STEP/PULSe), um THD (CSINe), dois pontos de

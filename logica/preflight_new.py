@@ -2,8 +2,9 @@
 Keysight DSO-X 4034A) em baixa tensão controlada, com log auditável de cada
 etapa aprovada em ``logs/preflight_new-<timestamp>.log``.
 
-Reaproveita os estágios de ``preflight.py`` (comunicação/IDN, OUTPUT OFF,
-trigger BNC, 5 Vrms via TRACe/LIST) e adiciona os mecanismos nativos que
+Contém também os estágios básicos que antes ficavam em ``preflight.py``
+(removido na v1.15: comunicação/IDN, OUTPUT OFF, trigger BNC, tensão base via
+TRACe/LIST; ver ``run_basic_stage``) e adiciona os mecanismos nativos que
 nenhum dos dois preflights testava até aqui: STEP, PULSe, CSINe nativo,
 LIST:FREQuency, ACDC/offset, as medições (MEASure:*) e o canal 2 (corrente) do
 osciloscópio. Cada etapa usa a MESMA sequência de armamento que
@@ -40,7 +41,6 @@ from mestre import (
     PROJECT_ROOT,
     Bancada,
 )
-from preflight import run as run_basic_stage
 from sinais import janela
 
 LOG_DIR = PROJECT_ROOT / "logs"
@@ -76,6 +76,102 @@ def _configure_logging(stage: str) -> Path:
     logger.addHandler(stream_handler)
     logger.addHandler(file_handler)
     return log_path
+
+
+def normal_waveform() -> np.ndarray:
+    time_s = np.arange(POINTS, dtype=np.float64) / FS_HZ
+    return np.sin(2.0 * np.pi * GRID_FREQUENCY_HZ * time_s)
+
+
+def run_basic_stage(trigger_test: bool, low_voltage: bool) -> int:
+    bancada = None
+    try:
+        bancada = Bancada.from_env(require_output=low_voltage)
+        source, scope = bancada.fonte, bancada.osc
+        if scope is None:
+            raise RuntimeError("Preflight físico requer BENCH_MODE=1")
+        logger.info(f"AMETEK OK: {source.idn}")
+        logger.info(f"KEYSIGHT OK: {scope.idn}")
+        logger.info(
+            f"AMETEK VISA serial: {source.resource_name} "
+            f"({source.port}) @ {source.baudrate} N/8/1"
+        )
+        logger.info(f"KEYSIGHT VISA: {scope.adapter}")
+        if low_voltage:
+            # Bancada.from_env já energizou o baseline quando
+            # require_output=True e ARM_OUTPUT=YES (saída fica ligada durante
+            # toda a bateria, não só durante este teste).
+            if not OUTPUT_ARMED:
+                raise RuntimeError("O teste de baixa tensão exige ARM_OUTPUT=YES")
+            if not source.output_enabled:
+                raise RuntimeError("AMETEK deveria estar energizada (baseline) para este teste")
+            logger.info("OUTPUT ON confirmado (baseline)")
+        else:
+            if source.output_enabled:
+                raise RuntimeError("Saída AMETEK está ligada durante o preflight")
+            logger.info("OUTPUT OFF confirmado")
+
+        if trigger_test or low_voltage:
+            if low_voltage:
+                # Só programa/grava as TRACEs TCCnn na Flash aqui: é a única
+                # etapa que de fato arma e dispara a AMETEK (arm_transient()
+                # + trigger() abaixo). A etapa --trigger-test só força o
+                # scope (force_trigger(), OUTPUT ainda OFF) para validar
+                # aquisição/download — nunca arma nem lê o conteúdo da
+                # AMETEK, então programar aqui só duplicava ~50s de escrita
+                # em Flash (TRACe:DELete:ALL + 12x TRACe:DEFine) sem uso.
+                source.program_capture(
+                    normal_waveform(),
+                    base_voltage_rms=BASE_VOLTAGE_RMS,
+                    frequency_hz=GRID_FREQUENCY_HZ,
+                )
+                scope.set_vertical_scale(1, BASE_VOLTAGE_RMS * math.sqrt(2.0))
+            scope.arm()
+            scope.wait_for_armed()
+            logger.info("Keysight em WAIT FOR TRIGGER")
+            if low_voltage:
+                source.arm_transient()
+                logger.info("AMETEK em ARM/WTRIG")
+                source.trigger()
+            else:
+                # A MX30 Rev. 5.53 não arma o transient com OUTPUT OFF. Forçar
+                # somente o scope valida aquisição/download sem fingir que o
+                # BNC foi testado; o BNC real é validado na etapa de baixa tensão
+                # (lowvoltage, na tensão base).
+                scope.force_trigger()
+            scope.wait_for_trigger_complete()
+            if low_voltage:
+                source.wait_transient_complete()
+            time_s, voltage_v = scope.get_waveform(1)
+            if len(time_s) != POINTS:
+                raise RuntimeError("Waveform de preflight não contém 6000 pontos")
+            if low_voltage:
+                measured_rms = float(np.sqrt(np.mean(np.square(voltage_v))))
+                tolerance = max(0.25, BASE_VOLTAGE_RMS * 0.10)
+                if not math.isclose(measured_rms, BASE_VOLTAGE_RMS, abs_tol=tolerance):
+                    raise RuntimeError(
+                        f"RMS medido {measured_rms:.3f} V não corresponde a "
+                        f"{BASE_VOLTAGE_RMS:.3f} V"
+                    )
+                logger.info(f"Baixa tensão validada: {measured_rms:.3f} Vrms")
+            if low_voltage:
+                logger.info("Trigger BNC e aquisição de 6000 pontos confirmados em %.3f Vrms", BASE_VOLTAGE_RMS)
+            else:
+                logger.info("Aquisição/download do Keysight confirmados; BNC ainda NÃO testado")
+        return 0
+    finally:
+        if bancada is not None:
+            bancada.shutdown()
+
+
+def run_com_log(stage: str, funcao: Callable[[], int]) -> int:
+    """Executa ``funcao`` gravando o mesmo log ``logs/preflight_new-<stage>-*.log``
+    que ``main()`` grava ao rodar o script direto. É o ponto de entrada da CLI
+    (``logica/cli.py``): sem isto, ``comm``/``trigger``/``lowvoltage``/``native``
+    chamados pela CLI só deixavam saída no terminal."""
+    log_path = _configure_logging(stage)
+    logger.info("Log desta etapa: %s", log_path)
+    return funcao()
 
 
 class ToleranciaExcedida(RuntimeError):
@@ -403,7 +499,7 @@ def _test_list_voltage_identical_values(source) -> str:
     Se o firmware colapsar uma lista de N valores IDÊNTICOS para esse caso
     especial de 1 item, LIST:VOLTage:POINts? volta 1 mesmo com N valores
     enviados. Isso bateria com a falha observada em
-    ``preflight.py --low-voltage``: a senoide limpa de ``normal_waveform()``
+    ``preflight_new.py --low-voltage``: a senoide limpa de ``normal_waveform()``
     produz 12 ciclos com RMS numericamente idêntico."""
     source.write("ABORt")
     source.write("*CLS")
@@ -657,11 +753,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--trigger-test", action="store_true",
-        help="delega ao preflight.py: testa TTL Trigger Out -> EXT Trigger com OUTPUT OFF",
+        help="testa TTL Trigger Out -> EXT Trigger com OUTPUT OFF",
     )
     parser.add_argument(
         "--low-voltage", action="store_true",
-        help="delega ao preflight.py: aquisição a BASE_VOLTAGE_RMS via TRACe/LIST; exige ARM_OUTPUT=YES",
+        help="aquisição a BASE_VOLTAGE_RMS via TRACe/LIST; exige ARM_OUTPUT=YES",
     )
     parser.add_argument(
         "--native-commands", action="store_true",

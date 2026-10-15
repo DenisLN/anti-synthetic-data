@@ -6,7 +6,13 @@ usa): potência de referência = mean(janela**2), seed do ruído =
 `seed + round(snr*1000) + 50_000_000` com a `seed` gravada da captura. A
 janela é a nominal de `points` amostras que começa em `inicio_janela` (sessões
 antigas, sem esse campo: o mesmo recorte de `recortar_margem.calcular_recorte`).
-As margens NÃO entram nos arquivos com ruído (docs/analise-2026-10-12/snr_mudancas.md).
+As margens NÃO entram nos arquivos com ruído (`arquivo/analises:docs/analise-2026-10-12/resolvido/snr_mudancas.md`).
+
+Lê os dois formatos de sessão (``logica/sessao_io.py``): a de um ``.npz`` por
+captura (anterior à v1.15) e a de um ``NN_classe.npz`` por classe com perfis.
+A saída segue o formato da entrada: ``snr_XXdb/<mesmo nome do .npz>`` com
+``tensao_pu`` na sessão antiga e ``snr_XXdb/NN_classe.npz`` com
+``<perfil>/tensao_pu`` na nova.
 
 Sem hardware e sem alterar um byte da sessão: a saída vai para uma pasta NOVA
 (`<sessao>/ruido_janela/` por padrão; recusa uma pasta que já tenha arquivos,
@@ -31,7 +37,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -39,7 +45,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "logica"))
 
 import mestre  # noqa: E402
-from recortar_margem import calcular_recorte, carregar_metadados, metadado_recortado  # noqa: E402
+import sessao_io  # noqa: E402
+from recortar_margem import calcular_recorte, metadado_recortado  # noqa: E402
 from sinais import ruido_na_janela  # noqa: E402
 
 PASTA_SAIDA_PADRAO = "ruido_janela"
@@ -69,27 +76,34 @@ def gerar_sessao(
             raise FileExistsError(f"{saida} já tem arquivos; use --refazer para regenerar (só sobrescreve o que este script grava)")
         if not (saida / "indice.json").is_file():
             raise FileExistsError(f"{saida} tem arquivos que este script não gravou (sem indice.json); recuso")
-    metadados = carregar_metadados(sessao_dir)
+    metadados = sessao_io.carregar_metadados(sessao_dir)
     if not metadados:
         raise FileNotFoundError(f"{sessao_dir}: nenhum metadata/*.jsonl")
 
     linhas: List[dict] = []
-    metadados_saida: Dict[str, dict] = {}
-    for npz_path in sorted(sessao_dir.glob("*.npz")):
-        with np.load(npz_path, allow_pickle=True) as dados:
-            if "tensao_pu" not in dados.files:
-                continue
-            matriz = np.atleast_2d(np.asarray(dados["tensao_pu"], dtype=np.float64))
-            ids = [str(i) for i in np.atleast_1d(dados["id_captura"])]
-            classe = str(dados["classe"])
+    metadados_saida: Dict[Tuple[str, str], dict] = {}
+    por_arquivo: Dict[Path, List[sessao_io.CapturaSessao]] = {}
+    espelhos: Dict[Path, Dict[str, List[str]]] = {}  # arquivo -> origem -> perfis espelho
+    for captura in sessao_io.ler_pasta(sessao_dir, metadados, versoes=("medida",)):
+        if captura.espelho:  # mesma captura de outro perfil: o ruído é gerado uma vez, na origem
+            destinos = espelhos.setdefault(captura.arquivo, {}).setdefault(str(captura.perfil_de_origem), [])
+            if captura.perfil not in destinos:
+                destinos.append(captura.perfil)
+            continue
+        if captura.grandeza == "Tensão" and "medida" in captura.versoes:
+            por_arquivo.setdefault(captura.arquivo, []).append(captura)
+
+    for npz_path, capturas in sorted(por_arquivo.items()):
+        escritor = None
         por_nivel: Dict[float, List[np.ndarray]] = {snr: [] for snr in niveis_db}
-        for linha, id_captura in enumerate(ids):
-            metadado = metadados.get(id_captura)
+        for captura in capturas:
+            id_captura, metadado = captura.id_captura, captura.metadado
             if metadado is None or "seed" not in metadado:
                 raise KeyError(f"{npz_path.name}: {id_captura} sem metadata com seed; não há como reproduzir o ruído")
-            inicio, pontos, info = calcular_recorte(matriz.shape[1], metadado)
+            medida = captura.versoes["medida"]
+            inicio, pontos, info = calcular_recorte(medida.size, metadado)
             resultado = ruido_na_janela(
-                matriz[linha], inicio, pontos, niveis_db, int(metadado["seed"]),
+                medida, inicio, pontos, niveis_db, int(metadado["seed"]),
                 simulado=bool(metadado.get("simulado", False)),
             )
             for snr_db, janela_ruidosa in resultado["janelas"].items():
@@ -99,21 +113,39 @@ def gerar_sessao(
             novo["ruido_janela"]["origem_recorte"] = info["origem"]
             novo["ruido_janela"]["recorte_ajustado"] = bool(info["ajustado"])
             novo["ruido_janela"]["gerado_offline"] = True
-            metadados_saida[id_captura] = novo
+            metadados_saida[captura.chave] = novo
+            fs_hz = float(metadado.get("fs_hz", 30_000.0))
+            if captura.formato == "classe":
+                if escritor is None:
+                    escritor = sessao_io.ArquivoDaClasse(saida, captura.classe_id, captura.classe, spool=False)
+                escritor.adicionar(
+                    captura.perfil, id_captura=id_captura, medida=medida[:0], tempo_ms=np.arange(1.0), fs_hz=fs_hz,
+                    pontos=pontos, snr=resultado["janelas"], inicio_janela=inicio,
+                )
             linhas.append({
-                "id_captura": id_captura, "arquivo": npz_path.name, "inicio_janela": inicio, "pontos": pontos,
+                "id_captura": id_captura, "perfil": captura.perfil, "arquivo": npz_path.name,
+                "inicio_janela": inicio, "pontos": pontos,
                 "origem_recorte": info["origem"], "recorte_ajustado": bool(info["ajustado"]),
                 "snr_acrescentado_db": resultado["metadata"]["snr_medido_db"],
                 "snr_bancada_db": resultado["metadata"]["snr_bancada_db"],
                 "snr_efetivo_db": resultado["metadata"]["snr_efetivo_db"],
                 "margem_bancada": (resultado["metadata"]["ruido_janela"]["bancada"] or {}).get("margem"),
             })
-        fs_hz = float(metadados[ids[0]].get("fs_hz", 30_000.0))
+        if escritor is not None:
+            for origem, destinos in espelhos.get(npz_path, {}).items():
+                if origem in escritor.perfis:
+                    escritor.espelhar(origem, destinos)
+            escritor.consolidar(so_snr=True)
+            continue
+        # Formato antigo (um .npz por captura, ou o simulado empilhado): mesma
+        # estrutura e mesmo nome de arquivo da entrada.
+        ids = [c.id_captura for c in capturas]
+        fs_hz = float(capturas[0].metadado.get("fs_hz", 30_000.0))
         for snr_db, janelas in por_nivel.items():
             pontos = janelas[0].size
             _gravar_npz(
                 saida / f"snr_{rotulo_do_nivel(snr_db)}db" / npz_path.name,
-                classe=classe, id_captura=np.array(ids, dtype=object),
+                classe=capturas[0].classe, id_captura=np.array(ids, dtype=object),
                 tempo_ms=np.arange(pontos, dtype=np.float64) / fs_hz * 1000.0,
                 tensao_pu=np.vstack(janelas),
             )
@@ -126,8 +158,14 @@ def gerar_sessao(
             if not texto.strip():
                 continue
             registro = json.loads(texto)
-            if str(registro["id_captura"]) in metadados_saida:  # só as que têm .npz limpo na sessão
-                saidas.append(json.dumps(metadados_saida[str(registro["id_captura"])], ensure_ascii=False, sort_keys=True))
+            chave = (str(registro.get("perfil") or sessao_io.PERFIL_LEGADO), str(registro["id_captura"]))
+            origem = registro.get("perfil_de_origem")
+            if chave in metadados_saida:  # só as que têm .npz limpo na sessão
+                saidas.append(json.dumps(metadados_saida[chave], ensure_ascii=False, sort_keys=True))
+            elif origem and origem != chave[0] and (origem, chave[1]) in metadados_saida:
+                # Espelho (captura compartilhada): a linha da origem, sob o perfil dele.
+                espelho = dict(metadados_saida[(origem, chave[1])], perfil=chave[0])
+                saidas.append(json.dumps(espelho, ensure_ascii=False, sort_keys=True))
         if saidas:
             (saida / "metadata" / jsonl_path.name).write_text("\n".join(saidas) + "\n", encoding="utf-8")
 

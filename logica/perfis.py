@@ -25,7 +25,7 @@ captura em ``FAIXAS_SORTEADAS`` (``composto``); ``FAIXAS`` vale desligado.
 from __future__ import annotations
 
 import os
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 PERFIS: Tuple[str, ...] = ("norma", "literatura", "fronteira")
 PERFIL_PADRAO = "literatura"
@@ -111,22 +111,22 @@ FAIXAS: Dict[str, Dict[str, Tuple[float, ...]]] = {
 # por definição o par 0,1 / 0,9 e 1,1 / 1,8). Desligado, vale ``FAIXAS`` (o
 # ``gerar()`` do commit 34a0d82, byte a byte).
 FAIXAS_SORTEADAS: Dict[str, Dict[str, Optional[Tuple[float, float]]]] = {
-    # Proposta 4 do atividade.tex: sag ~ U(0,1; 0,9) (literatura); norma = a
+    # Faixa da literatura: sag ~ U(0,1; 0,9); norma = a
     # faixa de sag_niveis da norma.
     "sag_composto": {"norma": (0.15, 0.85), "literatura": (0.1, 0.9), "fronteira": None},
-    # Swell: extremos de swell_niveis (a proposta 4 não fixa a faixa do swell).
+    # Swell: extremos de swell_niveis (não há faixa de literatura fixada para o swell).
     "swell_composto": {"norma": (1.15, 1.75), "literatura": (1.1, 1.8), "fronteira": None},
-    # Proposta 4: THD ~ U(0,05; 0,20); norma desce a 2 % (mínimo de thd_niveis).
+    # THD ~ U(0,05; 0,20) (literatura); norma desce a 2 % (mínimo de thd_niveis).
     "thd_composto": {"norma": (0.02, 0.20), "literatura": (0.05, 0.20), "fronteira": (0.05, 0.20)},
-    # "Profundidade do item 6": a mesma faixa da classe 06 (flicker_profundidade).
+    # Profundidade: a mesma faixa da classe 06 (flicker_profundidade).
     "flicker_composto": {
         "norma": FAIXAS["flicker_profundidade"]["norma"],
         "literatura": FAIXAS["flicker_profundidade"]["literatura"],
         "fronteira": FAIXAS["flicker_profundidade"]["fronteira"],
     },
-    # Proposta 4: flicker ~ U(8, 25) Hz (a mesma faixa da classe 06).
+    # Flicker ~ U(8, 25) Hz (a mesma faixa de frequência da classe 06).
     "flicker_composto_hz": {"norma": (8.0, 25.0), "literatura": (8.0, 25.0), "fronteira": (8.0, 25.0)},
-    # Proposta 4: f_osc ~ U(300, 2400) Hz.
+    # Oscilação (f_osc) ~ U(300, 2400) Hz.
     "oscilacao_composto_hz": {
         "norma": (300.0, 2400.0), "literatura": (300.0, 2400.0), "fronteira": (300.0, 2400.0),
     },
@@ -194,3 +194,57 @@ def composto(config, componente: str, capture_index: int, rng) -> float:
     if intervalo is None:
         return nivel(config, componente, capture_index)
     return float(rng.uniform(*intervalo))
+
+# ---------------------------------------------------------------- independência
+
+# Perfil sob o qual uma captura compartilhada é gravada (``set perfil todos``).
+PERFIL_CANONICO = PERFIL_PADRAO
+CLASSES: Tuple[str, ...] = tuple(f"{n:02d}" for n in range(1, 21))
+
+
+def _valor_efetivo(componente: str, perfil: str, sorteio_posicao: bool) -> object:
+    """O que ``gerar()`` realmente lê do ``componente`` no ``perfil``: o
+    intervalo sorteado das compostas (``composto``, sorteio ligado) ou, sem
+    intervalo (fronteira de sag/swell) e com o sorteio desligado, o nível
+    discreto de ``FAIXAS``."""
+    if sorteio_posicao and componente in FAIXAS_SORTEADAS:
+        intervalo = FAIXAS_SORTEADAS[componente][perfil]
+        if intervalo is not None:
+            return ("intervalo", intervalo)
+    return ("niveis", FAIXAS[componente][perfil])
+
+
+def depende_do_perfil(class_id: str, sorteio_posicao: bool = True) -> bool:
+    """``True`` se o ``gerar()`` da classe muda com o perfil. Derivado das
+    tabelas acima: uma classe depende do perfil se algum componente que ela
+    lê (``COMPONENTES_POR_CLASSE``; classe fora da tabela não lê nenhum) tem
+    valor efetivo diferente em algum par de perfis. Com o sorteio desligado,
+    por exemplo, a 16 (só ``thd_composto``, igual nos três) não depende; com
+    ele ligado depende (a norma sorteia THD a partir de 2 %). Testado contra
+    o ``gerar()`` real em ``tests/test_offline.py`` (``PerfisCompartilhadosTests``)."""
+    for componente in COMPONENTES_POR_CLASSE.get(str(class_id), ()):
+        valores = {_valor_efetivo(componente, perfil, sorteio_posicao) for perfil in PERFIS}
+        if len(valores) > 1:
+            return True
+    return False
+
+
+def classes_independentes_do_perfil(sorteio_posicao: bool = True) -> Tuple[str, ...]:
+    """Classes (``01``..``20``) cujo ``gerar()`` é igual nos três perfis."""
+    return tuple(c for c in CLASSES if not depende_do_perfil(c, sorteio_posicao))
+
+
+def plano_de_perfis(
+    class_id: str, lista_perfis: Sequence[str], sorteio_posicao: bool = True,
+) -> List[Tuple[str, Tuple[str, ...]]]:
+    """O que ``set perfil todos`` realmente captura para a classe: lista de
+    ``(perfil_a_rodar, perfis_espelho)``. Classe dependente do perfil: um item
+    por perfil, sem espelhos. Classe independente com mais de um perfil: UM
+    item, sob o perfil canônico (``literatura``; o primeiro da lista se ela
+    não o tiver), com os demais perfis como espelhos (a mesma captura,
+    registrada no metadata dos outros perfis)."""
+    lista = [validar(p) for p in lista_perfis]
+    if len(lista) > 1 and not depende_do_perfil(class_id, sorteio_posicao):
+        canonico = PERFIL_CANONICO if PERFIL_CANONICO in lista else lista[0]
+        return [(canonico, tuple(p for p in lista if p != canonico))]
+    return [(p, ()) for p in lista]

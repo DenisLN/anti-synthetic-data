@@ -57,8 +57,20 @@ O modelo (`gerar()`) é um impulso unidirecional de 5 a 10 pu somado à senoide,
 2. **Velocidade**: o datasheet dá 200 µs para 10–90 % do fundo de escala; o impulso de 50 µs acaba antes da subida. Mede-se a resposta do amplificador ao degrau.
 3. **Representação**: cada TRACe tem 1024 pontos por ciclo (19,5 µs a 50 Hz); o impulso ocupa 3–4 pontos.
 
-Posição: 80 ms (60 Hz). A 50 Hz o 80 ms cai na fronteira de ciclo e a fonte tocou o impulso a 100 ms (3 capturas de 07/10); com o sorteio ligado o impulso vai para 90 ms (meio do mesmo ciclo), nunca a menos de 30 amostras (1 ms) de uma fronteira (`08.py:34,81-98`). A validação física confere que o maior desvio da senoide está a ≤ 10 amostras do início previsto (`conferir_posicao_do_evento`, `08.py:180`); senão a captura é marcada inválida. Mecanismo do deslocamento: **NÃO VERIFICADO** (`docs/analise-2026-10-12/classe08_fronteira.md`). A 08 fica fora do sorteio de posição/fase porque o sobressinal foi calibrado para um ponto de partida.
+Posição: 80 ms (60 Hz). A 50 Hz o 80 ms cai na fronteira de ciclo e a fonte tocou o impulso a 100 ms (3 capturas de 07/10); com o sorteio ligado o impulso vai para 90 ms (meio do mesmo ciclo), nunca a menos de 30 amostras (1 ms) de uma fronteira (`08.py:34,81-98`). A validação física confere que o maior desvio da senoide está a ≤ 10 amostras do início previsto (`conferir_posicao_do_evento`, `08.py:180`); senão a captura é marcada inválida. Mecanismo do deslocamento: **NÃO VERIFICADO** (`arquivo/analises:docs/analise-2026-10-12/pendente/classe08_fronteira_REVISAR.md`). A 08 fica fora do sorteio de posição/fase porque o sobressinal foi calibrado para um ponto de partida.
 
 ## 4. Classe 05 e o teto do CSINusoid
 
 `MAX_CSINE_THD_PCT = 20` (`ametek_orm.py:156`). Perfil `literatura`: 5/10/15/20 % por CSINusoid e 30 % por TRACe (`usar_trace`, `05.py:69`). Perfil `norma`: todos ≤ 20 %, todos por CSINusoid. O nível de 2 % e o rms da CSINusoid interna **não foram verificados na bancada**.
+
+### Nível de 30 % da 05 (por TRACe): rms e fundamental
+
+O modelo do nível de 30 % (soma 1 + 3.ª/5.ª/7.ª) tem fundamental 1 pu e rms `sqrt((1+thd²)/2)` = 0,738 pu; os níveis ≤ 20 % (CSINusoid) têm rms 0,707 pu e fundamental 0,98–1,00 pu. A fonte emite, no de 30 %, o rms do próprio modelo (`montar_programacao` põe o rms CA do ciclo em `LIST:VOLTage`): `LIST:VOLTage` = 1,044 × a tensão base e pico de 0,825 pu. Programada × modelo: correlação do distúrbio 1,0000. A diferença de rms é entre níveis, não entre modelo e programada; `gerar()` não muda (`docs/correlacao_disturbio.md` §7).
+
+## 5. Classe 06 e a média por ciclo da TRACe
+
+Na TRACe/LIST cada ciclo é uma TRACe de média zero (a fonte remove o componente DC, manual `TRACe:DATA`). O flicker `sin(2π f0 t)·(1 + m·sin(2π f_fl t))` tem, por ciclo, uma média não nula (vazamento espectral das bandas laterais f0 ± f_fl) que cresce com `f_fl`/`f0`: rms 0,002–0,032 pu, até 0,044 pu. Esse é todo o desvio entre modelo e programada (correlação do distúrbio 0,77–1,00, mediana 0,90–0,97 conforme a frequência e o sorteio; 0,9999 depois de tirar a média de cada ciclo do modelo). Não há comando de offset por passo de `LIST` no manual extraído, então a programação não consegue reproduzi-la. Detalhe em `CHANGELOG/v1.15.md`. **Nada foi mudado** na programação ou no `gerar()` da 06.
+
+## 6. Classe 09 e o impulso em 100 ms
+
+`diag_ciclos_trace.py` e `modelo_lista_fonte.py` aceitam a 09 sorteada (teste sintético `PendentesCorrelacaoDisturbioTests`). Com início sorteado, 100 ms cai dentro do evento rotulado em ~18 % das capturas. Mecanismo da cópia: **NÃO VERIFICADO** (`docs/quirks.md` A25).

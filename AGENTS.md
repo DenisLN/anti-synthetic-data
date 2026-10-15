@@ -31,18 +31,20 @@ resumo:
 | `status`, `list` | não | — |
 | `comm` | não | antiga etapa Communication |
 | `trigger` | não | antiga etapa Trigger |
-| `lowvoltage` | sim, 5V | antiga etapa LowVoltage — agora OPCIONAL, só para recomissionar (fiação/probe mexidas), não roda mais automaticamente dentro de nada |
+| `lowvoltage` | sim, tensão base | antiga etapa LowVoltage — agora OPCIONAL, só para recomissionar (fiação/probe mexidas), não roda mais automaticamente dentro de nada |
 | `native` | sim | antiga etapa NativeCommands (`preflight_new.py --native-commands`) |
 | `run <NN\|nome>` | sim | roda uma classe isolada |
 | `run all` | sim | bateria completa das 20 classes, resiliente por classe (ver abaixo) |
 
-> **Nota (conferida no código em 2026-10-12):** `lowvoltage` e `native` usam a
-> tensão base digitada no início (`BASE_VOLTAGE_RMS`), não 5 V; o rótulo
-> "5V"/`ENERGIZAR-5V` é herança do fluxo antigo. Para recomissionar a 5 V,
+> **Nota (v1.15, conferida no código em 2026-10-13):** `lowvoltage` e `native`
+> usam a tensão base digitada no início (`BASE_VOLTAGE_RMS`), nunca 5 V fixos.
+> O rótulo "5V" e a confirmação `ENERGIZAR-5V` foram removidos: `lowvoltage`
+> agora pede `ENERGIZAR-TESTE` e mostra a tensão real. `logica/preflight.py`
+> foi removido; só existe `logica/preflight_new.py`. Para recomissionar a 5 V,
 > inicie o `START_BENCH` digitando 5 V. Ver `docs/operacao.md`.
 
 Todas as confirmações físicas (fator de probe, Vrms/Hz, e a string digitada
-antes de energizar — `ENERGIZAR-5V`, `ENERGIZAR-COMANDOS`,
+antes de energizar — `ENERGIZAR-TESTE`, `ENERGIZAR-COMANDOS`,
 `EXECUTAR-CLASSE-<NN>`, `EXECUTAR-20-CLASSES`, todas case-sensitive) continuam
 existindo exatamente como no fluxo antigo. Não invente o fator de probe e não
 automatize essas confirmações.
@@ -54,12 +56,13 @@ serial caiu, impossível confirmar OUTPUT):
 2. não executar de novo automaticamente;
 3. entregar ao usuário o arquivo mais recente de `logs\startup-bench-*.log`
    (ou `logs\preflight_new-*.log` para falhas de `native`);
-   **Nota (conferida no código em 2026-10-12):** nenhum código gera mais
-   `logs\startup-bench-*.log`, e a CLI chama `native` sem criar
-   `logs\preflight_new-*.log` (esse só existe com `python logica\preflight_new.py`
-   direto). Hoje, entregue: para `run`/`run all`, `sessao.log` e
-   `scpi_transcricao.log` da pasta `resultados\sessao_<timestamp>[_runNN]` mais
-   recente; para `comm`/`trigger`/`lowvoltage`/`native`, a saída do terminal;
+   **Nota (conferida no código em 2026-10-13):** nenhum código gera mais
+   `logs\startup-bench-*.log`. Desde a v1.15 a CLI grava, para `comm`/
+   `trigger`/`lowvoltage`/`native`, o mesmo `logs\preflight_new-<etapa>-*.log`
+   do script direto (`preflight_new.run_com_log`). Hoje, entregue: para
+   `run`/`run all`, `sessao.log` e `scpi_transcricao.log` da pasta
+   `resultados\sessao_<timestamp>[_runNN]` mais recente; para `comm`/`trigger`/
+   `lowvoltage`/`native`, o `logs\preflight_new-*.log` mais recente;
 4. não remover validações de IDN, timeout, tamanho de waveform ou SCPI.
 
 Uma falha isolada de EXPERIMENTO (RMS fora de tolerância, timeout de trigger,
@@ -78,7 +81,7 @@ Essa restrição está **suspensa** para os módulos abaixo, e continua suspensa
 para qualquer sessão futura que precise mexer neles (autorização registrada
 em 2026-09-09, ver `CHANGELOG/v1.7.md`):
 
-- `logica/mestre.py`, `logica/ametek_orm.py`, `logica/preflight.py`,
+- `logica/mestre.py`, `logica/ametek_orm.py`,
   `logica/preflight_new.py`, `logica/cli.py`, e os scripts em `scripts/`.
 - `tests/test_offline.py` pode ser rodado e editado livremente — não toca
   hardware, roda os dois ORMs em modo simulado.
@@ -86,7 +89,7 @@ em 2026-09-09, ver `CHANGELOG/v1.7.md`):
 Nenhuma outra restrição foi suspensa. Em especial, os limites físicos abaixo
 continuam absolutos.
 
-### Autorização de 2026-10-07 (tarefas em `docs/TAREFAS_NUVEM_2026-10-07.md`)
+### Autorização de 2026-10-07 (tarefas em `arquivo/analises:docs/TAREFAS_NUVEM_2026-10-07.md`)
 
 O dono autorizou, para cumprir essas tarefas (capturas padrão por classe,
 seed na CLI, capturas = max(CLI, padrão), 220/380 V), editar também:
@@ -127,7 +130,7 @@ continuam valendo integralmente (`max_voltage_rms`, `max_peak_v`,
 ### Autorização de 2026-10-12 (início, duração e fase sorteados; `CHANGELOG/v1.15.md`)
 
 O dono autorizou também que `gerar()` passe a sortear início, duração e fase
-da senoide base (Pergunta 7 e proposta 3 de `atividade.tex`), na mesma versão
+da senoide base (motivo e medidas em `CHANGELOG/v1.15.md`, seção de início, duração e fase), na mesma versão
 congelada dos perfis, o que substitui a frase "início, duração, fase e forma
 não mudam" da autorização acima. Editados: `experimentos_nativos/01.py`–`05.py`,
 `18.py`, `19.py`; `experimentos_waveform/06.py`, `07.py`, `09.py`–`17.py`, `20.py`
@@ -136,6 +139,51 @@ não mudam" da autorização acima. Editados: `experimentos_nativos/01.py`–`05
 (`set sorteio`, estimativa de gravações), `logica/analisar_sessao.py`,
 `scripts/recalibrar_extremos.py`. `SORTEIO=0` / `set sorteio off` reproduz byte a
 byte o `gerar()` de 34a0d82. Limites e validações abaixo intactos.
+
+### Autorização de 2026-10-12 (compostas 10 a 16, classe 08, classes 05, 07, 17 e 18; `CHANGELOG/v1.15.md`)
+
+O dono autorizou mudar o que `gerar()` produz para uma dada seed, como parte da
+mesma versão congelada dos perfis, nestas partes:
+
+- compostas 10 a 16: parâmetros sorteados (sag, swell, THD, flicker e oscilação)
+  em `logica/perfis.py` (`FAIXAS_SORTEADAS`, `composto`) e em
+  `experimentos_waveform/10.py` a `16.py`. Com `set sorteio off`, os valores
+  fixos anteriores voltam byte a byte;
+- classe 08 (`experimentos_waveform/08.py`): impulso a pelo menos 1 ms de uma
+  fronteira de ciclo, com a conferência de posição na validação física
+  (`conferir_posicao_do_evento`, `mestre.py`);
+- classes 05, 07, 17 e 18 (`experimentos_nativos/05.py`, `experimentos_nativos/18.py`,
+  `experimentos_waveform/07.py`, `experimentos_waveform/17.py`; `logica/sinais.py`):
+  nível e forma da 05 (`senoide_clipada_pu`), entalhes em todos os ciclos na 07
+  e na 17 (`aplicar_entalhes_continuos`), e rampa de frequência f0 ± 3 Hz na 18.
+
+Os limites inegociáveis abaixo continuam valendo integralmente (`max_voltage_rms`,
+`max_peak_v`, `max_current_a`, pré-validação de pico).
+
+### Autorização de 2026-10-13 (crista da validação e `set perfil todos`; `CHANGELOG/v1.15.md`)
+
+O dono decidiu, em 2026-10-13, que a validação física da crista usa a calibração
+de extremos (`sinais.comparar_fisicamente`, parâmetro `fator_crista`;
+`mestre.py`, `fator_extremo_efetivo_para_validacao`), em vez de afrouxar a
+tolerância. Na mesma data autorizou editar `logica/perfis.py` **só com funções
+novas** (`depende_do_perfil`, `classes_independentes_do_perfil`,
+`plano_de_perfis`), sem tocar `FAIXAS` nem `FAIXAS_SORTEADAS`.
+
+### Autorização de 2026-10-13 (um `.npz` por classe; `CHANGELOG/v1.15.md`)
+
+O dono autorizou gravar tudo o que é da mesma classe no mesmo `.npz`
+comprimido (perfis × versões; SNRs em arquivos à parte) e `set perfil todos`
+(`run all` / `run <lista>` percorrem os três perfis na mesma sessão). Para isso
+editou-se, além do que já estava liberado, `logica/recortar_margem.py` e
+`logica/relatorio_html.py` (leitura dos dois formatos; `--perfis`, `--versoes`,
+`--capturas`), `logica/analisar_sessao.py`, `scripts/gerar_ruido_janela.py`,
+`scripts/gerar_tres_versoes.py`, o módulo novo `logica/sessao_io.py` e, em
+`logica/mestre.py`/`logica/cli.py`, a gravação (`_salvar_captura`,
+`_finalizar_gravacao`, `_salvar_classe_simulada`), `executar_bateria` e
+`set perfil`. Não muda `gerar()`, o ruído, as validações nem os limites abaixo;
+a resiliência por classe e a gravação atômica continuam. Quebra o formato dos
+`.npz` das sessões NOVAS (aviso no `CHANGELOG/v1.15.md`); sessões gravadas antes
+não são tocadas e continuam legíveis por `logica/sessao_io.py`.
 
 ## Limites inegociáveis (não mudar em nenhuma hipótese)
 
@@ -181,7 +229,7 @@ byte o `gerar()` de 34a0d82. Limites e validações abaixo intactos.
 `glossario`). Arquivos `.md` são livres para editar, **mas todo fato sobre
 comportamento deve ser conferido no código (`arquivo:linha`)**; se o CHANGELOG
 divergir do código, vale o código e a divergência é documentada. Relatórios
-datados (`docs/analise-*/`, `docs/superpowers/`) e `CHANGELOG/vX.Y.md` fechados
+datados (`arquivo/analises:docs/analise-*/`, `arquivo/analises:docs/superpowers/`; branch `arquivo/analises`, fora de `docs/` desde 2026-10-13) e `CHANGELOG/vX.Y.md` fechados
 são registro histórico: não se reescrevem.
 
 ## Como escrever sobre mudanças no código
@@ -202,7 +250,8 @@ são registro histórico: não se reescrevem.
    acrescentar).
 5. Comportamento que parece errado: diagnosticar primeiro (`set diagnostico on`
    ou um script que chame as funções do projeto isoladamente, ver
-   `docs/diagnostico.md`), registrar em `docs/analise-AAAA-MM-DD/`, e só então
+   `docs/diagnostico.md`), registrar no branch `arquivo/analises`, em `docs/analise-AAAA-MM-DD/` (caminho
+   dentro desse branch), e só então
    corrigir, com teste de regressão. Rode `tests.test_offline` antes de
    commitar.
 
@@ -216,9 +265,13 @@ são registro histórico: não se reescrevem.
   dono congelar uma versão; o artigo cita esse DOI.
 - **Toda sessão de coleta sai de commit limpo** (idealmente o da tag): o
   metadata grava `git_commit`, `git_sujo`, `versao_codigo`, `numpy_versao` e
-  uma cópia de `calibracao_extremos.json`. `git_sujo` ignora arquivos novos não
-  rastreados e é calculado uma vez por processo: commite tudo (inclusive
-  arquivos novos e a calibração recalibrada) e reinicie a CLI antes de coletar.
+  uma cópia de `calibracao_extremos.json`. `git_sujo` vale para alteração
+  rastreada em qualquer arquivo e para arquivo novo não ignorado em `logica/`,
+  `experimentos_nativos/`, `experimentos_waveform/` e `scripts/` (`mestre.py`,
+  `info_do_codigo`); é recalculado a cada pasta de sessão, ou seja, a cada
+  `run` da CLI. Commite tudo (inclusive arquivos novos e a calibração
+  recalibrada). `versao_codigo` fica em cache no processo: reinicie a CLI
+  depois de commitar.
 - Trabalho pendente de bancada fica em branch/PR e é documentado como
   **pendente** (hoje: `feat/passo-final-sin`, PR #3), nunca como existente na
   `main`.

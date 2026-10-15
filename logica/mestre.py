@@ -20,9 +20,10 @@ import numpy as np
 
 from ametek_orm import (
     AmetekMX30, CommunicationError, FalhaFatalDeInstrumento, InstrumentHardwareError,
-    ParameterOutOfBoundsError, ProgramacaoCaptura,
+    LeituraTraceError, ParameterOutOfBoundsError, ProgramacaoCaptura,
 )
 import perfis
+import sessao_io
 from sinais import (
     FORMA_NATIVA_POR_CLASSE, comparar_fisicamente, forma_programada_nativa, janela_nominal,
     ruido_na_janela, tempo,
@@ -117,17 +118,28 @@ _VERSAO_CACHE: Optional[str] = None
 _INFO_CODIGO_CACHE: Optional[Dict[str, object]] = None
 
 
-def info_do_codigo() -> Dict[str, object]:
-    """Procedência do código desta execução: commit (``git rev-parse HEAD``),
-    se a árvore tem alteração rastreada não commitada, versões do numpy e do
-    Python. ``git_commit``/``git_sujo`` ficam ``None`` quando o git não
-    responde — nunca impede uma sessão.
+# Pastas cujos arquivos NÃO rastreados também tornam a árvore "suja" (são o
+# código que gera e grava as sessões). Fora delas, arquivo novo não conta (ex.:
+# notas em docs/), como no -dirty de ``git describe``.
+PASTAS_DO_CODIGO = ("logica", "experimentos_nativos", "experimentos_waveform", "scripts")
 
-    "Sujo" = ``git status --porcelain --untracked-files=no`` não vazio, o
-    mesmo critério do ``-dirty`` de ``git describe`` (arquivo novo ainda não
-    adicionado ao git não conta)."""
+
+def info_do_codigo(*, recalcular: bool = False) -> Dict[str, object]:
+    """Procedência do código desta execução: commit (``git rev-parse HEAD``),
+    se a árvore está suja, versões do numpy e do Python. ``git_commit``/
+    ``git_sujo`` ficam ``None`` quando o git não responde — nunca impede uma
+    sessão.
+
+    "Sujo" = alteração rastreada não commitada em QUALQUER arquivo
+    (``git status --porcelain --untracked-files=no``) OU arquivo não rastreado
+    (e não ignorado) dentro de ``PASTAS_DO_CODIGO``. ``arquivos_nao_rastreados``
+    diz quais são esses arquivos novos.
+
+    O resultado fica em cache no processo; ``recalcular=True`` refaz a conta
+    (``preparar_pasta_da_sessao`` faz isso a cada pasta de sessão, ou seja, a
+    cada ``run`` da CLI)."""
     global _INFO_CODIGO_CACHE
-    if _INFO_CODIGO_CACHE is not None:
+    if _INFO_CODIGO_CACHE is not None and not recalcular:
         return dict(_INFO_CODIGO_CACHE)
     import platform
     import subprocess
@@ -143,9 +155,15 @@ def info_do_codigo() -> Dict[str, object]:
 
     commit = _git("rev-parse", "HEAD") or None
     status = _git("status", "--porcelain", "--untracked-files=no")
+    novos = _git("ls-files", "--others", "--exclude-standard", "--", *PASTAS_DO_CODIGO)
+    if status is None or novos is None:
+        sujo = None
+    else:
+        sujo = bool(status or novos)
     _INFO_CODIGO_CACHE = {
         "git_commit": commit,
-        "git_sujo": None if status is None else bool(status),
+        "git_sujo": sujo,
+        "arquivos_nao_rastreados": sorted(novos.splitlines()) if novos else [],
         "versao_codigo": versao_do_codigo(),
         "numpy_versao": np.__version__,
         "python_versao": platform.python_version(),
@@ -178,12 +196,19 @@ PASTA_TRES_VERSOES = "tres_versoes"
 _SESSOES_PREPARADAS: Dict[Path, Dict[str, object]] = {}
 
 
-def preparar_pasta_da_sessao(results_dir: Path, *, bancada: bool) -> Dict[str, object]:
+def preparar_pasta_da_sessao(
+    results_dir: Path, *, bancada: bool, perfis_usados: Optional[Sequence[str]] = None,
+) -> Dict[str, object]:
     """Uma vez por processo e pasta: copia a ``calibracao_extremos.json`` EM
     USO para dentro da sessão e grava ``sessao.json`` (commit, árvore suja,
-    numpy, Python, caminho e SHA-256 da calibração). A calibração muda depois
-    das sessões (relatório do professor, pergunta 11): sem a cópia, o ``k``
-    recalculado a partir do código de hoje deixa de bater com o gravado.
+    numpy, Python, caminho e SHA-256 da calibração, perfil de faixas). A
+    calibração muda depois das sessões (é recalibrada a partir das medidas de cada rodada):
+    sem a cópia, o ``k`` recalculado a partir do código de hoje deixa de bater
+    com o gravado.
+
+    A procedência é recalculada aqui (``info_do_codigo(recalcular=True)``), ou
+    seja, a cada pasta nova = a cada ``run`` da CLI. ``perfis_usados`` são os
+    perfis dos runs da CLI até este (inclusive); sem ele, só o perfil atual.
 
     Árvore suja numa sessão de BANCADA é avisada em destaque, sem bloquear
     (não há mecanismo de bloqueio no fluxo; o operador decide)."""
@@ -192,7 +217,7 @@ def preparar_pasta_da_sessao(results_dir: Path, *, bancada: bool) -> Dict[str, o
     if chave in _SESSOES_PREPARADAS:
         return _SESSOES_PREPARADAS[chave]
     results_dir.mkdir(parents=True, exist_ok=True)
-    codigo = info_do_codigo()
+    codigo = info_do_codigo(recalcular=True)
     copia = results_dir / NOME_CALIBRACAO_NA_SESSAO
     parcial = copia.with_suffix(".json.part")
     shutil.copyfile(CALIBRACAO_EXTREMOS_PATH, parcial)
@@ -202,6 +227,12 @@ def preparar_pasta_da_sessao(results_dir: Path, *, bancada: bool) -> Dict[str, o
         "criada_em": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "modo": "bancada" if bancada else "simulado",
         **codigo,
+        "perfil": PERFIL_TODOS_ROTULO if PERFIL_TODOS else PERFIL,
+        "perfis_da_rodada": list(perfis_da_rodada()),
+        "perfis_usados_na_cli": list(perfis_usados) if perfis_usados else [PERFIL_TODOS_ROTULO if PERFIL_TODOS else PERFIL],
+        # Formato dos .npz desta sessão (logica/sessao_io.py, docs/dataset.md):
+        # 2 = um NN_classe.npz comprimido por classe, com perfis e versões.
+        "formato_npz": sessao_io.FORMATO_NPZ,
         "calibracao_extremos": {
             "origem": str(CALIBRACAO_EXTREMOS_PATH),
             "copia_na_sessao": NOME_CALIBRACAO_NA_SESSAO,
@@ -215,9 +246,10 @@ def preparar_pasta_da_sessao(results_dir: Path, *, bancada: bool) -> Dict[str, o
     _SESSOES_PREPARADAS[chave] = info
     if bancada and codigo["git_sujo"]:
         aviso = (
-            "ATENÇÃO: árvore git SUJA (alterações rastreadas não commitadas; "
-            f"versão {codigo['versao_codigo']}). Esta sessão NÃO é reproduzível "
-            "só pelo commit. Commit limpo antes de uma sessão de coleta."
+            "ATENÇÃO: árvore git SUJA (alterações rastreadas não commitadas ou "
+            f"arquivos novos em {', '.join(PASTAS_DO_CODIGO)}; versão {codigo['versao_codigo']}). "
+            f"Arquivos novos: {codigo.get('arquivos_nao_rastreados') or 'nenhum'}. Esta sessão NÃO é "
+            "reproduzível só pelo commit. Commit limpo antes de uma sessão de coleta."
         )
         logger.warning(aviso)
         print("\n" + "!" * 78 + f"\n{aviso}\n" + "!" * 78 + "\n")
@@ -321,12 +353,32 @@ CAPTURE_CURRENT = env_bool("CAPTURE_CURRENT", default=False)
 SESSION_RESULTS_DIR: Optional[Path] = None
 CAPTURAS_OVERRIDE: Optional[int] = None
 DIAGNOSTICO_MODE: bool = False
+# ``set diagnostico retrieve`` (v1.15): lê de volta, a cada captura TRACE, as
+# TRACEs gravadas na fonte (``TRACe:DATA?``), num ponto seguro do fluxo, e grava
+# em ``<sessao>/diagnostico_trace/``. Desligado por padrão.
+DIAGNOSTICO_RETRIEVE: bool = False
+# Espera mínima (s) entre a última escrita de TRACe e a leitura (quirk A2).
+DIAGNOSTICO_RETRIEVE_ESPERA_S: float = env_float("DIAGNOSTICO_RETRIEVE_ESPERA_S", 2.0)
+PASTA_DIAGNOSTICO_TRACE = "diagnostico_trace"
 # Perfil de faixas do dataset (v1.15; logica/perfis.py): norma|literatura|
 # fronteira. Inicial = env PERFIL (padrão literatura = dataset de sempre);
 # "set perfil" da CLI muda em runtime, vale a partir do próximo run.
-PERFIL: str = perfis.perfil_do_ambiente()
-# Sorteio de início/duração/fase em gerar() (v1.15; docs/analise-2026-10-12/
-# sorteio_inicio_fase.md). Padrão ligado; SORTEIO=0 (ou "set sorteio off")
+PERFIL_TODOS_ROTULO = "todos"
+PERFIL_TODOS: bool = os.getenv(perfis.ENV_PERFIL, "").strip().lower() == PERFIL_TODOS_ROTULO
+# PERFIL é SEMPRE um perfil de verdade (o da Config e o de "run <NN>" quando
+# PERFIL_TODOS é False); com PERFIL_TODOS, run all / run <lista> percorrem os
+# três perfis na mesma sessão e gravam tudo no mesmo NN_classe.npz.
+PERFIL: str = perfis.PERFIL_PADRAO if PERFIL_TODOS else perfis.perfil_do_ambiente()
+
+
+def perfis_da_rodada() -> Tuple[str, ...]:
+    """Perfis que o próximo run percorre: os três (na ordem de
+    ``perfis.PERFIS``) com ``set perfil todos``, senão só ``PERFIL``."""
+    return tuple(perfis.PERFIS) if PERFIL_TODOS else (PERFIL,)
+
+
+# Sorteio de início/duração/fase em gerar() (v1.15; `arquivo/analises:docs/analise-2026-10-12/pendente/sorteio_inicio_fase_VERIFICAR_BANCADA.md`).
+# Padrão ligado; SORTEIO=0 (ou "set sorteio off")
 # reproduz as posições fixas de antes (60 ms/80 ms, fase 0), byte a byte.
 SORTEIO_POSICAO: bool = env_bool("SORTEIO", default=True)
 
@@ -618,7 +670,9 @@ def extremo_previsto_com_disturbio_v(
     return margem * (fator_referencia * pico_v + fracao * (fator - fator_referencia) * pico_modelo_v)
 
 
-# Limite de bancada (v1.13, decisão do dono para 220 V: opção b). Nas classes
+# Limite de bancada (v1.13, opção b para 220 V: reduzir só o distúrbio em vez de
+# pular a captura, porque a v1.12 pulava 10, 11, 14 e 16 a 220 V com extremo
+# previsto de 423 a 499 V, acima de 415,8 V). Nas classes
 # WAVEFORM cujo extremo previsto passa do teto, a captura FÍSICA reduz só a
 # amplitude do distúrbio (forma = senoide + fração × (gerar() - senoide)) até
 # o extremo previsto caber, grava a fração e os parâmetros aplicados no
@@ -655,7 +709,7 @@ VALIDACAO_TOL_THD = env_float("VALIDACAO_TOL_THD", 0.20)
 # confirmação digitada de sempre, e o dataset simulado não é afetado. A 08
 # ficou aqui de 14:44 a 15:25 de 2026-09-30 (pico de 415,3 V no teto de
 # 415,8 V) e voltou depois de redimensionada pelos extremos MEDIDOS
-# (docs/analise-2026-09-30/ANALISE.md, T8-4: VMAX 230 V / VMIN -334 V).
+# (`arquivo/analises:docs/analise-2026-09-30/ANALISE.md`, T8-4: VMAX 230 V / VMIN -334 V).
 BATERIA_EXCLUIR = tuple(
     item.strip().zfill(2)
     for item in os.environ.get("BATERIA_EXCLUIR", "").split(",")
@@ -664,11 +718,10 @@ BATERIA_EXCLUIR = tuple(
 
 # Erros que invalidam só UMA captura: ExperimentoBase.executar() loga,
 # descarta a captura (não grava nada para ela) e segue para a PRÓXIMA
-# posição do plano — nunca propaga para executar_bateria(). Pedido do dono
-# em 2026-09-22, reagindo ao readback do p01/p02 ("a captura falha na
-# hora"): "não aborte a bateria de testes, apenas log e descarte — abortar
-# gasta MUITO tempo" (reexecutar a classe inteira do zero, até 3x, custava
-# exatamente isso).
+# posição do plano — nunca propaga para executar_bateria(). Decisão de projeto
+# de 2026-09-22, motivada pela medida dos ensaios p01/p02 (a captura falha na
+# hora, erro 19 e divergência de readback): não abortar a bateria por uma
+# captura, porque abortar reexecutava a classe inteira do zero, até 3x.
 #
 # - InstrumentHardwareError: erro 19 "Illegal during transient" (p01),
 #   divergência de readback (p02), ou qualquer outro assert_no_errors()
@@ -723,9 +776,16 @@ class Config:
     # Perfil de faixas lido por gerar() das classes 02/03/05/06/10-16/20
     # (logica/perfis.py). O padrão reproduz o dataset anterior à v1.15.
     perfil: str = perfis.PERFIL_PADRAO
+    # Perfis que são a MESMA captura deste (``set perfil todos`` numa classe
+    # cujo gerar() não depende do perfil: ``perfis.plano_de_perfis``). Vazio =
+    # captura própria. Só ``Bancada`` preenche; ver ``ArquivoDaClasse.espelhar``.
+    perfis_espelho: Tuple[str, ...] = ()
     # Início, duração e fase sorteados em gerar() (ver ``Sorteio``). False =
     # posições fixas anteriores à v1.15.
     sorteio_posicao: bool = True
+    # Leitura de volta das TRACEs gravadas (``set diagnostico retrieve``).
+    diagnostico_retrieve: bool = False
+    diagnostico_retrieve_espera_s: float = 2.0
 
     def capturas(self, simulated: bool) -> int:
         """Capturas desta classe (por nível, nas classes com ``NIVEIS``).
@@ -733,8 +793,8 @@ class Config:
         Simulado: ``SIM_CAPTURES_PER_CLASS``, sempre — o dataset não depende
         de padrão de bancada nem da CLI. Bancada: o MAIOR entre o valor
         global (``set capturas N`` quando o operador digitou, senão
-        ``REAL_CAPTURES_PER_CLASS``, padrão 1) e o padrão da classe — pedido
-        do dono (2026-10-07): ``set capturas 3`` numa classe de padrão 6 roda
+        ``REAL_CAPTURES_PER_CLASS``, padrão 1) e o padrão da classe (decisão de
+        projeto, v1.13): ``set capturas 3`` numa classe de padrão 6 roda
         6; numa de padrão 1, 3. A CLI avisa quando o padrão vence."""
         if simulated:
             return self.sim_captures_per_class
@@ -750,7 +810,7 @@ class Config:
 # ---------------------------------------------------------------------------
 
 # Margem mínima, em ciclos da rede, entre as bordas da janela e o distúrbio
-# (tmin da proposta 3 de atividade.tex): ao menos 1 ciclo de senoide limpa
+# (t_min do desenho do sorteio, v1.15): ao menos 1 ciclo de senoide limpa
 # antes e depois. A duração de um evento vai de meio ciclo ao que sobra.
 SORTEIO_TMIN_CICLOS = 1.0
 SORTEIO_DURACAO_MIN_CICLOS = 0.5
@@ -896,6 +956,8 @@ def _build_config() -> Config:
         disturbance_start_s=DISTURBANCE_START_S,
         capturas_override=CAPTURAS_OVERRIDE,
         diagnostico_mode=DIAGNOSTICO_MODE,
+        diagnostico_retrieve=DIAGNOSTICO_RETRIEVE,
+        diagnostico_retrieve_espera_s=DIAGNOSTICO_RETRIEVE_ESPERA_S,
         perfil=PERFIL,
         sorteio_posicao=SORTEIO_POSICAO,
     )
@@ -994,7 +1056,7 @@ class Bancada:
                 voltage_range_rms=SOURCE_VOLTAGE_RANGE_RMS,
                 # Limite de PICO do software, validado por configure_safe_baseline.
                 # O VOLTage:HIGH da fonte é RMS e recebe EUT_MAX_VOLTAGE_RMS (ver
-                # lá; T12 em docs/analise-2026-09-30). A proteção de pico é de
+                # lá; T12 em `arquivo/analises:docs/analise-2026-09-30`). A proteção de pico é de
                 # software: _indices_viaveis (previsto) + medir_extremos (medido).
                 voltage_high_vp=EUT_MAX_PEAK_V,
                 current_limit_a=CURRENT_LIMIT_A,
@@ -1092,7 +1154,83 @@ class Bancada:
     # intermitente e continua ganhando as 3 tentativas.
     ERROS_DETERMINISTICOS = (ParameterOutOfBoundsError, ValidacaoFisicaError, PicoFisicoExcedidoError)
 
-    def executar_bateria(self, scripts: List[Path]) -> List[ResultadoClasse]:
+    def _perfis_para_bateria(self, perfis_da_rodada_: Optional[Sequence[str]]) -> Tuple[str, ...]:
+        """Perfis que ``executar_bateria`` percorre por classe: os pedidos; ou,
+        sem pedido, os três com ``set perfil todos``; ou o da própria
+        ``config`` (nunca troca o perfil de uma ``Bancada`` montada à mão)."""
+        if perfis_da_rodada_:
+            return tuple(perfis.validar(p) for p in perfis_da_rodada_)
+        if PERFIL_TODOS:
+            return tuple(perfis.PERFIS)
+        return (perfis.perfil_da_config(self.config),)
+
+    @staticmethod
+    def _config_do_perfil(config_original: "Config", perfil: str, espelhos: Tuple[str, ...]) -> "Config":
+        """``config_original`` com ``perfil`` e ``perfis_espelho`` postos (a
+        mesma instância se nada muda)."""
+        if perfis.perfil_da_config(config_original) == perfil \
+                and tuple(getattr(config_original, "perfis_espelho", ())) == tuple(espelhos):
+            return config_original
+        return replace(config_original, perfil=perfil, perfis_espelho=tuple(espelhos))
+
+    def _executar_classe_no_perfil(
+        self, class_id: str, script_path: Path, experimento_cls: type, rotulo: str,
+    ) -> Tuple[bool, Optional[str], int, int, int, int]:
+        """Roda UMA classe com o perfil já posto em ``self.config``, com as
+        ``MAX_TENTATIVAS_POR_CLASSE`` tentativas e a recuperação de estado
+        seguro entre elas. Devolve ``(sucesso, ultimo_erro, descartadas,
+        invalidas, puladas, tentativas_feitas)``. Falha de infraestrutura
+        propaga (aborta a bateria inteira, sem retry)."""
+        sucesso = False
+        ultimo_erro: Optional[str] = None
+        descartadas = invalidas = puladas = 0
+        tentativas_feitas = 0
+        for tentativa in range(1, self.MAX_TENTATIVAS_POR_CLASSE + 1):
+            tentativas_feitas = tentativa
+            if tentativa > 1:
+                logger.warning(
+                    "[%s]%s tentativa %d/%d depois de falha: %s",
+                    class_id, rotulo, tentativa, self.MAX_TENTATIVAS_POR_CLASSE, ultimo_erro,
+                )
+            logger.info(
+                "========== Experimento %s (%s)%s ==========", class_id, script_path.parent.name, rotulo
+            )
+            try:
+                experimento = self._instanciar_experimento(experimento_cls)
+                experimento.executar()
+                sucesso = True
+                descartadas = getattr(experimento, "_capturas_descartadas_count", 0)
+                invalidas = getattr(experimento, "_capturas_invalidas_count", 0)
+                puladas = getattr(experimento, "_capturas_puladas_count", 0)
+                break
+            except (CommunicationError, FalhaFatalDeInstrumento):
+                logger.error(
+                    "[%s] Falha de infraestrutura — abortando o restante da bateria", class_id
+                )
+                raise
+            except self.ERROS_DETERMINISTICOS as exc:
+                ultimo_erro = str(exc)
+                logger.error(
+                    "[%s]%s FALHOU com erro DETERMINÍSTICO (%s) — não será retentado: "
+                    "o mesmo parâmetro produziria o mesmo erro nas tentativas "
+                    "seguintes. Corrija a configuração da classe ou a tensão base.",
+                    class_id, rotulo, exc,
+                )
+                self.recuperar_estado_seguro()
+                break
+            except Exception as exc:
+                ultimo_erro = str(exc)
+                logger.exception(
+                    "[%s]%s FALHOU (tentativa %d/%d)", class_id, rotulo, tentativa,
+                    self.MAX_TENTATIVAS_POR_CLASSE,
+                )
+                if tentativa < self.MAX_TENTATIVAS_POR_CLASSE:
+                    self.recuperar_estado_seguro()
+        return sucesso, ultimo_erro, descartadas, invalidas, puladas, tentativas_feitas
+
+    def executar_bateria(
+        self, scripts: List[Path], perfis_da_rodada_: Optional[Sequence[str]] = None,
+    ) -> List[ResultadoClasse]:
         """Roda cada classe isoladamente: uma falha de EXPERIMENTO (RMS fora
         de tolerância, timeout de trigger, exceção em ``gerar()``, script
         quebrado...) é tentada até ``MAX_TENTATIVAS_POR_CLASSE`` vezes (com
@@ -1103,8 +1241,16 @@ class Bancada:
         recuperar estado seguro) continua abortando a bateria inteira
         IMEDIATAMENTE, sem retry: não é seguro tentar mais nada com o
         instrumento em estado desconhecido. ``KeyboardInterrupt`` também
-        propaga sempre (não é ``Exception``, não é capturada abaixo)."""
+        propaga sempre (não é ``Exception``, não é capturada abaixo).
+
+        Com mais de um perfil (``set perfil todos``) cada classe roda uma vez
+        por perfil, em sequência, e todos caem no mesmo ``NN_classe.npz``
+        (``sessao_io``); o ``ResultadoClasse`` da classe é ``ok`` só se todos
+        os perfis foram. Cada perfil é isolado como uma classe: a falha de um
+        não impede os seguintes."""
         resultados: List[ResultadoClasse] = []
+        lista_perfis = self._perfis_para_bateria(perfis_da_rodada_)
+        varios = len(lista_perfis) > 1
         for script_path in scripts:
             class_id = script_path.stem
             nome = class_id
@@ -1118,66 +1264,59 @@ class Bancada:
                 continue
             nome = getattr(experimento_cls, "nome", class_id)
 
-            sucesso = False
-            ultimo_erro: Optional[str] = None
-            descartadas = 0
-            invalidas = 0
-            puladas = 0
-            tentativas_feitas = 0
-            for tentativa in range(1, self.MAX_TENTATIVAS_POR_CLASSE + 1):
-                tentativas_feitas = tentativa
-                if tentativa > 1:
-                    logger.warning(
-                        "[%s] tentativa %d/%d depois de falha: %s",
-                        class_id, tentativa, self.MAX_TENTATIVAS_POR_CLASSE, ultimo_erro,
-                    )
-                logger.info(
-                    "========== Experimento %s (%s) ==========", class_id, script_path.parent.name
-                )
-                try:
-                    experimento = self._instanciar_experimento(experimento_cls)
-                    experimento.executar()
-                    sucesso = True
-                    descartadas = getattr(experimento, "_capturas_descartadas_count", 0)
-                    invalidas = getattr(experimento, "_capturas_invalidas_count", 0)
-                    puladas = getattr(experimento, "_capturas_puladas_count", 0)
-                    break
-                except (CommunicationError, FalhaFatalDeInstrumento):
-                    logger.error(
-                        "[%s] Falha de infraestrutura — abortando o restante da bateria", class_id
-                    )
-                    raise
-                except self.ERROS_DETERMINISTICOS as exc:
-                    ultimo_erro = str(exc)
-                    logger.error(
-                        "[%s] FALHOU com erro DETERMINÍSTICO (%s) — não será retentado: "
-                        "o mesmo parâmetro produziria o mesmo erro nas tentativas "
-                        "seguintes. Corrija a configuração da classe ou a tensão base.",
-                        class_id, exc,
-                    )
-                    self.recuperar_estado_seguro()
-                    break
-                except Exception as exc:
-                    ultimo_erro = str(exc)
-                    logger.exception(
-                        "[%s] FALHOU (tentativa %d/%d)", class_id, tentativa, self.MAX_TENTATIVAS_POR_CLASSE,
-                    )
-                    if tentativa < self.MAX_TENTATIVAS_POR_CLASSE:
+            ok_geral = True
+            motivos: List[str] = []
+            descartadas = invalidas = puladas = 0
+            config_original = self.config
+            self._manter_arquivos_classe = True
+            try:
+                for perfil, espelhos in perfis.plano_de_perfis(
+                    class_id, lista_perfis, getattr(config_original, "sorteio_posicao", True),
+                ):
+                    rotulo = f" [perfil {perfil}]" if varios else ""
+                    if espelhos:
+                        logger.info(
+                            "[%s] gerar() não depende do perfil: capturada uma vez (perfil %s); %s "
+                            "apontam para a mesma captura no metadata.", class_id, perfil, ", ".join(espelhos),
+                        )
+                    self.config = self._config_do_perfil(config_original, perfil, espelhos)
+                    try:
+                        sucesso, ultimo_erro, desc, inval, pul, tentativas_feitas = (
+                            self._executar_classe_no_perfil(class_id, script_path, experimento_cls, rotulo)
+                        )
+                    finally:
+                        self.config = config_original
+                    descartadas += desc
+                    invalidas += inval
+                    puladas += pul
+                    if not sucesso:
+                        ok_geral = False
+                        motivos.append(
+                            f"perfil {perfil}{' (e ' + ', '.join(espelhos) + ', mesma captura)' if espelhos else ''}: "
+                            f"{ultimo_erro}" if varios else str(ultimo_erro)
+                        )
+                        logger.error(
+                            "[%s]%s FALHOU definitivamente após %d tentativa(s)%s — classe abortada, "
+                            "bateria continua", class_id, rotulo, tentativas_feitas,
+                            " (erro determinístico, sem retry)" if tentativas_feitas < self.MAX_TENTATIVAS_POR_CLASSE else "",
+                        )
                         self.recuperar_estado_seguro()
+            finally:
+                self._manter_arquivos_classe = False
+                pasta = getattr(config_original, "results_dir", None)
+                if pasta is not None:
+                    self.__dict__.get("_arquivos_classe", {}).pop((str(Path(pasta).resolve()), class_id), None)
 
-            if sucesso:
+            if ok_geral:
                 resultados.append(ResultadoClasse(
                     class_id, nome, ok=True, descartadas=descartadas, invalidas=invalidas,
                     puladas=puladas,
                 ))
             else:
-                logger.error(
-                    "[%s] FALHOU definitivamente após %d tentativa(s)%s — classe abortada, "
-                    "bateria continua", class_id, tentativas_feitas,
-                    " (erro determinístico, sem retry)" if tentativas_feitas < self.MAX_TENTATIVAS_POR_CLASSE else "",
-                )
-                resultados.append(ResultadoClasse(class_id, nome, ok=False, motivo=ultimo_erro))
-                self.recuperar_estado_seguro()
+                resultados.append(ResultadoClasse(
+                    class_id, nome, ok=False, motivo="; ".join(motivos),
+                    descartadas=descartadas, invalidas=invalidas, puladas=puladas,
+                ))
             if BENCH_MODE:
                 time.sleep(0.5)
 
@@ -1200,6 +1339,34 @@ class Bancada:
                     resultado.id, resultado.nome, resultado.puladas,
                 )
         return resultados
+
+    def executar_classe_nos_perfis(
+        self, experimento_cls: type, perfis_da_rodada_: Optional[Sequence[str]] = None,
+    ) -> List["ExperimentoBase"]:
+        """``run <NN>``: UMA classe, sem as tentativas de ``executar_bateria``,
+        uma vez por perfil (todos no mesmo ``NN_classe.npz``). A primeira
+        exceção propaga; o que cada perfil já gravou fica no disco."""
+        lista = self._perfis_para_bateria(perfis_da_rodada_)
+        config_original = self.config
+        executados: List["ExperimentoBase"] = []
+        self._manter_arquivos_classe = True
+        try:
+            for perfil, espelhos in perfis.plano_de_perfis(
+                str(getattr(experimento_cls, "id", "")), lista, getattr(config_original, "sorteio_posicao", True),
+            ):
+                self.config = self._config_do_perfil(config_original, perfil, espelhos)
+                experimento = experimento_cls(self)
+                executados.append(experimento)
+                experimento.executar()
+        finally:
+            self.config = config_original
+            self._manter_arquivos_classe = False
+            pasta = getattr(config_original, "results_dir", None)
+            if pasta is not None and executados:
+                self.__dict__.get("_arquivos_classe", {}).pop(
+                    (str(Path(pasta).resolve()), executados[0].id), None,
+                )
+        return executados
 
     def _instanciar_experimento(self, experimento_cls: type) -> "ExperimentoBase":
         """Seam de teste: ``executar_bateria`` sempre cria a instância por
@@ -1387,9 +1554,9 @@ class ExperimentoBase(ABC):
     pre_trigger_s: float = 0.0
     # Capturas PADRÃO desta classe na bancada real — por nível nas classes
     # com ``NIVEIS`` (02/03/05), como ``set capturas N``. 1 = comportamento
-    # até a v1.12. Pedido do dono (2026-10-07): 3 nas classes que SORTEIAM
-    # parâmetros em ``gerar()`` (04, 06, 07, 08, 09, 17, 19, 20), 1 nas
-    # determinísticas. Não afeta o dataset simulado (``SIM_CAPTURES_PER_CLASS``)
+    # até a v1.12. Desde a v1.13: 3 nas classes que SORTEIAM
+    # parâmetros em ``gerar()`` (04, 06, 07, 08, 09, 17, 19, 20; uma captura
+    # mostra uma só realização do sorteio), 1 nas determinísticas. Não afeta o dataset simulado (``SIM_CAPTURES_PER_CLASS``)
     # nem a regra de cobertura determinística/caracterização da 08, que
     # continua exigindo ``set capturas`` digitado pelo operador
     # (``capturas_override``). Tabela completa: README, seção "Capturas por
@@ -1660,6 +1827,7 @@ class ExperimentoBase(ABC):
     def _validar_fisicamente(
         self, capture_index: int, t: np.ndarray, seed: int, medido_pu: np.ndarray,
         *, margem_antes: int = 0, inicio_janela: Optional[int] = None,
+        avaliacao: Optional[Dict[str, object]] = None,
     ) -> Optional[dict]:
         """Compara o que saiu do instrumento com o que a classe pediu.
 
@@ -1707,6 +1875,7 @@ class ExperimentoBase(ABC):
                 esperado, medido_pu,
                 fs_hz=self.config.fs_hz, f0=self.config.grid_frequency_hz,
                 tol_envelope=VALIDACAO_TOL_ENVELOPE, tol_thd=VALIDACAO_TOL_THD,
+                fator_crista=self.fator_extremo_efetivo_para_validacao(avaliacao),
             )
         except Exception:  # noqa: BLE001
             logger.warning("[%s] validação física não pôde ser calculada", self.id, exc_info=True)
@@ -1723,6 +1892,32 @@ class ExperimentoBase(ABC):
                     resultado["ok"] = False
                     resultado["motivos"] = list(resultado["motivos"]) + list(posicao["motivos"])
         return resultado
+
+    def fator_extremo_efetivo_para_validacao(self, avaliacao: Optional[Dict[str, object]] = None) -> float:
+        """Fator de extremo (extremo medido / pico programado) que a validação
+        da crista espera para ESTA captura: o mesmo da previsão de pico
+        (``_extremo_previsto_da_forma_v``) sem a ``MARGEM_FATOR_EXTREMO`` (a
+        tolerância de 10 % da crista já é a folga). Classe com modelo próprio
+        da excursão (08) usa 1,0: o impulso fica fora da crista (ciclos
+        excluídos) e a tabela não a representa. Captura com o distúrbio
+        reduzido (limite de bancada) usa a mesma fórmula de
+        ``extremo_previsto_com_disturbio_v`` com margem 1. Sem tabela da
+        condição, ``carregar_fatores_extremo`` já devolve o fator conservador."""
+        proprio = getattr(self, "excursao_fisica_prevista_v", None)
+        if callable(proprio) and proprio() is not None:
+            return 1.0
+        fatores = self._fatores_extremo()
+        fator = fator_extremo_da_classe(self.id, fatores)
+        parametros = (avaliacao or {}).get("parametros") or {}
+        k = float(parametros.get("fator_disturbio_bancada", 1.0))
+        pico = (avaliacao or {}).get("pico_programado_v")
+        if k >= 1.0 or not pico or "pico_programado_modelo_v" not in parametros:
+            return fator
+        efetivo = extremo_previsto_com_disturbio_v(
+            float(pico), float(parametros["pico_programado_modelo_v"]), k,
+            fator=fator, fator_referencia=fator_referencia_extremo(fator, fatores), margem=1.0,
+        ) / float(pico)
+        return max(1.0, efetivo)
 
     def conferir_posicao_do_evento(self, capture_index: int, janela_medida_pu: np.ndarray) -> Optional[dict]:
         """Complemento da validação física para classes cujo evento precisa
@@ -1971,6 +2166,99 @@ class ExperimentoBase(ABC):
             )
         return viaveis
 
+    def _ler_traces_de_diagnostico(self) -> None:
+        """``set diagnostico retrieve``: lê de volta as TRACEs que a captura
+        corrente gravou e guarda o resultado em ``self._retrieve_atual`` (o
+        arquivo e o metadata saem em ``_gravar_diagnostico_trace``).
+
+        Chamado SÓ no fim de ``_capturar_real`` (transiente concluído, registro
+        do osciloscópio lido, nada a programar até a próxima captura) e com a
+        espera mínima de ``ler_trace`` desde a última escrita de TRACe
+        (quirk A2). Falha de leitura (``LeituraTraceError``) é registrada e
+        não derruba a captura; mas depois dela confere-se que a fonte ainda
+        responde (``aguardar_resposta``): se não, ``CommunicationError`` sobe
+        pelo caminho normal de falha de infraestrutura."""
+        self._retrieve_atual = None
+        if not getattr(self.config, "diagnostico_retrieve", False):
+            return
+        programacao = self._programacao_enviada()
+        if programacao is None:
+            logger.warning("[%s] diagnostico retrieve: sem programação para ler de volta", self.id)
+            return
+        espera_s = float(self.config.diagnostico_retrieve_espera_s)
+        if espera_s < 2.0:
+            logger.warning(
+                "[%s] diagnostico retrieve: espera mínima %.2f s < 2 s (padrão conservador, "
+                "docs/quirks.md A2)", self.id, espera_s,
+            )
+        inicio = time.monotonic()
+        lidos: List[np.ndarray] = []
+        erro: Optional[str] = None
+        try:
+            for nome in programacao.trace_names:
+                lidos.append(self.fonte.ler_trace(nome, espera_minima_s=espera_s))
+        except LeituraTraceError as exc:
+            erro = str(exc)
+            logger.error(
+                "[%s] diagnostico retrieve: leitura de volta falhou (%d/%d TRACEs lidas): %s. "
+                "A captura segue.", self.id, len(lidos), len(programacao.trace_names), exc,
+            )
+        if erro is not None:
+            # Não engole mudez real: se a fonte não responde mais, isto levanta
+            # CommunicationError e vale o caminho existente de falha fatal.
+            self.fonte.aguardar_resposta("*IDN?")
+        self._retrieve_atual = {
+            "programacao": programacao,
+            "lidos": lidos,
+            "erro": erro,
+            "espera_minima_s": espera_s,
+            "duracao_s": time.monotonic() - inicio,
+            "espera_efetiva_s": float(getattr(self.fonte, "ultima_espera_leitura_trace_s", 0.0)),
+        }
+
+    def _gravar_diagnostico_trace(self, capture_id: str, metadado: dict) -> None:
+        """Grava ``<sessao>/diagnostico_trace/<id da captura>.npz`` (enviado x
+        lido + ``LIST:VOLTage``) e acrescenta ``diagnostico_trace`` ao
+        metadata da captura (desvio máximo, erro). Fora do .npz da captura, e
+        independente de ``_salvar_captura``. Nunca levanta por erro de disco."""
+        dados = getattr(self, "_retrieve_atual", None)
+        self._retrieve_atual = None
+        if not dados:
+            return
+        programacao: ProgramacaoCaptura = dados["programacao"]
+        lidos = dados["lidos"]
+        enviados = np.asarray(programacao.traces[: len(lidos)], dtype=np.float64)
+        lido = np.asarray(lidos, dtype=np.float64) if lidos else np.zeros((0, AmetekMX30.TRACE_POINTS))
+        desvios = [float(np.max(np.abs(lido[i] - enviados[i]))) for i in range(len(lidos))]
+        info = {
+            "arquivo": f"{PASTA_DIAGNOSTICO_TRACE}/{capture_id}.npz",
+            "traces_programadas": len(programacao.trace_names),
+            "traces_lidas": len(lidos),
+            "desvio_max": max(desvios) if desvios else None,
+            "desvio_max_por_trace": desvios,
+            "erro": dados["erro"],
+            "espera_minima_s": dados["espera_minima_s"],
+            "espera_efetiva_s": dados["espera_efetiva_s"],
+            "duracao_leitura_s": dados["duracao_s"],
+        }
+        pasta = self.config.results_dir / PASTA_DIAGNOSTICO_TRACE
+        final = pasta / f"{capture_id}.npz"
+        try:
+            pasta.mkdir(parents=True, exist_ok=True)
+            parcial = final.with_suffix(".npz.part")
+            with parcial.open("wb") as handle:
+                np.savez(
+                    handle, classe=self.nome, id_captura=np.array([capture_id], dtype=object),
+                    nomes=np.array(programacao.trace_names), enviado=enviados, lido=lido,
+                    list_voltage_rms=np.asarray(programacao.list_voltages_rms, dtype=np.float64),
+                )
+            os.replace(parcial, final)
+        except OSError as exc:
+            logger.error("[%s] diagnostico retrieve: não gravou %s: %s", self.id, final, exc)
+            info["erro"] = f"{info['erro'] or ''} gravação do arquivo falhou: {exc}".strip()
+            info["arquivo"] = None
+        metadado["diagnostico_trace"] = info
+
     def _ler_captura(
         self, parametros: Dict[str, float]
     ) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray], Dict[str, float]]:
@@ -2016,10 +2304,10 @@ class ExperimentoBase(ABC):
     # termina em 200ms (relatório 01 §2(i)); 50ms depois cobrem o retorno ao
     # regime e o sobre-pico de transição observado nas bordas do evento.
     #
-    # Desde 2026-09-22 (P10, pedido do dono) esta margem deixou de ser
+    # Desde 2026-09-22 (P10, decisão de projeto) esta margem deixou de ser
     # opt-in — não existe mais ``set margin on|off`` nem modo "sem margem"
     # para captura física; é sempre aplicada. NÃO reduzir abaixo disto sem
-    # refazer a medida (ver docs/analise-2026-09-21/01_conclusao_investigacao.md §2(i)).
+    # refazer a medida (ver `arquivo/analises:docs/analise-2026-09-21/01_conclusao_investigacao.md` §2(i)).
     MARGEM_ANTES_S = env_float("MARGEM_ANTES_S", 0.020)
     MARGEM_DEPOIS_S = env_float("MARGEM_DEPOIS_S", 0.050)
 
@@ -2051,66 +2339,28 @@ class ExperimentoBase(ABC):
         simulated: bool,
         versoes: Optional[Dict[str, np.ndarray]] = None,
     ) -> None:
-        """Grava a classe completa. O LAYOUT depende de ``simulated``:
+        """Grava a classe completa no formato 2 (``logica/sessao_io.py``,
+        ``docs/dataset.md``): UM ``{id}_{nome}.npz`` comprimido com as capturas
+        EMPILHADAS por perfil (``<perfil>/medida|modelo|programada``), as SNRs
+        em ``snr_XXdb/{id}_{nome}.npz``, a corrente em ``corrente/`` e o
+        ``metadata/{id}_{nome}.jsonl`` (1 linha por captura e perfil).
 
-        * ``simulated=True`` (dataset sintético, ``SIM_CAPTURES_PER_CLASS``
-          capturas por classe): UM ``.npz`` por classe
-          (``{id}_{nome}.npz``) com todas as capturas EMPILHADAS, shape
-          ``(total, pontos)`` — o formato que valeu por toda a história do
-          projeto. Arquivo por captura aqui não só não traz nada (arrays
-          numpy não colidem, e nenhuma captura simulada é uma "condição
-          física" irrepetível) como DESTRÓI dados: o nome derivado de
-          ``parametros`` se repete entre capturas em pelo menos 11 das 20
-          classes (02/03/05 ciclam 5 níveis por ``capture_index % 5``, 18
-          alterna 2 valores, 10-17 devolvem dicts LITERAIS constantes), e
-          as capturas seguintes sobrescreviam as anteriores em silêncio.
-          Um nome determinístico por classe também é naturalmente
-          idempotente entre rodadas — nunca gera órfão, nunca precisa de
-          limpeza.
-        * ``simulated=False`` (bancada real): UM ``.npz`` POR CAPTURA, já
-          que ``set capturas N`` pode gerar N capturas por nível e cada uma
-          é uma condição física distinta que merece arquivo próprio. O nome
-          carrega o parâmetro físico da captura quando existe algum em
-          ``parametros`` (ex.: ``sag_pu-0.1``); cai para ``capNN``
-          (posição, 1-based) quando não há parâmetro nomeável. Como
-          ``set capturas N`` agrupa N capturas no MESMO nível (mesmo
-          ``capture_index``, ver ``executar()``), o rótulo derivado do
-          parâmetro se REPETE dentro da mesma rodada — a 2ª ocorrência em
-          diante ganha sufixo ``_NN`` (1-based por ocorrência:
-          ``sag_pu-0.1.npz``, ``sag_pu-0.1_02.npz``, ...), sem o qual as N
-          capturas físicas colapsariam num arquivo só. O fallback
-          ``capNN`` já é único por captura (``indice`` enumera 0..total-1),
-          então não entra no contador.
+        * ``simulated=True`` (dataset sintético): todas as capturas de uma vez
+          (``_salvar_classe_simulada``).
+        * ``simulated=False`` (bancada real): uma captura por vez
+          (``_iniciar_gravacao_incremental``/``_salvar_captura``/
+          ``_finalizar_gravacao``): cada uma vai para ``parcial/`` (atômica) assim
+          que existe e o ``.npz`` da classe é reescrito ao fim do perfil ou ao
+          interromper. Este método existe com a mesma assinatura de sempre
+          porque é a porta de entrada de quem já tem a classe inteira em memória.
 
-        Em ambos os casos a escrita é atômica (``.part`` -> ``os.replace``)
-        e o ``metadata/{id}_{nome}.jsonl`` é o mesmo: 1 arquivo por classe,
-        1 linha por captura.
-
-        Os dados puros (sem ruído) vão direto em ``resultados/``, uma cópia
-        com AWGN aplicado por nível de SNR em ``resultados/snr_XXdb/``
-        (mesmo nome de arquivo, pasta diferente). Os dados puros são o que
-        efetivamente saiu do gerador/instrumento — gravá-los sempre
-        significa que aplicar (ou reaplicar) ruído no futuro, com outro SNR
-        ou outra técnica, não exige regerar nem recapturar nada.
-
-        Só no caminho REAL o nome do arquivo depende do parâmetro (ou da
-        posição) de CADA captura; por isso só ele precisa limpar órfãos.
-        Rodar a mesma classe de novo com um conjunto de capturas diferente
-        (ex.: ``set capturas 5`` entre duas chamadas de ``run 02``) pode
-        deixar arquivos da rodada ANTERIOR sem nenhuma captura desta rodada
-        apontando para eles — órfãos, sem linha correspondente no
-        ``metadata/{id}_{nome}.jsonl`` recém-escrito. Por isso, só depois
-        que TODO arquivo novo desta rodada já foi gravado e promovido
-        (``.part`` -> replace) com sucesso — dados por captura E o
-        ``metadata.jsonl``, nessa ordem — varremos cada diretório tocado
-        nesta chamada (``results_dir``, cada ``snr_XXdb/``, ``corrente/``)
-        por arquivos que casem com o prefixo desta classe
-        (``{id}_{nome}_*.npz``) mas não estejam entre os nomes que ESTA
-        rodada escreveu, e apagamos os que sobrarem. A limpeza roda por
-        último, depois do metadata: se o processo morrer antes disso, o
-        metadata sobrevivente (velho ou novo) nunca aponta para um arquivo
-        que já apagamos — na pior hipótese sobra um órfão que a PRÓXIMA
-        rodada bem-sucedida limpa.
+        O ``.npz`` da classe tem nome fixo: a mesma classe rodada de novo no
+        mesmo perfil substitui o bloco dele (com a mesma ``Bancada``) ou o
+        arquivo inteiro (``Bancada`` nova); não existem mais órfãos por captura.
+        Escrita atômica (``.part`` -> ``os.replace``, todos os ``.part`` antes
+        de qualquer promoção); os dados puros são o que efetivamente saiu do
+        gerador/instrumento e o ruído AWGN fica sempre à parte, de modo que
+        reaplicar ruído no futuro não exige regerar nem recapturar nada.
         """
         config = self.config
         config.results_dir.mkdir(parents=True, exist_ok=True)
@@ -2140,23 +2390,48 @@ class ExperimentoBase(ABC):
             )
         self._finalizar_gravacao(parcial=False)
 
+    def _arquivo_da_classe(self) -> "sessao_io.ArquivoDaClasse":
+        """Acumulador do ``NN_classe.npz`` desta classe NESTA sessão. Vive na
+        ``Bancada`` (uma conexão): os perfis de um ``set perfil todos`` caem no
+        mesmo arquivo; uma ``Bancada`` nova, na mesma pasta, recomeça a classe
+        (como a rodada nova sempre substituiu a anterior)."""
+        pai = getattr(self, "bancada", None)
+        registro = (pai if pai is not None else self).__dict__.setdefault("_arquivos_classe", {})
+        chave = (str(Path(self.config.results_dir).resolve()), self.id)
+        arquivo = registro.get(chave)
+        if arquivo is None:
+            arquivo = registro[chave] = sessao_io.ArquivoDaClasse(
+                self.config.results_dir, self.id, self.nome, spool=self.osc is not None,
+            )
+        return arquivo
+
+    def _liberar_arquivo_da_classe(self) -> None:
+        """Solta o acumulador da classe (a memória das capturas) quando esta
+        execução não faz parte de uma bateria que ainda vai gravar outro
+        perfil nele (``Bancada.executar_bateria`` solta no fim da classe)."""
+        pai = getattr(self, "bancada", None)
+        if pai is not None and getattr(pai, "_manter_arquivos_classe", False):
+            return
+        registro = (pai if pai is not None else self).__dict__.get("_arquivos_classe", {})
+        registro.pop((str(Path(self.config.results_dir).resolve()), self.id), None)
+
     def _iniciar_gravacao_incremental(self) -> None:
-        """Abre o ``metadata/*.jsonl.part`` da classe e zera o estado de
-        gravação. Depois disto cada captura pode ir para o disco sozinha."""
+        """Abre o bloco do perfil atual no ``NN_classe.npz`` da classe e zera
+        o estado de gravação. Depois disto cada captura pode ir para o disco
+        sozinha (``parcial/``), e o arquivo da classe é reescrito por inteiro
+        em ``_finalizar_gravacao``."""
         config = self.config
         config.results_dir.mkdir(parents=True, exist_ok=True)
         preparar_pasta_da_sessao(config.results_dir, bancada=self.osc is not None)
         metadata_dir = config.results_dir / "metadata"
         metadata_dir.mkdir(parents=True, exist_ok=True)
-        metadata_final = metadata_dir / f"{self.id}_{self.nome.lower()}.jsonl"
-        metadata_partial = metadata_final.with_suffix(".jsonl.part")
+        perfil = perfis.perfil_da_config(config)
+        arquivo = self._arquivo_da_classe()
+        arquivo.iniciar_perfil(perfil)
         self._gravacao = {
+            "arquivo": arquivo,
+            "perfil": perfil,
             "registros": [],
-            "ocorrencias": {},
-            "nomes_por_diretorio": {},
-            "metadata_final": metadata_final,
-            "metadata_partial": metadata_partial,
-            "handle": metadata_partial.open("w", encoding="utf-8"),
             "linhas": 0,
             "indice": 0,
         }
@@ -2172,139 +2447,91 @@ class ExperimentoBase(ABC):
         metadado: dict,
         versoes: Optional[Dict[str, object]] = None,
     ) -> None:
-        """Grava UMA captura (dados puros + cada ``snr_XXdb/`` + corrente) e
-        acrescenta a linha dela ao ``metadata/*.jsonl.part``, com ``flush`` +
-        ``fsync`` por linha.
+        """Entrega UMA captura (medida + modelo + programada + cada SNR +
+        corrente) ao acumulador da classe (``sessao_io.ArquivoDaClasse``), que
+        a grava de imediato em ``parcial/`` (atômica, por captura). O
+        ``NN_classe.npz`` com todas as capturas é reescrito por
+        ``_finalizar_gravacao`` (ao fim do perfil ou ao interromper a classe).
 
-        Escrita atômica por arquivo (``.part`` -> ``os.replace``), igual ao
-        comportamento anterior — a diferença é QUANDO ela acontece: antes, no
-        fim da classe inteira; agora, assim que a captura existe. É o que
-        teria salvo as 7 capturas boas de 08 e as 52 de 03 da sessão 2
-        (relatório 01 §3 P1)."""
+        É o que teria salvo as 7 capturas boas de 08 e as 52 de 03 da sessão 2
+        (relatório 01 §3 P1): uma falha na captura k nunca perde as k-1 boas.
+        O metadata ganha ``arquivo_classe``, ``perfil`` e ``indice_no_arquivo``
+        (a linha dela dentro do bloco do perfil)."""
         config = self.config
         gravacao = self._gravacao
-        indice = gravacao["indice"]
-        gravacao["indice"] = indice + 1
-        rotulo = self._rotulo_da_captura(indice, metadado.get("parametros") or {})
-        nome_base = f"{self.id}_{self.nome.lower()}_{rotulo}.npz"
-        id_captura_array = np.array([id_captura], dtype=object)
-
-        def _registrar(directory: Path, nome_arquivo: str) -> None:
-            gravacao["nomes_por_diretorio"].setdefault(directory, set()).add(nome_arquivo)
-
-        def _gravar(directory: Path, nome_arquivo: str, **arrays) -> None:
-            directory.mkdir(parents=True, exist_ok=True)
-            final_path = directory / nome_arquivo
-            partial_path = final_path.with_suffix(".npz.part")
-            with partial_path.open("wb") as handle:
-                np.savez(handle, classe=self.nome, id_captura=id_captura_array, **arrays)
-            os.replace(partial_path, final_path)
-            _registrar(directory, nome_arquivo)
-
-        _gravar(
-            config.results_dir, nome_base,
-            tempo_ms=tempo_ms, tensao_pu=tensao_limpa_captura[np.newaxis, :],
-        )
-        for snr_db, tensao in tensao_por_snr_captura.items():
-            rotulo_snr = str(int(snr_db)) if float(snr_db).is_integer() else str(snr_db).replace(".", "_")
-            # Ruído só na janela: o eixo de tempo acompanha o tamanho do array
-            # (a janela começa em 0 ms), não o do registro com margens.
-            tempo_snr = tempo_ms if tensao.size == np.size(tempo_ms) else (
-                np.arange(tensao.size, dtype=np.float64) / float(config.fs_hz) * 1000.0
-            )
-            _gravar(
-                config.results_dir / f"snr_{rotulo_snr}db", nome_base,
-                tempo_ms=tempo_snr, tensao_pu=tensao[np.newaxis, :],
-            )
-        if corrente_captura is not None:
-            _gravar(
-                config.results_dir / "corrente",
-                f"{self.id}_{self.nome.lower()}_{rotulo}_corrente.npz",
-                tempo_ms=tempo_ms, corrente_pu=corrente_captura[np.newaxis, :],
-            )
+        gravacao["indice"] += 1
+        registro = np.asarray(tensao_limpa_captura)
+        pontos = int(metadado.get("pontos", config.points))
+        # Medida = registro inteiro (com a margem de captura); a janela
+        # rotulada começa em inicio_janela (docs/tres_versoes.md).
+        inicio = metadado.get("inicio_janela")
+        if inicio is None:
+            inicio = metadado.get("margem_amostras_antes", 0)
+        inicio = max(0, min(int(inicio), max(0, registro.size - pontos)))
+        modelo = programada = origem = None
         if versoes:
-            # Três versões na janela rotulada (docs/tres_versoes.md): modelo e
-            # programada já são de 6000 amostras; a medida é o recorte do
-            # registro (com margem) pelo mesmo inicio_janela do metadata.
-            pontos = int(metadado.get("pontos", config.points))
-            registro = np.asarray(tensao_limpa_captura, dtype=np.float64)
-            inicio = metadado.get("inicio_janela")
-            if inicio is None:
-                inicio = metadado.get("margem_amostras_antes", 0)
-            inicio = max(0, min(int(inicio), max(0, registro.size - pontos)))
-            arrays_versoes = {
-                "tempo_ms": np.arange(pontos, dtype=np.float64) / float(config.fs_hz) * 1000.0,
-                "modelo_pu": versoes["modelo"][np.newaxis, :],
-                "medida_pu": registro[inicio : inicio + pontos][np.newaxis, :],
-                "inicio_janela": np.array(inicio),
-            }
-            if "programada" in versoes:
-                arrays_versoes["programada_pu"] = versoes["programada"][np.newaxis, :]
-                arrays_versoes["origem_programada"] = np.array(versoes["origem_programada"])
-            _gravar(config.results_dir / PASTA_TRES_VERSOES, nome_base, **arrays_versoes)
+            modelo = versoes.get("modelo")
+            programada = versoes.get("programada")
+            origem = versoes.get("origem_programada")
             metadado["tres_versoes"] = {
-                "arquivo": f"{PASTA_TRES_VERSOES}/{nome_base}",
-                "programada": versoes.get("origem_programada"),
+                "arquivo": gravacao["arquivo"].nome_arquivo,
+                "programada": origem,
             }
-
-        handle = gravacao["handle"]
-        handle.write(json.dumps(metadado, ensure_ascii=False, sort_keys=True) + "\n")
-        handle.flush()
-        os.fsync(handle.fileno())
+        gravacao["arquivo"].adicionar(
+            gravacao["perfil"], id_captura=id_captura, medida=registro, tempo_ms=tempo_ms,
+            fs_hz=config.fs_hz, modelo=modelo, programada=programada, origem_programada=origem,
+            inicio_janela=inicio, pontos=pontos, snr=tensao_por_snr_captura,
+            corrente=corrente_captura, metadado=metadado,
+        )
         gravacao["linhas"] += 1
         gravacao["registros"].append(metadado)
 
     def _finalizar_gravacao(self, *, parcial: bool) -> None:
-        """Promove o ``metadata/*.jsonl.part`` e, só quando a rodada terminou
-        INTEIRA (``parcial=False``), remove órfãos de rodadas anteriores.
-
-        Numa rodada abortada no meio, os arquivos da rodada anterior ainda são
-        os melhores dados existentes — apagá-los com base numa lista
-        incompleta seria trocar dado bom por dado faltando."""
+        """Promove o ``NN_classe.npz`` (+ ``snr_XXdb/`` + ``corrente/``) e o
+        ``metadata/NN_classe.jsonl`` com TUDO o que a classe já tem (os perfis
+        anteriores da rodada incluídos), mesmo quando a rodada foi
+        interrompida (``parcial=True``): o que já foi capturado nunca se perde."""
         gravacao = getattr(self, "_gravacao", None)
         if not gravacao:
             return
         self._gravacao = None
-        handle = gravacao["handle"]
-        try:
-            handle.flush()
-            os.fsync(handle.fileno())
-        finally:
-            handle.close()
+        arquivo = gravacao["arquivo"]
         if gravacao["linhas"] == 0:
-            gravacao["metadata_partial"].unlink(missing_ok=True)
+            arquivo.encerrar_perfil(gravacao["perfil"])
             return
-        os.replace(gravacao["metadata_partial"], gravacao["metadata_final"])
-        _gravar_metadata_legivel(gravacao["metadata_final"], gravacao["registros"])
+        self._gravar_arquivos_da_classe(arquivo, parcial=parcial)
+        arquivo.encerrar_perfil(gravacao["perfil"])
         if parcial:
             logger.error(
-                "[%s] classe interrompida: %d captura(s) preservada(s) em %s "
-                "(metadata PARCIAL; limpeza de órfãos NÃO executada)",
-                self.id, gravacao["linhas"], self.config.results_dir,
+                "[%s] classe interrompida: %d captura(s) do perfil %s preservada(s) em %s/%s "
+                "(metadata PARCIAL)",
+                self.id, gravacao["linhas"], gravacao["perfil"], self.config.results_dir,
+                arquivo.nome_arquivo,
             )
-            return
-        prefixo_classe = f"{self.id}_{self.nome.lower()}_"
-        for directory, nomes_escritos in gravacao["nomes_por_diretorio"].items():
-            for arquivo_existente in directory.glob(f"{prefixo_classe}*.npz"):
-                if arquivo_existente.name not in nomes_escritos:
-                    arquivo_existente.unlink()
 
-    def _rotulo_da_captura(self, indice: int, parametros: dict) -> str:
-        """Nome legível da captura dentro da classe. 1ª ocorrência de um
-        rótulo fica sem sufixo (nome histórico); da 2ª em diante `_02`, `_03`,
-        ... — sem isso as N capturas de `set capturas N` colapsariam num
-        arquivo só (ver docstring de _salvar_classe)."""
-        if not parametros:
-            # Já único por captura: `indice` percorre 0..total-1.
-            return f"cap{indice + 1:02d}"
-        chave, valor = next(iter(parametros.items()))
-        valor_fmt = f"{valor:g}" if isinstance(valor, float) else str(valor)
-        base = f"{chave}-{valor_fmt}"
-        ocorrencias = self._gravacao["ocorrencias"]
-        ocorrencia = ocorrencias.get(base, 0) + 1
-        ocorrencias[base] = ocorrencia
-        return base if ocorrencia == 1 else f"{base}_{ocorrencia:02d}"
-
+    def _gravar_arquivos_da_classe(self, arquivo: "sessao_io.ArquivoDaClasse", *, parcial: bool = False) -> None:
+        """Dados primeiro (todos os ``.part`` antes de qualquer promoção), o
+        metadata depois — o metadata sobrevivente nunca descreve dado que não
+        foi gravado. Com ``config.perfis_espelho`` (classe independente do
+        perfil num ``set perfil todos``) e a classe terminada (não ``parcial``),
+        os outros perfis são declarados espelho desta captura antes de gravar
+        (``ArquivoDaClasse.espelhar``: mesmo arquivo, índice e SHA-256)."""
+        espelhos = tuple(getattr(self.config, "perfis_espelho", ()))
+        if espelhos and not parcial:
+            arquivo.espelhar(perfis.perfil_da_config(self.config), espelhos)
+        arquivo.consolidar()
+        metadata_dir = Path(self.config.results_dir) / "metadata"
+        metadata_dir.mkdir(parents=True, exist_ok=True)
+        metadata_final = metadata_dir / f"{self.id}_{self.nome.lower()}.jsonl"
+        metadata_partial = metadata_final.with_suffix(".jsonl.part")
+        registros = arquivo.registros()
+        with metadata_partial.open("w", encoding="utf-8") as handle:
+            for registro in registros:
+                handle.write(json.dumps(registro, ensure_ascii=False, sort_keys=True) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(metadata_partial, metadata_final)
+        _gravar_metadata_legivel(metadata_final, registros)
 
     def _salvar_classe_simulada(
         self,
@@ -2317,70 +2544,36 @@ class ExperimentoBase(ABC):
         metadados: List[dict],
         versoes: Optional[Dict[str, np.ndarray]] = None,
     ) -> None:
-        """Layout histórico do dataset sintético: um ``.npz`` por classe com
-        todas as capturas empilhadas (``tensao_pu`` com shape
-        ``(total, pontos)``, ``id_captura`` com um id por linha), o mesmo em
-        cada ``snr_XXdb/`` e em ``corrente/``. Escrita atômica: tudo grava em
-        ``.part`` e só é promovido (``os.replace``) depois que TODOS os
+        """Dataset sintético: o bloco do perfil atual (todas as capturas) vai
+        para o ``NN_classe.npz`` da classe (formato 2, ``sessao_io``), com
+        medida = a série do dataset, modelo e programada; SNRs em
+        ``snr_XXdb/NN_classe.npz`` e corrente em ``corrente/``. Escrita
+        atômica: tudo grava em ``.part`` e só é promovido depois que TODOS os
         arquivos terminaram sem erro — nunca deixa uma classe meio gravada.
         """
         config = self.config
         preparar_pasta_da_sessao(config.results_dir, bancada=False)
-        ids_array = np.array(ids, dtype=object)
-        final_paths = []
-
-        final_path = config.results_dir / f"{self.id}_{self.nome.lower()}.npz"
-        partial_path = final_path.with_suffix(".npz.part")
-        with partial_path.open("wb") as handle:
-            np.savez(handle, tempo_ms=tempo_ms, tensao_pu=tensao_limpa, classe=self.nome, id_captura=ids_array)
-        final_paths.append((partial_path, final_path))
-
-        for snr_db, tensao in tensao_por_snr.items():
-            rotulo = str(int(snr_db)) if float(snr_db).is_integer() else str(snr_db).replace(".", "_")
-            directory = config.results_dir / f"snr_{rotulo}db"
-            directory.mkdir(parents=True, exist_ok=True)
-            final_path = directory / f"{self.id}_{self.nome.lower()}.npz"
-            partial_path = final_path.with_suffix(".npz.part")
-            with partial_path.open("wb") as handle:
-                np.savez(handle, tempo_ms=tempo_ms, tensao_pu=tensao, classe=self.nome, id_captura=ids_array)
-            final_paths.append((partial_path, final_path))
-
-        if corrente is not None:
-            directory = config.results_dir / "corrente"
-            directory.mkdir(parents=True, exist_ok=True)
-            final_path = directory / f"{self.id}_{self.nome.lower()}_corrente.npz"
-            partial_path = final_path.with_suffix(".npz.part")
-            with partial_path.open("wb") as handle:
-                np.savez(handle, tempo_ms=tempo_ms, corrente_pu=corrente, classe=self.nome, id_captura=ids_array)
-            final_paths.append((partial_path, final_path))
-
-        if versoes:
-            # Simulado: modelo e programada (não há medida), empilhadas como o resto.
-            directory = config.results_dir / PASTA_TRES_VERSOES
-            directory.mkdir(parents=True, exist_ok=True)
-            final_path = directory / f"{self.id}_{self.nome.lower()}.npz"
-            partial_path = final_path.with_suffix(".npz.part")
-            with partial_path.open("wb") as handle:
-                np.savez(handle, tempo_ms=tempo_ms, classe=self.nome, id_captura=ids_array, **versoes)
-            final_paths.append((partial_path, final_path))
-            for linha, registro in enumerate(metadados):
-                registro["tres_versoes"] = {
-                    "arquivo": f"{PASTA_TRES_VERSOES}/{final_path.name}",
-                    "programada": (str(versoes["origem_programada"][linha]) or None) if "origem_programada" in versoes else None,
-                }
-
-        metadata_dir = config.results_dir / "metadata"
-        metadata_dir.mkdir(parents=True, exist_ok=True)
-        metadata_final = metadata_dir / f"{self.id}_{self.nome.lower()}.jsonl"
-        metadata_partial = metadata_final.with_suffix(".jsonl.part")
-        with metadata_partial.open("w", encoding="utf-8") as handle:
-            for registro in metadados:
-                handle.write(json.dumps(registro, ensure_ascii=False, sort_keys=True) + "\n")
-
-        for partial_path, final_path in final_paths:
-            os.replace(partial_path, final_path)
-        os.replace(metadata_partial, metadata_final)
-        _gravar_metadata_legivel(metadata_final, metadados)
+        perfil = perfis.perfil_da_config(config)
+        arquivo = self._arquivo_da_classe()
+        arquivo.iniciar_perfil(perfil)
+        pontos = int(tensao_limpa.shape[1])
+        for linha, registro in enumerate(metadados):
+            modelo = programada = origem = None
+            if versoes:
+                modelo = versoes["modelo_pu"][linha]
+                if "programada_pu" in versoes:
+                    programada = versoes["programada_pu"][linha]
+                if "origem_programada" in versoes:
+                    origem = str(versoes["origem_programada"][linha]) or None
+                registro["tres_versoes"] = {"arquivo": arquivo.nome_arquivo, "programada": origem}
+            arquivo.adicionar(
+                perfil, id_captura=ids[linha], medida=tensao_limpa[linha], tempo_ms=tempo_ms,
+                fs_hz=config.fs_hz, modelo=modelo, programada=programada, origem_programada=origem,
+                inicio_janela=0, pontos=pontos,
+                snr={snr_db: tensao[linha] for snr_db, tensao in tensao_por_snr.items()},
+                corrente=None if corrente is None else corrente[linha], metadado=registro,
+            )
+        self._gravar_arquivos_da_classe(arquivo)
 
     def executar(self) -> None:
         simulated = self.osc is None
@@ -2484,9 +2677,8 @@ class ExperimentoBase(ABC):
                         self._validar_captura(time_s, measured_voltage_pu, pontos_esperados=pontos_efetivos)
                     except ERROS_CAPTURA_DESCARTAVEL as exc:
                         # Só ESTA captura é perdida — a bateria/classe seguem para a
-                        # próxima posição do plano, sem retentar do zero (pedido do
-                        # dono em 2026-09-22: "não aborte, apenas log e descarte;
-                        # abortar a bateria gasta MUITO tempo"). Nada é gravado para
+                        # próxima posição do plano, sem retentar do zero (decisão de
+                        # projeto de 2026-09-22, ver o comentário acima). Nada é gravado para
                         # ela. Ver ERROS_CAPTURA_DESCARTAVEL para o que entra/não
                         # entra nesta lista e por quê.
                         logger.error(
@@ -2525,6 +2717,7 @@ class ExperimentoBase(ABC):
                 extremos: Dict[str, object] = {}
                 if not simulated:
                     metadados[-1].update(self._contexto_da_sessao())
+                    self._gravar_diagnostico_trace(capture_id, metadados[-1])
                     # Logo depois da aquisição, antes de qualquer outro comando
                     # ao osciloscópio: a medida é sobre o registro que ele tem.
                     extremos = self._medir_extremos_fisicos()
@@ -2573,6 +2766,7 @@ class ExperimentoBase(ABC):
                         capture_index, t, seed, measured_voltage_pu,
                         margem_antes=margem_antes,
                         inicio_janela=metadados[-1].get("inicio_janela"),
+                        avaliacao=getattr(self, "_avaliacoes_bancada", {}).get(indice_global),
                     )
                     if validacao is not None:
                         metadados[-1]["validacao_fisica"] = validacao
@@ -2606,7 +2800,14 @@ class ExperimentoBase(ABC):
             # disco (metadata parcial promovido, limpeza de órfãos suprimida)
             # antes de deixar a exceção subir para executar_bateria().
             if not simulated:
-                self._finalizar_gravacao(parcial=True)
+                try:
+                    self._finalizar_gravacao(parcial=True)
+                except Exception:  # noqa: BLE001 - não mascara o erro original; o spool em parcial/ guarda as capturas
+                    logger.exception(
+                        "[%s] não foi possível consolidar o .npz da classe interrompida; as capturas "
+                        "feitas ficam em parcial/ (sessao_io.recuperar_parcial)", self.id,
+                    )
+            self._liberar_arquivo_da_classe()
             raise
 
         if not simulated:
@@ -2618,6 +2819,7 @@ class ExperimentoBase(ABC):
             # as nativas, não.
             self.fonte.restaurar_forma_e_modo_padrao()
             self._finalizar_gravacao(parcial=False)
+            self._liberar_arquivo_da_classe()
             capturas_boas = total - len(capturas_descartadas) - len(capturas_invalidas)
             self._capturas_descartadas_count = len(capturas_descartadas)
             self._capturas_invalidas_count = len(capturas_invalidas)
@@ -2657,6 +2859,7 @@ class ExperimentoBase(ABC):
                 metadados=metadados, simulated=True,
                 versoes=self._versoes_simuladas_da_classe(versoes_modelo, versoes_programada, origens_programada),
             )
+            self._liberar_arquivo_da_classe()
         logger.info("[%s] classe concluída: %s", self.id, self.nome)
 
 
@@ -2774,7 +2977,10 @@ class ExperimentoNativo(ExperimentoBase):
         self.fonte.trigger()
         self.osc.wait_for_trigger_complete(timeout_s=5.0)
         self.fonte.wait_transient_complete(timeout_s=5.0)
-        return self._ler_captura(parametros)
+        resultado = self._ler_captura(parametros)
+        if self.usar_trace(capture_index):
+            self._ler_traces_de_diagnostico()
+        return resultado
 
 
 class ExperimentoWaveform(ExperimentoBase):
@@ -2846,7 +3052,7 @@ class ExperimentoWaveform(ExperimentoBase):
     def _limitar_disturbio_para_bancada(
         self, voltage_pu: np.ndarray, parametros: Dict[str, float], capture_index: int,
     ) -> np.ndarray:
-        """Opção (b) do dono para 220 V: se o extremo previsto da forma do
+        """Opção (b) para 220 V: se o extremo previsto da forma do
         modelo passa do teto, reduz SÓ o distúrbio (a senoide base fica em
         1 pu) à maior fração que cabe pelo modelo de
         ``extremo_previsto_com_disturbio_v``. Nunca sobe nada; nunca toca
@@ -2975,7 +3181,11 @@ class ExperimentoWaveform(ExperimentoBase):
         self.fonte.trigger()
         self.osc.wait_for_trigger_complete(timeout_s=5.0)
         self.fonte.wait_transient_complete(timeout_s=5.0)
-        return self._ler_captura(parametros)
+        resultado = self._ler_captura(parametros)
+        # Só aqui: transiente concluído, osciloscópio já lido, nenhuma
+        # programação por vir antes da próxima captura.
+        self._ler_traces_de_diagnostico()
+        return resultado
 
 
 # ---------------------------------------------------------------------------

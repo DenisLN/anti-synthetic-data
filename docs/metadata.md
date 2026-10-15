@@ -17,9 +17,13 @@ Decisão: o `.jsonl` continua sendo a fonte; o `.json` é derivado dele (gravado
 fim da classe, na mesma operação que promove o `.jsonl.part`). Trocar o formato obrigaria
 a reescrever 4 leitores (`recortar_margem`, `analisar_sessao`, `relatorio_html`,
 `recalibrar_extremos`) e quebraria a leitura das sessões de 07/10, sem ganho de informação.
-Os leitores usam `glob("*.jsonl")`, que não casa `NN_classe.json`. Se o processo morrer
-no meio de uma classe, só o `.jsonl.part` existe (o `.json` aparece quando a classe fecha,
-inclusive nas interrompidas via erro tratado).
+Os leitores usam `glob("*.jsonl")`, que não casa `NN_classe.json`. Com `set perfil todos`
+(v1.15) o `.jsonl` da classe tem as linhas de TODOS os perfis, perfil a perfil, e é reescrito
+inteiro (`.jsonl.part` -> `os.replace`) ao fim de cada perfil e ao interromper a classe, junto
+com o `NN_classe.npz` (`mestre._gravar_arquivos_da_classe`). Se o processo morrer no meio de
+um perfil, o metadata das capturas já feitas está em `parcial/NN_classe/` (campo
+`metadado_json` de cada captura) e `sessao_io.recuperar_parcial` o devolve ao `.jsonl`; o
+`.json` aparece quando a classe fecha, inclusive nas interrompidas via erro tratado.
 
 ## `sessao.json`
 
@@ -29,9 +33,14 @@ inclusive nas interrompidas via erro tratado).
 | `criada_em` | ISO 8601 com fuso, no primeiro uso da pasta no processo |
 | `modo` | `bancada` ou `simulado` |
 | `git_commit` | `git rev-parse HEAD` (`null` se o git não respondeu) |
-| `git_sujo` | `true` se `git status --porcelain --untracked-files=no` não é vazio (mesmo critério do `-dirty` de `git describe`; arquivo novo não rastreado NÃO conta); `null` se o git não respondeu |
+| `git_sujo` | `true` se há alteração rastreada não commitada em qualquer arquivo (`git status --porcelain --untracked-files=no`) OU arquivo novo não ignorado dentro de `logica/`, `experimentos_nativos/`, `experimentos_waveform/` ou `scripts/` (`mestre.PASTAS_DO_CODIGO`); arquivo novo fora dessas pastas não conta; `null` se o git não respondeu. Recalculado a cada pasta de sessão (= a cada `run` da CLI), não uma vez por processo |
+| `arquivos_nao_rastreados` | lista (ordenada) dos arquivos novos não ignorados dentro de `PASTAS_DO_CODIGO` que tornaram a árvore suja; `[]` se nenhum (v1.15, acrescentado) |
 | `versao_codigo` | `git describe --always --dirty --tags` |
 | `numpy_versao`, `python_versao` | versões do ambiente que gravou |
+| `perfil` | perfil de faixas (`norma`, `literatura` ou `fronteira`) em vigor no início do run desta pasta (v1.15, acrescentado) |
+| `perfis_da_rodada` | lista dos perfis que o run percorre: um com `set perfil norma\|literatura\|fronteira`, os três com `set perfil todos`; `perfil` vale então `"todos"` (v1.15, acrescentado) |
+| `formato_npz` | formato dos `.npz` da pasta: `2` = um `NN_classe.npz` comprimido por classe, com perfis e versões (`docs/dataset.md` §2; v1.15, acrescentado) |
+| `perfis_usados_na_cli` | lista, na ordem, do perfil de cada run desta CLI até esta pasta, inclusive (v1.15, acrescentado); a pasta do primeiro run tem uma entrada, a do terceiro, três |
 | `calibracao_extremos.origem` | caminho do arquivo copiado |
 | `calibracao_extremos.copia_na_sessao` | nome da cópia dentro da pasta (`calibracao_extremos.json`) |
 | `calibracao_extremos.sha256` | SHA-256 da cópia |
@@ -47,19 +56,28 @@ Nenhum campo existente foi removido. Campos novos:
 |---|---|---|
 | `inicio_janela` | só captura física com `indice_trigger` | índice da amostra, dentro do registro bruto, onde começa a janela nominal de `pontos` amostras: `round(indice_trigger - pre_trigger_s * fs_hz)`, limitado a `[0, amostras_totais - pontos]` (a mesma conta de `sinais.janela_nominal`) |
 | `inicio_janela_ajustado` | idem | `true` se o limite agiu (registro curto demais; janela empurrada para dentro) |
-| `inicio_disturbio_s`, `duracao_s`, `fase_graus` | simulada e física, com `sorteio_posicao` verdadeiro | início e duração do distúrbio dentro da janela de 200 ms e fase da senoide base em t = 0 (`sin(2π·f0·t + fase)`), sorteados em `gerar()` (v1.15; `docs/analise-2026-10-12/sorteio_inicio_fase.md`). Ausentes quando a classe não tem o item (início/duração: 01, 05, 06, 15, 18, 19, 20) e na 08 |
+| `inicio_disturbio_s`, `duracao_s`, `fase_graus` | simulada e física, com `sorteio_posicao` verdadeiro | início e duração do distúrbio dentro da janela de 200 ms e fase da senoide base em t = 0 (`sin(2π·f0·t + fase)`), sorteados em `gerar()` (v1.15; `arquivo/analises:docs/analise-2026-10-12/pendente/sorteio_inicio_fase_VERIFICAR_BANCADA.md`). Ausentes quando a classe não tem o item (início/duração: 01, 05, 06, 15, 18, 19, 20) e na 08 |
 | `sorteio_posicao` | toda captura | `true` se o sorteio estava ligado; metadata anterior não tem o campo (= `false`) |
 | `pre_trigger_s` | só física | passa a ser o pré-trigger **efetivo da captura** (nas 02/03/04 com sorteio, igual a `inicio_disturbio_s`); `inicio_janela` e os leitores já o usam |
 | `pre_trigger_desvio_amostras` | só física, pré-trigger sorteado | `indice_trigger` medido menos o previsto (`round(pre_trigger_s·fs) + margem_amostras_antes`) |
-| `parametros.inicio_impulso_s` (08) | só física | instante do impulso programado (80 ms; 90 ms a 50 Hz com `sorteio_posicao`; `docs/analise-2026-10-12/classe08_fronteira.md`) |
+| `parametros.inicio_impulso_s` (08) | só física | instante do impulso programado (80 ms; 90 ms a 50 Hz com `sorteio_posicao`; `arquivo/analises:docs/analise-2026-10-12/pendente/classe08_fronteira_REVISAR.md`) |
 | `validacao_fisica.posicao_evento` (08) | só física | `inicio_previsto_amostra`, `pico_medido_amostra`, `desvio_amostras` (medido menos previsto), `tolerancia_amostras` (10) e `desvio_pico_pu`; fora da tolerância a captura é marcada inválida (`ok = false`, motivo "posição do impulso") |
+| `validacao_fisica.crista_modelo`, `fator_extremo_crista`, `crista_medida`, `crista_minima_aceita`, `crista_maxima_aceita` | só física (v1.15, spec 26) | crista do ciclo mediano da forma esperada, fator de extremo efetivo usado (o da previsão de pico; 1,0 na 08), crista medida e os limites aceitos (`crista_modelo × (1 − 0,10)` e `crista_modelo × fator × (1 + 0,10)`). `crista_esperada` continua igual a `crista_modelo` |
 | `git_commit`, `git_sujo`, `numpy_versao` | só física | cópia da procedência (o `.jsonl` sobrevive sozinho se for copiado sem a pasta) |
 | `calibracao_extremos_sha256` | só física | SHA-256 da calibração usada na captura; deve bater com `sessao.json` |
-| `tres_versoes` | captura gravada pela v1.15 (em andamento) em diante | `{arquivo, programada}`: onde estão modelo/programada/medida desta captura e como a programada foi obtida (`docs/tres_versoes.md`) |
+| `tres_versoes` | captura gravada pela v1.15 (em andamento) em diante | `{arquivo, programada}`: onde estão modelo/programada/medida desta captura (o `NN_classe.npz`) e como a programada foi obtida (`docs/tres_versoes.md`) |
+| `arquivo_classe` | toda captura (formato 2) | nome do `NN_classe.npz` que guarda a captura (na pasta da sessão). Uma classe gravada com vários perfis tem as capturas de todos eles no mesmo arquivo (v1.15, acrescentado) |
+| `indice_no_arquivo` | toda captura (formato 2) | linha da captura dentro do bloco do `perfil` no arquivo: `dados["<perfil>/medida"][indice_no_arquivo]`, 0-based. O mesmo `id_captura` existe em cada perfil de uma sessão `set perfil todos`; a chave única da captura é `(perfil, id_captura)` (v1.15, acrescentado) |
+| `captura_compartilhada` | só com `set perfil todos`, classe que não depende do perfil | `true`: a captura existe uma vez no `NN_classe.npz`, no bloco de `perfil_de_origem`; as linhas dos outros perfis são a mesma captura (mesmo `id_captura`, `arquivo_classe`, `indice_no_arquivo`, `sha256_captura`) (v1.15, acrescentado) |
+| `perfil_de_origem` | idem | perfil cujo bloco do `.npz` guarda os dados (`literatura`) (v1.15, acrescentado) |
+| `compartilhada_com_perfis` | idem | lista de todos os perfis que apontam para a captura, origem primeiro (v1.15, acrescentado) |
+| `sha256_captura` | idem | SHA-256 dos arrays da captura (`sessao_io.hash_captura`: `medida`, `modelo`, `programada` em float64 little-endian, com rótulo e tamanho; versão ausente = `NaN`) (v1.15, acrescentado) |
 | `snr_medido_db` | toda captura | SNR **acrescentado** por nível (`"20.0"`, `"30.0"`, `"40.0"`): janela limpa contra ruído somado, medido só na janela rotulada |
 | `snr_bancada_db` | só física | SNR do ruído próprio da bancada nesta captura (potência da janela / ruído medido na margem anterior por segunda diferença); `null` no simulado |
 | `snr_efetivo_db` | toda captura | por nível: sinal / (ruído da bancada + ruído acrescentado); no simulado igual a `snr_medido_db` |
 | `ruido_janela` | toda captura | `inicio_janela`, `amostras`, `potencia_referencia_pu2`, `margens_com_ruido` (sempre `false`: os `snr_XXdb/` têm só a janela) e `bancada` (`margem`, `amostras`, `ruido_rms_pu`, `media_da_margem_pu`, `snr_db`) |
+| `ruido_janela.sementes_por_snr_db` | toda captura com níveis de SNR (v1.15, acrescentado) | semente do AWGN de cada nível, com a mesma chave de `snr_medido_db` (`"20.0"`, ...): para `seed = 2020000` e níveis 20/30 dB: `{"20.0": 52040000, "30.0": 52050000}`. Com ela e `potencia_referencia_pu2`, o vetor de ruído se reproduz (`numpy.random.default_rng(semente).normal(0, 1, pontos)`, escalado para a potência de referência / 10^(snr/10)) |
+| `ruido_janela.formula_semente` | idem | texto da fórmula: `seed + round(snr_db*1000) + 50000000` (`sinais.semente_do_ruido`, `sinais.FORMULA_SEMENTE_RUIDO`) |
 
 Capturas simuladas não têm trigger nem registro bruto: não têm `inicio_janela`; a procedência delas está em `sessao.json`.
 

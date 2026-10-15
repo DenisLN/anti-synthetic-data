@@ -1,6 +1,6 @@
 # Comandos SCPI usados e sua função
 
-Extraído de `logica/ametek_orm.py` e `logica/oscilloscope_orm.py` (commit `d37e403`). "Manual" = página do **PDF** em `docs/AMETEK_MX_SCPI_Programming_Manual.pdf` / `docs/Keysight_4000X_Programmers_Guide.pdf` (texto pesquisável em `docs/analise-2026-09-21/manuais_txt/`). Onde a Rev. 5.53 (AMETEK) ou o firmware 07.30 (Keysight) difere do manual, está em `docs/quirks.md`. Nenhum experimento escreve SCPI cru: tudo passa pelos métodos da coluna "Método".
+Extraído de `logica/ametek_orm.py` e `logica/oscilloscope_orm.py` (commit `d37e403`). "Manual" = página do **PDF** em `docs/AMETEK_MX_SCPI_Programming_Manual.pdf` / `docs/Keysight_4000X_Programmers_Guide.pdf` (texto pesquisável em `docs/manuais_txt/`). Onde a Rev. 5.53 (AMETEK) ou o firmware 07.30 (Keysight) difere do manual, está em `docs/quirks.md`. Nenhum experimento escreve SCPI cru: tudo passa pelos métodos da coluna "Método".
 
 ## 1. Camada de transporte (AMETEK)
 
@@ -85,11 +85,13 @@ Manual: `VOLTage:MODE` 90-153, `VOLTage:TRIGgered` 108-109, `PULSe:WIDTh` 104-10
 | lista | `SOURce:LIST:FUNCtion:SHAPe TCC00,…`, `SOURce:LIST:VOLTage v0,…`, `SOURce:LIST:DWELl d,…` (cada um com `check_errors` e `…:POINts?` igual ao nº de ciclos) |
 | modos | `SOURce:LIST:REPeat 0,0,…`, `SOURce:LIST:COUNt 1`, `SOURce:LIST:STEP AUTO`, `FUNCtion:MODE LIST`, `VOLTage:MODE LIST`, `TRIGger:SOURce BUS`, `TRIGger:SYNChronize:SOURce PHASe`, `TRIGger:SYNChronize:PHASe 0`, `OUTPut:TTLTrg:MODE TRIG`, `OUTPut:TTLTrg:SOURce BOT`, `OUTPut:TTLTrg ON` |
 
-Em `montar_programacao` (`:1322`): ciclos de `30000/f0` amostras (12 a 60 Hz → 500 amostras; 10 a 50 Hz → 600), cada um reamostrado a 1024 pontos, média removida, normalizado pelo pico; o rms do ciclo vai em `LIST:VOLTage`; `DWELl` = 1 ciclo exato. O nome da TRACe é `TCC00…`.
+Em `montar_programacao` (`:1322`): ciclos de `30000/f0` amostras (12 a 60 Hz → 500 amostras; 10 a 50 Hz → 600), cada um reamostrado a 1024 pontos, média removida, normalizado pelo pico, com reamostragem periódica (ciclo fechado); o rms da componente CA do ciclo (sem a média, como a fonte escala a TRACe sem DC) vai em `LIST:VOLTage`; `DWELl` = 1 ciclo exato. O nome da TRACe é `TCC00…`.
 
 `arm_transient` (`:1716`) espera `IDLE`, lê 9 consultas de volta (`OUTPut:STATe?`, `FUNCtion:MODE?`, `VOLTage:MODE?`, `SOURce:FREQuency:MODE?`, `SOURce:LIST:FUNCtion|VOLTage|DWELl|REPeat:POINts?`, `TRIGger:SOURce?`), compara com o esperado, e então `*WAI`, `INITiate:IMMediate`. **Não** repetir `ABORt` aqui. Depois: `trigger`, `wait_transient_complete`.
 
 Apagar TRACes: `TRACe:DELete:ALL` (`clear_all_traces :1266`): só com OUTPUT OFF, antes de `energize_baseline`; espera 15 s sem consultar.
+
+Ler de volta uma TRACe (só diagnóstico, `set diagnostico retrieve`; `ametek_orm.py:1353`): `TRACe:DATA? <nome>` → 1024 valores separados por vírgula, "normalized values in the range of ±1" (manual p. 147, §6.2.7). **O manual é ambíguo**: a descrição do `TRACe[:DATA]` (p. 126) diz `Query Syntax: none`, e a p. 147 diz que, "when queried, trace data is returned as normalized values". A sintaxe `TRACe:DATA? <nome>` e o formato (lista NRf separada por vírgula, sem bloco `#`) são, portanto, **NÃO VERIFICADOS na fonte real**; `ler_trace` aceita só uma lista numérica de exatamente 1024 valores finitos (`LeituraTraceError` caso contrário). Regras de segurança: nunca como comando seguinte a uma escrita de TRACe (recusa), espera mínima de 2 s desde a última escrita de TRACe/DEFine/DELete (quirk A2), timeout próprio de 15 s restaurado depois, e só depois de a captura terminar.
 
 Manual: TRACe 126-127, LIST 90-97 e 153-154, `SOURce:MODE` 79/98, `INSTrument:COUPle` 53.
 

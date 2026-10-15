@@ -31,13 +31,15 @@ Regra de uso (`carregar_fatores_extremo`, `mestre.py:514`):
 
 Motivo histórico: 2026-10-07, 230 V/50 Hz com a tabela de 127 V/60 Hz, a 17 previu 405 V e mediu 444 V (acima dos 425 Vp do hardware). A resposta da saída depende da **frequência**, não da tensão.
 
-A 03 a 230 V/50 Hz continua fora: 1,058 × 357,8 V × 1,10 = 416,4 V > 415,8 V (decisão do professor registrada em `CHANGELOG/v1.15.md`).
+**A calibração também serve à validação física (v1.15, spec 26).** `ExperimentoBase.fator_extremo_efetivo_para_validacao` (`mestre.py:1872`) devolve, para a captura, o mesmo fator que a previsão de pico usa (`fator_extremo_da_classe(id, _fatores_extremo())`, com a regra por frequência e o caso sem tabela acima), sem a `MARGEM_FATOR_EXTREMO` (a folga é a tolerância de 10 % da crista). Captura com o distúrbio reduzido pelo limite de bancada usa a fórmula de `extremo_previsto_com_disturbio_v` com margem 1. Classe com `excursao_fisica_prevista_v()` não nulo (08) usa 1,0. `sinais.comparar_fisicamente(..., fator_crista=)` aceita crista medida em `[crista_modelo × 0,9, crista_modelo × fator × 1,1]` (bilateral: a fonte pode tocar menos que o máximo calibrado). Efeito: um fator calibrado baixo demais (ex. 07 e 17 a 127 V/60 Hz: 1,186 e 1,031) reprova a captura pela crista, e a recalibração (`set recalibracao on`, ao FIM do run) corrige o JSON para o run seguinte. O JSON não mudou.
+
+A 03 a 230 V/50 Hz continua fora: 1,058 × 357,8 V × 1,10 = 416,4 V > 415,8 V (mantida sem exceção na margem; decisão de projeto, registrada em `CHANGELOG/v1.15.md`).
 
 ## 5. Como calibrar uma condição nova
 
 1. Rodar a bateria na condição (o aviso de condição sem tabela é esperado).
 2. `.\env\Scripts\python.exe scripts\recalibrar_extremos.py resultados\sessao_A [resultados\sessao_B ...]` mostra o que mudaria; com `--gravar` atualiza o JSON sem diminuir nenhum fator (`--substituir` permite diminuir: enfraquece a pré-validação, evitar). Capturas com distúrbio reduzido entram invertendo a fórmula do limite de bancada; a 08 não entra.
-3. Alternativa dentro da CLI: `set recalibracao on` (nunca diminui, nunca cria tabela de condição nova; `docs/analise-2026-10-12/cli_recalibracao_html.md`).
+3. Alternativa dentro da CLI: `set recalibracao on` (nunca diminui, nunca cria tabela de condição nova; como reverter e o que aparece no fim do run: `docs/operacao.md` §9; `arquivo/analises:docs/analise-2026-10-12/resolvido/cli_recalibracao_html.md`).
 4. `git diff`, `tests.test_offline`, commitar. A sessão guarda uma cópia da calibração usada (`calibracao_extremos.json` na pasta e `calibracao_extremos_sha256` em cada captura).
 
 ## 6. Relatório offline do que cabe

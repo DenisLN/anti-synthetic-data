@@ -13,8 +13,9 @@ logger = logging.getLogger("MestreExperimentos")
 class Experimento(ExperimentoWaveform):
     id = "08"
     nome = "TRANSIENT"
-    # Parâmetro SORTEADO em gerar(): 3 capturas por padrão na bancada (pedido
-    # do dono, 2026-10-07; CHANGELOG/v1.13.md). Não muda o dataset simulado.
+    # Parâmetro SORTEADO em gerar(): 3 capturas por padrão na bancada (uma
+    # captura mostra uma só realização do sorteio; CHANGELOG/v1.13.md). Não
+    # muda o dataset simulado.
     # O padrão NÃO liga a caracterização: sem "set capturas" as 3 capturas
     # sorteiam o modelo e aplicam o impulso máximo seguro; a rampa de
     # amplitude continua exigindo "set capturas N" digitado pelo operador.
@@ -22,7 +23,7 @@ class Experimento(ExperimentoWaveform):
 
     INICIO_IMPULSO_S = 0.080
     DURACAO_IMPULSO_S = 0.00005
-    # v1.15 (docs/analise-2026-10-12/classe08_fronteira.md): a 50 Hz os 80 ms
+    # v1.15 (`arquivo/analises:docs/analise-2026-10-12/pendente/classe08_fronteira_REVISAR.md`): a 50 Hz os 80 ms
     # são o início do 5.º ciclo, e a fonte tocou o impulso no FIM desse ciclo
     # (100 ms; 3 capturas, 2026-10-07). O impulso nunca cai a menos de
     # DISTANCIA_MIN_FRONTEIRA_AMOSTRAS amostras (1 ms) de uma fronteira de
@@ -46,7 +47,7 @@ class Experimento(ExperimentoWaveform):
     # cheia): pico 0,38 do degrau ACIMA do alvo e vale 0,55-0,58 do degrau
     # ABAIXO do nível de partida, aproximadamente lineares no degrau. O array a
     # 30 kSa/s subestimava os dois (0,08 / 0,45). Usados com margem de ~1,2
-    # (docs/analise-2026-09-30/ANALISE.md, T8-4).
+    # (`arquivo/analises:docs/analise-2026-09-30/ANALISE.md`, T8-4).
     # v1.14: a 60 Hz o impulso (t = 80 ms) parte de -0,95 pu e quem limita a
     # amplitude é o VALE — o pico nunca chegava perto do teto e o 0,45 nunca
     # foi posto à prova. A 50 Hz ele parte do cruzamento por zero (maior

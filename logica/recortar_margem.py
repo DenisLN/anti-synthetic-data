@@ -9,16 +9,18 @@ validação física: ``sinais.janela_nominal()`` alinhada pelo ``indice_trigger`
 real gravado no metadata (H-REF10, CHANGELOG/v1.11.md).
 
 Nunca altera a sessão original: escreve numa pasta nova (padrão
-``<sessao>/sem_margem/``) com a mesma estrutura — ``*.npz`` puros,
-``snr_XXdb/``, ``corrente/`` e ``metadata/*.jsonl`` — de modo que
-``analisar_sessao.py`` e ``relatorio_html.py`` rodam nela sem mudança. Cada
-linha do metadata ganha um bloco ``recorte`` (de onde saiu a janela) e passa a
-descrever o arquivo recortado (``margem_amostras_* = 0``, ``indice_trigger``
-reindexado).
+``<sessao>/sem_margem/``) com a mesma estrutura — um ``NN_classe.npz`` por
+classe (formato 2, ``sessao_io.py``: perfis × versões), ``snr_XXdb/``,
+``corrente/`` e ``metadata/*.jsonl`` — de modo que ``analisar_sessao.py`` e
+``relatorio_html.py`` rodam nela sem mudança. Cada linha do metadata ganha um
+bloco ``recorte`` (de onde saiu a janela) e passa a descrever o arquivo
+recortado (``margem_amostras_* = 0``, ``indice_trigger`` reindexado,
+``inicio_janela = 0``). Lê sessões nos DOIS formatos (um ``.npz`` por captura,
+anterior à v1.15, ou um por classe); a saída é sempre o formato 2, então
+recortar uma sessão antiga também a converte.
 
-``--empilhar`` grava também, em ``<saida>/empilhado/``, um ``.npz`` por classe
-com todas as capturas empilhadas (``tensao_pu`` com shape ``(N, pontos)``) —
-o formato do dataset simulado.
+``--empilhar`` não faz mais nada (o formato 2 já é um ``.npz`` por classe com
+as capturas empilhadas); a opção continua aceita só para não quebrar scripts.
 
 Sem hardware: roda em qualquer máquina, só precisa dos arquivos já gravados.
 
@@ -41,28 +43,22 @@ import numpy as np
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT / "logica") not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT / "logica"))
+import sessao_io  # noqa: E402
 from sinais import janela_nominal  # noqa: E402
 
 PASTA_SAIDA_PADRAO = "sem_margem"
 
 
-def carregar_metadados(sessao_dir: Path) -> Dict[str, dict]:
-    """``id_captura`` -> linha do metadata, de todos os ``metadata/*.jsonl``."""
-    metadados: Dict[str, dict] = {}
-    metadata_dir = sessao_dir / "metadata"
-    if not metadata_dir.is_dir():
-        return metadados
-    for jsonl_path in sorted(metadata_dir.glob("*.jsonl")):
-        for linha in jsonl_path.read_text(encoding="utf-8").splitlines():
-            if linha.strip():
-                registro = json.loads(linha)
-                metadados[str(registro["id_captura"])] = registro
-    return metadados
+def carregar_metadados(sessao_dir: Path) -> "sessao_io.MetadadosDaSessao":
+    """``id_captura`` -> linha do metadata, de todos os ``metadata/*.jsonl``
+    (``sessao_io.carregar_metadados``; ``.buscar(perfil, id)`` separa os perfis
+    de uma sessão ``set perfil todos``, onde o mesmo id existe em cada um)."""
+    return sessao_io.carregar_metadados(sessao_dir)
 
 
 def diretorios_de_dados(sessao_dir: Path) -> List[Path]:
-    """Pasta da sessão + ``snr_XXdb/`` + ``corrente/`` — só o que
-    ``_salvar_captura`` grava. ``analise/``, ``sem_margem/`` etc. ficam de fora."""
+    """Pasta da sessão + ``snr_XXdb/`` + ``corrente/`` — só o que a bancada
+    grava. ``analise/``, ``parcial/``, ``sem_margem/`` etc. ficam de fora."""
     dirs = [sessao_dir]
     dirs += sorted(p for p in sessao_dir.glob("snr_*db") if p.is_dir())
     corrente = sessao_dir / "corrente"
@@ -145,91 +141,93 @@ def metadado_recortado(metadado: dict, info: dict) -> dict:
     return novo
 
 
-def _gravar_npz(destino: Path, **arrays) -> None:
-    destino.parent.mkdir(parents=True, exist_ok=True)
-    parcial = destino.with_suffix(".npz.part")
-    with parcial.open("wb") as handle:
-        np.savez(handle, **arrays)
-    os.replace(parcial, destino)
-
-
-def _chave_de_dados(dados) -> str:
-    for chave in ("tensao_pu", "corrente_pu"):
-        if chave in dados.files:
-            return chave
-    raise KeyError("sem tensao_pu/corrente_pu")
+def _tempo_recortado(captura, inicio: int, pontos: int, fs_hz: float) -> np.ndarray:
+    tempo = captura.tempo_ms
+    if tempo is not None and tempo.size == captura.sinal.size:
+        return tempo[inicio : inicio + pontos] - tempo[inicio]
+    return np.arange(pontos) / fs_hz * 1000.0
 
 
 def recortar_sessao(
     sessao_dir: Path, saida_dir: Path, *, empilhar: bool = False,
 ) -> List[dict]:
     """Recorta toda a sessão. Devolve uma linha de relatório por captura
-    (por diretório), com ``erro`` quando não deu para recortar."""
+    (por diretório), com ``erro`` quando não deu para recortar.
+    ``empilhar`` é ignorado (o formato 2 já é empilhado por classe)."""
     sessao_dir = sessao_dir.resolve()
     saida_dir = saida_dir.resolve()
     if saida_dir == sessao_dir:
         raise ValueError("A saída não pode ser a própria pasta da sessão (os originais seriam sobrescritos)")
-    metadados = carregar_metadados(sessao_dir)
+    metadados = sessao_io.carregar_metadados(sessao_dir)
     relatorio: List[dict] = []
-    metadados_saida: Dict[str, dict] = {}
-    # (diretório relativo, prefixo NN, classe) -> [(id_captura, janela recortada)]
-    pilhas: Dict[Tuple[str, str, str], List[Tuple[str, np.ndarray]]] = {}
-    fs_por_pilha: Dict[Tuple[str, str, str], float] = {}
+    metadados_saida: Dict[Tuple[str, str], dict] = {}
+    por_chave_snr: Dict[Tuple[str, str], Dict[float, np.ndarray]] = {}
+    por_chave_corrente: Dict[Tuple[str, str], np.ndarray] = {}
 
-    for origem_dir in diretorios_de_dados(sessao_dir):
-        relativo = origem_dir.relative_to(sessao_dir)
-        for npz_path in sorted(origem_dir.glob("*.npz")):
-            with np.load(npz_path, allow_pickle=True) as dados:
-                try:
-                    chave = _chave_de_dados(dados)
-                except KeyError:
-                    relatorio.append({"arquivo": str(relativo / npz_path.name), "erro": "sem tensao_pu/corrente_pu"})
-                    continue
-                matriz = np.atleast_2d(np.asarray(dados[chave], dtype=np.float64))
-                ids = [str(i) for i in np.atleast_1d(dados["id_captura"])] if "id_captura" in dados.files \
-                    else [f"{npz_path.stem}-{k}" for k in range(matriz.shape[0])]
-                classe = str(dados["classe"]) if "classe" in dados.files else npz_path.stem
-                tempo_ms_original = np.asarray(dados["tempo_ms"], dtype=np.float64) if "tempo_ms" in dados.files else None
-
-            linhas_recortadas: List[np.ndarray] = []
-            info_arquivo: Optional[dict] = None
-            for k, id_captura in enumerate(ids):
-                metadado = metadados.get(id_captura)
-                inicio, pontos, info = calcular_recorte(matriz.shape[1], metadado)
-                if info_arquivo is not None and (inicio, pontos) != (info_arquivo["inicio_amostra"], info_arquivo["fim_amostra"] - info_arquivo["inicio_amostra"]):
-                    # Formato simulado (N linhas num arquivo): nunca tem margem,
-                    # então todas as linhas têm o mesmo recorte. Se não tiverem,
-                    # empilhar no mesmo array seria inválido.
-                    raise ValueError(f"{npz_path}: capturas do mesmo arquivo com recortes diferentes")
-                info_arquivo = info
-                linhas_recortadas.append(matriz[k, inicio : inicio + pontos])
-                if metadado is not None and id_captura not in metadados_saida:
-                    metadados_saida[id_captura] = metadado_recortado(metadado, info)
-                relatorio.append({
-                    "arquivo": str(relativo / npz_path.name), "id_captura": id_captura, **info,
-                })
-                if empilhar:
-                    pilha_key = (str(relativo), npz_path.name.split("_", 1)[0], classe)
-                    pilhas.setdefault(pilha_key, []).append((id_captura, linhas_recortadas[-1]))
-                    fs_por_pilha.setdefault(pilha_key, float((metadado or {}).get("fs_hz", 30_000.0)))
-
-            assert info_arquivo is not None
-            recortado = np.vstack(linhas_recortadas)
-            pontos = recortado.shape[1]
-            if tempo_ms_original is not None and tempo_ms_original.size == matriz.shape[1]:
-                inicio = info_arquivo["inicio_amostra"]
-                tempo_ms = tempo_ms_original[inicio : inicio + pontos] - tempo_ms_original[inicio]
+    for origem_dir in diretorios_de_dados(sessao_dir)[1:]:
+        nivel = sessao_io.nivel_da_pasta_snr(origem_dir.name)
+        for captura in sessao_io.ler_pasta(origem_dir, metadados):
+            if captura.espelho:
+                continue  # mesma captura de outro perfil (set perfil todos)
+            inicio, pontos, info = calcular_recorte(captura.sinal.size, captura.metadado)
+            janela = captura.sinal[inicio : inicio + pontos]
+            if nivel is not None:
+                por_chave_snr.setdefault(captura.chave, {})[nivel] = janela
             else:
-                fs_hz = float((metadados.get(ids[0]) or {}).get("fs_hz", 30_000.0))
-                tempo_ms = np.arange(pontos) / fs_hz * 1000.0
-            _gravar_npz(
-                saida_dir / relativo / npz_path.name,
-                classe=classe, id_captura=np.array(ids, dtype=object),
-                tempo_ms=tempo_ms, **{chave: recortado},
-            )
+                por_chave_corrente[captura.chave] = janela
+            relatorio.append({
+                "arquivo": str(origem_dir.relative_to(sessao_dir) / captura.arquivo.name),
+                "id_captura": captura.id_captura, "perfil": captura.perfil, **info,
+            })
 
-    # Metadata: um .jsonl por classe, mesmo nome do original, só com as
-    # capturas que existem nesta sessão (ordem original preservada).
+    capturas = sessao_io.ler_pasta(sessao_dir, metadados, versoes=sessao_io.VERSOES)
+    capturas.sort(key=lambda c: (c.classe_id, c.perfil, c.id_captura))
+    arquivos: Dict[str, "sessao_io.ArquivoDaClasse"] = {}
+    espelhos: Dict[str, Dict[str, List[str]]] = {}  # classe -> origem -> perfis espelho
+    for captura in capturas:
+        if captura.espelho:  # mesma captura de outro perfil: só se re-espelha
+            espelhos.setdefault(captura.classe_id, {}).setdefault(str(captura.perfil_de_origem), [])
+            if captura.perfil not in espelhos[captura.classe_id][str(captura.perfil_de_origem)]:
+                espelhos[captura.classe_id][str(captura.perfil_de_origem)].append(captura.perfil)
+            continue
+        if captura.grandeza != "Tensão" or "medida" not in captura.versoes:
+            continue
+        medida = captura.versoes["medida"]
+        metadado = captura.metadado
+        inicio, pontos, info = calcular_recorte(medida.size, metadado)
+        fs_hz = float((metadado or {}).get("fs_hz", 30_000.0))
+        novo = metadado_recortado(metadado, info) if metadado is not None else None
+        if novo is not None:
+            metadados_saida[captura.chave] = novo
+        arquivo = arquivos.get(captura.classe_id)
+        if arquivo is None:
+            arquivo = arquivos[captura.classe_id] = sessao_io.ArquivoDaClasse(
+                saida_dir, captura.classe_id, captura.classe, spool=False,
+            )
+        corrente = por_chave_corrente.get(captura.chave)
+        modelo = captura.versoes.get("modelo")
+        arquivo.adicionar(
+            captura.perfil, id_captura=captura.id_captura, medida=medida[inicio : inicio + pontos],
+            tempo_ms=_tempo_recortado(captura, inicio, pontos, fs_hz), fs_hz=fs_hz,
+            modelo=modelo, programada=captura.versoes.get("programada"),
+            origem_programada=captura.origem_programada, inicio_janela=0,
+            pontos=int(modelo.size) if modelo is not None else pontos,
+            snr=por_chave_snr.get(captura.chave), corrente=corrente, metadado=novo,
+        )
+        relatorio.append({
+            "arquivo": captura.arquivo.name, "id_captura": captura.id_captura, "perfil": captura.perfil, **info,
+        })
+    for classe_id, arquivo in arquivos.items():
+        for origem, destinos in espelhos.get(classe_id, {}).items():
+            if origem in arquivo.perfis:
+                arquivo.espelhar(origem, destinos)
+        try:
+            arquivo.consolidar()
+        except ValueError as exc:
+            relatorio.append({"arquivo": arquivo.nome_arquivo, "erro": str(exc)})
+
+    # Metadata: um .jsonl por classe, mesmo nome do original, com as mesmas
+    # linhas na mesma ordem (a recortada onde houve dado).
     metadata_origem = sessao_dir / "metadata"
     if metadata_origem.is_dir():
         (saida_dir / "metadata").mkdir(parents=True, exist_ok=True)
@@ -239,29 +237,18 @@ def recortar_sessao(
                 if not linha.strip():
                     continue
                 registro = json.loads(linha)
-                novo = metadados_saida.get(str(registro["id_captura"]), registro)
+                chave = (str(registro.get("perfil") or sessao_io.PERFIL_LEGADO), str(registro["id_captura"]))
+                novo = metadados_saida.get(chave, registro)
+                origem = registro.get("perfil_de_origem")
+                if novo is registro and origem and origem != chave[0] \
+                        and (origem, chave[1]) in metadados_saida:
+                    # Espelho (captura compartilhada): a mesma linha da origem recortada.
+                    novo = dict(metadados_saida[(origem, chave[1])], perfil=chave[0])
                 linhas.append(json.dumps(novo, ensure_ascii=False, sort_keys=True))
             destino = saida_dir / "metadata" / jsonl_path.name
             parcial = destino.with_suffix(".jsonl.part")
             parcial.write_text("\n".join(linhas) + ("\n" if linhas else ""), encoding="utf-8")
             os.replace(parcial, destino)
-
-    if empilhar:
-        for pilha_key, itens in sorted(pilhas.items()):
-            relativo, prefixo, classe = pilha_key
-            tamanhos = {len(linha) for _, linha in itens}
-            if len(tamanhos) != 1:
-                relatorio.append({"arquivo": f"empilhado/{relativo}/{prefixo}", "erro": f"tamanhos diferentes {sorted(tamanhos)}; não empilhado"})
-                continue
-            chave = "corrente_pu" if Path(relativo).name == "corrente" else "tensao_pu"
-            sufixo = "_corrente" if chave == "corrente_pu" else ""
-            _gravar_npz(
-                saida_dir / "empilhado" / relativo / f"{prefixo}_{classe.lower()}{sufixo}.npz",
-                classe=classe,
-                id_captura=np.array([i for i, _ in itens], dtype=object),
-                tempo_ms=np.arange(tamanhos.pop()) / fs_por_pilha[pilha_key] * 1000.0,
-                **{chave: np.vstack([linha for _, linha in itens])},
-            )
     return relatorio
 
 
@@ -291,7 +278,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--saida", type=Path, default=None,
                         help=f"Pasta de saída (padrão: <sessao>/{PASTA_SAIDA_PADRAO}/)")
     parser.add_argument("--empilhar", action="store_true",
-                        help="Grava também <saida>/empilhado/: um .npz por classe, capturas empilhadas (formato do dataset simulado)")
+                        help="(sem efeito desde o formato 2: o .npz já é um por classe, empilhado)")
     args = parser.parse_args(argv)
 
     if not args.sessao_dir.is_dir():
