@@ -9049,3 +9049,121 @@ class SessaoFormatoNovoScriptsTests(unittest.TestCase):
                  if d["verificacao"] == "largura_pulse"}
         self.assertIn(("02-0002 [fronteira]", False), dados)
         self.assertIn(("02-0002 [norma]", True), dados)
+
+
+def _toque_da_fonte(x, fn_hz=10_000.0, zeta=0.2, fs_hz=30_000.0, sobreamostragem=8):
+    """Resposta de 2.ª ordem (bilinear) da fonte a uma forma programada: o
+    modelo da spec 20/26 (fn 9-11 kHz, zeta 0,1-0,3, medido em 07/10)."""
+    xs = np.repeat(np.asarray(x, dtype=np.float64), sobreamostragem)
+    c = 2.0 * fs_hz * sobreamostragem
+    w = 2.0 * math.pi * fn_hz
+    a0 = c * c + 2.0 * zeta * w * c + w * w
+    b0 = w * w / a0
+    a1 = 2.0 * (w * w - c * c) / a0
+    a2 = (c * c - 2.0 * zeta * w * c + w * w) / a0
+    y = np.empty_like(xs)
+    x1 = x2 = y1 = y2 = xs[0]
+    for n in range(xs.size):
+        yn = b0 * (xs[n] + 2.0 * x1 + x2) - a1 * y1 - a2 * y2
+        y[n] = yn
+        x2, x1, y2, y1 = x1, xs[n], y1, yn
+    return y.reshape(-1, sobreamostragem).mean(axis=1)
+
+
+class CristaComFatorDeExtremoTests(unittest.TestCase):
+    """Spec 26 (v1.15): a crista esperada da validação física usa o fator de
+    extremo calibrado da classe; aceita [modelo x (1-tol), modelo x fator x (1+tol)]."""
+
+    T = np.arange(6000, dtype=np.float64) / 30_000.0
+
+    def _experimento_07(self, f0=60.0):
+        import dataclasses
+        e = _load_experimento("07")
+        e.config = dataclasses.replace(e.config, grid_frequency_hz=f0, base_voltage_rms=127.0)
+        return e
+
+    def _validar(self, e, fatores, indice=0, toque=True):
+        seed = e.seed_da_captura(indice)
+        forma, _ = e.forma_e_parametros_para_bancada(indice, self.T, seed)
+        e._forma_programada_pu = forma
+        medido = _toque_da_fonte(forma) if toque else forma
+        with mock.patch.object(type(e), "_fatores_extremo", lambda self: fatores):
+            return e._validar_fisicamente(indice, self.T, seed, medido, margem_antes=0)
+
+    def test_07_com_entalhes_e_toque_passa_com_fator_que_cobre_e_reprova_com_1(self):
+        e = self._experimento_07()
+        for indice in range(3):
+            coberto = self._validar(e, {"07": 1.5}, indice)
+            self.assertTrue(coberto["ok"], coberto["motivos"])
+            self.assertEqual(coberto["fator_extremo_crista"], 1.5)
+            self.assertGreater(coberto["crista_medida"], coberto["crista_modelo"] * 1.25)
+            nu = self._validar(e, {"07": 1.0}, indice)
+            self.assertFalse(nu["ok"])
+            self.assertTrue(any("fator de crista" in m for m in nu["motivos"]), nu["motivos"])
+
+    def test_sem_toque_o_fator_nao_muda_o_veredito_e_o_limite_inferior_continua(self):
+        e = self._experimento_07()
+        for fator in (1.0, 1.186, 1.5):
+            r = self._validar(e, {"07": fator}, toque=False)
+            self.assertTrue(r["ok"], (fator, r["motivos"]))
+            self.assertAlmostEqual(r["crista_minima_aceita"], r["crista_modelo"] * 0.9)
+            self.assertAlmostEqual(r["crista_maxima_aceita"], r["crista_modelo"] * fator * 1.1)
+
+    def test_comparar_fisicamente_bilateral_com_fator(self):
+        base = np.sin(2.0 * np.pi * 60.0 * self.T)
+
+        def com_pico(escala):
+            x = base.copy()
+            x[125::500] = escala  # pico de cada ciclo (500 amostras por ciclo)
+            return x
+
+        kw = dict(fs_hz=30_000.0, f0=60.0)
+        r = sinais.comparar_fisicamente(base, com_pico(1.2), **kw, fator_crista=1.3)
+        self.assertTrue(r["ok"], r["motivos"])
+        self.assertTrue(sinais.comparar_fisicamente(base, base, **kw, fator_crista=1.3)["ok"])
+        # acima de crista x fator x 1,1 continua reprovada
+        cima = sinais.comparar_fisicamente(base, com_pico(1.3 * 1.1 * 1.05), **kw, fator_crista=1.3)
+        self.assertFalse(cima["ok"])
+        self.assertTrue(any("fator de crista" in m for m in cima["motivos"]))
+        # abaixo da crista ideal x 0,9 (pico achatado) reprova mesmo com fator
+        achatado = np.clip(base, -0.8, 0.8)
+        self.assertFalse(sinais.comparar_fisicamente(base, achatado, **kw, fator_crista=1.3)["ok"])
+        # fator 1,0 == comparação simétrica de antes
+        r1 = sinais.comparar_fisicamente(base, com_pico(1.2), **kw)
+        self.assertFalse(r1["ok"])
+        self.assertEqual(r1["fator_extremo_crista"], 1.0)
+
+    def test_fator_e_o_mesmo_da_previsao_de_pico(self):
+        e = self._experimento_07()
+        fatores = {"01": 1.063, "07": 1.186}
+        with mock.patch.object(type(e), "_fatores_extremo", lambda self: fatores):
+            fator = e.fator_extremo_efetivo_para_validacao(None)
+            self.assertEqual(fator, mestre.fator_extremo_da_classe("07", fatores))
+            self.assertAlmostEqual(
+                e._extremo_previsto_da_forma_v(100.0, {}), 100.0 * fator * mestre.MARGEM_FATOR_EXTREMO,
+            )
+            e.id = "99"  # classe fora da tabela: o mesmo critério da previsão (maior fator)
+            self.assertEqual(e.fator_extremo_efetivo_para_validacao(None), 1.186)
+        # condição sem tabela: o conservador de carregar_fatores_extremo, como na previsão
+        e = self._experimento_07(f0=50.0)
+        self.assertEqual(
+            e.fator_extremo_efetivo_para_validacao(None),
+            mestre.fator_extremo_da_classe("07", e._fatores_extremo()),
+        )
+
+    def test_disturbio_reduzido_usa_a_formula_da_previsao_sem_margem(self):
+        e = self._experimento_07()
+        fatores = {"01": 1.063, "07": 1.5}
+        avaliacao = {"pico_programado_v": 200.0, "parametros": {
+            "fator_disturbio_bancada": 0.5, "pico_programado_modelo_v": 300.0}}
+        with mock.patch.object(type(e), "_fatores_extremo", lambda self: fatores):
+            efetivo = e.fator_extremo_efetivo_para_validacao(avaliacao)
+            previsto = e._extremo_previsto_da_forma_v(200.0, avaliacao["parametros"])
+        self.assertAlmostEqual(efetivo, previsto / (200.0 * mestre.MARGEM_FATOR_EXTREMO))
+        self.assertLess(efetivo, 1.5)
+        self.assertGreater(efetivo, 1.063)
+
+    def test_08_com_excursao_propria_usa_fator_1(self):
+        e = _load_experimento("08")
+        with mock.patch.object(type(e), "excursao_fisica_prevista_v", lambda self: 250.0):
+            self.assertEqual(e.fator_extremo_efetivo_para_validacao(None), 1.0)

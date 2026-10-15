@@ -366,6 +366,7 @@ def comparar_fisicamente(
     tol_crista: float = 0.10,
     tol_thd: float = 0.20,
     piso_thd: float = 0.01,
+    fator_crista: float = 1.0,
 ) -> dict:
     """Confere se a captura FÍSICA corresponde à forma que a classe pediu.
 
@@ -384,7 +385,12 @@ def comparar_fisicamente(
       ``piso_thd`` de 1% absorve quantização do osciloscópio, então uma
       classe sem harmônicos programados nunca é reprovada por ruído.
     * **fator de crista do ciclo mediano** — forma de onda grosseira
-      (complementa a THD; tolerância folgada de propósito).
+      (complementa a THD; tolerância folgada de propósito). ``fator_crista``
+      (>= 1; v1.15, fator de extremo calibrado da classe): a fonte pode tocar
+      nos degraus/entalhes e elevar o pico do ciclo mediano até ``fator`` ×
+      o do modelo; a comparação é BILATERAL e aceita
+      ``[crista_modelo × (1 − tol), crista_modelo × fator × (1 + tol)]``. Com
+      ``fator_crista = 1`` é a comparação simétrica de sempre.
 
     Devolve ``{"ok": bool, "motivos": [...], ...}``; nunca levanta por
     divergência (quem chama decide), só por registro curto demais."""
@@ -420,10 +426,14 @@ def comparar_fisicamente(
         )
     crista_esperada = fator_de_crista_do_ciclo_mediano(esperado, fs_hz=fs_hz, f0=f0)
     crista_medida = fator_de_crista_do_ciclo_mediano(capturado, fs_hz=fs_hz, f0=f0)
-    if crista_esperada > 0 and abs(crista_medida - crista_esperada) > tol_crista * crista_esperada:
+    fator_crista = max(1.0, float(fator_crista))
+    crista_minima = crista_esperada * (1.0 - tol_crista)
+    crista_maxima = crista_esperada * fator_crista * (1.0 + tol_crista)
+    if crista_esperada > 0 and not (crista_minima <= crista_medida <= crista_maxima):
         motivos.append(
-            f"fator de crista: medido {crista_medida:.4f}, esperado {crista_esperada:.4f} "
-            f"(tolerância relativa {tol_crista:.2%})"
+            f"fator de crista: medido {crista_medida:.4f}, esperado {crista_esperada:.4f}"
+            + (f" × fator de extremo {fator_crista:.3f}" if fator_crista > 1.0 else "")
+            + f" (aceito de {crista_minima:.4f} a {crista_maxima:.4f}; tolerância relativa {tol_crista:.2%})"
         )
     return {
         "ok": not motivos,
@@ -436,6 +446,10 @@ def comparar_fisicamente(
         "envelope_maximo_esperado": medidas["máximo"][1],
         "crista_medida": crista_medida,
         "crista_esperada": crista_esperada,
+        "crista_modelo": crista_esperada,
+        "fator_extremo_crista": fator_crista,
+        "crista_minima_aceita": crista_minima,
+        "crista_maxima_aceita": crista_maxima,
         "thd_medida": thd_obtida,
         "thd_esperada": thd_esperada,
     }

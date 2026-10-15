@@ -1803,6 +1803,7 @@ class ExperimentoBase(ABC):
     def _validar_fisicamente(
         self, capture_index: int, t: np.ndarray, seed: int, medido_pu: np.ndarray,
         *, margem_antes: int = 0, inicio_janela: Optional[int] = None,
+        avaliacao: Optional[Dict[str, object]] = None,
     ) -> Optional[dict]:
         """Compara o que saiu do instrumento com o que a classe pediu.
 
@@ -1850,6 +1851,7 @@ class ExperimentoBase(ABC):
                 esperado, medido_pu,
                 fs_hz=self.config.fs_hz, f0=self.config.grid_frequency_hz,
                 tol_envelope=VALIDACAO_TOL_ENVELOPE, tol_thd=VALIDACAO_TOL_THD,
+                fator_crista=self.fator_extremo_efetivo_para_validacao(avaliacao),
             )
         except Exception:  # noqa: BLE001
             logger.warning("[%s] validação física não pôde ser calculada", self.id, exc_info=True)
@@ -1866,6 +1868,32 @@ class ExperimentoBase(ABC):
                     resultado["ok"] = False
                     resultado["motivos"] = list(resultado["motivos"]) + list(posicao["motivos"])
         return resultado
+
+    def fator_extremo_efetivo_para_validacao(self, avaliacao: Optional[Dict[str, object]] = None) -> float:
+        """Fator de extremo (extremo medido / pico programado) que a validação
+        da crista espera para ESTA captura: o mesmo da previsão de pico
+        (``_extremo_previsto_da_forma_v``) sem a ``MARGEM_FATOR_EXTREMO`` (a
+        tolerância de 10 % da crista já é a folga). Classe com modelo próprio
+        da excursão (08) usa 1,0: o impulso fica fora da crista (ciclos
+        excluídos) e a tabela não a representa. Captura com o distúrbio
+        reduzido (limite de bancada) usa a mesma fórmula de
+        ``extremo_previsto_com_disturbio_v`` com margem 1. Sem tabela da
+        condição, ``carregar_fatores_extremo`` já devolve o fator conservador."""
+        proprio = getattr(self, "excursao_fisica_prevista_v", None)
+        if callable(proprio) and proprio() is not None:
+            return 1.0
+        fatores = self._fatores_extremo()
+        fator = fator_extremo_da_classe(self.id, fatores)
+        parametros = (avaliacao or {}).get("parametros") or {}
+        k = float(parametros.get("fator_disturbio_bancada", 1.0))
+        pico = (avaliacao or {}).get("pico_programado_v")
+        if k >= 1.0 or not pico or "pico_programado_modelo_v" not in parametros:
+            return fator
+        efetivo = extremo_previsto_com_disturbio_v(
+            float(pico), float(parametros["pico_programado_modelo_v"]), k,
+            fator=fator, fator_referencia=fator_referencia_extremo(fator, fatores), margem=1.0,
+        ) / float(pico)
+        return max(1.0, efetivo)
 
     def conferir_posicao_do_evento(self, capture_index: int, janela_medida_pu: np.ndarray) -> Optional[dict]:
         """Complemento da validação física para classes cujo evento precisa
@@ -2709,6 +2737,7 @@ class ExperimentoBase(ABC):
                         capture_index, t, seed, measured_voltage_pu,
                         margem_antes=margem_antes,
                         inicio_janela=metadados[-1].get("inicio_janela"),
+                        avaliacao=getattr(self, "_avaliacoes_bancada", {}).get(indice_global),
                     )
                     if validacao is not None:
                         metadados[-1]["validacao_fisica"] = validacao
