@@ -67,6 +67,10 @@ Nenhum campo existente foi removido. Campos novos:
 | `tres_versoes` | captura gravada pela v1.15 (em andamento) em diante | `{arquivo, programada}`: onde estão modelo/programada/medida desta captura (o `NN_classe.npz`) e como a programada foi obtida (`docs/tres_versoes.md`) |
 | `arquivo_classe` | toda captura (formato 2) | nome do `NN_classe.npz` que guarda a captura (na pasta da sessão). Uma classe gravada com vários perfis tem as capturas de todos eles no mesmo arquivo (v1.15, acrescentado) |
 | `indice_no_arquivo` | toda captura (formato 2) | linha da captura dentro do bloco do `perfil` no arquivo: `dados["<perfil>/medida"][indice_no_arquivo]`, 0-based. O mesmo `id_captura` existe em cada perfil de uma sessão `set perfil todos`; a chave única da captura é `(perfil, id_captura)` (v1.15, acrescentado) |
+| `captura_compartilhada` | só com `set perfil todos`, classe que não depende do perfil | `true`: a captura existe uma vez no `NN_classe.npz`, no bloco de `perfil_de_origem`; as linhas dos outros perfis são a mesma captura (mesmo `id_captura`, `arquivo_classe`, `indice_no_arquivo`, `sha256_captura`) (v1.15, acrescentado) |
+| `perfil_de_origem` | idem | perfil cujo bloco do `.npz` guarda os dados (`literatura`) (v1.15, acrescentado) |
+| `compartilhada_com_perfis` | idem | lista de todos os perfis que apontam para a captura, origem primeiro (v1.15, acrescentado) |
+| `sha256_captura` | idem | SHA-256 dos arrays da captura (`sessao_io.hash_captura`: `medida`, `modelo`, `programada` em float64 little-endian, com rótulo e tamanho; versão ausente = `NaN`) (v1.15, acrescentado) |
 | `snr_medido_db` | toda captura | SNR **acrescentado** por nível (`"20.0"`, `"30.0"`, `"40.0"`): janela limpa contra ruído somado, medido só na janela rotulada |
 | `snr_bancada_db` | só física | SNR do ruído próprio da bancada nesta captura (potência da janela / ruído medido na margem anterior por segunda diferença); `null` no simulado |
 | `snr_efetivo_db` | toda captura | por nível: sinal / (ruído da bancada + ruído acrescentado); no simulado igual a `snr_medido_db` |

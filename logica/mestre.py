@@ -775,6 +775,10 @@ class Config:
     # Perfil de faixas lido por gerar() das classes 02/03/05/06/10-16/20
     # (logica/perfis.py). O padrão reproduz o dataset anterior à v1.15.
     perfil: str = perfis.PERFIL_PADRAO
+    # Perfis que são a MESMA captura deste (``set perfil todos`` numa classe
+    # cujo gerar() não depende do perfil: ``perfis.plano_de_perfis``). Vazio =
+    # captura própria. Só ``Bancada`` preenche; ver ``ArquivoDaClasse.espelhar``.
+    perfis_espelho: Tuple[str, ...] = ()
     # Início, duração e fase sorteados em gerar() (ver ``Sorteio``). False =
     # posições fixas anteriores à v1.15.
     sorteio_posicao: bool = True
@@ -1159,6 +1163,15 @@ class Bancada:
             return tuple(perfis.PERFIS)
         return (perfis.perfil_da_config(self.config),)
 
+    @staticmethod
+    def _config_do_perfil(config_original: "Config", perfil: str, espelhos: Tuple[str, ...]) -> "Config":
+        """``config_original`` com ``perfil`` e ``perfis_espelho`` postos (a
+        mesma instância se nada muda)."""
+        if perfis.perfil_da_config(config_original) == perfil \
+                and tuple(getattr(config_original, "perfis_espelho", ())) == tuple(espelhos):
+            return config_original
+        return replace(config_original, perfil=perfil, perfis_espelho=tuple(espelhos))
+
     def _executar_classe_no_perfil(
         self, class_id: str, script_path: Path, experimento_cls: type, rotulo: str,
     ) -> Tuple[bool, Optional[str], int, int, int, int]:
@@ -1256,10 +1269,16 @@ class Bancada:
             config_original = self.config
             self._manter_arquivos_classe = True
             try:
-                for perfil in lista_perfis:
+                for perfil, espelhos in perfis.plano_de_perfis(
+                    class_id, lista_perfis, getattr(config_original, "sorteio_posicao", True),
+                ):
                     rotulo = f" [perfil {perfil}]" if varios else ""
-                    if perfis.perfil_da_config(config_original) != perfil:
-                        self.config = replace(config_original, perfil=perfil)
+                    if espelhos:
+                        logger.info(
+                            "[%s] gerar() não depende do perfil: capturada uma vez (perfil %s); %s "
+                            "apontam para a mesma captura no metadata.", class_id, perfil, ", ".join(espelhos),
+                        )
+                    self.config = self._config_do_perfil(config_original, perfil, espelhos)
                     try:
                         sucesso, ultimo_erro, desc, inval, pul, tentativas_feitas = (
                             self._executar_classe_no_perfil(class_id, script_path, experimento_cls, rotulo)
@@ -1271,7 +1290,10 @@ class Bancada:
                     puladas += pul
                     if not sucesso:
                         ok_geral = False
-                        motivos.append(f"perfil {perfil}: {ultimo_erro}" if varios else str(ultimo_erro))
+                        motivos.append(
+                            f"perfil {perfil}{' (e ' + ', '.join(espelhos) + ', mesma captura)' if espelhos else ''}: "
+                            f"{ultimo_erro}" if varios else str(ultimo_erro)
+                        )
                         logger.error(
                             "[%s]%s FALHOU definitivamente após %d tentativa(s)%s — classe abortada, "
                             "bateria continua", class_id, rotulo, tentativas_feitas,
@@ -1328,9 +1350,10 @@ class Bancada:
         executados: List["ExperimentoBase"] = []
         self._manter_arquivos_classe = True
         try:
-            for perfil in lista:
-                if perfis.perfil_da_config(config_original) != perfil:
-                    self.config = replace(config_original, perfil=perfil)
+            for perfil, espelhos in perfis.plano_de_perfis(
+                str(getattr(experimento_cls, "id", "")), lista, getattr(config_original, "sorteio_posicao", True),
+            ):
+                self.config = self._config_do_perfil(config_original, perfil, espelhos)
                 experimento = experimento_cls(self)
                 executados.append(experimento)
                 experimento.executar()
@@ -2447,7 +2470,7 @@ class ExperimentoBase(ABC):
         if gravacao["linhas"] == 0:
             arquivo.encerrar_perfil(gravacao["perfil"])
             return
-        self._gravar_arquivos_da_classe(arquivo)
+        self._gravar_arquivos_da_classe(arquivo, parcial=parcial)
         arquivo.encerrar_perfil(gravacao["perfil"])
         if parcial:
             logger.error(
@@ -2457,10 +2480,16 @@ class ExperimentoBase(ABC):
                 arquivo.nome_arquivo,
             )
 
-    def _gravar_arquivos_da_classe(self, arquivo: "sessao_io.ArquivoDaClasse") -> None:
+    def _gravar_arquivos_da_classe(self, arquivo: "sessao_io.ArquivoDaClasse", *, parcial: bool = False) -> None:
         """Dados primeiro (todos os ``.part`` antes de qualquer promoção), o
         metadata depois — o metadata sobrevivente nunca descreve dado que não
-        foi gravado."""
+        foi gravado. Com ``config.perfis_espelho`` (classe independente do
+        perfil num ``set perfil todos``) e a classe terminada (não ``parcial``),
+        os outros perfis são declarados espelho desta captura antes de gravar
+        (``ArquivoDaClasse.espelhar``: mesmo arquivo, índice e SHA-256)."""
+        espelhos = tuple(getattr(self.config, "perfis_espelho", ()))
+        if espelhos and not parcial:
+            arquivo.espelhar(perfis.perfil_da_config(self.config), espelhos)
         arquivo.consolidar()
         metadata_dir = Path(self.config.results_dir) / "metadata"
         metadata_dir.mkdir(parents=True, exist_ok=True)
