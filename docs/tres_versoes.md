@@ -1,6 +1,6 @@
 # Três versões de cada captura: modelo, programada e medida
 
-Pergunta 2 do professor (`atividade.tex`, item c): publicar, com a mesma seed, o que o modelo pede, o que a bancada foi programada para emitir e o que se mediu. Separa o que é limite da bancada (modelo contra programada) do que é física da fonte (programada contra medida).
+Objetivo: publicar, com a mesma seed, o que o modelo pede, o que a bancada foi programada para emitir e o que se mediu. Separa o que é limite da bancada (modelo contra programada) do que é física da fonte (programada contra medida).
 
 Todas são vetores de 6000 amostras a 30 kSa/s, em pu do pico nominal (`tensao_base_rms * sqrt(2)`), na **janela rotulada** (a mesma de `gerar()` e do `sem_margem/`).
 

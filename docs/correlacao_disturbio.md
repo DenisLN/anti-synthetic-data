@@ -34,7 +34,7 @@ Saída (`analisar_sessao.py` CLI): coluna `corr. distúrbio` mostra `n/a` e uma 
 
 Comando: `.\env\Scripts\python.exe logica\analisar_sessao.py resultados\sessao_2026-10-07_<sessão>` (127 V/60 Hz = `14-59-54_run02`; as três reconstruídas sem sorteio). Valores por captura; intervalo quando a classe tem várias. "—" = classe não está na sessão (230 V não tem 02, 03, 04, 08, 16).
 
-| classe | 127 V/60 Hz | 127 V/50 Hz | 230 V/50 Hz | faixa do professor | bate? |
+| classe | 127 V/60 Hz | 127 V/50 Hz | 230 V/50 Hz | faixa de referência | bate? |
 |---|---|---|---|---|---|
 | 01 | n/a | n/a | n/a | não citada | — |
 | 02 | 0,997 | 0,999 | — | 0,95–1,00 | sim |
@@ -57,10 +57,10 @@ Comando: `.\env\Scripts\python.exe logica\analisar_sessao.py resultados\sessao_2
 | 19 | n/a | n/a | n/a | não citada | — |
 | 20 | 0,907–0,966 | 0,954–0,957 | 0,975–0,981 | 0,95–1,00 | parcial (a 60 Hz: 0,907 e 0,943) |
 
-**08 e 05.** 05 = 0,50 nas três sessões, igual ao professor. 08 = 0,004–0,011 a 127 V/50 Hz, igual ao 0,005 do professor: nessas capturas o pico está na amostra 3000/2997 da janela e não na 2401 onde o modelo põe o pulso, razão de pico 0,18–0,29 (a transitória não foi registrada). A 127 V/60 Hz a 08 dá 0,82–0,83: o pico capturado cai em 2404/2401, perto do esperado, com melhor lag −1 amostra (script de apoio, não versionado: busca de lag ±40 amostras). Ou seja, o 0,005 do professor corresponde à sessão 127 V/50 Hz, e a sessão 127 V/60 Hz (mais nova, com os fatores da v1.14) capturou o pulso. [média: a métrica é sensível ao alinhamento de uma amostra em pulso de 2 amostras; o lag vem do sinal inteiro]
+**08 e 05.** 05 = 0,50 nas três sessões, igual à referência. 08 = 0,004–0,011 a 127 V/50 Hz, igual ao 0,005 de referência: nessas capturas o pico está na amostra 3000/2997 da janela e não na 2401 onde o modelo põe o pulso, razão de pico 0,18–0,29 (a transitória não foi registrada). A 127 V/60 Hz a 08 dá 0,82–0,83: o pico capturado cai em 2404/2401, perto do esperado, com melhor lag −1 amostra (script de apoio, não versionado: busca de lag ±40 amostras). Ou seja, o 0,005 de referência corresponde à sessão 127 V/50 Hz, e a sessão 127 V/60 Hz (mais nova, com os fatores da v1.14) capturou o pulso. [média: a métrica é sensível ao alinhamento de uma amostra em pulso de 2 amostras; o lag vem do sinal inteiro]
 
 **Divergências (todas conferidas na tabela acima):**
-- 06 (flicker): 0,83–0,96, abaixo da faixa 0,95–1,00 do professor em 7 de 9 capturas. [média]
+- 06 (flicker): 0,83–0,96, abaixo da faixa de referência 0,95–1,00 em 7 de 9 capturas. [média]
 - 20: duas capturas a 60 Hz abaixo de 0,95. [baixa]
 - 03: 0,943/0,945 acima do 0,94 declarado (diferença de arredondamento). [baixa]
 
@@ -77,7 +77,7 @@ OK
 
 ## NÃO VERIFICADO
 
-- Quais sessões/capturas o professor usou: `validacao_gerador_v1.14.md` não está no repositório. A coluna "bate?" compara contra a faixa por classe, sem saber qual sessão gerou cada número dele.
+- Origem da faixa de referência: `validacao_gerador_v1.14.md` não está no repositório, então não se sabe qual sessão gerou cada número dela. A coluna "bate?" compara contra a faixa por classe.
 - Causa da diferença na 06 e na 20: não investigada (alinhamento por lag do sinal inteiro, fase ou o próprio gerador).
 - Sessões com `sorteio_posicao` ligado (fase sorteada, janela rotulada menor): a função usa `fase_graus`, mas nenhuma sessão real com sorteio foi analisada; só o teste sintético da fase.
 - Alinhamento quando o registro não tem margem (arquivo `sem_margem/`): o deslocamento por lag fica limitado ao registro e pode não ser aplicado por inteiro.
