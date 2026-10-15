@@ -37,7 +37,7 @@ O projeto gera o dataset rotulado de 20 classes de distúrbio de tensão (200 ms
 | `logica/sessao_io.py` | formato 2 dos `.npz` (um `NN_classe.npz` comprimido por classe, com perfis e versões): `ArquivoDaClasse` (escrita, spool por captura) e `ler_capturas`/`ler_pasta` (leitura dos formatos 1 e 2, usada por `recortar_margem`, `relatorio_html`, `analisar_sessao` e `scripts/gerar_*.py`); `docs/dataset.md` |
 | `logica/analisar_sessao.py` | análise offline numérica de uma sessão (lag, correlação, correlação do distúrbio, razão de pico) |
 | `logica/recortar_margem.py` | recorta a margem de 20/50 ms (saída em `sem_margem/`) |
-| `logica/relatorio_html.py` + `logica/modelos/relatorio_capturas.html` | relatório HTML autocontido (figuras em base64) |
+| `logica/relatorio_html.py` + `logica/modelos/relatorio_capturas.html` | relatório HTML autocontido (figuras em base64); ao fim do run e opções: `docs/operacao.md` §9 |
 | `logica/calibracao_extremos.json` | fatores de extremo por condição e por classe |
 | `logica/diag_digitizer_*.py` | removidos em 2026-10-13 (sondas do modo Digitizer, v1.10, descartado; histórico no git até `d3c7ce7`) |
 | `experimentos_nativos/` | classes 01–05, 18, 19 (mecanismo nativo da fonte) |
@@ -45,7 +45,7 @@ O projeto gera o dataset rotulado de 20 classes de distúrbio de tensão (200 ms
 | `scripts/` | PowerShell/CMD do operador e utilitários Python offline/de diagnóstico (tabela na seção 7) |
 | `tests/test_offline.py`, `tests/fixtures/` | suíte sem hardware (`docs/testes.md`) |
 | `CHANGELOG/vX.Y.md` | histórico por versão (registro; não reescrever) |
-| `docs/` | documentação viva (este índice está no `README.md`); `docs/analise-*/` e `arquivo/analises:docs/superpowers/` são **registro datado** |
+| `docs/` | documentação viva (este índice está no `README.md`). As análises datadas (`docs/analise-AAAA-MM-DD/`) e `arquivo/analises:docs/superpowers/` estão no branch `arquivo/analises`, fora de `docs/` desde 2026-10-13 (**registro datado**) |
 | `resultados/` | saída (gitignored) |
 | `logs/` | logs de scripts de diagnóstico e do `preflight_new.py` rodado direto (gitignored) |
 | `backups/`, `env/` | cópias locais e virtualenv (gitignored). `.claude/` e `.serena/` são pastas de ferramentas de agente, não fazem parte do projeto |
@@ -150,6 +150,6 @@ Uma classe isolada (`run <NN>`) usa `Bancada.from_env` + `assegurar_tensao_base(
 | `run_simulation_windows.ps1` | — | dataset simulado (`-CapturesPerClass`, padrão **1**; `-SnrLevels`, padrão `20,30,40`) |
 | `package_windows.ps1` | — | zip `..\tcc-instrumentacao-bancada.zip` sem `env`, `.venv`, `__pycache__`, `resultados`, `logs`, `backups`, `.git` |
 | `relatorio_limites_bancada.py` | não | offline: o que cabe a uma tensão/frequência/perfil |
-| `recalibrar_extremos.py` | não | offline: recalcula `calibracao_extremos.json` |
+| `recalibrar_extremos.py` | não | offline: recalcula `calibracao_extremos.json`; ao fim do run: `docs/operacao.md` §9 |
 | `gerar_tres_versoes.py`, `gerar_ruido_janela.py` | não | offline: regeneram `tres_versoes/` (só sessões do formato 1) e `ruido_janela/` (os dois formatos) |
 | `diag_*.py` | **sim** (exceto `diag_nativo_output_off.py`) | diagnósticos; ver `docs/diagnostico.md` |

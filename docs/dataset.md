@@ -117,7 +117,7 @@ Seleção por captura (`capturas=` de `ler_capturas`, `--capturas` do HTML): ids
 | `python scripts\recalibrar_extremos.py <sessao...> [--gravar] [--substituir] [--arquivo F]` | `docs/limites_e_calibracao.md` §5 |
 | `python scripts\relatorio_limites_bancada.py --tensao V ...` | `docs/limites_e_calibracao.md` §6 |
 
-Execute com `.\env\Scripts\python.exe` na raiz do projeto.
+Execute com `.\env\Scripts\python.exe` na raiz do projeto. Relatório HTML (ao fim do run ou à mão), recalibração e seleção por `--classes/--perfis/--versoes/--capturas`: `docs/operacao.md` §9.
 
 ## 6. Gerar o dataset simulado
 

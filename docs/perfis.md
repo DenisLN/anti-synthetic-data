@@ -24,25 +24,25 @@ Só as classes abaixo dependem do perfil. Forma, frequência do flicker, interru
 Notas:
 
 - As compostas herdam o componente (`sag_composto`, `swell_composto`, `thd_composto`, `flicker_composto` em `perfis.py`). Com `set sorteio off`, compostas têm valor único por perfil, exceto `fronteira` para sag/swell, que alterna entre as duas fronteiras pelo `capture_index`: com 1 captura por classe (padrão da bancada) só aparece 0,1 (sag) e 1,1 (swell); `set capturas 2` ou mais cobre as duas.
-- A spec só define fronteira para sag/swell (0,1, 0,9, 1,1, 1,8 pu). THD, flicker e inter-harmônicas usam a literatura no perfil `fronteira` (escolha minha; ver `arquivo/analises:docs/analise-2026-10-12/resolvido/perfis_mudancas.md`).
-- Os níveis intermediários da norma (0,325, 0,675, 1,30, 1,45, 2 % de THD, 4,5 % de flicker composto) são escolha de implementação: espaçamento uniforme dentro da faixa pedida; a spec fixa só os extremos.
+- O perfil `fronteira` só define faixas para sag e swell (0,1 e 0,9 pu; 1,1 e 1,8 pu, os pares de fronteira). THD, flicker e inter-harmônicas usam a literatura nesse perfil (decisão de projeto; `arquivo/analises:docs/analise-2026-10-12/resolvido/perfis_mudancas.md`).
+- Os níveis intermediários da norma (0,325, 0,675, 1,30, 1,45, 2 % de THD, 4,5 % de flicker composto) são escolha de implementação: espaçamento uniforme dentro da faixa; a faixa da norma fixa só os extremos.
 - Os níveis `2 %` de THD no CSINe e os sag/swell de fronteira não foram exercitados na bancada real.
 - Desde a v1.15, com o sorteio ligado (padrão) as compostas 10 a 16 sorteiam esses componentes por captura (FAIXAS_SORTEADAS em perfis.py): sag U(0,1; 0,9), swell U(1,1; 1,8), THD U(0,05; 0,20), flicker U(8; 25) Hz, oscilação U(300; 2400) Hz, profundidade do flicker = faixa da 06; norma e fronteira conforme a tabela de componentes; fronteira de sag/swell continua em dois níveis. Os valores da tabela valem com set sorteio off. Detalhe: `arquivo/analises:docs/analise-2026-10-12/pendente/compostas_sorteadas_REVISAR.md.`
 
-## Compostas sorteadas: o que a proposta pede e o que o projeto acrescenta (revisão de 2026-10-13)
+## Compostas sorteadas: o que cada componente cobre (revisão de 2026-10-13)
 
 Parâmetros que as compostas 10 a 16 sorteiam com o sorteio ligado (`perfis.py:113-134`, `composto` em `perfis.py:182`), perfil `literatura`:
 
-| Componente | Classes | Faixa | Situação |
+| Componente | Classes | Faixa do perfil `literatura` | Origem |
 |---|---|---|---|
-| sag | 10 (pedido); 11 e 12 (extensão a) | U(0,1; 0,9) | conforme na 10 |
-| swell | 13 e 14 | U(1,1; 1,8) | extensão (a, b) |
-| THD | 10 (pedido); 13, 15 e 16 (extensão f) | U(0,05; 0,20) | conforme na 10 |
-| flicker (frequência) | 11 e 15 | U(8; 25) Hz | conforme |
-| flicker (profundidade) | 11 e 15 | faixa da classe 06 (`flicker_profundidade`) | conforme |
-| oscilação | 12 e 14 | U(300; 2400) Hz | conforme |
+| sag | 10; 11 e 12 | U(0,1; 0,9) | `FAIXAS_SORTEADAS` (item a) |
+| swell | 13 e 14 | U(1,1; 1,8) | extremos de `swell_niveis` (item b) |
+| THD | 10; 13, 15 e 16 | U(0,05; 0,20) | `FAIXAS_SORTEADAS` (item f) |
+| flicker (frequência) | 11 e 15 | U(8; 25) Hz | `FAIXAS_SORTEADAS` |
+| flicker (profundidade) | 11 e 15 | faixa da classe 06 (`flicker_profundidade`) | `FAIXAS_SORTEADAS` |
+| oscilação | 12 e 14 | U(300; 2400) Hz | `FAIXAS_SORTEADAS` |
 
-Decisões de projeto que vão além do que a proposta enumera (nenhuma altera `max_voltage_rms`, `max_peak_v` ou a pré-validação de pico; reverter qualquer uma muda o dataset da v1.15 e exige regravar `gerar_sorteio_v1_15.json`):
+Decisões de projeto além da faixa de cada componente (nenhuma altera `max_voltage_rms`, `max_peak_v` ou a pré-validação de pico; reverter qualquer uma muda o dataset da v1.15 e exige regravar `gerar_sorteio_v1_15.json`):
 
 - **(a) Sag em 11 e 12, swell em 13 e 14.** `sag_composto`/`swell_composto` já eram um componente compartilhado entre as classes; sortear só na 10 deixaria 11 a 14 com uma forma de nível por classe, o que reproduz o problema de "uma forma só" que o sorteio resolve.
 - **(b) Faixa do swell = extremos de `swell_niveis`** (1,1 a 1,8; norma 1,15 a 1,75). O sorteio contínuo cobre o mesmo intervalo que os cinco níveis discretos da classe 03, então 03 e 13/14 variam o swell na mesma faixa.

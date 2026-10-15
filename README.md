@@ -14,7 +14,7 @@ Cada captura tem 200 ms = 6000 amostras a 30 kSa/s, em pu do pico nominal, com r
 ### Sem hardware (qualquer máquina com Python 3.11+)
 ```powershell
 .\scripts\setup_windows.ps1                                   # cria env/ e instala requirements.txt
-.\env\Scripts\python.exe -m unittest tests.test_offline       # suíte offline (370 testes)
+.\env\Scripts\python.exe -m unittest tests.test_offline       # suíte offline (ver `docs/testes.md`)
 .\scripts\run_simulation_windows.ps1 -CapturesPerClass 2000   # dataset simulado em resultados/
 ```
 
@@ -36,7 +36,7 @@ Dentro da CLI: `help`; sequência recomendada `comm` → `trigger` → `native` 
 |---|---|
 | [`AGENTS.md`](AGENTS.md) | regras para agentes de IA e limites inegociáveis; como escrever mudanças e versionar |
 | [`docs/arquitetura.md`](docs/arquitetura.md) | mapa de arquivos, componentes, fluxos (bateria, captura), camadas de segurança, scripts |
-| [`docs/operacao.md`](docs/operacao.md) | ligação física, `START_BENCH`, todos os comandos da CLI, falhas, depois da sessão |
+| [`docs/operacao.md`](docs/operacao.md) | ligação física, `START_BENCH`, todos os comandos da CLI, falhas, depois da sessão, relatório HTML e recalibração ao fim do run (§9) |
 | [`docs/configuracao.md`](docs/configuracao.md) | todas as variáveis de ambiente, validações de configuração |
 | [`docs/limites_e_calibracao.md`](docs/limites_e_calibracao.md) | pré-validação de pico, limite de bancada, fatores de extremo por condição, 220/380 V |
 | [`docs/classes.md`](docs/classes.md) | as 20 classes: mecanismo, parâmetros, sorteio, capturas padrão, classe 08 |

@@ -1733,9 +1733,9 @@ class MargemCapturaTests(unittest.TestCase):
     sem folga; captura real = folga dos dois lados, dentro dos dois tetos do
     osciloscópio, SEMPRE — não há mais 'desligado' para captura real); os
     NÚMEROS (20/50 ms) já vinham do P08 e não mudam aqui. Justificativa
-    completa em 03_propostas_melhorias.md, proposta P1-2, e no pedido do
-    dono de 2026-09-22 ("descontinue o margin on... faça esse comportamento
-    de janela o default")."""
+    completa em `arquivo/analises:docs/analise-2026-09-21/03_propostas_melhorias.md`
+    (item P1-2) e na decisão de projeto de 2026-09-22 (descontinuar
+    `set margin on|off`; a janela pequena passa a ser o padrão)."""
 
     def test_simulado_mantem_pontos_nominais_sem_margem(self):
         antes, depois, pontos_totais = mestre.ExperimentoBase._calcular_margem(
@@ -1788,7 +1788,7 @@ class MargemCapturaTests(unittest.TestCase):
         self.assertLessEqual(pontos_totais, 30_000)
 
     def test_nao_ha_mais_modo_sem_margem_para_captura_fisica(self):
-        """Pedido do dono, 2026-09-22: descontinuar 'set margin on|off' e
+        """Decisão de projeto, 2026-09-22: descontinuar 'set margin on|off' e
         tornar a janela pequena o default — não pode sobrar nenhum jeito de
         pedir 'captura real sem margem' pela assinatura da função."""
         import inspect
@@ -3182,9 +3182,8 @@ class PastaDeSessaoPorRunTests(unittest.TestCase):
 
 
 class TerminalDeDiagnosticoTests(unittest.TestCase):
-    """P11 — pedido do dono, 2026-09-22: "faça o diagnostico on abrir um
-    terminal com algo como tail -f nas logs de scpi concomitantemente ao
-    terminal". Com ``set diagnostico on`` e captura FÍSICA (``BENCH_MODE``),
+    """P11 — recurso de ``set diagnostico on`` (2026-09-22): abrir um
+    terminal acompanhando o log SCPI do run (``tail -f``). Com ``set diagnostico on`` e captura FÍSICA (``BENCH_MODE``),
     cada ``_garantir_pasta_sessao()`` (chamada no início de todo `run`/`run
     all`) abre uma janela de console nova acompanhando
     ``scpi_transcricao.log`` (P06) da pasta da sessão em tempo real, sem
@@ -3465,14 +3464,15 @@ class CapturaDescartavelTests(unittest.TestCase):
     TimeoutError, ValueError de _validar_captura) é logada e PULADA — não
     retenta a classe inteira, não aborta a bateria.
 
-    Pedido do dono em 2026-09-22, reagindo ao p01/p02 ("a captura falha na
-    hora"): "só por favor não aborte a bateria de testes. apenas log e
-    descarte. abortar a bateria gasta MUITO tempo." Antes deste patch,
+    Decisão de projeto de 2026-09-22, motivada pela medida dos ensaios
+    p01/p02 (a captura falha na hora): não abortar a bateria por uma captura,
+    só registrar e descartar, porque abortar custa reexecutar a classe
+    inteira. Antes deste patch,
     QUALQUER InstrumentHardwareError dentro de _capturar_real() (erro 19 do
     p01, divergência de readback do p02) propagava para fora do laço de
     executar() e disparava o retry de CLASSE INTEIRA de executar_bateria()
     (até 3×, refazendo do zero até as capturas que já tinham dado certo) —
-    exatamente o custo que o dono não quer pagar por uma falha isolada."""
+    exatamente o custo que a decisão de projeto evita para uma falha isolada."""
 
     def _config(self, results_dir, **overrides):
         base = dict(
@@ -3810,7 +3810,7 @@ def _executar_classe_real_com_stub(experiment_id, config, *, max_peak_v=415.8):
 
 class CapturasPadraoPorClasseTests(unittest.TestCase):
     """v1.13, Tarefa 1 — cada classe tem um número PADRÃO de capturas na
-    bancada (``capturas_padrao``). Pedido do dono (2026-10-07): 3 nas classes
+    bancada (``capturas_padrao``). Decisão de projeto (v1.13): 3 nas classes
     que sorteiam parâmetros em ``gerar()``, 1 nas determinísticas."""
 
     COM_SORTEIO = {"04", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "19", "20"}
@@ -4212,7 +4212,7 @@ def _carregar_script(nome):
 
 
 class LimiteDeBancada220VTests(unittest.TestCase):
-    """v1.13, Tarefa 4 — opção (b) do dono para 220 V: nas classes waveform
+    """v1.13, Tarefa 4 — opção (b) para 220 V: nas classes waveform
     cujo extremo previsto passa do teto, a captura FÍSICA reduz só o
     distúrbio até caber; gerar()/dataset não mudam; nativas continuam
     puladas."""
@@ -5257,8 +5257,8 @@ class SorteioInicioDuracaoFaseTests(unittest.TestCase):
         self.assertGreater(max(duracoes), (0.2 - 2.0 / 60.0) * 0.9)
 
     def test_formas_distintas_em_200_capturas(self):
-        """A conta do professor (formas distintas entre capturas de uma
-        classe): com o sorteio, nenhuma classe volta a ser cópia da mesma onda."""
+        """Formas distintas entre capturas de uma
+        classe, com o sorteio:, nenhuma classe volta a ser cópia da mesma onda."""
         for classe_id in self.CLASSES:
             com = {self._gerar(classe_id, seed)[0].tobytes() for seed in range(200)}
             self.assertGreater(len(com), 150, classe_id)
@@ -5529,7 +5529,7 @@ class SorteioInicioDuracaoFaseTests(unittest.TestCase):
 class ParametrosSorteadosNasCompostasTests(unittest.TestCase):
     """v1.15 — compostas 10 a 16 sorteiam os parâmetros em ``gerar()`` com o
     sorteio ligado (`arquivo/analises:docs/analise-2026-10-12/pendente/compostas_sorteadas_REVISAR.md`), e o teste
-    do item f) do professor: nenhuma classe volta a ter poucas formas
+    de cobertura de formas: nenhuma classe volta a ter poucas formas
     distintas no simulado."""
 
     COMPOSTAS = [f"{i}" for i in range(10, 17)]
@@ -5607,7 +5607,7 @@ class ParametrosSorteadosNasCompostasTests(unittest.TestCase):
                     for chave in set(todos[0]) & set(faixas):
                         self.assertGreater(len({p[chave] for p in todos}), 50, (perfil, classe_id, chave))
 
-    def test_literatura_cobre_as_faixas_da_proposta_4(self):
+    def test_literatura_cobre_as_faixas_de_componentes_compostos(self):
         """sag U(0,1; 0,9), THD U(0,05; 0,20), f_osc U(300; 2400), flicker U(8; 25)."""
         esperado = {
             "10": {"sag_pu": (0.1, 0.9), "thd": (0.05, 0.20)},
@@ -5693,7 +5693,7 @@ class ParametrosSorteadosNasCompostasTests(unittest.TestCase):
                 np.testing.assert_allclose(esperada, fisica, atol=1e-9, err_msg=f"{classe_id} seed {seed}")
 
 class TresVersoesTests(unittest.TestCase):
-    """v1.16 — modelo / programada / medida (docs/tres_versoes.md). O ponto
+    """v1.15 — modelo / programada / medida (docs/tres_versoes.md). O ponto
     central: ``AmetekMX30.montar_programacao`` e ``program_capture`` nunca
     divergem, porque a segunda usa a primeira."""
 
@@ -6295,7 +6295,7 @@ class Classes05_07_18Tests(unittest.TestCase):
 
 
 class RuidoNaJanelaTests(unittest.TestCase):
-    """Proposta 8: AWGN de 20/30/40 dB só na janela rotulada; SNR da bancada
+    """AWGN de 20/30/40 dB só na janela rotulada (v1.15); SNR da bancada
     medido na margem; SNR efetivo combinado."""
 
     FS = 30_000.0

@@ -3,7 +3,7 @@
 Guia para criar ou alterar uma classe de distúrbio e para acrescentar comandos, campos e opções, com os erros que já custaram bancada. Leia antes `docs/arquitetura.md` (ganchos de `ExperimentoBase`) e `docs/glossario.md`. Linhas: commit `d37e403`.
 
 **Regras de partida (`AGENTS.md`)**
-1. Mudar o que `gerar()` produz para uma seed muda o **dataset**: exige autorização do dono, registrada em `AGENTS.md`, e entra numa versão declarada no `CHANGELOG`.
+1. Mudar o que `gerar()` produz para uma seed muda o **dataset**: exige autorização registrada em `AGENTS.md`, e entra numa versão declarada no `CHANGELOG`.
 2. Os limites inegociáveis (`max_voltage_rms`, `max_peak_v`, `max_current_a`, `COM10/115200`, validações de IDN/timeout/6000 pontos/SCPI, confirmação digitada) não se alteram.
 3. Comportamento que parece errado: **diagnosticar primeiro** (`docs/diagnostico.md`: `set diagnostico on`, ou um script que chame as funções do projeto isoladamente e reproduza o caso), só então corrigir, com teste de regressão.
 

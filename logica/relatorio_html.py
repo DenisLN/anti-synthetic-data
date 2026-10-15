@@ -710,7 +710,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--capturas", default=None,
                         help="Só estas capturas: ids (02-0001) e/ou posições dentro da classe e do perfil (3 ou 1-3), separados por vírgula")
     parser.add_argument("--max-capturas-por-classe", type=int, default=None,
-                        help=f"Limite de capturas por classe e perfil (padrão: todas; {MAX_CAPTURAS_EMPILHADAS_PADRAO} no dataset simulado)")
+                        help=f"Limite de capturas por classe e perfil (padrão: as {MAX_CAPTURAS_EMPILHADAS_PADRAO} primeiras por classe e perfil; com --capturas, só as pedidas)")
     parser.add_argument("--detalhes", type=int, default=MAX_DETALHES, choices=range(0, MAX_DETALHES + 1),
                         help=f"Detalhes automáticos por captura (0 a {MAX_DETALHES})")
     parser.add_argument("--largura-detalhe-ms", type=float, default=None, help="Largura de cada detalhe (padrão: 2 ciclos de f0)")

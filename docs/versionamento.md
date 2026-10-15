@@ -1,18 +1,18 @@
 # Versionamento, registro de mudanças e arquivamento
 
-Estado em 2026-10-12: a versão corrente é **v1.15, em andamento (não congelada)**. **Não existe nenhuma tag git** (`git tag` vazio); as versões v1.0 a v1.14 existem só como arquivos de `CHANGELOG/`. Por isso o metadata de sessões antigas grava só o hash (`994e170-dirty` nas sessões de 07/10). O professor pediu que a versão congelada tenha tag no GitHub e seja arquivada no Zenodo, e que toda sessão futura saia de commit limpo.
+Estado em 2026-10-12: a versão corrente é **v1.15, em andamento (não congelada)**. **Não existe nenhuma tag git** (`git tag` vazio); as versões v1.0 a v1.14 existem só como arquivos de `CHANGELOG/`. Por isso o metadata de sessões antigas grava só o hash (`994e170-dirty` nas sessões de 07/10). A regra do projeto é que a versão congelada tenha tag no GitHub e seja arquivada no Zenodo, e que toda sessão saia de commit limpo.
 
 ## 1. Regras
 
 1. **Uma versão = um arquivo `CHANGELOG/vX.Y.md`** (minor sobe a cada conjunto de mudanças declarado; não há patch). O arquivo é escrito junto com o código, não depois.
 2. **Congelar** a versão significa: testes verdes, CHANGELOG fechado, documentação conferida, árvore limpa, **tag** `vX.Y` no commit.
-3. **Toda sessão de coleta sai de commit limpo** (idealmente do commit com a tag). O código grava `git_commit`, `git_sujo`, `versao_codigo` (`git describe --always --dirty --tags`), `numpy_versao`, `python_versao`, e uma cópia de `calibracao_extremos.json` com SHA-256 (`docs/metadata.md`). Árvore suja em bancada gera aviso em destaque, mas não bloqueia (`mestre.py:216-223`).
+3. **Toda sessão de coleta sai de commit limpo** (idealmente do commit com a tag). O código grava `git_commit`, `git_sujo`, `versao_codigo` (`git describe --always --dirty --tags`), `numpy_versao`, `python_versao`, e uma cópia de `calibracao_extremos.json` com SHA-256 (`docs/metadata.md`). Árvore suja em bancada gera aviso em destaque, mas não bloqueia (`mestre.py:247-256`).
 4. Registros datados (`CHANGELOG/vX.Y.md` já fechados, `arquivo/analises:docs/analise-*/`, `arquivo/analises:docs/superpowers/`) **não se reescrevem**; erros encontrados neles são corrigidos na documentação viva e anotados na análise da data. **Nota de 2026-10-13:** as análises datadas, `arquivo/analises:docs/superpowers/` e `arquivo/analises:docs/TAREFAS_NUVEM_2026-10-07.md` saíram de `docs/` e estão no branch `arquivo/analises`, nos mesmos caminhos. Neste documento e no resto de `docs/`, `arquivo/analises:<caminho>` significa esse caminho dentro desse branch. Os `CHANGELOG/vX.Y.md` fechados (v1.8 a v1.13) citam os caminhos antigos, que valem nesse branch.
 
 ## 2. Armadilhas do critério "limpo" (verificadas no código)
-- `git_sujo` usa `git status --porcelain --untracked-files=no`: um arquivo **novo não rastreado** (ex.: uma classe nova) não marca a árvore como suja. Faça `git add` e commit de tudo antes da sessão.
-- A procedência é lida **uma vez por processo** (`_INFO_CODIGO_CACHE`, `mestre.py:129-131`): reinicie a CLI depois de commitar; commits feitos com a CLI aberta não aparecem.
-- `set recalibracao on` altera `logica/calibracao_extremos.json` (arquivo rastreado). Depois do primeiro run a árvore está suja de fato (e a CLI ainda reporta o estado do início). Commite a calibração e reinicie a CLI antes da próxima sessão. A cópia usada em cada sessão fica na pasta e seu SHA-256 em cada captura.
+- `git_sujo` (`mestre.py:124-171`, `info_do_codigo`) vale para alteração rastreada em qualquer arquivo **e** para arquivo **novo não ignorado** dentro de `logica/`, `experimentos_nativos/`, `experimentos_waveform/` e `scripts/` (ex.: uma classe nova). Arquivo novo fora dessas pastas (ex.: uma nota em `docs/`) não marca a árvore. Faça `git add` e commit de tudo antes da sessão.
+- A procedência (`git_commit`, `git_sujo`, arquivos novos) é recalculada **a cada pasta de sessão** (`preparar_pasta_da_sessao` chama `info_do_codigo(recalcular=True)`, `mestre.py:220`), ou seja, a cada `run` da CLI. A `versao_codigo` continua em cache no processo (`versao_do_codigo`, `mestre.py:98-110`): reinicie a CLI depois de commitar para ela refletir o commit.
+- `set recalibracao on` altera `logica/calibracao_extremos.json` (arquivo rastreado): depois do run a árvore está suja de fato. Commite a calibração antes da próxima sessão de coleta. A cópia usada em cada sessão fica na pasta, com o SHA-256 em cada captura; como reverter: `docs/operacao.md` §9.
 - Sem tag, `versao_codigo` é só o hash; com tag, aparece `v1.15` (exato) ou `v1.15-3-gabc1234` (3 commits depois) e `-dirty`.
 
 ### 2.1 O que "reproduz byte a byte" significa por plataforma
@@ -21,16 +21,16 @@ O `gerar()` usa `np.sin`/`np.cos`, cujo último bit depende da implementação (
 - **Garantia bit a bit (SHA-256 dos bytes float64 + parâmetros):** só na plataforma onde os `hashes` foram gravados (Windows, Python 3.11.9, numpy 2.4.6). Nas demais plataformas os testes `*_exato_na_plataforma_de_origem` são pulados (`ASD_HASH_EXATO=1` os força).
 - NÃO VERIFICADO: que os resumos gravados no Linux passam no Windows; só a suíte rodada lá confirma.
 
-## 3. Procedimento de congelamento (sem executar sem pedido do dono)
+## 3. Procedimento de congelamento (executar só ao congelar a versão)
 
 ```powershell
 git status --short                       # vazio (inclusive nada não rastreado relevante)
 .\env\Scripts\python.exe -m unittest tests.test_offline    # OK
 # CHANGELOG/vX.Y.md fechado; docs conferidos; README sem número de versão desatualizado
-git tag -a vX.Y -m "vX.Y — resumo"       # só quando o dono mandar; a regra é descrever, não criar
+git tag -a vX.Y -m "vX.Y — resumo"       # só ao congelar a versão; a regra é descrever, não criar
 git push origin main vX.Y
 ```
-Depois, no GitHub, criar uma *Release* a partir da tag. **Zenodo** (procedimento geral da integração GitHub–Zenodo, ainda **não configurado neste projeto**): o dono liga o repositório em zenodo.org (Settings → GitHub) **antes** de criar a release; cada release publicada gera um registro com **DOI** de versão (e um DOI "conceito" que agrupa todas as versões). O artigo cita o DOI da versão exata e, nas sessões, o `versao_codigo` do metadata (que deve coincidir com a tag). Metadados do depósito (título, autores, licença) são do dono; o projeto hoje não tem arquivo de licença nem `CITATION.cff`.
+Depois, no GitHub, criar uma *Release* a partir da tag. **Zenodo** (procedimento geral da integração GitHub–Zenodo, ainda **não configurado neste projeto**): o repositório precisa estar ligado em zenodo.org (Settings → GitHub) **antes** de criar a release; cada release publicada gera um registro com **DOI** de versão (e um DOI "conceito" que agrupa todas as versões). O artigo cita o DOI da versão exata e, nas sessões, o `versao_codigo` do metadata (que deve coincidir com a tag). Metadados do depósito (título, autores, licença) são definidos pelos autores; o projeto hoje não tem arquivo de licença nem `CITATION.cff`.
 
 ## 4. Como escrever uma entrada de CHANGELOG
 Título `# vX.Y — resumo (data)`. Seções usadas no histórico, nesta ordem quando aplicável:
@@ -39,10 +39,10 @@ Título `# vX.Y — resumo (data)`. Seções usadas no histórico, nesta ordem q
 3. **O que não mudou** — limites, validações e `gerar()` preservados (prova de que nada de segurança foi enfraquecido).
 4. **Testes** — número da suíte e classes novas.
 5. **NÃO VERIFICADO / Validação pendente** — o que só a bancada resolve, em lista.
-Regras: afirme só o que viu (comando, saída, arquivo:linha); separe medido de hipótese; cite a análise datada em `docs/analise-AAAA-MM-DD/`.
+Regras: afirme só o que viu (comando, saída, arquivo:linha); separe medido de hipótese; cite a análise datada em `arquivo/analises:docs/analise-AAAA-MM-DD/`.
 
 ## 5. Mensagens de commit (padrão do histórico)
-`tipo: resumo em português`, com tipo em `feat`, `fix`, `docs`, `chore`, `merge` (ex.: `feat: regra de previsão de extremos por frequência (proposta 8)`). Uma mudança lógica por commit; documentação de uma mudança vai junto ou logo depois. Sem `--no-verify`.
+`tipo: resumo em português`, com tipo em `feat`, `fix`, `docs`, `chore`, `merge` (ex.: `feat: regra de previsão de extremos por frequência`). Uma mudança lógica por commit; documentação de uma mudança vai junto ou logo depois. Sem `--no-verify`.
 
 ## 6. Mapa das versões
 
@@ -65,7 +65,7 @@ Regras: afirme só o que viu (comando, saída, arquivo:linha); separe medido de 
 | v1.14 | 10-07 | calibração por condição, cadeia de medição, Ctrl+C, recorte e relatório HTML |
 | v1.15 | 10-12 (em andamento) | perfis, sorteio, compostas, regra por frequência, 08, 05/07/17/18, ruído na janela, três versões, correlação do distúrbio, metadata rastreável, `set recalibracao`/`set html`, fim dos geradores de PNG |
 
-`CHANGELOG/v1.15.md` registra os itens de perfis, sorteio, compostas, regra por frequência, 08, 05/07/17/18, CLI e imagens. **Não** tem seção própria para: metadata rastreável (`arquivo/analises:docs/analise-2026-10-12/resolvido/metadata_mudancas.md`), três versões (`tres_versoes_mudancas.md`), correlação do distúrbio (`docs/correlacao_disturbio.md`) e ruído na janela (`snr_mudancas.md`); esses ficam documentados nos arquivos indicados. Os rótulos "v1.16" que aparecem em comentários de `logica/sinais.py:500`, `scripts/gerar_tres_versoes.py` e `tests/test_offline.py` são anteriores à decisão do dono (2026-10-12) de manter tudo na **v1.15**.
+`CHANGELOG/v1.15.md` registra os itens de perfis, sorteio, compostas, regra por frequência, 08, 05/07/17/18, CLI e imagens. **Não** tem seção própria para: metadata rastreável (`arquivo/analises:docs/analise-2026-10-12/resolvido/metadata_mudancas.md`), três versões (`tres_versoes_mudancas.md`), correlação do distúrbio (`docs/correlacao_disturbio.md`) e ruído na janela (`snr_mudancas.md`); esses ficam documentados nos arquivos indicados. Os rótulos "v1.16" que existiam em comentários de `logica/sinais.py`, `scripts/gerar_tres_versoes.py` e `tests/test_offline.py` foram corrigidos para v1.15: a decisão de 2026-10-12 é manter tudo na **v1.15**.
 
 ## 7. Trabalho pendente fora da `main`
 Branch `feat/passo-final-sin` (PR #3, **aberto, não mesclar antes da validação na bancada**): acrescenta um passo final com a forma interna `SINE` ao `LIST` das classes TRACe, com a variável `AMETEK_PASSO_FINAL_SIN`. Nada disso existe na `main`.

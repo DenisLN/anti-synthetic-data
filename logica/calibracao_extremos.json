@@ -78,5 +78,5 @@
     }
   },
   "observacao_08": "A 08 nao usa esta tabela: forma_para_bancada() dimensiona o impulso pelos fatores de sobressinal/subsinal caracterizados (T8-4) e expõe a excursao prevista em excursao_fisica_prevista_v().",
-  "uso_limite_bancada": "v1.13: nas classes waveform com o distúrbio reduzido a uma fração k (limite de bancada, opção b do dono para 220 V), extremo previsto = MARGEM x (fator_01 x pico da forma reduzida + k x (fator - fator_01) x pico do modelo) — mestre.extremo_previsto_com_disturbio_v. Com k = 1 é a fórmula acima. Recalcular: scripts/recalibrar_extremos.py <sessoes> [--gravar]; desde a v1.14 capturas reduzidas também entram, invertendo esta fórmula."
+  "uso_limite_bancada": "v1.13: nas classes waveform com o distúrbio reduzido a uma fração k (limite de bancada, opção b para 220 V), extremo previsto = MARGEM x (fator_01 x pico da forma reduzida + k x (fator - fator_01) x pico do modelo) — mestre.extremo_previsto_com_disturbio_v. Com k = 1 é a fórmula acima. Recalcular: scripts/recalibrar_extremos.py <sessoes> [--gravar]; desde a v1.14 capturas reduzidas também entram, invertendo esta fórmula."
 }

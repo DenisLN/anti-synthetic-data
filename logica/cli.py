@@ -312,9 +312,9 @@ class SessaoCLI:
 
     def _abrir_terminal_de_diagnostico(self, caminho_log: Path) -> None:
         """Abre uma janela de console nova fazendo ``tail -f`` de
-        ``caminho_log`` — pedido do dono em 2026-09-22 ("faça o diagnostico
-        on abrir um terminal com algo como tail -f nas logs de scpi
-        concomitantemente ao terminal"). Fecha a janela do run ANTERIOR
+        ``caminho_log`` — recurso de ``set diagnostico on`` (2026-09-22): o
+        terminal acompanha a transcrição SCPI do run enquanto ele roda.
+        Fecha a janela do run ANTERIOR
         desta mesma sessão de CLI antes de abrir a nova (só uma por vez,
         sempre acompanhando a pasta do run atual — cada run tem sua própria
         pasta/log, ver P06b). Nunca deixa uma falha aqui (console

@@ -24,7 +24,7 @@ Independente de `on|off` acima; desligado por padrão (`mestre.DIAGNOSTICO_RETRI
 
 ## 2. Roteiro de investigação
 
-1. Reproduza **offline** quando possível: `tests.test_offline` (instrumentos simulados e `ScriptedVisaConnection`), ou um script em `docs/analise-AAAA-MM-DD/` que importe `mestre`/`ametek_orm`/`sinais` com `sys.path.insert(0, "logica")` (exemplos: `scripts/diag_fonte_vs_osciloscopio.py`; os diagnósticos temporários de 2026-10-12 estão em `arquivo/analises:docs/analise-2026-10-12/scripts/`).
+1. Reproduza **offline** quando possível: `tests.test_offline` (instrumentos simulados e `ScriptedVisaConnection`), ou um script em `arquivo/analises:docs/analise-AAAA-MM-DD/` que importe `mestre`/`ametek_orm`/`sinais` com `sys.path.insert(0, "logica")` (exemplos: `scripts/diag_fonte_vs_osciloscopio.py`; os diagnósticos temporários de 2026-10-12 estão em `arquivo/analises:docs/analise-2026-10-12/scripts/`).
 2. Para dados já gravados: `logica\analisar_sessao.py`, `scripts\gerar_tres_versoes.py`, `scripts\relatorio_limites_bancada.py`, `relatorio_html.py`.
 3. Só então use hardware, com a menor energia possível e os scripts da seção 3.
 4. Registre hipóteses refutadas junto com as confirmadas.

@@ -34,7 +34,7 @@ Fora do cálculo (e contadas no relatório):
 Fator proposto por classe = o MAIOR medido nas sessões dadas. Sem
 ``--gravar`` só imprime. Com ``--gravar``, nenhum fator DIMINUI (vale o
 maior entre o atual e o medido: baixar um fator enfraquece a pré-validação)
-— a não ser com ``--substituir``, decisão explícita do dono.
+— a não ser com ``--substituir``, opção explícita (enfraquece a pré-validação).
 
 Uso (na raiz do projeto):
     env\\Scripts\\python scripts\\recalibrar_extremos.py resultados\\sessao_A resultados\\sessao_B
