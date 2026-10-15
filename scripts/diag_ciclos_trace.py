@@ -108,7 +108,8 @@ def carregar_sessao(sessao_dir: Path, *, classes: Optional[Sequence[str]] = None
     sessao_dir = Path(sessao_dir)
     filtro = sorted({c.zfill(2) for c in classes}) if classes else None
     lidas = sessao_io.ler_capturas(sessao_dir, versoes=("medida", "modelo", "programada"), classes=filtro)
-    lidas = [c for c in lidas if c.metadado is not None and not c.metadado.get("simulado")]
+    # espelho = a mesma captura de outro perfil (set perfil todos): vista uma vez, sob a origem
+    lidas = [c for c in lidas if c.metadado is not None and not c.metadado.get("simulado") and not c.espelho]
     multiplos_perfis = len({c.perfil for c in lidas}) > 1
     capturas: List[CapturaSessao] = []
     for lida in lidas:

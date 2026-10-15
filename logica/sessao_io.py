@@ -20,6 +20,8 @@ Este módulo não importa ``mestre`` (nem hardware).
 
 from __future__ import annotations
 
+import copy
+import hashlib
 import json
 import os
 import re
@@ -67,6 +69,34 @@ def chave(perfil: str, item: str) -> str:
     return f"{perfil}/{item}"
 
 
+# Capturas compartilhadas entre perfis (``set perfil todos``, v1.15): classes
+# cujo ``gerar()`` não depende do perfil (``perfis.depende_do_perfil``) são
+# capturadas UMA vez, sob um perfil canônico; os outros perfis ficam como
+# "espelhos" dele. No ``.npz``: ``compartilhadas_perfis`` (os espelhos) e
+# ``compartilhadas_origem`` (o perfil cujo bloco guarda os dados, mesma ordem).
+# No metadata: uma linha por perfil, todas com o mesmo ``arquivo_classe``,
+# ``indice_no_arquivo`` e ``sha256_captura``.
+CHAVE_ESPELHOS = "compartilhadas_perfis"
+CHAVE_ORIGENS = "compartilhadas_origem"
+
+
+def hash_captura(medida, modelo=None, programada=None, pontos: Optional[int] = None) -> str:
+    """SHA-256 dos arrays de UMA captura: ``medida``, ``modelo`` e
+    ``programada`` em float64 little-endian, na ordem, cada um precedido do
+    rótulo e do tamanho. Versão ausente (``None``) conta como ``NaN`` de
+    ``pontos`` amostras (como fica gravada no ``.npz``)."""
+    medida = np.asarray(medida)
+    if pontos is None:
+        pontos = int((modelo if modelo is not None else medida).size)
+    resumo = hashlib.sha256()
+    for rotulo, valores in (("medida", medida), ("modelo", modelo), ("programada", programada)):
+        v = np.full(pontos, np.nan) if valores is None else np.asarray(valores)
+        v = np.ascontiguousarray(v, dtype="<f8")
+        resumo.update(f"{rotulo}:{v.size};".encode("ascii"))
+        resumo.update(v.tobytes())
+    return resumo.hexdigest()
+
+
 # ---------------------------------------------------------------- escrita
 
 def gravar_npz(destino: Path, *, comprimido: bool = True, **arrays) -> None:
@@ -105,6 +135,8 @@ class ArquivoDaClasse:
         self.spool = spool
         self._ordem: List[str] = []
         self._capturas: Dict[str, List[dict]] = {}
+        # perfil espelho -> perfil de origem (cujo bloco guarda os dados)
+        self._espelhos: Dict[str, str] = {}
 
     # -- nomes ----------------------------------------------------------
 
@@ -123,9 +155,55 @@ class ArquivoDaClasse:
     def total(self) -> int:
         return sum(len(v) for v in self._capturas.values())
 
+    @property
+    def espelhos(self) -> Dict[str, str]:
+        """Perfis sem bloco próprio -> perfil de origem (capturas compartilhadas)."""
+        return {a: o for a, o in self._espelhos.items() if self._capturas.get(o)}
+
     def registros(self) -> List[dict]:
-        """Metadata de todas as capturas, perfil a perfil, na ordem gravada."""
-        return [c["metadado"] for p in self._ordem for c in self._capturas[p] if c["metadado"] is not None]
+        """Metadata de todas as capturas, perfil a perfil, na ordem gravada;
+        no fim, as linhas dos perfis espelho (cópia da linha da origem com o
+        ``perfil`` trocado e ``captura_compartilhada``)."""
+        saida = [c["metadado"] for p in self._ordem for c in self._capturas[p] if c["metadado"] is not None]
+        for espelho, origem in self.espelhos.items():
+            for c in self._capturas[origem]:
+                if c["metadado"] is None:
+                    continue
+                linha = copy.deepcopy(c["metadado"])
+                linha["perfil"] = espelho
+                saida.append(linha)
+        return saida
+
+    def espelhar(self, origem: str, destinos: Sequence[str]) -> None:
+        """Declara que ``destinos`` (perfis) são a MESMA captura de ``origem``
+        (um bloco já completo): grava nos metadados da origem os campos
+        ``captura_compartilhada``, ``perfil_de_origem``,
+        ``compartilhada_com_perfis`` e ``sha256_captura``; ``registros()`` e o
+        ``.npz`` passam a trazer os espelhos. Substitui um espelhamento
+        anterior da mesma origem."""
+        if not self._capturas.get(origem):
+            raise ValueError(f"[{self.id}] não há capturas do perfil {origem} para espelhar")
+        destinos = [d for d in destinos if d != origem]
+        for d in destinos:
+            if self._capturas.get(d):
+                raise ValueError(f"[{self.id}] o perfil {d} tem bloco próprio; não pode ser espelho de {origem}")
+        for a in [a for a, o in self._espelhos.items() if o == origem]:
+            del self._espelhos[a]
+        for d in destinos:
+            self._espelhos[d] = origem
+        grupo = [origem, *destinos]
+        for c in self._capturas[origem]:
+            if c["metadado"] is None:
+                continue
+            c["metadado"].update({
+                "captura_compartilhada": bool(destinos),
+                "perfil_de_origem": origem,
+                "compartilhada_com_perfis": grupo,
+                "sha256_captura": hash_captura(c["medida"], c["modelo"], c["programada"], c["pontos"]),
+            })
+            if not destinos:
+                for chave_ in ("captura_compartilhada", "perfil_de_origem", "compartilhada_com_perfis", "sha256_captura"):
+                    c["metadado"].pop(chave_, None)
 
     # -- acumulação -----------------------------------------------------
 
@@ -135,6 +213,10 @@ class ArquivoDaClasse:
         if perfil not in self._capturas:
             self._ordem.append(perfil)
         self._capturas[perfil] = []
+        # Um bloco novo desfaz o espelhamento que dependia dele (ou que o
+        # tornava espelho): a captura é refeita.
+        for a in [a for a, o in self._espelhos.items() if o == perfil or a == perfil]:
+            del self._espelhos[a]
         self._apagar_spool(perfil)
 
     def adicionar(
@@ -280,6 +362,7 @@ class ArquivoDaClasse:
             "perfis": _como_texto(perfis),
             "tempo_ms": primeira["tempo_ms"],
             "tempo_janela_ms": np.arange(primeira["pontos"], dtype=np.float64) / primeira["fs_hz"] * 1000.0,
+            **self._arrays_espelhos(),
         }
         for perfil in perfis:
             bloco = self._capturas[perfil]
@@ -292,13 +375,19 @@ class ArquivoDaClasse:
             arrays[chave(perfil, "inicio_janela")] = np.array([c["inicio_janela"] for c in bloco], dtype=np.int64)
         return arrays
 
+    def _arrays_espelhos(self) -> Dict[str, np.ndarray]:
+        espelhos = self.espelhos
+        if not espelhos:
+            return {}
+        return {CHAVE_ESPELHOS: _como_texto(espelhos), CHAVE_ORIGENS: _como_texto(espelhos.values())}
+
     def _arrays_snr(self) -> Dict[float, Dict[str, np.ndarray]]:
         niveis = sorted({n for p in self.perfis for c in self._capturas[p] for n in c["snr"]})
         saida: Dict[float, Dict[str, np.ndarray]] = {}
         for nivel in niveis:
             arrays: Dict[str, np.ndarray] = {
                 "formato_npz": np.array(FORMATO_NPZ), "classe": np.array(self.nome),
-                "perfis": _como_texto(self.perfis),
+                "perfis": _como_texto(self.perfis), **self._arrays_espelhos(),
             }
             for perfil in self.perfis:
                 bloco = self._capturas[perfil]
@@ -315,7 +404,7 @@ class ArquivoDaClasse:
             return None
         arrays: Dict[str, np.ndarray] = {
             "formato_npz": np.array(FORMATO_NPZ), "classe": np.array(self.nome),
-            "perfis": _como_texto(self.perfis),
+            "perfis": _como_texto(self.perfis), **self._arrays_espelhos(),
         }
         for perfil in self.perfis:
             bloco = self._capturas[perfil]
@@ -389,7 +478,11 @@ def recuperar_parcial(sessao_dir: Path) -> List[Path]:
                 for c in ler_pasta(pasta_nivel, classes=[class_id]):
                     if nivel is not None and c.formato == "classe":
                         snr_antigo.setdefault(c.chave, {})[nivel] = c.sinal
+            espelhos_antigos: Dict[str, str] = {}
             for captura in ler_pasta(sessao_dir, versoes=VERSOES, classes=[class_id], perfis=None):
+                if captura.formato == "classe" and captura.espelho and captura.arquivo == existente:
+                    espelhos_antigos[captura.perfil] = str(captura.perfil_de_origem)
+                    continue  # espelho: dado só no bloco da origem (re-espelhado abaixo)
                 if captura.formato != "classe" or captura.perfil in novos or captura.arquivo != existente:
                     continue
                 snr = snr_antigo.get(captura.chave, {})
@@ -401,6 +494,13 @@ def recuperar_parcial(sessao_dir: Path) -> List[Path]:
                     origem_programada=captura.origem_programada,
                     inicio_janela=captura.inicio_janela or 0, snr=snr, metadado=captura.metadado,
                 )
+            # Espelhos cuja origem e cujo próprio perfil não foram refeitos continuam valendo.
+            por_origem: Dict[str, List[str]] = {}
+            for espelho, origem in espelhos_antigos.items():
+                if origem not in novos and espelho not in novos and origem in bruto.perfis:
+                    por_origem.setdefault(origem, []).append(espelho)
+            for origem, destinos in por_origem.items():
+                bruto.espelhar(origem, destinos)
         caminho = bruto.consolidar()
         if caminho is not None:
             gravados.append(caminho)
@@ -409,7 +509,11 @@ def recuperar_parcial(sessao_dir: Path) -> List[Path]:
             anteriores = []
             if destino.is_file():
                 for linha in destino.read_text(encoding="utf-8").splitlines():
-                    if linha.strip() and json.loads(linha).get("perfil", PERFIL_LEGADO) not in novos:
+                    if not linha.strip():
+                        continue
+                    anterior = json.loads(linha)
+                    if anterior.get("perfil", PERFIL_LEGADO) not in novos \
+                            and anterior.get("perfil_de_origem") not in novos:
                         anteriores.append(linha)
             novas = [json.dumps(r, ensure_ascii=False, sort_keys=True) for r in bruto.registros()]
             parcial = destino.with_suffix(".jsonl.part")
@@ -490,10 +594,23 @@ class CapturaSessao:
     inicio_janela: Optional[int] = None
     tempo_ms: Optional[np.ndarray] = None
     metadado: Optional[dict] = None
+    # Captura compartilhada entre perfis (``set perfil todos``, classe cujo
+    # gerar() não depende do perfil): os dados existem UMA vez, no bloco de
+    # ``perfil_de_origem``; ``perfis_compartilhados`` lista todos os perfis
+    # que apontam para ela (origem primeiro).
+    compartilhada: bool = False
+    perfil_de_origem: Optional[str] = None
+    perfis_compartilhados: Tuple[str, ...] = ()
 
     @property
     def chave(self) -> Tuple[str, str]:
         return (self.perfil, self.id_captura)
+
+    @property
+    def espelho(self) -> bool:
+        """``True`` quando o perfil desta captura não tem bloco próprio: ela
+        é a captura de ``perfil_de_origem`` vista sob outro perfil."""
+        return self.compartilhada and self.perfil != self.perfil_de_origem
 
 
 def classe_do_arquivo(caminho: Path) -> str:
@@ -626,13 +743,27 @@ def _ler_formato2(dados, caminho, class_id, metadados, versoes, perfis_filtro, s
                   max_por_bloco, limite_padrao, contagem, saida, avisar) -> None:
     classe = str(dados["classe"])
     tempo_ms = np.asarray(dados["tempo_ms"], dtype=np.float64) if "tempo_ms" in dados.files else None
-    for perfil in [str(p) for p in np.atleast_1d(dados["perfis"])]:
+    reais = [str(p) for p in np.atleast_1d(dados["perfis"])]
+    # (perfil pedido, perfil cujo bloco guarda os dados): os espelhos de uma
+    # captura compartilhada apontam para o bloco da origem.
+    blocos = [(p, p) for p in reais]
+    if CHAVE_ESPELHOS in dados.files:
+        for espelho, origem in zip(np.atleast_1d(dados[CHAVE_ESPELHOS]), np.atleast_1d(dados[CHAVE_ORIGENS])):
+            if str(origem) in reais:
+                blocos.append((str(espelho), str(origem)))
+    grupos: Dict[str, List[str]] = {}
+    for perfil, origem in blocos:
+        grupos.setdefault(origem, []).append(perfil)
+    if len(blocos) > len(reais):  # ordem canônica dos perfis, com os espelhos no lugar
+        ordem = {p: i for i, p in enumerate(("norma", "literatura", "fronteira"))}
+        blocos.sort(key=lambda b: ordem.get(b[0], len(ordem)))
+    for perfil, origem in blocos:
         if perfis_filtro and perfil not in perfis_filtro:
             continue
-        ids = [str(i) for i in np.atleast_1d(dados[chave(perfil, "id_captura")])]
+        ids = [str(i) for i in np.atleast_1d(dados[chave(origem, "id_captura")])]
         if not ids:
             continue
-        itens = [i for i in ("medida", "tensao_pu", "corrente_pu") if chave(perfil, i) in dados.files]
+        itens = [i for i in ("medida", "tensao_pu", "corrente_pu") if chave(origem, i) in dados.files]
         if not itens:
             continue
         item_sinal = itens[0]
@@ -649,16 +780,19 @@ def _ler_formato2(dados, caminho, class_id, metadados, versoes, perfis_filtro, s
             continue
         contagem[(class_id, perfil)] = ja + len(linhas)
         if item_sinal == "medida":
-            carregar = [v for v in versoes if chave(perfil, v) in dados.files]
+            carregar = [v for v in versoes if chave(origem, v) in dados.files]
             if not carregar:
                 continue
         else:
             carregar = [item_sinal]
-        matrizes = {v: np.atleast_2d(dados[chave(perfil, v)]) for v in carregar}
-        origens = np.atleast_1d(dados[chave(perfil, "origem_programada")]) \
-            if chave(perfil, "origem_programada") in dados.files else None
-        inicios = np.atleast_1d(dados[chave(perfil, "inicio_janela")]) \
-            if chave(perfil, "inicio_janela") in dados.files else None
+        matrizes = {v: np.atleast_2d(dados[chave(origem, v)]) for v in carregar}
+        origens = np.atleast_1d(dados[chave(origem, "origem_programada")]) \
+            if chave(origem, "origem_programada") in dados.files else None
+        inicios = np.atleast_1d(dados[chave(origem, "inicio_janela")]) \
+            if chave(origem, "inicio_janela") in dados.files else None
+        compartilhados = tuple(grupos[origem]) if len(grupos[origem]) > 1 else ()
+        if compartilhados:  # origem primeiro, depois a ordem do arquivo
+            compartilhados = (origem, *[p for p in compartilhados if p != origem])
         for linha in linhas:
             if item_sinal == "medida":
                 versoes_linha = {v: np.asarray(m[linha]) for v, m in matrizes.items() if _tem_valor(m[linha])}
@@ -675,6 +809,8 @@ def _ler_formato2(dados, caminho, class_id, metadados, versoes, perfis_filtro, s
                 inicio_janela=int(inicios[linha]) if inicios is not None else None,
                 tempo_ms=tempo_ms if item_sinal != "tensao_pu" else None,
                 metadado=buscar_metadado(metadados, perfil, ids[linha]),
+                compartilhada=bool(compartilhados), perfil_de_origem=origem if compartilhados else None,
+                perfis_compartilhados=compartilhados,
             ))
 
 

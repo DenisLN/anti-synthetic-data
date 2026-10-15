@@ -134,8 +134,13 @@ Comandos disponíveis (nenhum energiza a saída sem pedir confirmação própria
                        fronteira) na mesma sessão, cada classe uma vez por
                        perfil, e gravam tudo no mesmo NN_classe.npz
                        comprimido (chaves <perfil>/<versão>; SNRs em
-                       snr_XXdb/NN_classe.npz). A confirmação soma as
-                       capturas e as gravações de TRACe dos três perfis. norma = IEEE 1159 (flicker 2-7 %, inter-
+                       snr_XXdb/NN_classe.npz). Classes cujo gerar() não
+                       depende do perfil (01, 04, 07, 08, 09, 17, 18, 19;
+                       perfis.classes_independentes_do_perfil) são
+                       capturadas UMA vez (perfil literatura) e o metadata
+                       dos outros perfis aponta para a mesma captura (mesmo
+                       arquivo, índice e SHA-256). A confirmação conta só o
+                       que roda de fato. norma = IEEE 1159 (flicker 2-7 %, inter-
                        harmônicas 0,5-2 %, THD até 20 %, sag 0,15-0,85 pu,
                        swell 1,15-1,75 pu); literatura = as faixas de
                        sempre (padrão, reproduz o dataset anterior);
@@ -409,7 +414,7 @@ class SessaoCLI:
     def _texto_dos_perfis() -> str:
         if not mestre.PERFIL_TODOS:
             return ""
-        return f", nos perfis {', '.join(mestre.perfis_da_rodada())} (cada classe roda uma vez por perfil)"
+        return f", nos perfis {', '.join(mestre.perfis_da_rodada())} (classes que dependem do perfil: uma vez por perfil; as demais, uma só vez)"
 
     @staticmethod
     def _capturas_das_classes(scripts: Optional[List[Path]] = None) -> List[tuple]:
@@ -427,10 +432,15 @@ class SessaoCLI:
             if base is None:
                 info = mestre.capturas_efetivas_da_classe(experimento_cls)
             else:
+                # Só o que roda de fato: classe cujo gerar() não depende do perfil
+                # entra uma vez (sob o perfil canônico); os outros perfis são
+                # a mesma captura (perfis.plano_de_perfis).
+                plano = perfis.plano_de_perfis(script_path.stem, perfis_rodada, base.sorteio_posicao)
                 partes = {
                     perfil: mestre.capturas_efetivas_da_classe(experimento_cls, replace(base, perfil=perfil))
-                    for perfil in perfis_rodada
+                    for perfil, _ in plano
                 }
+                espelhos = {perfil: e for perfil, e in plano if e}
                 primeiro = next(iter(partes.values()))
                 info = {
                     "padrao": primeiro["padrao"],
@@ -440,6 +450,8 @@ class SessaoCLI:
                     "escritas_trace": sum(i["escritas_trace"] for i in partes.values()),
                     "escritas_trace_exatas": all(i["escritas_trace_exatas"] for i in partes.values()),
                     "por_perfil": {perfil: i["total"] for perfil, i in partes.items()},
+                    "espelhos": espelhos,
+                    "evitadas": (len(perfis_rodada) - len(partes)) * primeiro["total"] if espelhos else 0,
                 }
             linhas.append((script_path.stem, nome, info))
         return linhas
@@ -448,6 +460,9 @@ class SessaoCLI:
     def _descrever_capturas(info: dict) -> str:
         if "por_perfil" in info:
             partes = " + ".join(f"{n} {perfil}" for perfil, n in info["por_perfil"].items())
+            if info.get("espelhos"):
+                iguais = ", ".join(p for e in info["espelhos"].values() for p in e)
+                partes += f"; igual em {iguais}, sem recaptura"
             return f"{info['total']} ({partes})"
         if info["niveis"] > 1:
             return f"{info['total']} ({info['niveis']} níveis x {info['por_nivel']})"
@@ -467,7 +482,11 @@ class SessaoCLI:
         else:
             quantidade = f"até {escritas} gravações na Flash da AMETEK nesta bateria"
         if linhas and "por_perfil" in linhas[0][2]:
-            quantidade += f", somadas nos {len(linhas[0][2]['por_perfil'])} perfis"
+            evitadas = sum(info.get("evitadas", 0) for _, _, info in linhas)
+            quantidade += (
+                f", só o que roda de fato nos perfis da rodada (as classes que não dependem do "
+                f"perfil entram uma vez; {evitadas} capturas repetidas evitadas)"
+            )
         texto = (
             f"TRACe: {quantidade} "
             f"(referência: a fonte travou na ~{mestre.ESCRITAS_TRACE_REFERENCIA_TRAVA}.ª "

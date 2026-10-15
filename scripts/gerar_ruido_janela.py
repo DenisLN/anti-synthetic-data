@@ -83,7 +83,13 @@ def gerar_sessao(
     linhas: List[dict] = []
     metadados_saida: Dict[Tuple[str, str], dict] = {}
     por_arquivo: Dict[Path, List[sessao_io.CapturaSessao]] = {}
+    espelhos: Dict[Path, Dict[str, List[str]]] = {}  # arquivo -> origem -> perfis espelho
     for captura in sessao_io.ler_pasta(sessao_dir, metadados, versoes=("medida",)):
+        if captura.espelho:  # mesma captura de outro perfil: o ruído é gerado uma vez, na origem
+            destinos = espelhos.setdefault(captura.arquivo, {}).setdefault(str(captura.perfil_de_origem), [])
+            if captura.perfil not in destinos:
+                destinos.append(captura.perfil)
+            continue
         if captura.grandeza == "Tensão" and "medida" in captura.versoes:
             por_arquivo.setdefault(captura.arquivo, []).append(captura)
 
@@ -126,6 +132,9 @@ def gerar_sessao(
                 "margem_bancada": (resultado["metadata"]["ruido_janela"]["bancada"] or {}).get("margem"),
             })
         if escritor is not None:
+            for origem, destinos in espelhos.get(npz_path, {}).items():
+                if origem in escritor.perfis:
+                    escritor.espelhar(origem, destinos)
             escritor.consolidar(so_snr=True)
             continue
         # Formato antigo (um .npz por captura, ou o simulado empilhado): mesma
@@ -150,8 +159,13 @@ def gerar_sessao(
                 continue
             registro = json.loads(texto)
             chave = (str(registro.get("perfil") or sessao_io.PERFIL_LEGADO), str(registro["id_captura"]))
+            origem = registro.get("perfil_de_origem")
             if chave in metadados_saida:  # só as que têm .npz limpo na sessão
                 saidas.append(json.dumps(metadados_saida[chave], ensure_ascii=False, sort_keys=True))
+            elif origem and origem != chave[0] and (origem, chave[1]) in metadados_saida:
+                # Espelho (captura compartilhada): a linha da origem, sob o perfil dele.
+                espelho = dict(metadados_saida[(origem, chave[1])], perfil=chave[0])
+                saidas.append(json.dumps(espelho, ensure_ascii=False, sort_keys=True))
         if saidas:
             (saida / "metadata" / jsonl_path.name).write_text("\n".join(saidas) + "\n", encoding="utf-8")
 

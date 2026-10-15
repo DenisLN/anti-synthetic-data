@@ -167,6 +167,8 @@ def recortar_sessao(
     for origem_dir in diretorios_de_dados(sessao_dir)[1:]:
         nivel = sessao_io.nivel_da_pasta_snr(origem_dir.name)
         for captura in sessao_io.ler_pasta(origem_dir, metadados):
+            if captura.espelho:
+                continue  # mesma captura de outro perfil (set perfil todos)
             inicio, pontos, info = calcular_recorte(captura.sinal.size, captura.metadado)
             janela = captura.sinal[inicio : inicio + pontos]
             if nivel is not None:
@@ -181,7 +183,13 @@ def recortar_sessao(
     capturas = sessao_io.ler_pasta(sessao_dir, metadados, versoes=sessao_io.VERSOES)
     capturas.sort(key=lambda c: (c.classe_id, c.perfil, c.id_captura))
     arquivos: Dict[str, "sessao_io.ArquivoDaClasse"] = {}
+    espelhos: Dict[str, Dict[str, List[str]]] = {}  # classe -> origem -> perfis espelho
     for captura in capturas:
+        if captura.espelho:  # mesma captura de outro perfil: só se re-espelha
+            espelhos.setdefault(captura.classe_id, {}).setdefault(str(captura.perfil_de_origem), [])
+            if captura.perfil not in espelhos[captura.classe_id][str(captura.perfil_de_origem)]:
+                espelhos[captura.classe_id][str(captura.perfil_de_origem)].append(captura.perfil)
+            continue
         if captura.grandeza != "Tensão" or "medida" not in captura.versoes:
             continue
         medida = captura.versoes["medida"]
@@ -209,7 +217,10 @@ def recortar_sessao(
         relatorio.append({
             "arquivo": captura.arquivo.name, "id_captura": captura.id_captura, "perfil": captura.perfil, **info,
         })
-    for arquivo in arquivos.values():
+    for classe_id, arquivo in arquivos.items():
+        for origem, destinos in espelhos.get(classe_id, {}).items():
+            if origem in arquivo.perfis:
+                arquivo.espelhar(origem, destinos)
         try:
             arquivo.consolidar()
         except ValueError as exc:
@@ -228,6 +239,11 @@ def recortar_sessao(
                 registro = json.loads(linha)
                 chave = (str(registro.get("perfil") or sessao_io.PERFIL_LEGADO), str(registro["id_captura"]))
                 novo = metadados_saida.get(chave, registro)
+                origem = registro.get("perfil_de_origem")
+                if novo is registro and origem and origem != chave[0] \
+                        and (origem, chave[1]) in metadados_saida:
+                    # Espelho (captura compartilhada): a mesma linha da origem recortada.
+                    novo = dict(metadados_saida[(origem, chave[1])], perfil=chave[0])
                 linhas.append(json.dumps(novo, ensure_ascii=False, sort_keys=True))
             destino = saida_dir / "metadata" / jsonl_path.name
             parcial = destino.with_suffix(".jsonl.part")

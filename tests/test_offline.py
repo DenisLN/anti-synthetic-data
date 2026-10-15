@@ -8339,8 +8339,6 @@ class PendentesCorrelacaoDisturbioTests(unittest.TestCase):
         self.assertGreater(piores[0][1], 17.0)             # e cresce com a frequência do flicker
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 def _capturas_gravadas(pasta, classe_id, *, versoes=("medida",), perfis=None):
@@ -8362,6 +8360,12 @@ class NpzPorClasseTests(unittest.TestCase):
         self.sessao_io = sessao_io
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        # As classes falsas "96" destes testes dependem do perfil (como as reais
+        # 02/05/10...); a "97" de PerfisCompartilhadosTests não.
+        import perfis
+        patcher = mock.patch.dict(perfis.COMPONENTES_POR_CLASSE, {"96": ("sag_niveis",)})
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def _config(self, pasta, **sobrescritas):
         base = dict(
@@ -8799,10 +8803,14 @@ class NpzPorClasseTests(unittest.TestCase):
         cli, sessao = self._cli()
         sozinhos = 0
         escritas = 0
+        import perfis
+        independentes = set(perfis.classes_independentes_do_perfil(True))
         with mock.patch.object(mestre, "PERFIL_TODOS", False):
             for perfil in self.PERFIS:
                 with mock.patch.object(mestre, "PERFIL", perfil):
                     linhas = cli.SessaoCLI._capturas_das_classes(mestre.scripts_da_bateria_fisica())
+                # classe independente do perfil: conta só uma vez (no perfil canônico)
+                linhas = [l for l in linhas if l[0] not in independentes or perfil == perfis.PERFIL_CANONICO]
                 sozinhos += sum(i["total"] for _, _, i in linhas)
                 escritas += sum(i["escritas_trace"] for _, _, i in linhas)
         with mock.patch.object(mestre, "PERFIL_TODOS", True):
@@ -8819,7 +8827,7 @@ class NpzPorClasseTests(unittest.TestCase):
         self.assertIn(f"Planejadas: {sozinhos} capturas", aviso)
         self.assertIn("norma, literatura, fronteira", aviso)
         self.assertIn(f"{escritas} gravações", aviso)
-        self.assertIn("somadas nos 3 perfis", aviso)
+        self.assertIn("capturas repetidas evitadas", aviso)
 
     def test_run_all_com_todos_roda_cada_classe_uma_vez_por_perfil(self):
         cli, sessao = self._cli()
@@ -8846,7 +8854,8 @@ class NpzPorClasseTests(unittest.TestCase):
             with redirect_stdout(io.StringIO()):
                 codigo = sessao._executar_scripts([Path("01.py"), Path("02.py")])
         self.assertEqual(codigo, 0)
-        self.assertEqual(perfis_vistos, ["norma", "literatura", "fronteira"] * 2)
+        # 01 não depende do perfil: roda uma vez (literatura); 02, nos três
+        self.assertEqual(perfis_vistos, ["literatura", "norma", "literatura", "fronteira"])
 
 
 class SessaoFormatoNovoScriptsTests(unittest.TestCase):
@@ -9167,3 +9176,254 @@ class CristaComFatorDeExtremoTests(unittest.TestCase):
         e = _load_experimento("08")
         with mock.patch.object(type(e), "excursao_fisica_prevista_v", lambda self: 250.0):
             self.assertEqual(e.fator_extremo_efetivo_para_validacao(None), 1.0)
+
+
+class PerfisCompartilhadosTests(unittest.TestCase):
+    """``set perfil todos`` sem recapturas iguais (spec 25): classes cujo
+    ``gerar()`` não depende do perfil (``perfis.depende_do_perfil``) são
+    capturadas uma vez; o metadata dos três perfis aponta para a mesma captura
+    (arquivo, índice, SHA-256) e ``sessao_io``/HTML a resolvem."""
+
+    PERFIS = NpzPorClasseTests.PERFIS
+    ITENS = NpzPorClasseTests.ITENS
+    _config = NpzPorClasseTests._config
+    _scripts = NpzPorClasseTests._scripts
+    _sessao_simulada_todos = NpzPorClasseTests._sessao_simulada_todos
+    _classe_fisica = NpzPorClasseTests._classe_fisica
+    _bancada_fisica = NpzPorClasseTests._bancada_fisica
+
+    def setUp(self):
+        import sessao_io
+        self.sessao_io = sessao_io
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+
+    @staticmethod
+    def _gerar(classe_id, perfil, sorteio, f0, indice):
+        import dataclasses
+        experimento = _load_experimento(classe_id)
+        experimento.config = dataclasses.replace(
+            experimento.config, perfil=perfil, sorteio_posicao=sorteio, grid_frequency_hz=f0,
+        )
+        t = np.arange(6000) / 30_000.0
+        tensao, parametros = experimento.gerar(t, f0, indice, np.random.default_rng(experimento.seed_da_captura(indice)))
+        return np.asarray(tensao, dtype=np.float64).tobytes(), json.dumps(parametros, sort_keys=True, default=repr)
+
+    def test_independentes_derivadas_da_tabela_e_conferidas_contra_o_gerar_real(self):
+        import perfis
+        esperado = {
+            True: ("01", "04", "07", "08", "09", "17", "18", "19"),
+            False: ("01", "04", "07", "08", "09", "16", "17", "18", "19"),
+        }
+        for sorteio in (True, False):
+            self.assertEqual(perfis.classes_independentes_do_perfil(sorteio), esperado[sorteio])
+            for classe_id in perfis.CLASSES:
+                for f0 in (60.0, 50.0):
+                    diferiu = False
+                    for indice in range(8):
+                        por_perfil = {p: self._gerar(classe_id, p, sorteio, f0, indice) for p in perfis.PERFIS}
+                        iguais = len(set(por_perfil.values())) == 1
+                        if classe_id in esperado[sorteio]:
+                            self.assertTrue(iguais, (classe_id, sorteio, f0, indice))  # arrays E parâmetros
+                        diferiu = diferiu or not iguais
+                    if classe_id not in esperado[sorteio]:
+                        self.assertTrue(diferiu, (classe_id, sorteio, f0))
+
+    def test_plano_de_perfis(self):
+        import perfis
+        todos = perfis.PERFIS
+        self.assertEqual(perfis.plano_de_perfis("01", todos), [("literatura", ("norma", "fronteira"))])
+        self.assertEqual(perfis.plano_de_perfis("02", todos), [(p, ()) for p in todos])
+        self.assertEqual(perfis.plano_de_perfis("01", ("norma",)), [("norma", ())])  # perfil único: como sempre
+        self.assertEqual(perfis.plano_de_perfis("01", ("norma", "fronteira")), [("norma", ("fronteira",))])
+
+    def test_simulado_captura_independente_uma_vez_e_metadata_dos_tres_perfis_aponta_para_ela(self):
+        vistos = []
+        original = mestre.Bancada._executar_classe_no_perfil
+
+        def espia(self_, class_id, *a, **k):
+            vistos.append((class_id, self_.config.perfil, self_.config.perfis_espelho))
+            return original(self_, class_id, *a, **k)
+
+        config = self._config(self.tmp / "r")
+        with mock.patch.object(mestre.Bancada, "_executar_classe_no_perfil", espia):
+            self._sessao_simulada_todos(self.tmp / "r", "01", "02")
+        self.assertEqual([v for v in vistos if v[0] == "01"], [("01", "literatura", ("norma", "fronteira"))])
+        self.assertEqual([v[1] for v in vistos if v[0] == "02"], list(self.PERFIS))
+        pasta = config.results_dir
+        with np.load(pasta / "01_normal.npz") as dados:
+            self.assertEqual(list(dados["perfis"]), ["literatura"])
+            self.assertEqual(list(dados["compartilhadas_perfis"]), ["norma", "fronteira"])
+            self.assertEqual(list(dados["compartilhadas_origem"]), ["literatura", "literatura"])
+            self.assertNotIn("norma/medida", dados.files)
+        with np.load(pasta / "02_sag.npz") as dados:
+            self.assertEqual(list(dados["perfis"]), list(self.PERFIS))
+            self.assertNotIn("compartilhadas_perfis", dados.files)
+        linhas = [json.loads(l) for l in (pasta / "metadata" / "01_normal.jsonl").read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(len(linhas), 9)
+        por_id = {}
+        for l in linhas:
+            por_id.setdefault(l["id_captura"], []).append(l)
+        for id_captura, grupo in por_id.items():
+            self.assertEqual(sorted(l["perfil"] for l in grupo), sorted(self.PERFIS))
+            self.assertEqual(len({(l["arquivo_classe"], l["indice_no_arquivo"], l["sha256_captura"]) for l in grupo}), 1)
+            self.assertEqual({l["perfil_de_origem"] for l in grupo}, {"literatura"})
+            self.assertTrue(all(l["captura_compartilhada"] for l in grupo))
+            self.assertEqual({tuple(l["compartilhada_com_perfis"]) for l in grupo}, {("literatura", "norma", "fronteira")})
+            self.assertEqual(len({json.dumps(l["parametros"], sort_keys=True) for l in grupo}), 1)
+        # as classes dependentes não ganham campo nenhum
+        dependentes = [json.loads(l) for l in (pasta / "metadata" / "02_sag.jsonl").read_text(encoding="utf-8").splitlines()]
+        self.assertTrue(all("sha256_captura" not in l and "perfil_de_origem" not in l for l in dependentes))
+        # snr_XXdb/ e sem sobra
+        with np.load(pasta / "snr_20db" / "01_normal.npz") as dados:
+            self.assertEqual(list(dados["perfis"]), ["literatura"])
+            self.assertEqual(list(dados["compartilhadas_perfis"]), ["norma", "fronteira"])
+        self.assertEqual(list(pasta.rglob("*.part")), [])
+
+    def test_sessao_io_resolve_as_compartilhadas_e_o_hash_confere(self):
+        pasta = self._sessao_simulada_todos(self.tmp / "r", "01").results_dir
+        capturas = self.sessao_io.ler_capturas(pasta, versoes=self.ITENS)
+        self.assertEqual(len(capturas), 9)
+        self.assertEqual([c.perfil for c in capturas[::3]], list(self.PERFIS))  # ordem norma, literatura, fronteira
+        for c in capturas:
+            self.assertTrue(c.compartilhada)
+            self.assertEqual(c.perfil_de_origem, "literatura")
+            self.assertEqual(c.espelho, c.perfil != "literatura")
+            self.assertEqual(set(c.perfis_compartilhados), set(self.PERFIS))
+            self.assertEqual(c.metadado["perfil"], c.perfil)
+            pontos = c.versoes["modelo"].size
+            self.assertEqual(
+                self.sessao_io.hash_captura(c.versoes["medida"], c.versoes.get("modelo"), c.versoes.get("programada"), pontos),
+                c.metadado["sha256_captura"],
+            )
+        por_id = {}
+        for c in capturas:
+            por_id.setdefault(c.id_captura, []).append(c)
+        for grupo in por_id.values():
+            for c in grupo:
+                np.testing.assert_array_equal(c.versoes["medida"], grupo[0].versoes["medida"])
+        # pedir só a norma devolve a captura canônica, marcada como compartilhada
+        so_norma = self.sessao_io.ler_capturas(pasta, versoes=("medida",), perfis=["norma"])
+        self.assertEqual(len(so_norma), 3)
+        self.assertTrue(all(c.espelho and c.perfil == "norma" and c.perfil_de_origem == "literatura" for c in so_norma))
+        self.assertEqual({c.metadado["perfil"] for c in so_norma}, {"norma"})
+        # SNR: o mesmo
+        snr = self.sessao_io.ler_pasta(pasta / "snr_20db", self.sessao_io.carregar_metadados(pasta))
+        self.assertEqual(sorted({c.perfil for c in snr}), sorted(self.PERFIS))
+        self.assertEqual(len(snr), 9)
+
+    def test_html_desenha_a_captura_compartilhada_uma_vez_e_diz_isso(self):
+        import relatorio_html
+        pasta = self._sessao_simulada_todos(self.tmp / "r", "01", "02").results_dir
+        caminho, total = relatorio_html.gerar_relatorio(pasta, self.tmp / "t.html", dpi=40)
+        self.assertEqual(total, 3 + 9)  # 01: 3 figuras (não 9); 02: 3 capturas x 3 perfis
+        texto = caminho.read_text(encoding="utf-8")
+        self.assertEqual(texto.count("mesma captura nos perfis literatura, norma, fronteira"), 3)
+        self.assertIn("(= norma, fronteira)", texto)
+        # só a norma: a captura aparece (marcada), não some
+        caminho, total = relatorio_html.gerar_relatorio(
+            pasta, self.tmp / "n.html", dpi=40, classes=["01"], perfis=["norma"],
+        )
+        self.assertEqual(total, 3)
+        texto = caminho.read_text(encoding="utf-8")
+        self.assertIn("esta captura é a do perfil literatura", texto)
+
+    def test_recortar_margem_preserva_o_compartilhamento(self):
+        from recortar_margem import recortar_sessao
+        pasta = self._sessao_simulada_todos(self.tmp / "r", "01", "02").results_dir
+        saida = self.tmp / "sem_margem"
+        recortar_sessao(pasta, saida)
+        with np.load(saida / "01_normal.npz") as dados:
+            self.assertEqual(list(dados["perfis"]), ["literatura"])
+            self.assertEqual(sorted(dados["compartilhadas_perfis"]), ["fronteira", "norma"])
+        linhas = [json.loads(l) for l in (saida / "metadata" / "01_normal.jsonl").read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(sorted({l["perfil"] for l in linhas}), sorted(self.PERFIS))
+        self.assertEqual(len(self.sessao_io.ler_pasta(saida, self.sessao_io.carregar_metadados(saida), classes=["01"])), 9)
+        self.assertEqual(len(self.sessao_io.ler_pasta(saida, self.sessao_io.carregar_metadados(saida), classes=["02"])), 9)
+
+    def test_analisar_sessao_ve_a_captura_compartilhada_uma_vez(self):
+        import analisar_sessao
+        pasta = self._sessao_simulada_todos(self.tmp / "r", "01").results_dir
+        relatorio = analisar_sessao.analisar_sessao(pasta)
+        self.assertEqual([l["classe"] for l in relatorio], ["01_normal:literatura"])  # simulado: um aviso, sob a origem
+
+    def test_bancada_fisica_captura_a_classe_independente_uma_so_vez(self):
+        classe, chamadas = self._classe_fisica()
+        classe.id = "97"  # fora da tabela de perfis: independente do perfil
+        config = self._config(self.tmp / "r", snr_levels_db=(30.0,), capturas_override=2)
+        bancada = self._bancada_fisica(config)
+        with mock.patch.object(mestre.Bancada, "_carregar_classe_experimento", staticmethod(lambda p: classe)):
+            resultados = bancada.executar_bateria([Path("97.py")], self.PERFIS)
+        self.assertTrue(resultados[0].ok)
+        self.assertEqual(chamadas["n"], 2)  # 2 capturas, não 6
+        pasta = config.results_dir
+        with np.load(pasta / "97_teste_interrompida.npz") as dados:
+            self.assertEqual(list(dados["perfis"]), ["literatura"])
+            self.assertEqual(dados["literatura/medida"].shape, (2, 6000))
+        linhas = [json.loads(l) for l in (pasta / "metadata" / "97_teste_interrompida.jsonl").read_text(encoding="utf-8").splitlines()]
+        self.assertEqual([l["perfil"] for l in linhas], ["literatura"] * 2 + ["norma"] * 2 + ["fronteira"] * 2)
+        self.assertEqual(len({l["sha256_captura"] for l in linhas[:2]}), 2)
+        self.assertEqual({l["sha256_captura"] for l in linhas[:2]}, {l["sha256_captura"] for l in linhas[2:4]})
+        self.assertEqual([l["indice_no_arquivo"] for l in linhas], [0, 1] * 3)
+        self.assertEqual(bancada.config.perfis_espelho, ())  # a Bancada volta ao que era
+
+    def test_falha_da_classe_independente_nao_deixa_espelhos(self):
+        classe, _ = self._classe_fisica(falhar_na_chamada=2)
+        classe.id = "97"
+        config = self._config(self.tmp / "r", snr_levels_db=(), capturas_override=2)
+        bancada = self._bancada_fisica(config)
+        with mock.patch.object(mestre.Bancada, "_carregar_classe_experimento", staticmethod(lambda p: classe)), \
+                self.assertRaises(CommunicationError):
+            bancada.executar_bateria([Path("97.py")], self.PERFIS)
+        with np.load(config.results_dir / "97_teste_interrompida.npz") as dados:
+            self.assertNotIn("compartilhadas_perfis", dados.files)  # captura incompleta não é replicada
+
+    def test_estimativa_conta_so_o_que_roda_de_fato(self):
+        import cli
+        import perfis
+        scripts = mestre.scripts_da_bateria_fisica()
+        with mock.patch.object(mestre, "PERFIL_TODOS", True):
+            linhas = {i: info for i, _, info in cli.SessaoCLI._capturas_das_classes(scripts)}
+        independentes = set(perfis.classes_independentes_do_perfil(True))
+        for classe_id, info in linhas.items():
+            if classe_id in independentes:
+                self.assertEqual(list(info["por_perfil"]), ["literatura"], classe_id)
+                self.assertEqual(info["espelhos"], {"literatura": ("norma", "fronteira")})
+                self.assertEqual(info["evitadas"], 2 * info["total"])
+            else:
+                self.assertEqual(list(info["por_perfil"]), list(perfis.PERFIS), classe_id)
+        self.assertIn("igual em norma, fronteira", cli.SessaoCLI._descrever_capturas(linhas["01"]))
+
+    def test_recuperar_parcial_preserva_espelhos_de_origem_nao_refeita(self):
+        pasta = self.tmp / "r"
+        io = self.sessao_io
+        t = np.arange(6000) / 30_000.0
+        a = io.ArquivoDaClasse(pasta, "97", "TESTE")
+
+        def cap(arq, perfil, n, valor):
+            md = {"id_captura": f"97-{n:04d}", "classe": "X", "perfil": perfil, "pontos": 6000, "fs_hz": 30_000.0}
+            arq.adicionar(perfil, id_captura=md["id_captura"], medida=np.full(6000, valor), tempo_ms=t * 1000.0,
+                          fs_hz=30_000.0, modelo=np.full(6000, valor), metadado=md)
+
+        a.iniciar_perfil("literatura")
+        cap(a, "literatura", 1, 1.0)
+        a.espelhar("literatura", ["norma"])
+        a.consolidar()
+        a.encerrar_perfil("literatura")
+        (pasta / "metadata").mkdir()
+        (pasta / "metadata" / "97_teste.jsonl").write_text(
+            "\n".join(json.dumps(r) for r in a.registros()) + "\n", encoding="utf-8")
+        a.iniciar_perfil("fronteira")
+        cap(a, "fronteira", 1, 3.0)  # processo morre antes de consolidar
+        io.recuperar_parcial(pasta)
+        with np.load(pasta / "97_teste.npz") as dados:
+            self.assertEqual(sorted(str(p) for p in dados["perfis"]), ["fronteira", "literatura"])
+            self.assertEqual(list(dados["compartilhadas_perfis"]), ["norma"])
+        capturas = io.ler_capturas(pasta, versoes=("medida",))
+        self.assertEqual(sorted(c.perfil for c in capturas), ["fronteira", "literatura", "norma"])
+        linhas = [json.loads(l) for l in (pasta / "metadata" / "97_teste.jsonl").read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(sorted(l["perfil"] for l in linhas), ["fronteira", "literatura", "norma"])
+
+
+if __name__ == "__main__":
+    unittest.main()

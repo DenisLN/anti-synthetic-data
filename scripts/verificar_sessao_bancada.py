@@ -94,7 +94,7 @@ def carregar_sessao(pasta: Path) -> List[Captura]:
             registro=np.asarray(lida.sinal, dtype=np.float64), arquivo=lida.arquivo.name,
             perfil=lida.perfil, inicio_janela=lida.inicio_janela,
         )
-        for lida in lidas if lida.formato != "empilhado" and lida.metadado is not None
+        for lida in lidas if lida.formato != "empilhado" and lida.metadado is not None and not lida.espelho
     ]
     multiplos_perfis = len({c.perfil for c in capturas}) > 1
     for c in capturas:

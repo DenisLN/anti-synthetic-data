@@ -25,7 +25,7 @@ captura em ``FAIXAS_SORTEADAS`` (``composto``); ``FAIXAS`` vale desligado.
 from __future__ import annotations
 
 import os
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 PERFIS: Tuple[str, ...] = ("norma", "literatura", "fronteira")
 PERFIL_PADRAO = "literatura"
@@ -194,3 +194,57 @@ def composto(config, componente: str, capture_index: int, rng) -> float:
     if intervalo is None:
         return nivel(config, componente, capture_index)
     return float(rng.uniform(*intervalo))
+
+# ---------------------------------------------------------------- independência
+
+# Perfil sob o qual uma captura compartilhada é gravada (``set perfil todos``).
+PERFIL_CANONICO = PERFIL_PADRAO
+CLASSES: Tuple[str, ...] = tuple(f"{n:02d}" for n in range(1, 21))
+
+
+def _valor_efetivo(componente: str, perfil: str, sorteio_posicao: bool) -> object:
+    """O que ``gerar()`` realmente lê do ``componente`` no ``perfil``: o
+    intervalo sorteado das compostas (``composto``, sorteio ligado) ou, sem
+    intervalo (fronteira de sag/swell) e com o sorteio desligado, o nível
+    discreto de ``FAIXAS``."""
+    if sorteio_posicao and componente in FAIXAS_SORTEADAS:
+        intervalo = FAIXAS_SORTEADAS[componente][perfil]
+        if intervalo is not None:
+            return ("intervalo", intervalo)
+    return ("niveis", FAIXAS[componente][perfil])
+
+
+def depende_do_perfil(class_id: str, sorteio_posicao: bool = True) -> bool:
+    """``True`` se o ``gerar()`` da classe muda com o perfil. Derivado das
+    tabelas acima: uma classe depende do perfil se algum componente que ela
+    lê (``COMPONENTES_POR_CLASSE``; classe fora da tabela não lê nenhum) tem
+    valor efetivo diferente em algum par de perfis. Com o sorteio desligado,
+    por exemplo, a 16 (só ``thd_composto``, igual nos três) não depende; com
+    ele ligado depende (a norma sorteia THD a partir de 2 %). Testado contra
+    o ``gerar()`` real em ``tests/test_offline.py`` (``PerfisCompartilhadosTests``)."""
+    for componente in COMPONENTES_POR_CLASSE.get(str(class_id), ()):
+        valores = {_valor_efetivo(componente, perfil, sorteio_posicao) for perfil in PERFIS}
+        if len(valores) > 1:
+            return True
+    return False
+
+
+def classes_independentes_do_perfil(sorteio_posicao: bool = True) -> Tuple[str, ...]:
+    """Classes (``01``..``20``) cujo ``gerar()`` é igual nos três perfis."""
+    return tuple(c for c in CLASSES if not depende_do_perfil(c, sorteio_posicao))
+
+
+def plano_de_perfis(
+    class_id: str, lista_perfis: Sequence[str], sorteio_posicao: bool = True,
+) -> List[Tuple[str, Tuple[str, ...]]]:
+    """O que ``set perfil todos`` realmente captura para a classe: lista de
+    ``(perfil_a_rodar, perfis_espelho)``. Classe dependente do perfil: um item
+    por perfil, sem espelhos. Classe independente com mais de um perfil: UM
+    item, sob o perfil canônico (``literatura``; o primeiro da lista se ela
+    não o tiver), com os demais perfis como espelhos (a mesma captura,
+    registrada no metadata dos outros perfis)."""
+    lista = [validar(p) for p in lista_perfis]
+    if len(lista) > 1 and not depende_do_perfil(class_id, sorteio_posicao):
+        canonico = PERFIL_CANONICO if PERFIL_CANONICO in lista else lista[0]
+        return [(canonico, tuple(p for p in lista if p != canonico))]
+    return [(p, ()) for p in lista]

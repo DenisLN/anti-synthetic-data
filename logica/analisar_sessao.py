@@ -225,6 +225,8 @@ def analisar_sessao(sessao_dir: Path) -> List[Dict]:
     blocos_simulados: set = set()
 
     for captura in sessao_io.ler_capturas(sessao_dir, metadados=metadados, versoes=("medida",)):
+        if captura.espelho:
+            continue  # mesma captura de outro perfil: analisada uma vez, sob o perfil de origem
         if captura.grandeza != "Tensão" or "medida" not in captura.versoes:
             continue
         # Um arquivo por captura (formato antigo): o nome do arquivo. Um por

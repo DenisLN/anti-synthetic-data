@@ -107,6 +107,12 @@ class Captura:
     detalhes: List[Tuple[float, float]] = field(default_factory=list)
     detalhes_automaticos: bool = True
     correlacoes: Optional[dict] = None  # total e do distúrbio (físicas, com forma esperada)
+    # Captura compartilhada entre perfis (set perfil todos, classe independente
+    # do perfil): os dados existem uma vez, no perfil de origem.
+    compartilhada: bool = False
+    perfil_de_origem: str = ""
+    perfis_compartilhados: Tuple[str, ...] = ()
+    outros_perfis: Tuple[str, ...] = ()  # espelhos já cobertos por esta figura
 
     @property
     def tempo_ms(self) -> np.ndarray:
@@ -126,7 +132,8 @@ class Captura:
         """Rótulo da captura: o arquivo (formato 1) ou arquivo · perfil · id
         (formato 2, onde um arquivo tem todas as capturas da classe)."""
         if self.formato == "classe":
-            return f"{self.arquivo.stem} · {self.perfil} · {self.id_captura}"
+            extra = f" (= {', '.join(self.outros_perfis)})" if self.outros_perfis else ""
+            return f"{self.arquivo.stem} · {self.perfil} · {self.id_captura}{extra}"
         return self.arquivo.stem
 
     @property
@@ -321,8 +328,27 @@ def ler_capturas(
             metadado=md, inicio_nominal=inicio, pontos_nominais=pontos, recorte=recorte,
             grandeza=c.grandeza, perfil=c.perfil, formato=c.formato, versao=principal,
             sobrepostas={v: a for v, a in c.versoes.items() if v != principal and c.grandeza == "Tensão"},
+            compartilhada=c.compartilhada, perfil_de_origem=c.perfil_de_origem or "",
+            perfis_compartilhados=tuple(c.perfis_compartilhados),
         ))
-    return resultado
+    return _sem_figuras_repetidas(resultado)
+
+
+def _sem_figuras_repetidas(capturas: List[Captura]) -> List[Captura]:
+    """Uma captura compartilhada entre perfis é UMA figura: o espelho (perfil
+    sem bloco próprio) só fica quando a captura de origem não está na lista
+    (ex. ``--perfis norma``); do contrário a figura da origem passa a dizer
+    quais outros perfis ela cobre (``outros_perfis``)."""
+    origens = {(c.arquivo, c.id_captura, c.perfil): c for c in capturas}
+    saida: List[Captura] = []
+    for c in capturas:
+        if c.compartilhada and c.perfil != c.perfil_de_origem:
+            origem = origens.get((c.arquivo, c.id_captura, c.perfil_de_origem))
+            if origem is not None:
+                origem.outros_perfis = (*origem.outros_perfis, c.perfil)
+                continue
+        saida.append(c)
+    return saida
 
 
 # ---------------------------------------------------------------- figuras
@@ -443,6 +469,18 @@ def tabela_metadados(captura: Captura) -> str:
     ]
     if captura.perfil:
         linhas.append(("Perfil", _e(captura.perfil)))
+    if captura.compartilhada:
+        md_ = captura.metadado or {}
+        if captura.perfil == captura.perfil_de_origem:
+            cobertos = ", ".join([captura.perfil, *captura.outros_perfis]) if captura.outros_perfis \
+                else ", ".join(captura.perfis_compartilhados)
+            texto = f"mesma captura nos perfis {cobertos} (gerar() não depende do perfil; capturada uma vez)"
+        else:
+            texto = (f"esta captura é a do perfil {captura.perfil_de_origem} "
+                     f"(compartilhada com {', '.join(captura.perfis_compartilhados)}; capturada uma vez)")
+        if md_.get("sha256_captura"):
+            texto += f" · SHA-256 {md_['sha256_captura'][:16]}…"
+        linhas.append(("Captura compartilhada", _e(texto)))
     if captura.formato == "classe" or captura.sobrepostas or captura.versao != "medida":
         desenhadas = ", ".join([captura.versao, *captura.sobrepostas])
         linhas.append(("Versões desenhadas", _e(desenhadas)))
@@ -531,9 +569,15 @@ def resumo_sessao(sessao_dir: Path, dados_dir: Path, capturas: Sequence[Captura]
         ("Dados", _e("sem ruído" if dados_dir == sessao_dir else dados_dir.name)),
         ("Capturas", _e(f"{len(capturas)} em {len(classes)} classe(s)")),
     ]
-    perfis_presentes = sorted({c.perfil for c in capturas if c.perfil})
+    perfis_presentes = sorted({p for c in capturas for p in (c.perfil, *c.outros_perfis) if p})
     if perfis_presentes:
         itens.append(("Perfis", _e(", ".join(perfis_presentes))))
+    compartilhadas = [c for c in capturas if c.compartilhada and c.perfil == c.perfil_de_origem]
+    if compartilhadas:
+        itens.append(("Capturas compartilhadas", _e(
+            f"{len(compartilhadas)} figura(s) valem para mais de um perfil (classe cujo gerar() "
+            "não depende do perfil; desenhada uma vez, sob o perfil de origem)"
+        )))
     validadas = [c for c in capturas if isinstance((c.metadado or {}).get("validacao_fisica"), dict)]
     if validadas:
         ok = sum(1 for c in validadas if c.metadado["validacao_fisica"].get("ok"))
