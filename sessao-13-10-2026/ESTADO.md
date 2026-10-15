@@ -1,4 +1,4 @@
-# Estado da rodada 13/10/2026 (parada a pedido do usuário)
+# Estado da rodada 13/10/2026 (CONCLUÍDA em 15/10; ver relatorio-final.md)
 
 Branch de código: `claude/specs-v1-15-review-3w2bgl` (480 testes OK, 2 pulados = SHA-256 exatos, só no Windows).
 
