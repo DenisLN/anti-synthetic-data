@@ -62,4 +62,5 @@ Por que o código é como é. Cada linha: decisão, motivo, onde está, fonte. "
 | Não reduzir a margem de captura sem refazer a medida | `mestre.py:2019-2022` | — |
 | Modo Digitizer do osciloscópio descartado | não entrega 36 000 pontos | `oscilloscope_orm.py:276-284` |
 | 08: teto de 0,9 × `max_peak_v` e medida de pico obrigatória | a saída oscila além do programado | `08.py:63-69` |
+| Crista da validação física = crista do modelo × fator de extremo calibrado (aceita `[×0,9, ×fator×1,1]`) | a fonte toca a cada entalhe de 0,1 ms e o pico do ciclo mediano sobe (spec 20: +31 a +59 %); o dono decidiu usar a calibração em vez de afrouxar a tolerância (2026-10-13). Bilateral porque a fonte pode tocar menos que o máximo calibrado | `mestre.py:1872`, `sinais.py:429` |
 | Pré-validação pula antes de qualquer SCPI | nada é enviado à fonte para o que não cabe | `mestre.py:1928` |

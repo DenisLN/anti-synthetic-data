@@ -31,6 +31,8 @@ Regra de uso (`carregar_fatores_extremo`, `mestre.py:514`):
 
 Motivo histórico: 2026-10-07, 230 V/50 Hz com a tabela de 127 V/60 Hz, a 17 previu 405 V e mediu 444 V (acima dos 425 Vp do hardware). A resposta da saída depende da **frequência**, não da tensão.
 
+**A calibração também serve à validação física (v1.15, spec 26).** `ExperimentoBase.fator_extremo_efetivo_para_validacao` (`mestre.py:1872`) devolve, para a captura, o mesmo fator que a previsão de pico usa (`fator_extremo_da_classe(id, _fatores_extremo())`, com a regra por frequência e o caso sem tabela acima), sem a `MARGEM_FATOR_EXTREMO` (a folga é a tolerância de 10 % da crista). Captura com o distúrbio reduzido pelo limite de bancada usa a fórmula de `extremo_previsto_com_disturbio_v` com margem 1. Classe com `excursao_fisica_prevista_v()` não nulo (08) usa 1,0. `sinais.comparar_fisicamente(..., fator_crista=)` aceita crista medida em `[crista_modelo × 0,9, crista_modelo × fator × 1,1]` (bilateral: a fonte pode tocar menos que o máximo calibrado). Efeito: um fator calibrado baixo demais (ex. 07 e 17 a 127 V/60 Hz: 1,186 e 1,031) reprova a captura pela crista, e a recalibração (`set recalibracao on`, ao FIM do run) corrige o JSON para o run seguinte. O JSON não mudou.
+
 A 03 a 230 V/50 Hz continua fora: 1,058 × 357,8 V × 1,10 = 416,4 V > 415,8 V (decisão do professor registrada em `CHANGELOG/v1.15.md`).
 
 ## 5. Como calibrar uma condição nova
