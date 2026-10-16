@@ -1,133 +1,61 @@
-# Comandos SCPI usados e sua função
+# Referência SCPI
 
-Extraído de `logica/ametek_orm.py` e `logica/oscilloscope_orm.py` (commit `d37e403`). "Manual" = página do **PDF** em `docs/AMETEK_MX_SCPI_Programming_Manual.pdf` / `docs/Keysight_4000X_Programmers_Guide.pdf` (texto pesquisável em `docs/manuais_txt/`). Onde a Rev. 5.53 (AMETEK) ou o firmware 07.30 (Keysight) difere do manual, está em `docs/quirks.md`. Nenhum experimento escreve SCPI cru: tudo passa pelos métodos da coluna "Método".
+{bdg-info}`OFFLINE` {bdg-success}`VERIFICADO NA BANCADA` {bdg-warning}`NÃO VERIFICADO` (Keysight)
 
-## 1. Camada de transporte (AMETEK)
+**Pergunta:** que comandos SCPI o projeto envia, em que ordem, e o que cada um faz? **Resposta:** o projeto envia 55 comandos distintos à fonte AMETEK MX30-3Pi (Rev. 5.53) e 45 ao osciloscópio Keysight DSO-X 4034A (firmware 07.30); cada um tem uma **entrada própria** nas páginas abaixo, com sintaxe, parâmetros, sincronismo, erro típico, o método do projeto que o envia (`arquivo:linha`), a página do manual e um exemplo, real quando existe transcrição de bancada. Nenhum experimento escreve SCPI cru: tudo passa pelos métodos de `AmetekMX30` e `KeysightDSOX4034A`.
 
-- Serial virtual pela USB, `ASRL10::INSTR`: 115200 baud, 8 bits, sem paridade, 1 stop, sem controle de fluxo, terminadores `\n` (`_configure_visa_resource`, `ametek_orm.py:292-300`).
-- Cada comando vai em `comando + "\n"` e, se `AMETEK_QUERY_EOT=1` (padrão), o byte `0x04` vai em **uma segunda transferência** (`_raw_write`, `:367-389`). Sem o EOT a fonte não executa comandos sem resposta.
-- `write()` (`:391`) espera a fonte consumir o comando com uma consulta `*ESR?` (ou `*OPC?` com `AMETEK_SINCRONISMO=OPC`); não aplica a `TRACe:DATA/DEFine/DELete` (`_SEM_SINCRONISMO`, `:171`). Bits de erro do ESR (0x04|0x08|0x10|0x20) viram aviso no log.
-- `query()` (`:448`) descarta o buffer de entrada antes, escreve com EOT e lê; resposta vazia = `CommunicationError`.
-- Transcrição: todo W/Q/R com `time.monotonic()` no logger `AmetekORM.scpi` (gravada em `scpi_transcricao.log` da sessão; payloads truncados a 160 caracteres).
+Como ler: todo comando SCPI no texto desta documentação é um link para a sua entrada (papel `` {scpi}`TRACe:DATA` `` para a AMETEK e `` {scpik}`:TIMebase:RANGe` `` para o Keysight). Quirks são citadas pelos códigos de {doc}`quirks` (A1 a A25 na fonte, K1 a K10 no osciloscópio, B1 a B9 na bancada).
 
-## 2. AMETEK MX30-3Pi
+## 1. Transporte e sincronismo (AMETEK)
 
-### 2.1 Identificação, erros e estado
-| Comando | Função | Método (arquivo:linha) | Manual |
-|---|---|---|---|
-| `OUTPut:STATe OFF` | desliga a saída; **primeiro** comando de `connect` e de `safe_shutdown` | `connect :329`, `safe_shutdown :1836` | 16, 19, 73 |
-| `*IDN?` | identificação; conferida contra `AMETEK_EXPECTED_MODEL` | `connect :330` | 7 |
-| `SYSTem:ERRor?` | esvazia a fila de erros (até 20) | `check_errors :599` | 117 |
-| `*CLS` | limpa fila/registradores | baseline `:1219`, `program_capture :1442,1509`, recuperação | 7 |
-| `*ESR?` / `*OPC?` | sincronismo de cada `write()` | `_sincronizar_apos :419` | 133-141 |
-| `*WAI` | espera o processamento em paralelo de list/trigger | `configure_harmonics_csine :938,948`, `select_sine_shape :972`, `enable_dc_offset :1094`, `arm :1629`, `arm_transient :1777` | 142 |
-| `STATus:OPERation:CONDition?` | bit 3 = transiente ativo (só com `diagnostico on`) | `_log_diagnostico :633` | 114 |
-| `OUTPut:STATe?` | confirma estado da saída | `output_enabled :661`, `safe_shutdown :1841` | 16, 19 |
-| `TRIGger:STATe?` | `IDLE`/`ARM`/`WTRIG`; esperas | `aguardar_idle :760`, `arm :1635`, `wait_transient_complete :1820` | 132 |
+A fonte fala SCPI pela USB virtual serial `ASRL10::INSTR` (COM10), 115200 baud, 8 bits, sem paridade, 1 stop, sem controle de fluxo (`VI_ASRL_FLOW_NONE`), terminador `\n` (`AmetekMX30._configure_visa_resource`, `ametek_orm.py:312`). Os números são os da bancada e fixos: `validate_bench_configuration` (`mestre.py`) recusa outra porta ou outro baud.
 
-### 2.2 Baseline (`configure_safe_baseline`, `:1175-1264`)
-Antes: `OUTPut:STATe OFF` e `*CLS`. Depois cada um destes, com `check_errors()`:
+- **Cada comando vai com LF e, se `AMETEK_QUERY_EOT=1` (padrão), com o byte `0x04` em uma segunda transferência** (`_raw_write`, `ametek_orm.py:393`). Sem o EOT a fonte não executa comandos que não têm resposta (A23): `OUTPUT ON/OFF` ficava no buffer até a próxima consulta.
+- **`write()` espera a fonte consumir o comando** com uma consulta `*ESR?` ({scpi}`*ESR?`; `*OPC?` se `AMETEK_SINCRONISMO=OPC`, sem ganho). A exceção são as três gravações em Flash ({scpi}`TRACe:DATA`, {scpi}`TRACe:DEFine`, {scpi}`TRACe:DELete:ALL`: `_SEM_SINCRONISMO`, `ametek_orm.py:177`). Bits de erro do ESR (0x04, 0x08, 0x10 e 0x20) viram aviso no log com o comando que os causou.
+- **`query()` descarta o buffer de entrada antes, escreve com EOT e lê** (`ametek_orm.py:479`); resposta vazia é `CommunicationError`, com a lista de conferência (COM10, driver, 115200 baud, cabo).
+- **Transcrição.** Todo `W`, `Q` e `R` entra no logger `AmetekORM.scpi` com `time.monotonic()` (gravado em `scpi_transcricao.log` da pasta da sessão); payloads maiores que 160 caracteres são truncados (`MAX_TRANSCRICAO_CHARS`). O Keysight (PyMeasure) não é transcrito. Formato e índice em {doc}`scpi/transcricoes`.
 
-| Comando | Função |
+O histórico das três regras de ordem que valem para tudo está em {doc}`scpi/sequencias`: a gravação em rajada se perdia (v1.12), a consulta logo após `TRACe:DATA` travava a fonte (v1.12) e `SOURce:VOLTage:HIGH` é limite rms, não de pico (v1.12).
+
+## 2. Como ler uma entrada
+
+Cada entrada abre com a pergunta "o que faz?" e a resposta em negrito, e traz, nesta ordem: **instrumento**, **sintaxe**, **parâmetros e unidades**, **sincronismo e ordem**, **erros e quirks**, **quem envia** (método e `arquivo:linha`, conferidos contra o código em 2026-10-16), **manual** (página do PDF), **classes que usam** e **exemplo**. O selo da entrada resume o estado:
+
+| Selo | Significado nesta referência |
 |---|---|
-| `ABORt` | reseta o sistema de trigger (não desliga a saída aqui) |
-| `INSTrument:COUPle ALL` | acopla as 3 fases |
-| `SOURce:MODE AC` | saída AC pura |
-| `SOURce:VOLTage:RANGe <300>` | range da fonte |
-| `SOURce:VOLTage:HIGH <max_voltage_rms>` | limite **rms** da fonte (não de pico; ver quirks) |
-| `SOURce:CURRent <A>`, `SOURce:CURRent:PROTection:STATe ON`, `SOURce:CURRent:PROTection:DELay <s>` | limite e proteção de corrente |
-| `SOURce:FUNCtion:SHAPe SINusoid` | forma de onda senoidal |
-| `FUNCtion:MODE FIXed`, `VOLTage:MODE FIXed`, `SOURce:FREQuency:MODE FIXed` | eixos independentes em modo fixo |
-| `SOURce:FREQuency:SLEW MAXimum`, `SOURce:VOLTage:SLEW MAXimum` | taxa de variação máxima |
-| `SOURce:FREQuency <f0>`, `SOURce:VOLTage 0` | frequência base; **0 V** (nunca pula direto para a tensão de teste) |
-| `TRIGger:SOURce BUS` | transiente disparado por `*TRG` |
-| `TRIGger:SYNChronize:SOURce PHASe`, `TRIGger:SYNChronize:PHASe 0` | transiente começa numa fase definida |
-| `OUTPut:TTLTrg:MODE TRIG`, `OUTPut:TTLTrg:SOURce BOT`, `OUTPut:TTLTrg ON` | pulso BOT na saída Trigger Out (vai ao BNC) |
+| {bdg-success}`VERIFICADO NA BANCADA` | o comando aparece na transcrição de 07/10/2026 e a fonte respondeu `*ESR? -> 0` (ou devolveu o valor mostrado): vale para o fato "aceito" naquela condição, não para o efeito físico |
+| {bdg-info}`OFFLINE` | conferido no código e, quando citado, no manual |
+| {bdg-warning}`NÃO VERIFICADO` | sem transcrição real: "exemplo derivado do código, transcrição NÃO VERIFICADA" (todo o Keysight e alguns comandos da fonte) |
 
-Depois: `OUTPut:STATe ON` só por `energize_baseline` (`:669`, exige `authorize_output`); `energize_baseline` confirma por leitura em até 5 s.
+Páginas do manual: AMETEK = página do PDF `docs/AMETEK_MX_SCPI_Programming_Manual.pdf` (texto em `docs/manuais_txt/`); `[KS]` = Keysight 4000 X-Series Programmer's Guide. Os PDFs e os textos **não** entram no site publicado; o site cita a página e o comando.
 
-### 2.3 Valores imediatos
-| Comando | Método |
-|---|---|
-| `SOURce:VOLTage:LEVel:IMMediate:AMPLitude <V>` / `?` | `voltage` (`:691-705`, 0 a `max_voltage_rms`) |
-| `SOURce:FREQuency <Hz>` / `?` | `frequency` (45–500 Hz) |
-| `SOURce:CURRent:LEVel:IMMediate:AMPLitude <A>` / `?` | `current_limit` (0 a `max_current_a`) |
-| `MEASure:VOLTage:AC?`, `MEASure:CURRent:AC?`, `MEASure:POWer:AC:REAL?`, `MEASure:POWer:AC:PFACtor?` | `measure_*` (`:1856-1866`) |
+## 3. Mapa das entradas
 
-### 2.4 Caminho nativo (classes 01–05, 18, 19)
-Antes de cada programação: `aguardar_idle()` e `_neutralizar_transientes_residuais()` (`FUNCtion:MODE FIXed`, `SOURce:FREQuency:MODE FIXed`, `:793-805`).
-
-| Método | Comandos | Função |
+| Página | Conteúdo | Entradas |
 |---|---|---|
-| `trigger_step` (`:839`) | `VOLTage:MODE STEP`, `VOLTage:TRIGgered <V>` (múltiplo de 0,1 V) | no `*TRG` a tensão salta e **permanece** (classes 01, 05, 19) |
-| `trigger_pulse` (`:871`) | `VOLTage:MODE PULSe`, `VOLTage:TRIGgered <V>`, `PULSe:WIDTh <s>` | no `*TRG` a tensão vai a `<V>` por `<s>` e volta (02, 03, 04) |
-| `definir_fase_de_disparo` (`:807`) | `TRIGger:SYNChronize:PHASe <graus, 1 casa>` | fase da saída em que o `*TRG` aplica o transiente |
-| `configure_harmonics_csine` (`:902`) | `SOURce:FUNCtion:SHAPe CSINusoid`, `*WAI`, `SOURce:FUNCtion:SHAPe:CSINusoid <THD %>`, `*WAI` | senoide clipada (THD 0–20 %) |
-| `select_sine_shape` (`:952`) | `SOURce:FUNCtion:SHAPe SINusoid`, `*WAI` | volta à senoide (no-op se já senoide) |
-| `enable_dc_offset` (`:1071`) | `SOURce:MODE ACDC`, `*WAI`, `SOURce:VOLTage:OFFSet <V>` | offset contínuo; recusa se |offset| + pico AC > `max_peak_v` |
-| `disable_dc_offset` (`:976`) | `SOURce:VOLTage:OFFSet 0`, `SOURce:MODE AC`, `*WAI` | no-op se já AC |
-| `frequency_drift_list` (`:1029`) | `VOLTage:MODE FIXed`, `FREQuency:MODE LIST`, `LIST:FREQuency a,b`, `LIST:VOLTage v,v`, `LIST:DWELl d,d`, `SOURce:LIST:REPeat 0,0`, `LIST:COUNt 1`, `LIST:STEP AUTO`, `VOLTage:MODE LIST` | rampa de 2 pontos (classe 18) |
-| `restaurar_frequencia_base` (`:1013`) | `SOURce:FREQuency:MODE FIXed`, `SOURce:FREQuency <base>` | desfaz o último ponto da lista |
-| `restaurar_forma_e_modo_padrao` (`:998`) | os três acima | chamado no fim de toda classe física |
-| `arm` (`:1600`) | `*WAI`, `INITiate:IMMediate`, leitura de `TRIGger:STATe?` até `ARM`/`WTRIG` | arma; antes, `_conferir_transiente_programado` (`:1675`) lê `VOLTage:MODE?`, `VOLTage:TRIGgered?`, `PULSe:WIDTh?`, `FUNCtion:MODE?`, `SOURce:FREQuency:MODE?` e recusa divergência (tolerância 0,5 %) |
-| `trigger` (`:1803`) | `*TRG` (só se `ARM`/`WTRIG`) | dispara |
-| `wait_transient_complete` (`:1817`) | `TRIGger:STATe?` até `IDLE`, depois `SYSTem:ERRor?` | espera o fim |
+| {doc}`scpi/sequencias` | sete sequências completas, com diagramas e o porquê da ordem | (sem entradas) |
+| {doc}`scpi/ametek-estado` | identificação, erros, sincronismo, estado de trigger e saída | 12 |
+| {doc}`scpi/ametek-baseline` | os 22 comandos do estado seguro inicial | 18 |
+| {doc}`scpi/ametek-imediatos` | frequência e tensão imediatas, medidas `MEASure:*` | 8 |
+| {doc}`scpi/ametek-nativo` | STEP, PULSe, CSINusoid, offset ACDC, lista de frequência | 6 |
+| {doc}`scpi/ametek-lista-trace` | TRACe e lista (classes 06 a 17, 20 e 05 acima de 20 %) | 11 |
+| {doc}`scpi/ametek-nao-funciona` | o que a Rev. 5.53 rejeita, ignora ou deixa sem resposta | 7 |
+| {doc}`scpi/keysight-aquisicao` | aquisição, base de tempo e canal | 21 |
+| {doc}`scpi/keysight-trigger` | trigger externo, armamento e registradores | 14 |
+| {doc}`scpi/keysight-waveform` | registro, preamble e medidas de extremos | 10 |
+| {doc}`scpi/diagnostico` | comandos que só existem em scripts de diagnóstico | (tabelas) |
+| {doc}`scpi/transcricoes` | formato da transcrição e índice dos 71 trechos reais | (tabela) |
 
-Manual: `VOLTage:MODE` 90-153, `VOLTage:TRIGgered` 108-109, `PULSe:WIDTh` 104-106, `FUNCtion:MODE` 85, `FREQuency:MODE` 81, `TRIGger:SYNChronize` 131, `INITiate` 129, offset 108.
+## 4. Cobertura e o que não foi coberto
 
-### 2.5 Caminho TRACe/LIST (classes 06–17, 20, 05 a 30 %)
-`program_capture` (`:1404`):
+:::{note} Nota de verificação
+Conferido offline em 2026-10-16: todo comando que `ametek_orm.py` e `oscilloscope_orm.py` enviam (extraído por busca de padrões `write(...)`, `query(...)` e `ask(...)` nos dois arquivos) tem entrada ou está listado em {doc}`scpi/ametek-nao-funciona`; os comandos que só aparecem em `scripts/` e em `logica/preflight_new.py` estão em {doc}`scpi/diagnostico` e **não** têm entrada completa, porque não passam pelo ORM (nem por `validate_bench_configuration`).
+:::
 
-| Passo | Comandos |
-|---|---|
-| reset | `ABORt`, `*CLS`, `FUNCtion:MODE FIXed`, `VOLTage:MODE FIXed`, `SOURce:MODE AC` (ou `ACDC` com offset), `SOURce:FREQuency <f0>`, `SOURce:FREQuency:MODE FIXed`, `SOURce:FUNCtion:SHAPe SINusoid`, `SOURce:VOLTage <base>`, `SOURce:VOLTage:OFFSet` (se houver) |
-| TRACes (só se a assinatura mudou ou o catálogo perdeu) | `TRACe:CATalog?`; para cada ausente `TRACe:DEFine TCCnn` (~3 s); para cada ciclo `TRACe:DATA TCCnn,<1024 valores %.8g>` seguido de **1 s de espera** e `*CLS` (sem consultar a fonte) |
-| lista | `SOURce:LIST:FUNCtion:SHAPe TCC00,…`, `SOURce:LIST:VOLTage v0,…`, `SOURce:LIST:DWELl d,…` (cada um com `check_errors` e `…:POINts?` igual ao nº de ciclos) |
-| modos | `SOURce:LIST:REPeat 0,0,…`, `SOURce:LIST:COUNt 1`, `SOURce:LIST:STEP AUTO`, `FUNCtion:MODE LIST`, `VOLTage:MODE LIST`, `TRIGger:SOURce BUS`, `TRIGger:SYNChronize:SOURce PHASe`, `TRIGger:SYNChronize:PHASe 0`, `OUTPut:TTLTrg:MODE TRIG`, `OUTPut:TTLTrg:SOURce BOT`, `OUTPut:TTLTrg ON` |
-
-Em `montar_programacao` (`:1322`): ciclos de `30000/f0` amostras (12 a 60 Hz → 500 amostras; 10 a 50 Hz → 600), cada um reamostrado a 1024 pontos, média removida, normalizado pelo pico, com reamostragem periódica (ciclo fechado); o rms da componente CA do ciclo (sem a média, como a fonte escala a TRACe sem DC) vai em `LIST:VOLTage`; `DWELl` = 1 ciclo exato. O nome da TRACe é `TCC00…`.
-
-`arm_transient` (`:1716`) espera `IDLE`, lê 9 consultas de volta (`OUTPut:STATe?`, `FUNCtion:MODE?`, `VOLTage:MODE?`, `SOURce:FREQuency:MODE?`, `SOURce:LIST:FUNCtion|VOLTage|DWELl|REPeat:POINts?`, `TRIGger:SOURce?`), compara com o esperado, e então `*WAI`, `INITiate:IMMediate`. **Não** repetir `ABORt` aqui. Depois: `trigger`, `wait_transient_complete`.
-
-Apagar TRACes: `TRACe:DELete:ALL` (`clear_all_traces :1266`): só com OUTPUT OFF, antes de `energize_baseline`; espera 15 s sem consultar.
-
-Ler de volta uma TRACe (só diagnóstico, `set diagnostico retrieve`; `ametek_orm.py:1353`): `TRACe:DATA? <nome>` → 1024 valores separados por vírgula, "normalized values in the range of ±1" (manual p. 147, §6.2.7). **O manual é ambíguo**: a descrição do `TRACe[:DATA]` (p. 126) diz `Query Syntax: none`, e a p. 147 diz que, "when queried, trace data is returned as normalized values". A sintaxe `TRACe:DATA? <nome>` e o formato (lista NRf separada por vírgula, sem bloco `#`) são, portanto, **NÃO VERIFICADOS na fonte real**; `ler_trace` aceita só uma lista numérica de exatamente 1024 valores finitos (`LeituraTraceError` caso contrário). Regras de segurança: nunca como comando seguinte a uma escrita de TRACe (recusa), espera mínima de 2 s desde a última escrita de TRACe/DEFine/DELete (quirk A2), timeout próprio de 15 s restaurado depois, e só depois de a captura terminar.
-
-Manual: TRACe 126-127, LIST 90-97 e 153-154, `SOURce:MODE` 79/98, `INSTrument:COUPle` 53.
-
-### 2.6 Comandos que **não** funcionam ou **não** são usados
-- `SOURce:FUNCtion:SHAPe CSINe` (abreviação do manual) → `-256`; use `CSINusoid`.
-- `SOURce:LIST:REPeat:COUNt`, `LIST:REPeat:COUNt` → `-113`; só `SOURce:LIST:REPeat` (com prefixo, sem `:COUNt`).
-- `SOURce:FUNCtion:SHAPe?` e `SOURce:MODE?` **não existem como consulta** na Rev. 5.53 (deixam `-113` na fila).
-- `TRIGger:SYNChronize:PHASe?`: nunca testado (por isso `definir_fase_de_disparo` não faz readback).
-- `SYSTem:REMote`: nunca enviado (painel frontal permanece ativo).
-
-## 3. Keysight DSO-X 4034A
-
-Referências `[KS] p.` são as do código (PDF).
-
-| Método (arquivo:linha) | Comandos | Função |
-|---|---|---|
-| `verify_identity :78` | `*IDN?` | confere `DSOX4034A` |
-| `check_errors :86` | `:SYSTem:ERRor?` | esvazia a fila |
-| `initialize_safe :105` | `:STOP`, `*CLS`, `:ACQuire:TYPE NORMal`, `:WAVeform:FORMat BYTE`, `:WAVeform:UNSigned ON`, `:WAVeform:POINts:MODE RAW` | estado inicial seguro |
-| `configure_channel :114` | `:CHANnel<n>:DISPlay/PROBe/COUPling/UNITs/OFFSet/SCALe/BWLimit` | CH1 (tensão, DC, escala `EUT_MAX_PEAK_V/3`); CH2 só com `CAPTURE_CURRENT` |
-| `disable_channel :139` | `:CHANnel<n>:DISPlay 0` | desliga o CH2 |
-| `set_vertical_scale :145` | `:CHANnel<n>:OFFSet 0`, `:CHANnel<n>:SCALe pico/3` | 3 das 4 divisões por polaridade; reajusta a `pico/2` se `4·escala < 1,05·pico`; erro se ainda não cobre |
-| `configure_acquisition :209` | `:STOP`, `:ACQuire:TYPE NORMal`, `:ACQuire:MODE RTIMe`, `:ACQuire:DIGitizer OFF`, `:TIMebase:MODE MAIN`, `:TIMebase:RANGe <200 ms ou 270 ms>`, referência e posição (abaixo), `:ACQuire:POINts:ANALog:AUTO ON`, `:ACQuire:SRATe:ANALog:AUTO ON`, `:WAVeform:POINts:MODE NORMal`, `:WAVeform:POINts 60000`, FORMat/UNSigned; confere `:ACQuire:POINts:ANALog?`, `:ACQuire:SRATe:ANALog?` (≥ 0,995 × 30 kSa/s), `:TIMebase:RANGe?` (±1 %) | modo automático (taxa e pontos explícitos ligam o Digitizer, descartado) |
-| `_programar_referencia_horizontal :295` | `:TIMebase:REFerence CUSTom`, `:TIMebase:REFerence:LOCation 0.0`, leitura de volta; se falhar: `:TIMebase:REFerence LEFT` e compensa 1 divisão (RANGe/10) | referência exatamente na borda esquerda |
-| `definir_pre_trigger :339` | `:TIMebase:POSition -<pré-trigger>` (+ `RANGe/10` se a referência caiu para LEFT) | pré-trigger; por captura quando sorteado |
-| `setup_external_trigger :356` | `:EXTernal:PROBe/UNITs/RANGe`, `:TRIGger:HFReject OFF`, `:TRIGger:MODE EDGE`, `:TRIGger:SWEep NORMal`, `:TRIGger:EDGE:SOURce EXTernal`, `:TRIGger:EDGE:LEVel`, `:TRIGger:EDGE:SLOPe POSitive` | dispara no BOT da AMETEK |
-| `arm :386` | `:AER?`, `:TER?` (zeram registradores), `:SINGle` | arma (necessário a **cada** captura) |
-| `is_armed`/`wait_for_armed :416` | `:OPERegister:CONDition?` bit 32 | espera "wait for trigger" |
-| `wait_for_trigger_complete :428` | `:TER?` = 1 e bit 8 (RUN) apagado de `:OPERegister:CONDition?` | espera a aquisição single terminar |
-| `force_trigger :391` | `:TRIGger:FORCe` | aquisição sem o BNC (usado por `trigger` e pela cadeia de medição) |
-| `medir_vrms_forcado :395` | `:MEASure:VRMS? DISPlay,AC,CHANnel1` | Vrms do CH1 em regime |
-| `medir_extremos :181` | `:MEASure:VMAX? CHANnel1`, `:MEASure:VMIN? CHANnel1` | extremos na taxa cheia; `9.9E37` = medida inválida ⇒ erro |
-| `get_waveform :447` | `:WAVeform:SOURce/FORMat/UNSigned/POINts:MODE/POINts`, `:WAVeform:PREamble?`, `:WAVeform:DATA?` | lê o registro; exige 10 campos de preamble, BYTE, ≥ 6000 pontos, rejeita código 0 (buraco) e 1/255 (clipping); reamostra a 30 kSa/s |
-| `safe_stop/close :539-550` | `:STOP` | não fecha o `ResourceManager` |
-
-`indice_trigger = round(−x_origin × 30000)` (`:529`) é onde o trigger caiu no registro entregue.
+- **Divergência das páginas do manual na versão anterior desta página.** A tabela antiga citava, por exemplo, `VOLTage:MODE` nas pp. 90-153; a busca no texto extraído do manual coloca a descrição em p. 109 (e `VOLTage:TRIGgered` em p. 108, `PULSe:WIDTh` em p. 106). As páginas desta referência foram refeitas com a busca; as que o texto não permitiu confirmar levam `~` ou "NÃO VERIFICADO".
+- **`SOURce:VOLTage:OFFSet`** não tem seção própria no manual: aparece como parâmetro de `VOLTage` (p. 108) e no erro `-300` do Apêndice C.
+- **Consulta `TRACe:DATA? <nome>`** nunca foi executada na fonte real e o manual se contradiz (P-19, {doc}`scpi/ametek-lista-trace`).
+- **Keysight.** Sem transcrição; exemplos derivados do código; páginas `~` conferidas só por busca no texto.
 
 ```{toctree}
 :maxdepth: 1
