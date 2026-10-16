@@ -222,11 +222,20 @@ não são tocadas e continuam legíveis por `logica/sessao_io.py`.
 
 ## Documentação (mapa)
 
-`README.md` é a porta de entrada e traz o mapa; os detalhes estão em `docs/`
-(`arquitetura`, `operacao`, `configuracao`, `limites_e_calibracao`, `classes`,
-`perfis`, `scpi`, `quirks`, `decisoes`, `dataset`, `metadata`, `tres_versoes`,
+`README.md` é a porta de entrada e traz o mapa; os detalhes estão em `docs/`,
+que é um **site Sphinx** (MyST + Furo; ponto de entrada `docs/index.md`, build
+em `docs/contribuir_docs.md`, publicação no Read the Docs por
+`.readthedocs.yaml`). Páginas por assunto: `arquitetura`, `operacao`,
+`guia-operador`, `seguranca`, `configuracao`, `limites_e_calibracao`, `perfis`,
+`quirks`, `decisoes`, `dataset`, `metadata`, `tres_versoes`,
 `correlacao_disturbio`, `estender`, `diagnostico`, `testes`, `versionamento`,
-`glossario`). Arquivos `.md` são livres para editar, **mas todo fato sobre
+`glossario`, `medicao`, `roteiro-bancada`; e, por família, `classes.md` (visão
+geral) com as 20 fichas em `docs/classes/NN-*.md`, `scpi.md` com a referência
+SCPI em `docs/scpi/`, `medicao/` (correlação esperada e recalibração),
+`projeto/` (estado de validação, pendências `P-NN`, passo final SINE, análises
+arquivadas) e `codigo.md` com o Guia do código em `docs/codigo/`. Mudou o
+comportamento de uma classe: atualizar a ficha dela e rodar
+`docs-site-plano/verificar-fichas.py`. Arquivos `.md` são livres para editar, **mas todo fato sobre
 comportamento deve ser conferido no código (`arquivo:linha`)**; se o CHANGELOG
 divergir do código, vale o código e a divergência é documentada. Relatórios
 datados (`arquivo/analises:docs/analise-*/`, `arquivo/analises:docs/superpowers/`; branch `arquivo/analises`, fora de `docs/` desde 2026-10-13) e `CHANGELOG/vX.Y.md` fechados

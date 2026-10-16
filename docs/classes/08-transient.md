@@ -257,4 +257,5 @@ Passo final `SINE` no `LIST`: existe só no branch `feat/passo-final-sin`, **for
 
 - Código: `experimentos_waveform/08.py`; `logica/mestre.py` (`ExperimentoWaveform.forma_para_bancada`, `_validar_fisicamente`); `logica/modelo_lista_fonte.py`; `scripts/diag_ciclos_trace.py`, `scripts/diag_marcadores_trace.py`.
 - Site: {doc}`../classes`, {doc}`../limites_e_calibracao`, {doc}`../diagnostico`, {doc}`../medicao/correlacao`, {doc}`../projeto/pendencias`, {doc}`../quirks`.
+- Análise arquivada do deslocamento a 50 Hz (registro histórico, não reescrito): `arquivo/analises:docs/analise-2026-10-12/pendente/classe08_fronteira_REVISAR.md` ({doc}`../projeto/analises-arquivadas`).
 - Histórico: `CHANGELOG/v1.7.md`, `v1.8.md`, `v1.11.md`, `v1.12.md`, `v1.14.md`, `v1.15.md` (seções "Classe 08: impulso fora da fronteira de ciclo" e "Diagnóstico da cópia do evento em 100 ms"). Norma: IEEE Std 1159-2019, Tabela 2, item 1.1.2 e cláusula 4.4.1.1.

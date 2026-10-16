@@ -77,7 +77,7 @@ O manual (`TRACe:DATA`, p. 126 e 147) diz que a fonte **remove o componente CC**
 
 - a média por ciclo é uma escada de rms **0,002 a 0,032 pu** (máximo 0,044 pu), contra um distúrbio de rms 0,036 a 0,074 pu: até ~47 % do distúrbio com flicker de 18 a 24 Hz;
 - tirando do modelo a média de cada ciclo, a correlação programada × modelo vai a **0,9999 a 1,0000** nas 28 capturas calculadas; a interpolação de 1024 pontos custa menos que 0,001;
-- não há comando de offset por passo de `LIST` no manual extraído, e `SOURce:VOLTage:OFFSet` é um valor único da captura, então a programação **não** pode reproduzir essa média.
+- não há comando de offset por passo de `LIST` no manual extraído, e `SOURce:VOLTage:OFFSet` é um valor único da captura, então a programação **não** pode reproduzir essa média. **Nada foi mudado** na programação nem no `gerar()` da 06 por causa disso (`CHANGELOG/v1.15.md`, spec 18).
 
 Correlação programada × modelo por perfil, frequência e sorteio (mínimo / mediana / máximo; 60 sementes por linha; 127 V; v1.15):
 

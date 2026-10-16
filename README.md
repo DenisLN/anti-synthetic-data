@@ -32,16 +32,25 @@ Dentro da CLI: `help`; sequência recomendada `comm` → `trigger` → `native` 
 
 ## Mapa da documentação
 
+A documentação é um **site Sphinx** (MyST + Furo) construído a partir de `docs/`, com `.readthedocs.yaml` para o Read the Docs (a publicação depende de importar o repositório no serviço, ainda não feita). Ponto de entrada: [`docs/index.md`](docs/index.md); como compilar localmente: [`docs/contribuir_docs.md`](docs/contribuir_docs.md) (`python -m sphinx -W --keep-going -b html docs docs/_build/html`, dependências em `docs/requirements.txt`). Os nomes dos arquivos abaixo não mudaram; as pastas novas são `docs/classes/`, `docs/scpi/`, `docs/medicao/`, `docs/projeto/` e `docs/codigo/`.
+
 | Documento | Conteúdo |
 |---|---|
 | [`AGENTS.md`](AGENTS.md) | regras para agentes de IA e limites inegociáveis; como escrever mudanças e versionar |
+| [`docs/index.md`](docs/index.md), [`docs/como-ler.md`](docs/como-ler.md) | início do site; os cinco selos de status (VERIFICADO NA BANCADA, OFFLINE, NÃO VERIFICADO, PENDENTE, FORA DA MAIN) e as convenções de escrita |
+| [`docs/guia-operador.md`](docs/guia-operador.md), [`docs/seguranca.md`](docs/seguranca.md), [`docs/roteiro-bancada.md`](docs/roteiro-bancada.md) | guia do operador, limites inegociáveis e camadas de segurança, roteiro da próxima bancada |
+| [`docs/classes/`](docs/classes/) | **20 fichas, uma por classe** (`01-normal.md` a `20-interharmonics.md`): fenômeno e norma, modelo em `gerar()`, sequência SCPI, perfis, limites, validação física, correlação esperada, quirks, histórico, pendências e o código método a método |
+| [`docs/scpi.md`](docs/scpi.md), [`docs/scpi/`](docs/scpi/) | referência SCPI comando a comando (AMETEK e Keysight), sequências completas e índice das transcrições |
+| [`docs/medicao.md`](docs/medicao.md), [`docs/medicao/`](docs/medicao/) | cadeia de medição, janela e margens; correlação esperada por classe; recalibração passo a passo |
+| [`docs/projeto/`](docs/projeto/) | estado de validação por classe e camada, as 31 pendências `P-01` a `P-31`, o passo final SINE (fora da `main`), análises arquivadas |
+| [`docs/codigo.md`](docs/codigo.md), [`docs/codigo/`](docs/codigo/) | Guia do código: percursos de um `run` e de uma captura TRACe, uma página por módulo, invariantes e acoplamentos |
+| [`docs/historico.md`](docs/historico.md) | o `CHANGELOG/` incluído no site (sem cópia) |
 | [`docs/arquitetura.md`](docs/arquitetura.md) | mapa de arquivos, componentes, fluxos (bateria, captura), camadas de segurança, scripts |
 | [`docs/operacao.md`](docs/operacao.md) | ligação física, `START_BENCH`, todos os comandos da CLI, falhas, depois da sessão, relatório HTML e recalibração ao fim do run (§9) |
 | [`docs/configuracao.md`](docs/configuracao.md) | todas as variáveis de ambiente, validações de configuração |
 | [`docs/limites_e_calibracao.md`](docs/limites_e_calibracao.md) | pré-validação de pico, limite de bancada, fatores de extremo por condição, 220/380 V |
-| [`docs/classes.md`](docs/classes.md) | as 20 classes: mecanismo, parâmetros, sorteio, capturas padrão, classe 08 |
+| [`docs/classes.md`](docs/classes.md) | visão geral das 20 classes (tabela com link para cada ficha), sorteio de início, duração e fase, tolerâncias da validação física, capturas por classe |
 | [`docs/perfis.md`](docs/perfis.md) | perfis `norma` / `literatura` / `fronteira` |
-| [`docs/scpi.md`](docs/scpi.md) | comandos SCPI de cada instrumento e sua função |
 | [`docs/quirks.md`](docs/quirks.md) | comportamentos dos equipamentos que contrariam o manual |
 | [`docs/decisoes.md`](docs/decisoes.md) | decisões de projeto e seus motivos |
 | [`docs/dataset.md`](docs/dataset.md) | arquivos gerados, formatos, carregamento, ferramentas offline |

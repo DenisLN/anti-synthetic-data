@@ -55,14 +55,14 @@ Para THD = 0,30: $a_3=0{,}2654$, $a_5=0{,}1327$, $a_7=0{,}0442$ e rms 0,7382 pu.
 
 Os cinco níveis, o mecanismo de cada um e o que `gerar()` produz (cálculo offline com as funções do projeto, `sinais.corte_da_senoide_clipada`, `sinais.senoide_clipada_pu` e `sinais.onda_com_harmonicos`):
 
-| THD | Perfis que o usam | Mecanismo na bancada | Pico do modelo (pu) | Pico a 127 V (V) | rms do modelo (pu) | Corte da clipagem (pu do pico) |
-|---|---|---|---|---|---|---|
-| 2 % | `norma` | CSINusoid nativa | 0,9616 | 172,7 | 0,7071 | 0,9483 |
-| 5 % | `norma`, `literatura`, `fronteira` | CSINusoid nativa | 0,9258 | 166,3 | 0,7071 | 0,8834 |
-| 10 % | `norma`, `literatura`, `fronteira` | CSINusoid nativa | 0,8812 | 158,3 | 0,7071 | 0,7787 |
-| 15 % | `norma`, `literatura`, `fronteira` | CSINusoid nativa | 0,8460 | 152,0 | 0,7071 | 0,6740 |
-| 20 % | `norma`, `literatura`, `fronteira` | CSINusoid nativa | 0,8167 | 146,7 | 0,7071 | 0,5690 |
-| 30 % | `literatura`, `fronteira` | TRACe/LIST (soma 3.ª/5.ª/7.ª) | 0,8252 | 148,2 | 0,7382 | — |
+| THD | Perfis que o usam | Mecanismo na bancada | Fundamental (pu) | Pico do modelo (pu) | Pico a 127 V (V) | rms do modelo (pu) | Corte da clipagem (pu do pico) |
+|---|---|---|---|---|---|---|---|
+| 2 % | `norma` | CSINusoid nativa | 0,9998 | 0,9616 | 172,7 | 0,7071 | 0,9483 |
+| 5 % | `norma`, `literatura`, `fronteira` | CSINusoid nativa | 0,9988 | 0,9258 | 166,3 | 0,7071 | 0,8834 |
+| 10 % | `norma`, `literatura`, `fronteira` | CSINusoid nativa | 0,9950 | 0,8812 | 158,3 | 0,7071 | 0,7787 |
+| 15 % | `norma`, `literatura`, `fronteira` | CSINusoid nativa | 0,9889 | 0,8460 | 152,0 | 0,7071 | 0,6740 |
+| 20 % | `norma`, `literatura`, `fronteira` | CSINusoid nativa | 0,9806 | 0,8167 | 146,7 | 0,7071 | 0,5690 |
+| 30 % | `literatura`, `fronteira` | TRACe/LIST (soma 3.ª/5.ª/7.ª) | 1,0000 | 0,8252 | 148,2 | 0,7382 | — |
 
 - **Parâmetros no metadata:** `thd` (fração) e `fase_graus`.
 - **Seed:** `base_seed + 5 · 1 000 000 + indice_global`. A classe não consome o `rng`.
