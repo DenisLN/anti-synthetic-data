@@ -149,7 +149,7 @@ Exemplo: `python logica\relatorio_html.py resultados\sessao_X --classes 02,05 --
 
 **Como reverter.** A cópia da calibração em uso no início da sessão fica em `<sessao>\calibracao_extremos.json` (`mestre.py:221-226`); o SHA-256 dela está em `sessao.json` e em cada captura (`calibracao_extremos_sha256`).
 1. Copiar a cópia de volta: `copy resultados\sessao_<timestamp>\calibracao_extremos.json logica\calibracao_extremos.json` (ou `git checkout -- logica/calibracao_extremos.json`, se o arquivo já estava commitado antes da sessão).
-2. Reiniciar a CLI. O aviso da própria CLI diz que os runs seguintes já usam os fatores novos (`cli.py:653-657`); reiniciar evita dúvida. NÃO VERIFICADO: se a CLI relê o JSON a cada run.
+2. Reiniciar a CLI não é necessário para a pré-validação: o aviso da própria CLI diz que os runs seguintes já usam os fatores novos (`cli.py:653-657`) e, no código, `Bancada._fatores_extremo` chama `carregar_fatores_extremo` sem cache, que lê o JSON de novo a cada uso (`mestre.py:2011-2016`, `mestre.py:566-590`, `mestre.py:522-530`; conferido por leitura em 2026-10-16, não executado na bancada). Reiniciar a CLI continua sendo necessário depois de **commitar** (o `versao_codigo` fica em cache no processo).
 
 **Linha de comando equivalente** (offline; não energiza nada):
 

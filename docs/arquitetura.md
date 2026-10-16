@@ -1,6 +1,6 @@
 # Arquitetura
 
-Linhas citadas (`arquivo:linha`) valem para o commit `d37e403` (v1.15 em andamento, sem alteração de código na revisão da documentação). Se o código mudar, procure pelo nome da função.
+Linhas citadas (`arquivo:linha`) valem para o commit `d37e403` (v1.15 em andamento). O código mudou depois (`main` em `fa82f49`) e **várias linhas deslocaram** (por exemplo, `validate_bench_configuration` não está mais em `mestre.py:366`): procure pelo nome da função. As referências `arquivo:linha` conferidas por máquina contra `fa82f49` estão nas páginas do {doc}`codigo` e da {doc}`scpi`.
 
 ## 1. Visão geral
 

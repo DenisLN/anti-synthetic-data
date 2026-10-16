@@ -2,6 +2,10 @@
 
 Data: 2026-10-12. Árvore NÃO commitada (v1.15 em andamento por cima de `34a0d82`).
 
+```{note}
+Este texto é de 2026-10-12 (árvore ainda não commitada). Desde então o código foi commitado (`main` em `fa82f49`) e as linhas `arquivo:linha` abaixo **deslocaram**: `correlacao_disturbio` está em `sinais.py:485` (não 307), `correlacao_disturbio_fundamental_ajustada` em `sinais.py:535` e `_correlacao_disturbio_alinhada` em `analisar_sessao.py:190`. As demais linhas citadas aqui não foram reconferidas; procure pelo nome da função. A referência atual, com as duas métricas, a tabela das 20 classes e a recomputação offline, é {doc}`medicao/correlacao`.
+```
+
 ## 1. Função
 
 `sinais.correlacao_disturbio(esperado, capturado, *, fs_hz, f0_hz, fase_graus=0.0) -> (valor | None, motivo | None)` em `logica/sinais.py:307`.
