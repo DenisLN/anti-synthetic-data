@@ -53,7 +53,7 @@ As três amplitudes saem de **uma** chamada `rng.uniform(lo, hi, size=3)`; as tr
 
 ## 4. Como a bancada reproduz
 
-**Pergunta:** a TRACe, que repete um ciclo por passo, carrega frequências que não são harmônicas? **Resposta:** carrega, com um custo pequeno: cada ciclo da janela é recortado, perde a média e é reamostrado; como 145, 210 e 330 Hz não fecham em um número inteiro de períodos por ciclo, cada recorte tem média não nula e perde um pouco; o erro máximo |programada − modelo| medido na spec 11 (`gerar()` com sorteio, seed 32) é de 0,0168 pu a 50 Hz e 127 V e de 0,0085 pu a 60 Hz e 230 V (eram 0,0045 e 0,0055 pu antes da correção do rms CA).
+**Pergunta:** a TRACe, que repete um ciclo por passo, carrega frequências que não são harmônicas? **Resposta:** carrega, com um custo pequeno: cada ciclo da janela é recortado, perde a média e é reamostrado; como 145, 210 e 330 Hz não fecham em um número inteiro de períodos por ciclo, cada recorte tem média não nula e perde um pouco; o erro máximo |programada − modelo| medido na correção do rms por ciclo da TRACe (`gerar()` com sorteio, seed 32) é de 0,0168 pu a 50 Hz e 127 V e de 0,0085 pu a 60 Hz e 230 V (eram 0,0045 e 0,0055 pu antes da correção do rms CA).
 
 Ordem dos comandos de uma captura (`ExperimentoWaveform._capturar_real`, `mestre.py:3126-3188`; diagrama e porquês em {doc}`../scpi/sequencias` §7 e o percurso completo em {doc}`../codigo/percurso-captura-trace`):
 
@@ -158,7 +158,7 @@ A 20 fica em 0,91–0,98 em programada × medida (07/10) e em modelo × medida; 
 - **v1.8:** a 20 fica fora da cobertura determinística de `set capturas` (3 amplitudes e 3 fases simultâneas). A remoção do 150 Hz da lista (hoje 145, 210 e 330 Hz) está registrada só no comentário do código (`20.py:8-10`); a versão que a fez não consta nos CHANGELOG lidos.
 - **v1.13:** `capturas_padrao` = 3 (as amplitudes e fases são sorteadas); a 220 V a classe roda reduzida pelo limite de bancada.
 - **v1.14:** fatores de extremo por condição (1,041; 1,056; 1,032).
-- **v1.15:** perfil `norma` com 0,5 a 2 %; fase sorteada; a spec 11 corrige o rms CA do ciclo (o erro máximo programada × modelo subiu de 0,0045 para 0,0168 pu a 50 Hz e de 0,0055 para 0,0085 pu a 60 Hz: classe de média de ciclo pequena, onde a amplitude inflada de antes compensava parte da média removida; hipótese não confirmada ponto a ponto).
+- **v1.15:** perfil `norma` com 0,5 a 2 %; fase sorteada; a correção do rms por ciclo da TRACe passa o rms CA ao `LIST:VOLTage` (o erro máximo programada × modelo subiu de 0,0045 para 0,0168 pu a 50 Hz e de 0,0055 para 0,0085 pu a 60 Hz: classe de média de ciclo pequena, onde a amplitude inflada de antes compensava parte da média removida; hipótese não confirmada ponto a ponto).
 
 ## 11. Estado de verificação e pendências
 

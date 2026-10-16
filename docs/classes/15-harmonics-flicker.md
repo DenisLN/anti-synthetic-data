@@ -79,7 +79,7 @@ Representação por ciclo medida na revisão das compostas (`programada_pu` cont
 | antes da correção do rms CA | 0,0309 | 0,0259 |
 | depois (código de hoje) | 0,0301 | 0,0253 |
 
-*Fonte:* `CHANGELOG/v1.15.md`, spec 11 (`gerar()` com sorteio ligado, seed 32, simulação offline, sem hardware).
+*Fonte:* `CHANGELOG/v1.15.md`, "RMS por ciclo da TRACE" (`gerar()` com sorteio ligado, seed 32, simulação offline, sem hardware).
 
 :::{warning} Decisão em aberto P-12
 Para a 06, comparar contra a forma programada ou redefinir o flicker com média nula por ciclo; as classes 11 e 15 herdam o efeito, ainda não calculado. Decisão do responsável pelo projeto ({ref}`P-12 <p-12>`, prioridade MÉDIA; detalhes na {doc}`06-flicker`).

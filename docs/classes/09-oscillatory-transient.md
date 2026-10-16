@@ -167,7 +167,7 @@ A queda abaixo de 0,90 a **127 V/50 Hz** (0,75–0,80 nominal; 0,80–0,86 ajust
 
 - **v1.8:** a frequência da oscilação passa a ter cobertura determinística com `set capturas N` (N > 1).
 - **v1.13:** `capturas_padrao` = 3 (frequência e duração são sorteadas); o gancho `parametros_com_disturbio_reduzido`.
-- **v1.15:** sorteio de início e fase (a duração já era sorteada); a spec do diagnóstico da cópia em 100 ms acrescenta a A25 ao que se sabia da A22 e entrega `diag_ciclos_trace.py`, `diag_marcadores_trace.py` e `modelo_lista_fonte.py`; a spec 18 inclui a 09 sorteada no diagnóstico e recomenda 6 a 9 capturas.
+- **v1.15:** sorteio de início e fase (a duração já era sorteada); o diagnóstico da cópia em 100 ms acrescenta a A25 ao que se sabia da A22 e entrega `diag_ciclos_trace.py`, `diag_marcadores_trace.py` e `modelo_lista_fonte.py`; a revisão dos pendentes da correlação inclui a 09 sorteada no diagnóstico e recomenda 6 a 9 capturas.
 
 ## 11. Estado de verificação e pendências
 

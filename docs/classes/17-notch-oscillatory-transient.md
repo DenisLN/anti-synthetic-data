@@ -75,7 +75,7 @@ O gancho `parametros_com_disturbio_reduzido` (`17.py:42-51`) devolve `notch_prof
 | antes da correção do rms CA | 0,2926 | 0,2350 |
 | depois (código de hoje) | 0,2925 | 0,2350 |
 
-*Fonte:* `CHANGELOG/v1.15.md`, spec 11 (`gerar()` com sorteio ligado, seed 32, simulação offline, sem hardware).
+*Fonte:* `CHANGELOG/v1.15.md`, "RMS por ciclo da TRACE" (`gerar()` com sorteio ligado, seed 32, simulação offline, sem hardware).
 
 O erro programada × modelo da 17 (0,29 pu a 50 Hz; 0,24 pu a 60 Hz) é o mesmo antes e depois da correção do rms CA: vem dos entalhes (como na 07), não do degrau do rms por ciclo.
 
@@ -118,7 +118,7 @@ Tolerâncias: {ref}`as sondas e as tolerâncias <validacao-fisica-tolerancias>`.
 
 *Fonte:* `validacao_fisica` do metadata de 07/10/2026 (`medido / esperado`, entalhes em 4 ciclos). A crista medida (1,44–1,45 a 127 V/60 Hz) contra 1,414 esperado cabe nos 10 % do código de então.
 
-**O que esperar da primeira rodada com o código da v1.15** (simulação offline da spec 26, modelo de 2.ª ordem, 135 capturas por linha; razão = crista medida ÷ crista do modelo; "fator mínimo" = máximo da razão ÷ 1,1):
+**O que esperar da primeira rodada com o código da v1.15** (simulação offline da crista com fator calibrado, modelo de 2.ª ordem, 135 capturas por linha; razão = crista medida ÷ crista do modelo; "fator mínimo" = máximo da razão ÷ 1,1):
 
 | f0 | Fator calibrado (JSON) | Razão mediana / p95 / máx. | Fator mínimo | Fator para 95 % | Aprovadas com o calibrado | Aprovadas com 1,0 |
 |---|---|---|---|---|---|---|
@@ -171,7 +171,7 @@ Modelo × programada é 0,993–0,996 e a medida cai a 0,90–0,95 pela mesma ca
 
 - **v1.12:** a 17 entra nas 20 classes aprovadas a 127 V/60 Hz (bancada de 30/09/2026).
 - **v1.14:** a 230 V/50 Hz a 17 mediu 444 V (acima dos 425 Vp) com previsão de 405 V: origem da calibração por condição; com a tabela nova a 17 mediu no máximo 382 V, reduzida a ~37 %; a 127 V/50 Hz o fator é 1,307.
-- **v1.15:** o início da oscilação é sorteado, com a fase acoplada a ele; os entalhes viram contínuos (mesma regra da 07); a simulação do toque da fonte mostra a crista 31–59 % acima; a spec 26 faz a validação usar a calibração de extremos; o relatório de limites a 127 V dá 17 sem redução.
+- **v1.15:** o início da oscilação é sorteado, com a fase acoplada a ele; os entalhes viram contínuos (mesma regra da 07); a simulação do toque da fonte mostra a crista 31–59 % acima; a mudança da crista com fator calibrado faz a validação usar a calibração de extremos; o relatório de limites a 127 V dá 17 sem redução.
 
 ## 11. Estado de verificação e pendências
 

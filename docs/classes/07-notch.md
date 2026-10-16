@@ -122,7 +122,7 @@ Tolerâncias: {ref}`as sondas e as tolerâncias <validacao-fisica-tolerancias>`.
 
 *Fonte:* `validacao_fisica` do metadata de 07/10/2026 (`medido / esperado`, entalhes em 4 a 5 ciclos). A crista medida (1,44 a 1,46) contra 1,417 esperado está dentro dos 10 % do código de então.
 
-**O que esperar da primeira rodada com o código da v1.15** (simulação offline da spec 26: modelo de 2.ª ordem, 127 V, 15 capturas por combinação da banda = 135 por linha; razão = crista medida ÷ crista do modelo; "fator mínimo" = máximo da razão ÷ 1,1, o fator que aprovaria 100 % da banda):
+**O que esperar da primeira rodada com o código da v1.15** (simulação offline da crista com fator calibrado: modelo de 2.ª ordem, 127 V, 15 capturas por combinação da banda = 135 por linha; razão = crista medida ÷ crista do modelo; "fator mínimo" = máximo da razão ÷ 1,1, o fator que aprovaria 100 % da banda):
 
 | f0 | Fator calibrado (JSON) | Razão mediana / p95 / máx. | Fator mínimo | Fator para 95 % | Aprovadas com o calibrado | Aprovadas com 1,0 |
 |---|---|---|---|---|---|---|
@@ -177,7 +177,7 @@ Modelo × programada é 0,993–0,996, e a medida cai a 0,90–0,95 porque a sa�
 - **v1.9 e v1.10:** a 07 foi a classe usada para medir o efeito de `SOURce:LIST:REPeat`: com `1` o NOTCH levou 516 ms (2,58 vezes os ~200 ms nominais) e com `0` 438 ms; a causa dos 438 ms não foi explicada.
 - **v1.13:** `capturas_padrao` = 3 (há sorteio de posição de entalhe); o gancho `parametros_com_disturbio_reduzido`.
 - **v1.14:** a 230 V/50 Hz a 07 mediu fator 1,317 e passou a rodar com o distúrbio reduzido a ~38 %; a 127 V/50 Hz o fator subiu a 1,375.
-- **v1.15:** entalhes **contínuos** (IEEE 1159-2019, 4.4.5.4): `sinais.aplicar_entalhes_continuos`, só a fase sorteada, pulsos por captura de ~15 para ~36 a 60 Hz; simulação offline do toque (crista 31–59 % acima); spec 26: a validação da crista usa a calibração de extremos em vez de afrouxar a tolerância (decisão de projeto de 2026-10-13).
+- **v1.15:** entalhes **contínuos** (IEEE 1159-2019, 4.4.5.4): `sinais.aplicar_entalhes_continuos`, só a fase sorteada, pulsos por captura de ~15 para ~36 a 60 Hz; simulação offline do toque (crista 31–59 % acima); crista com fator calibrado: a validação da crista usa a calibração de extremos em vez de afrouxar a tolerância (decisão de projeto de 2026-10-13).
 
 ## 11. Estado de verificação e pendências
 
@@ -186,7 +186,7 @@ Modelo × programada é 0,993–0,996, e a medida cai a 0,90–0,95 porque a sa�
 | Entalhes em 4 a 5 ciclos chegam à saída, com toque | {bdg-success}`VERIFICADO NA BANCADA` | 3 condições, 07/10/2026; fatores 1,186, 1,375 e 1,317 |
 | `gerar()` com entalhes contínuos | {bdg-info}`OFFLINE` | `Classes05_07_18Tests`; modelo × programada 0,993–0,996 |
 | Entalhes em todos os ciclos na fonte real | {bdg-warning}`NÃO VERIFICADO` | nenhuma sessão com o código da v1.15; atenuação dos pulsos de 0,1 ms e sobressinal com 10–12 ciclos desconhecidos |
-| A primeira rodada a 127 V/60 Hz reprova pela crista | {bdg-warning}`NÃO VERIFICADO` | previsão por simulação (spec 26); fecha com a bancada |
+| A primeira rodada a 127 V/60 Hz reprova pela crista | {bdg-warning}`NÃO VERIFICADO` | previsão por simulação (crista com fator calibrado); fecha com a bancada |
 
 :::{important} Pendência P-01
 Nenhum dado de bancada existe com o código da v1.15. Fecha com: bancada. Prioridade ALTA.

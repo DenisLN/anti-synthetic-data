@@ -166,7 +166,7 @@ A queda de **0,50** em modelo × medida em 07/10 não era da fonte: com `SORTEIO
 - **v1.11:** H-NATIVO: a CSINe de 5 % saiu com THD de 0,98 % (sem harmônico nenhum) nas sessões de 16/09/2026, sem erro SCPI; a neutralização de listas residuais e o readback fecharam o caso.
 - **v1.12:** `VOLTage:MODE?` voltava `FIX` depois de escrever `STEP` nas classes 01, 05 e 19 (escrita em rajada perdida); a sincronização por `*ESR?` corrigiu.
 - **v1.13:** `capturas_padrao` fica em 1 na 05 (os níveis são discretos); o nível de 30 % passa a custar gravações de TRACe na estimativa.
-- **v1.15:** perfis (`thd_niveis`); fase sorteada; o modelo dos níveis nativos passa de soma de harmônicas a **senoide clipada normalizada em rms** (rms 0,7071 contra até 0,721 antes; pico 0,82–0,96 pu contra 0,88–0,99); a revisão da spec 18 confirmou THD, rms, fase e teto e decidiu **não** normalizar o nível de 30 % (reduziria a fundamental a 0,958 pu e mudaria o dataset).
+- **v1.15:** perfis (`thd_niveis`); fase sorteada; o modelo dos níveis nativos passa de soma de harmônicas a **senoide clipada normalizada em rms** (rms 0,7071 contra até 0,721 antes; pico 0,82–0,96 pu contra 0,88–0,99); a revisão dos pendentes da correlação do distúrbio confirmou THD, rms, fase e teto e decidiu **não** normalizar o nível de 30 % (reduziria a fundamental a 0,958 pu e mudaria o dataset).
 
 ## 11. Estado de verificação e pendências
 

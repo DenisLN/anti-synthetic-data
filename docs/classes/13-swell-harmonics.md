@@ -73,14 +73,14 @@ O gancho `parametros_com_disturbio_reduzido` (`13.py:33-40`) devolve `swell_pu_b
 
 **Janela e margem.** `pre_trigger_s` herdado (0); registro de 20 ms antes e 50 ms depois ({doc}`../medicao`).
 
-**A média dos ciclos de borda.** Vale o que a {doc}`10-sag-harmonics` descreve (a TRACe perde a média de cada ciclo). Na 13 o erro máximo programada × modelo medido na spec 11 é menor que nas compostas de sag (a média do ciclo de borda de um patamar acima de 1 não foi analisada separadamente):
+**A média dos ciclos de borda.** Vale o que a {doc}`10-sag-harmonics` descreve (a TRACe perde a média de cada ciclo). Na 13 o erro máximo programada × modelo medido na correção do rms por ciclo da TRACe é menor que nas compostas de sag (a média do ciclo de borda de um patamar acima de 1 não foi analisada separadamente):
 
 | Erro máximo \|programada − modelo\| (pu) | 50 Hz, 127 V | 60 Hz, 230 V |
 |---|---|---|
 | antes da correção do rms CA | 0,1099 | 0,0955 |
 | depois (código de hoje) | 0,1138 | 0,0912 |
 
-*Fonte:* `CHANGELOG/v1.15.md`, spec 11 (`gerar()` com sorteio ligado, seed 32, simulação offline, sem hardware).
+*Fonte:* `CHANGELOG/v1.15.md`, "RMS por ciclo da TRACE" (`gerar()` com sorteio ligado, seed 32, simulação offline, sem hardware).
 
 :::{warning} Decisão em aberto P-04
 `AmetekMX30.program_capture` só **avisa** quando o pico reconstruído passa de `max_peak_v` ("prosseguindo sem carga", `ametek_orm.py:1522-1527`); quem recusa é a pré-validação do `mestre.py` (`ExperimentoBase._indices_viaveis`, antes de qualquer SCPI, e `_conferir_extremos_fisicos`, depois da captura já gravada). Pergunta ao responsável pelo projeto: o ORM também deve recusar? Opções: manter como está, ou recusar no ORM (um limite de segurança mais restritivo). Este site não decide ({ref}`P-04 <p-04>`, prioridade MÉDIA).

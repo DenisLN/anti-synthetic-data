@@ -14,7 +14,7 @@
 
 ## 1. Em uma resposta
 
-**Pergunta:** a bancada reproduz o impulso de 5 a 10 pu e 50 µs do modelo? **Resposta:** **não**. A captura física da 08 é um **impulso de baixa amplitude filtrado pela fonte** (um pico seguido de oscilação de ~7,5 a 10 kHz que morre em menos de 0,5 ms), por **três limitações independentes**: a amplitude cabe só até 0,9 × `max_peak_v` (374,2 V, 2,084 pu a 127 V), a fonte não sobe em 50 µs, e a TRACe representa o impulso com 3 a 4 pontos. O modelo `gerar()` e o dataset simulado continuam com a amplitude da especificação; só a captura física é limitada. A 08 é, por construção, a exceção da correlação (diferença máxima programada × modelo de 0,56 pu a 60 Hz e 0,82 pu a 50 Hz, spec 11).
+**Pergunta:** a bancada reproduz o impulso de 5 a 10 pu e 50 µs do modelo? **Resposta:** **não**. A captura física da 08 é um **impulso de baixa amplitude filtrado pela fonte** (um pico seguido de oscilação de ~7,5 a 10 kHz que morre em menos de 0,5 ms), por **três limitações independentes**: a amplitude cabe só até 0,9 × `max_peak_v` (374,2 V, 2,084 pu a 127 V), a fonte não sobe em 50 µs, e a TRACe representa o impulso com 3 a 4 pontos. O modelo `gerar()` e o dataset simulado continuam com a amplitude da especificação; só a captura física é limitada. A 08 é, por construção, a exceção da correlação (diferença máxima programada × modelo de 0,56 pu a 60 Hz e 0,82 pu a 50 Hz, correção do rms por ciclo).
 
 Estado: o impulso filtrado foi medido; a 50 Hz o evento saiu a 100 ms em vez de 80 ms nas três capturas (A22), e a correção (impulso a 90 ms e conferência de posição) nunca foi medida ({ref}`P-03 <p-03>`); o mecanismo do deslocamento é desconhecido ({ref}`P-02 <p-02>`).
 

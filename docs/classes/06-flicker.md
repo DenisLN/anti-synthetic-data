@@ -77,7 +77,7 @@ O manual (`TRACe:DATA`, p. 126 e 147) diz que a fonte **remove o componente CC**
 
 - a média por ciclo é uma escada de rms **0,002 a 0,032 pu** (máximo 0,044 pu), contra um distúrbio de rms 0,036 a 0,074 pu: até ~47 % do distúrbio com flicker de 18 a 24 Hz;
 - tirando do modelo a média de cada ciclo, a correlação programada × modelo vai a **0,9999 a 1,0000** nas 28 capturas calculadas; a interpolação de 1024 pontos custa menos que 0,001;
-- não há comando de offset por passo de `LIST` no manual extraído, e `SOURce:VOLTage:OFFSet` é um valor único da captura, então a programação **não** pode reproduzir essa média. **Nada foi mudado** na programação nem no `gerar()` da 06 por causa disso (`CHANGELOG/v1.15.md`, spec 18).
+- não há comando de offset por passo de `LIST` no manual extraído, e `SOURce:VOLTage:OFFSet` é um valor único da captura, então a programação **não** pode reproduzir essa média. **Nada foi mudado** na programação nem no `gerar()` da 06 por causa disso (`CHANGELOG/v1.15.md`, "Pendentes da correlação do distúrbio").
 
 Correlação programada × modelo por perfil, frequência e sorteio (mínimo / mediana / máximo; 60 sementes por linha; 127 V; v1.15):
 
@@ -92,7 +92,7 @@ Correlação programada × modelo por perfil, frequência e sorteio (mínimo / m
 | `literatura` e `fronteira` | 60 Hz | ligado | 0,881 / 0,966 / 1,000 |
 | `literatura` e `fronteira` | 60 Hz | desligado | 0,857 / 0,916 / 0,980 |
 
-*Fonte:* `CHANGELOG/v1.15.md`, spec 18, item 4 (simulação offline, sem hardware). Os perfis só mudam a profundidade; a correlação depende da frequência do flicker e da fase. Por faixa de $f_\text{fl}$ (`literatura`, sorteio ligado, 200 sementes):
+*Fonte:* `CHANGELOG/v1.15.md`, "Pendentes da correlação do distúrbio", item 4 (simulação offline, sem hardware). Os perfis só mudam a profundidade; a correlação depende da frequência do flicker e da fase. Por faixa de $f_\text{fl}$ (`literatura`, sorteio ligado, 200 sementes):
 
 | $f_\text{fl}$ (Hz) | 50 Hz: n, mediana (mín–máx) | 60 Hz: n, mediana (mín–máx) |
 |---|---|---|
@@ -191,7 +191,7 @@ A 06 fica abaixo da faixa 0,95 a 1,00 histórica em 7 de 9 capturas de 07/10 (mo
 - **v1.8:** `valor_para_captura` dá cobertura determinística de $f_\text{fl}$ com `set capturas N` (N > 1).
 - **v1.12:** as classes 05 a 20 eram reprovadas pela validação física com "mínimo do envelope 0,01 pu" (falso negativo): o registro tinha 20 ms em 0 V antes do trigger; passou-se a validar só a janela alinhada (`medido[margem_antes : margem_antes + 6000]`).
 - **v1.13:** `capturas_padrao` = 3 na 06; a 220 V o limite de bancada passa a reduzir só o distúrbio ($k$) e o gancho `parametros_com_disturbio_reduzido` traduz $k$ em `flicker_depth_bancada`.
-- **v1.15:** perfis (`flicker_profundidade`); fase sorteada; a spec 11 corrige o rms do `LIST:VOLTage` para o rms CA do ciclo (efeito pequeno na 06: erro máximo 0,0229 → 0,0218 pu a 50 Hz); a spec 18 quantifica a perda da 06 na TRACe e conclui que não vale mudar a programação (decisão pendente, P-12).
+- **v1.15:** perfis (`flicker_profundidade`); fase sorteada; a correção do rms por ciclo da TRACe passa o `LIST:VOLTage` para o rms CA do ciclo (efeito pequeno na 06: erro máximo 0,0229 → 0,0218 pu a 50 Hz); a revisão dos pendentes da correlação quantifica a perda da 06 na TRACe e conclui que não vale mudar a programação (decisão pendente, P-12).
 
 ## 11. Estado de verificação e pendências
 

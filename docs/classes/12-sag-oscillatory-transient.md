@@ -79,7 +79,7 @@ Representação por ciclo, medida na revisão das compostas (`programada_pu` con
 
 *Fonte:* `CHANGELOG/v1.15.md`, "Revisão das compostas sorteadas" (offline, sem hardware). **Com o sag sorteado o erro máximo sobe a 0,25–0,32 pu**, igual em 300 e 2400 Hz: vem da borda do sag cair no meio de um ciclo (a TRACe tira o CC de cada ciclo), não da composição; as classes 02 e 03 dão 0,29–0,32 e 0,27–0,29 pu com o sorteio.
 
-**Por que a programada perde a média dos ciclos de borda.** O evento começa em $t_0$ e termina em $t_0+d$, que em geral não caem em fronteiras de ciclo. Nos ciclos de borda a forma tem um degrau a meio ciclo e, portanto, **média diferente de zero**. A fonte remove o componente CC de cada TRACe (manual, `TRACe:DATA`, p. 126) e a escala ao rms de `LIST:VOLTage`, e `SOURce:VOLTage:OFFSet` é um valor único da captura, não um offset por passo de `LIST` (o manual extraído não tem esse comando). O que a spec 11 mediu (127 V, `gerar()` com sorteio ligado, seed 32):
+**Por que a programada perde a média dos ciclos de borda.** O evento começa em $t_0$ e termina em $t_0+d$, que em geral não caem em fronteiras de ciclo. Nos ciclos de borda a forma tem um degrau a meio ciclo e, portanto, **média diferente de zero**. A fonte remove o componente CC de cada TRACe (manual, `TRACe:DATA`, p. 126) e a escala ao rms de `LIST:VOLTage`, e `SOURce:VOLTage:OFFSet` é um valor único da captura, não um offset por passo de `LIST` (o manual extraído não tem esse comando). O que a correção do rms por ciclo da TRACe mediu (127 V, `gerar()` com sorteio ligado, seed 32):
 
 - **Antes da correção** o `LIST:VOLTage` levava o rms do ciclo **com** a média, mas a TRACe seguia **sem** ela: a amplitude CA saía inflada e a previsão de pico subestimava até 38 % (106,9 a 141,2 V previstos contra 153,3 a 172,1 V emitidos, com degraus sintéticos de nível 0,2 a 0,8 a 50 e 60 Hz).
 - **Depois** (rms CA no `LIST:VOLTage`, pico previsto pela TRACe enviada) a previsão coincide com o emitido (diferença menor que 1 %), e **resta a média do ciclo**: erro máximo |programada − modelo| de 0,24 a 0,33 pu nas classes 10, 11, 12 e 16. Contra o modelo **sem** a média de cada ciclo, o erro cai a 0,02–0,04 pu. Só um offset por passo (modo ACDC, que tem o déficit de 5 a 6 % de CA da classe 19) o recuperaria.
@@ -90,7 +90,7 @@ Representação por ciclo, medida na revisão das compostas (`programada_pu` con
 | antes da correção do rms CA | 0,3108 | 0,3238 |
 | depois (código de hoje) | 0,2657 | 0,2524 |
 
-*Fonte:* `CHANGELOG/v1.15.md`, spec 11 (`gerar()` com sorteio ligado, seed 32, simulação offline, sem hardware).
+*Fonte:* `CHANGELOG/v1.15.md`, "RMS por ciclo da TRACE" (`gerar()` com sorteio ligado, seed 32, simulação offline, sem hardware).
 
 :::{warning} Decisão em aberto P-09
 Resta a média de cada ciclo de borda; só um offset por passo (modo ACDC, com o déficit de 5 a 6 % de CA da classe 19) a recuperaria. Investigar depois da primeira bancada com o código da v1.15? Decisão do responsável pelo projeto ({ref}`P-09 <p-09>`, prioridade BAIXA).

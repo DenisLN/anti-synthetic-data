@@ -153,7 +153,7 @@ A correlação do distúrbio da 19 é **`n/a` por definição**: o resíduo do m
 - **v1.12:** a 19 rodava inteira a 63,03 Hz depois da 18 (F2); N1/N2: `VOLTage:MODE?` voltava `FIX` depois de `STEP` na 19 (rajada perdida).
 - **v1.13:** `capturas_padrao` = 3 na 19 (o offset é sorteado).
 - **v1.14:** primeiras três capturas por condição de 07/10; fator 0,988, 1,007 e 0,971 por condição.
-- **v1.15:** fase sorteada; a spec de pendentes offline registrou em `measure_voltage` que em ACDC a leitura é o rms total e deixou o `diag_acdc_amplitude.py` pronto para a bancada.
+- **v1.15:** fase sorteada; a rodada de pendentes conferíveis offline registrou em `measure_voltage` que em ACDC a leitura é o rms total e deixou o `diag_acdc_amplitude.py` pronto para a bancada.
 
 ## 11. Estado de verificação e pendências
 
