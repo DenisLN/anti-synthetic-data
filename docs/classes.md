@@ -74,3 +74,29 @@ Na TRACe/LIST cada ciclo é uma TRACe de média zero (a fonte remove o component
 ## 6. Classe 09 e o impulso em 100 ms
 
 `diag_ciclos_trace.py` e `modelo_lista_fonte.py` aceitam a 09 sorteada (teste sintético `PendentesCorrelacaoDisturbioTests`). Com início sorteado, 100 ms cai dentro do evento rotulado em ~18 % das capturas. Mecanismo da cópia: **NÃO VERIFICADO** (`docs/quirks.md` A25).
+
+```{toctree}
+:maxdepth: 1
+:caption: Fichas das classes
+
+classes/01-normal
+classes/02-sag
+classes/03-swell
+classes/04-interruption
+classes/05-harmonics
+classes/06-flicker
+classes/07-notch
+classes/08-transient
+classes/09-oscillatory-transient
+classes/10-sag-harmonics
+classes/11-sag-flicker
+classes/12-sag-oscillatory-transient
+classes/13-swell-harmonics
+classes/14-swell-oscillatory-transient
+classes/15-harmonics-flicker
+classes/16-interruption-harmonics
+classes/17-notch-oscillatory-transient
+classes/18-frequency-drift
+classes/19-dc-offset
+classes/20-interharmonics
+```

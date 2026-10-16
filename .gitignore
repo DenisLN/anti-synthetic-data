@@ -9,3 +9,6 @@ backups/
 .DS_Store
 .pytest_cache/
 .claude/
+
+# Site de documentação (Sphinx)
+docs/_build/

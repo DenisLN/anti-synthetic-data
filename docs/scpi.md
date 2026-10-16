@@ -128,3 +128,21 @@ Referências `[KS] p.` são as do código (PDF).
 | `safe_stop/close :539-550` | `:STOP` | não fecha o `ResourceManager` |
 
 `indice_trigger = round(−x_origin × 30000)` (`:529`) é onde o trigger caiu no registro entregue.
+
+```{toctree}
+:maxdepth: 1
+:caption: Entradas da referência
+
+scpi/sequencias
+scpi/ametek-estado
+scpi/ametek-baseline
+scpi/ametek-imediatos
+scpi/ametek-nativo
+scpi/ametek-lista-trace
+scpi/ametek-nao-funciona
+scpi/keysight-aquisicao
+scpi/keysight-trigger
+scpi/keysight-waveform
+scpi/diagnostico
+scpi/transcricoes
+```
