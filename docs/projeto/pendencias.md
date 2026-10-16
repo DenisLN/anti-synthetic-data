@@ -395,7 +395,7 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 
 - **Fonte:** `docs-site-plano/02-lacunas.md` §3
 - **O que fecha:** DECISÃO DO USUÁRIO (versionar trechos selecionados ou autorizar a extração)
-- **Conferência feita:** `Get-ChildItem` de `C:\Users\denis\Documents\1 Projetos\anti-synthetic-data\resultados` (gitignored) e contagem de linhas de `metadata/*.jsonl`.
+- **Conferência feita:** `Get-ChildItem` de `<repositório>\resultados` (gitignored) e contagem de linhas de `metadata/*.jsonl`.
 
 (p-30)=
 ### P-30: GLOBAL
@@ -406,7 +406,7 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 
 - **Fonte:** `AGENTS.md:125`; `docs/tres_versoes.md:59`; `resultados/`
 - **O que fecha:** DECISÃO DO USUÁRIO (o que é "piloto")
-- **Conferência feita:** `Get-ChildItem` de `C:\Users\denis\Documents\1 Projetos\anti-synthetic-data\resultados` (gitignored) e contagem de linhas de `metadata/*.jsonl`.
+- **Conferência feita:** `Get-ChildItem` de `<repositório>\resultados` (gitignored) e contagem de linhas de `metadata/*.jsonl`.
 
 (p-31)=
 ### P-31: GLOBAL (correlação)

@@ -11,7 +11,7 @@ O ambiente do site é separado do `env\` da bancada (que tem numpy, PyMeasure e 
 ::::{tab-set}
 :::{tab-item} Windows (PowerShell)
 ```powershell
-cd C:\Users\denis\TCC\code            # raiz do repositório
+cd C:\caminho\do\repositorio     # raiz do repositório
 python -m venv .venv-docs
 .\.venv-docs\Scripts\python.exe -m pip install -r docs\requirements.txt
 .\.venv-docs\Scripts\python.exe -m sphinx -W --keep-going -b html docs docs\_build\html
@@ -57,7 +57,7 @@ Exceção registrada em `docs/conf.py`: três links relativos quebrados em `CHAN
 
 O build no serviço depende de conta e importação feitas pelo responsável pelo repositório; o arquivo `.readthedocs.yaml` já está na raiz.
 
-1. Entrar em readthedocs.org e escolher **Import a Project**; autorizar a conta do GitHub e selecionar o repositório `DenisLN/anti-synthetic-data`.
+1. Entrar em readthedocs.org e escolher **Import a Project**; autorizar a conta do GitHub e selecionar o repositório `anti-synthetic-data` (o repositório do projeto).
 2. Conferir que o serviço achou `.readthedocs.yaml` (configuração `docs/conf.py`, Python 3.12, `docs/requirements.txt`).
 3. Definir o nome do projeto e o subdomínio (`*.readthedocs.io`); decisão do responsável.
 4. Em **Versions**, ativar `latest` (ramo `main`) e, depois de congelada a v1.15 com a tag `v1.15`, `stable` ({bdg-danger}`PENDENTE P-20`).
