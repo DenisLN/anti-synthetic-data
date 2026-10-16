@@ -1,6 +1,6 @@
 # Contrato das classes de experimento
 
-{bdg-info}`OFFLINE` Lido (as 20 classes por `ast`; `08.py` e `18.py` por inteiro) em 2026-10-16, `main` em `fa82f49`. As fichas de cada classe estão em {doc}`../classes` (em redação).
+{bdg-info}`OFFLINE` Lido (as 20 classes por `ast`; `08.py` e `18.py` por inteiro) em 2026-10-16, `main` em `fa82f49`. As fichas de cada classe, escritas na etapa seguinte do site, partem de {doc}`../classes`.
 
 **Pergunta:** o que um arquivo `experimentos_*/NN.py` precisa ter e quais ganchos pode sobrescrever? **Resposta:** um arquivo `NN.py` com **uma** classe chamada `Experimento` que herda `ExperimentoNativo` (implementa `gerar` e `configurar`) ou `ExperimentoWaveform` (só `gerar`), com `id` e `nome`; o resto são **ganchos opcionais** que a classe-base chama. Exatamente um arquivo por id de 01 a 20 em **uma** das duas pastas.
 
