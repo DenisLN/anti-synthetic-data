@@ -32,6 +32,7 @@ Uso:
 from __future__ import annotations
 
 import argparse
+from contextlib import ExitStack
 import json
 import os
 import sys
@@ -182,74 +183,75 @@ def recortar_sessao(
 
     capturas = sessao_io.ler_pasta(sessao_dir, metadados, versoes=sessao_io.VERSOES)
     capturas.sort(key=lambda c: (c.classe_id, c.perfil, c.id_captura))
-    arquivos: Dict[str, "sessao_io.ArquivoDaClasse"] = {}
-    espelhos: Dict[str, Dict[str, List[str]]] = {}  # classe -> origem -> perfis espelho
-    for captura in capturas:
-        if captura.espelho:  # mesma captura de outro perfil: só se re-espelha
-            espelhos.setdefault(captura.classe_id, {}).setdefault(str(captura.perfil_de_origem), [])
-            if captura.perfil not in espelhos[captura.classe_id][str(captura.perfil_de_origem)]:
-                espelhos[captura.classe_id][str(captura.perfil_de_origem)].append(captura.perfil)
-            continue
-        if captura.grandeza != "Tensão" or "medida" not in captura.versoes:
-            continue
-        medida = captura.versoes["medida"]
-        metadado = captura.metadado
-        inicio, pontos, info = calcular_recorte(medida.size, metadado)
-        fs_hz = float((metadado or {}).get("fs_hz", 30_000.0))
-        novo = metadado_recortado(metadado, info) if metadado is not None else None
-        if novo is not None:
-            metadados_saida[captura.chave] = novo
-        arquivo = arquivos.get(captura.classe_id)
-        if arquivo is None:
-            arquivo = arquivos[captura.classe_id] = sessao_io.ArquivoDaClasse(
-                saida_dir, captura.classe_id, captura.classe, spool=False,
+    with ExitStack() as recursos:
+        arquivos: Dict[str, "sessao_io.ArquivoDaClasse"] = {}
+        espelhos: Dict[str, Dict[str, List[str]]] = {}  # classe -> origem -> perfis espelho
+        for captura in capturas:
+            if captura.espelho:  # mesma captura de outro perfil: só se re-espelha
+                espelhos.setdefault(captura.classe_id, {}).setdefault(str(captura.perfil_de_origem), [])
+                if captura.perfil not in espelhos[captura.classe_id][str(captura.perfil_de_origem)]:
+                    espelhos[captura.classe_id][str(captura.perfil_de_origem)].append(captura.perfil)
+                continue
+            if captura.grandeza != "Tensão" or "medida" not in captura.versoes:
+                continue
+            medida = captura.versoes["medida"]
+            metadado = captura.metadado
+            inicio, pontos, info = calcular_recorte(medida.size, metadado)
+            fs_hz = float((metadado or {}).get("fs_hz", 30_000.0))
+            novo = metadado_recortado(metadado, info) if metadado is not None else None
+            if novo is not None:
+                metadados_saida[captura.chave] = novo
+            arquivo = arquivos.get(captura.classe_id)
+            if arquivo is None:
+                arquivo = arquivos[captura.classe_id] = recursos.enter_context(sessao_io.ArquivoDaClasse(
+                    saida_dir, captura.classe_id, captura.classe, spool=False,
+                ))
+            corrente = por_chave_corrente.get(captura.chave)
+            modelo = captura.versoes.get("modelo")
+            arquivo.adicionar(
+                captura.perfil, id_captura=captura.id_captura, medida=medida[inicio : inicio + pontos],
+                tempo_ms=_tempo_recortado(captura, inicio, pontos, fs_hz), fs_hz=fs_hz,
+                modelo=modelo, programada=captura.versoes.get("programada"),
+                origem_programada=captura.origem_programada, inicio_janela=0,
+                pontos=int(modelo.size) if modelo is not None else pontos,
+                snr=por_chave_snr.get(captura.chave), corrente=corrente, metadado=novo,
             )
-        corrente = por_chave_corrente.get(captura.chave)
-        modelo = captura.versoes.get("modelo")
-        arquivo.adicionar(
-            captura.perfil, id_captura=captura.id_captura, medida=medida[inicio : inicio + pontos],
-            tempo_ms=_tempo_recortado(captura, inicio, pontos, fs_hz), fs_hz=fs_hz,
-            modelo=modelo, programada=captura.versoes.get("programada"),
-            origem_programada=captura.origem_programada, inicio_janela=0,
-            pontos=int(modelo.size) if modelo is not None else pontos,
-            snr=por_chave_snr.get(captura.chave), corrente=corrente, metadado=novo,
-        )
-        relatorio.append({
-            "arquivo": captura.arquivo.name, "id_captura": captura.id_captura, "perfil": captura.perfil, **info,
-        })
-    for classe_id, arquivo in arquivos.items():
-        for origem, destinos in espelhos.get(classe_id, {}).items():
-            if origem in arquivo.perfis:
-                arquivo.espelhar(origem, destinos)
-        try:
-            arquivo.consolidar()
-        except ValueError as exc:
-            relatorio.append({"arquivo": arquivo.nome_arquivo, "erro": str(exc)})
+            relatorio.append({
+                "arquivo": captura.arquivo.name, "id_captura": captura.id_captura, "perfil": captura.perfil, **info,
+            })
+        for classe_id, arquivo in arquivos.items():
+            for origem, destinos in espelhos.get(classe_id, {}).items():
+                if origem in arquivo.perfis:
+                    arquivo.espelhar(origem, destinos)
+            try:
+                arquivo.consolidar()
+            except ValueError as exc:
+                relatorio.append({"arquivo": arquivo.nome_arquivo, "erro": str(exc)})
 
-    # Metadata: um .jsonl por classe, mesmo nome do original, com as mesmas
-    # linhas na mesma ordem (a recortada onde houve dado).
-    metadata_origem = sessao_dir / "metadata"
-    if metadata_origem.is_dir():
-        (saida_dir / "metadata").mkdir(parents=True, exist_ok=True)
-        for jsonl_path in sorted(metadata_origem.glob("*.jsonl")):
-            linhas = []
-            for linha in jsonl_path.read_text(encoding="utf-8").splitlines():
-                if not linha.strip():
-                    continue
-                registro = json.loads(linha)
-                chave = (str(registro.get("perfil") or sessao_io.PERFIL_LEGADO), str(registro["id_captura"]))
-                novo = metadados_saida.get(chave, registro)
-                origem = registro.get("perfil_de_origem")
-                if novo is registro and origem and origem != chave[0] \
-                        and (origem, chave[1]) in metadados_saida:
-                    # Espelho (captura compartilhada): a mesma linha da origem recortada.
-                    novo = dict(metadados_saida[(origem, chave[1])], perfil=chave[0])
-                linhas.append(json.dumps(novo, ensure_ascii=False, sort_keys=True))
-            destino = saida_dir / "metadata" / jsonl_path.name
-            parcial = destino.with_suffix(".jsonl.part")
-            parcial.write_text("\n".join(linhas) + ("\n" if linhas else ""), encoding="utf-8")
-            os.replace(parcial, destino)
-    return relatorio
+        # Metadata: um .jsonl por classe, mesmo nome do original, com as mesmas
+        # linhas na mesma ordem (a recortada onde houve dado).
+        metadata_origem = sessao_dir / "metadata"
+        if metadata_origem.is_dir():
+            (saida_dir / "metadata").mkdir(parents=True, exist_ok=True)
+            for jsonl_path in sorted(metadata_origem.glob("*.jsonl")):
+                linhas = []
+                for linha in jsonl_path.read_text(encoding="utf-8").splitlines():
+                    if not linha.strip():
+                        continue
+                    registro = json.loads(linha)
+                    chave = (str(registro.get("perfil") or sessao_io.PERFIL_LEGADO), str(registro["id_captura"]))
+                    novo = metadados_saida.get(chave, registro)
+                    origem = registro.get("perfil_de_origem")
+                    if novo is registro and origem and origem != chave[0] \
+                            and (origem, chave[1]) in metadados_saida:
+                        # Espelho (captura compartilhada): a mesma linha da origem recortada.
+                        novo = dict(metadados_saida[(origem, chave[1])], perfil=chave[0])
+                    linhas.append(json.dumps(novo, ensure_ascii=False, sort_keys=True))
+                destino = saida_dir / "metadata" / jsonl_path.name
+                parcial = destino.with_suffix(".jsonl.part")
+                parcial.write_text("\n".join(linhas) + ("\n" if linhas else ""), encoding="utf-8")
+                os.replace(parcial, destino)
+        return relatorio
 
 
 def _imprimir(relatorio: Iterable[dict]) -> int:

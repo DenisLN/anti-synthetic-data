@@ -8780,6 +8780,38 @@ class NpzPorClasseTests(unittest.TestCase):
             medido = 10.0 * math.log10(np.mean(janela ** 2) / np.mean(ruido ** 2))
             self.assertAlmostEqual(medido, 25.0, delta=1e-6)
 
+    def test_consumidores_fecham_writers_no_sucesso_e_na_falha(self):
+        import recortar_margem
+        gerar = _carregar_script("gerar_ruido_janela")
+        pasta = self._sessao_simulada_todos(self.tmp / "origem_close", "02").results_dir
+        construtor = self.sessao_io.ArquivoDaClasse
+        for nome, operacao in (("recorte", recortar_margem.recortar_sessao),
+                               ("ruido", gerar.gerar_sessao)):
+            for falha in (False, True):
+                with self.subTest(utilitario=nome, falha=falha):
+                    writers = []
+
+                    def construir(*args, **kwargs):
+                        writer = construtor(*args, **kwargs)
+                        writers.append(writer)  # Mantém vivo para testar close explícito.
+                        if falha:
+                            writer.consolidar = mock.Mock(side_effect=RuntimeError("falha de disco"))
+                        return writer
+
+                    with mock.patch.object(self.sessao_io, "ArquivoDaClasse", side_effect=construir):
+                        saida = self.tmp / f"{nome}_{falha}"
+                        if falha:
+                            with self.assertRaisesRegex(RuntimeError, "falha de disco"):
+                                operacao(pasta, saida)
+                        else:
+                            operacao(pasta, saida)
+                    self.assertTrue(writers)
+                    for writer in writers:
+                        with self.assertRaisesRegex(RuntimeError, "encerrado"):
+                            writer.iniciar_perfil("norma")
+                    with self.sessao_io.BloqueioSessao(saida, escritor=False):
+                        pass  # O lock é exclusivo mesmo com os writers ainda vivos.
+
     def test_gerar_tres_versoes_recusa_sessao_do_formato_2(self):
         gerar_tres = _carregar_script("gerar_tres_versoes")
         pasta = self._sessao_simulada_todos(self.tmp / "nova", "02").results_dir

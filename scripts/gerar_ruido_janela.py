@@ -32,6 +32,7 @@ Uso (na raiz do projeto):
 from __future__ import annotations
 
 import argparse
+from contextlib import ExitStack
 import json
 import os
 import sys
@@ -94,61 +95,63 @@ def gerar_sessao(
             por_arquivo.setdefault(captura.arquivo, []).append(captura)
 
     for npz_path, capturas in sorted(por_arquivo.items()):
-        escritor = None
-        por_nivel: Dict[float, List[np.ndarray]] = {snr: [] for snr in niveis_db}
-        for captura in capturas:
-            id_captura, metadado = captura.id_captura, captura.metadado
-            if metadado is None or "seed" not in metadado:
-                raise KeyError(f"{npz_path.name}: {id_captura} sem metadata com seed; não há como reproduzir o ruído")
-            medida = captura.versoes["medida"]
-            inicio, pontos, info = calcular_recorte(medida.size, metadado)
-            resultado = ruido_na_janela(
-                medida, inicio, pontos, niveis_db, int(metadado["seed"]),
-                simulado=bool(metadado.get("simulado", False)),
-            )
-            for snr_db, janela_ruidosa in resultado["janelas"].items():
-                por_nivel[snr_db].append(janela_ruidosa)
-            novo = metadado_recortado(metadado, info)
-            novo.update(resultado["metadata"])
-            novo["ruido_janela"]["origem_recorte"] = info["origem"]
-            novo["ruido_janela"]["recorte_ajustado"] = bool(info["ajustado"])
-            novo["ruido_janela"]["gerado_offline"] = True
-            metadados_saida[captura.chave] = novo
-            fs_hz = float(metadado.get("fs_hz", 30_000.0))
-            if captura.formato == "classe":
-                if escritor is None:
-                    escritor = sessao_io.ArquivoDaClasse(saida, captura.classe_id, captura.classe, spool=False)
-                escritor.adicionar(
-                    captura.perfil, id_captura=id_captura, medida=medida[:0], tempo_ms=np.arange(1.0), fs_hz=fs_hz,
-                    pontos=pontos, snr=resultado["janelas"], inicio_janela=inicio,
+        with ExitStack() as recursos:
+            escritor = None
+            por_nivel: Dict[float, List[np.ndarray]] = {snr: [] for snr in niveis_db}
+            for captura in capturas:
+                id_captura, metadado = captura.id_captura, captura.metadado
+                if metadado is None or "seed" not in metadado:
+                    raise KeyError(f"{npz_path.name}: {id_captura} sem metadata com seed; não há como reproduzir o ruído")
+                medida = captura.versoes["medida"]
+                inicio, pontos, info = calcular_recorte(medida.size, metadado)
+                resultado = ruido_na_janela(
+                    medida, inicio, pontos, niveis_db, int(metadado["seed"]),
+                    simulado=bool(metadado.get("simulado", False)),
                 )
-            linhas.append({
-                "id_captura": id_captura, "perfil": captura.perfil, "arquivo": npz_path.name,
-                "inicio_janela": inicio, "pontos": pontos,
-                "origem_recorte": info["origem"], "recorte_ajustado": bool(info["ajustado"]),
-                "snr_acrescentado_db": resultado["metadata"]["snr_medido_db"],
-                "snr_bancada_db": resultado["metadata"]["snr_bancada_db"],
-                "snr_efetivo_db": resultado["metadata"]["snr_efetivo_db"],
-                "margem_bancada": (resultado["metadata"]["ruido_janela"]["bancada"] or {}).get("margem"),
-            })
-        if escritor is not None:
-            for origem, destinos in espelhos.get(npz_path, {}).items():
-                if origem in escritor.perfis:
-                    escritor.espelhar(origem, destinos)
-            escritor.consolidar(so_snr=True)
-            continue
-        # Formato antigo (um .npz por captura, ou o simulado empilhado): mesma
-        # estrutura e mesmo nome de arquivo da entrada.
-        ids = [c.id_captura for c in capturas]
-        fs_hz = float(capturas[0].metadado.get("fs_hz", 30_000.0))
-        for snr_db, janelas in por_nivel.items():
-            pontos = janelas[0].size
-            _gravar_npz(
-                saida / f"snr_{rotulo_do_nivel(snr_db)}db" / npz_path.name,
-                classe=capturas[0].classe, id_captura=np.array(ids, dtype=object),
-                tempo_ms=np.arange(pontos, dtype=np.float64) / fs_hz * 1000.0,
-                tensao_pu=np.vstack(janelas),
-            )
+                for snr_db, janela_ruidosa in resultado["janelas"].items():
+                    por_nivel[snr_db].append(janela_ruidosa)
+                novo = metadado_recortado(metadado, info)
+                novo.update(resultado["metadata"])
+                novo["ruido_janela"]["origem_recorte"] = info["origem"]
+                novo["ruido_janela"]["recorte_ajustado"] = bool(info["ajustado"])
+                novo["ruido_janela"]["gerado_offline"] = True
+                metadados_saida[captura.chave] = novo
+                fs_hz = float(metadado.get("fs_hz", 30_000.0))
+                if captura.formato == "classe":
+                    if escritor is None:
+                        escritor = recursos.enter_context(sessao_io.ArquivoDaClasse(
+                            saida, captura.classe_id, captura.classe, spool=False))
+                    escritor.adicionar(
+                        captura.perfil, id_captura=id_captura, medida=medida[:0], tempo_ms=np.arange(1.0), fs_hz=fs_hz,
+                        pontos=pontos, snr=resultado["janelas"], inicio_janela=inicio,
+                    )
+                linhas.append({
+                    "id_captura": id_captura, "perfil": captura.perfil, "arquivo": npz_path.name,
+                    "inicio_janela": inicio, "pontos": pontos,
+                    "origem_recorte": info["origem"], "recorte_ajustado": bool(info["ajustado"]),
+                    "snr_acrescentado_db": resultado["metadata"]["snr_medido_db"],
+                    "snr_bancada_db": resultado["metadata"]["snr_bancada_db"],
+                    "snr_efetivo_db": resultado["metadata"]["snr_efetivo_db"],
+                    "margem_bancada": (resultado["metadata"]["ruido_janela"]["bancada"] or {}).get("margem"),
+                })
+            if escritor is not None:
+                for origem, destinos in espelhos.get(npz_path, {}).items():
+                    if origem in escritor.perfis:
+                        escritor.espelhar(origem, destinos)
+                escritor.consolidar(so_snr=True)
+                continue
+            # Formato antigo (um .npz por captura, ou o simulado empilhado): mesma
+            # estrutura e mesmo nome de arquivo da entrada.
+            ids = [c.id_captura for c in capturas]
+            fs_hz = float(capturas[0].metadado.get("fs_hz", 30_000.0))
+            for snr_db, janelas in por_nivel.items():
+                pontos = janelas[0].size
+                _gravar_npz(
+                    saida / f"snr_{rotulo_do_nivel(snr_db)}db" / npz_path.name,
+                    classe=capturas[0].classe, id_captura=np.array(ids, dtype=object),
+                    tempo_ms=np.arange(pontos, dtype=np.float64) / fs_hz * 1000.0,
+                    tensao_pu=np.vstack(janelas),
+                )
 
     metadata_origem = sessao_dir / "metadata"
     (saida / "metadata").mkdir(parents=True, exist_ok=True)
