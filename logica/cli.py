@@ -514,9 +514,22 @@ class SessaoCLI:
             f"(referência: a fonte travou na ~{mestre.ESCRITAS_TRACE_REFERENCIA_TRAVA}.ª "
             "gravação de uma conexão em 2026-09-16)."
         )
-        if escritas > mestre.ESCRITAS_TRACE_REFERENCIA_TRAVA:
-            texto = "ATENÇÃO — " + texto + " Considere 'run <NN>' por partes."
+        texto += f" Orçamento operacional: {mestre.LIMITE_ESCRITAS_TRACE_CONEXAO} gravações por conexão."
+        if escritas > mestre.LIMITE_ESCRITAS_TRACE_CONEXAO:
+            texto = "RECUSADA — " + texto + " Divida as classes/capturas em conexões novas."
         return texto
+
+    @staticmethod
+    def _verificar_orcamento_trace(linhas: List[tuple]) -> bool:
+        escritas = sum(info["escritas_trace"] for _, _, info in linhas)
+        if escritas <= mestre.LIMITE_ESCRITAS_TRACE_CONEXAO:
+            return True
+        print(
+            f"Execução recusada: até {escritas} gravações TRACe excedem o orçamento de "
+            f"{mestre.LIMITE_ESCRITAS_TRACE_CONEXAO} por conexão. Divida classes/capturas "
+            "em conexões novas. Nada foi energizado."
+        )
+        return False
 
     def _imprimir_capturas_por_classe(self) -> None:
         linhas = self._capturas_das_classes()
@@ -777,6 +790,8 @@ class SessaoCLI:
         scripts = [mapa[f"{numero:02d}"] for numero in ids]
         normalizada = normalizar_lista_classes(ids)
         linhas = self._capturas_das_classes(scripts)
+        if not self._verificar_orcamento_trace(linhas):
+            return 1
         total_capturas = sum(info["total"] for _, _, info in linhas)
         print(f"Classes escolhidas ({len(linhas)}), na ordem numérica, capturas planejadas:")
         for classe_id, nome, info in linhas:
@@ -799,9 +814,11 @@ class SessaoCLI:
         experimento_cls = mestre.Bancada._carregar_classe_experimento(script_path)
         nome = getattr(experimento_cls, "nome", script_path.stem)
         confirmacao = f"EXECUTAR-CLASSE-{script_path.stem}"
-        extra = ""
+        linhas = self._capturas_das_classes([script_path])
+        if not self._verificar_orcamento_trace(linhas):
+            return 1
+        extra = f" ({self._aviso_escritas_trace(linhas)})"
         if mestre.PERFIL_TODOS:
-            linhas = self._capturas_das_classes([script_path])
             extra = (
                 f" nos 3 perfis ({self._descrever_capturas(linhas[0][2])} capturas planejadas; "
                 f"{self._aviso_escritas_trace(linhas)})"
@@ -857,6 +874,8 @@ class SessaoCLI:
             print("Nenhuma classe restante após BATERIA_EXCLUIR. Nada foi energizado.")
             return 1
         linhas = self._capturas_das_classes(scripts)
+        if not self._verificar_orcamento_trace(linhas):
+            return 1
         total_capturas = sum(info["total"] for _, _, info in linhas)
         if not self.confirmar(
             "Bateria completa das 20 classes, sequencial, sem parar numa falha isolada"

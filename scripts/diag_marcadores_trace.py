@@ -42,7 +42,7 @@ Segurança (AGENTS.md, "Limites inegociáveis" — nada aqui os altera):
   confirme OUTPUT OFF no painel, NÃO repita automaticamente e entregue o
   ``logs/diag_marcadores_trace-*.log`` mais recente.
 * Custo de Flash: cada captura grava um TRACe por ciclo. O script soma as
-  gravações planejadas e recusa passar de 250 (a fonte travou na ~280.ª em
+  gravações planejadas e recusa passar de 216 (a fonte travou na ~280.ª em
   2026-09-16; ``docs/quirks.md`` A3). Reduza ``--frequencias`` ou
   ``--variantes`` e rode em duas vezes, reiniciando a conexão.
 
@@ -75,6 +75,7 @@ RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ / "logica"))
 
 from ametek_orm import AmetekMX30  # noqa: E402
+from politica_traces import LIMITE_ESCRITAS_TRACE_CONEXAO  # noqa: E402
 import modelo_lista_fonte as modelo  # noqa: E402
 
 CONFIRMACAO = "ENERGIZAR-MARCADORES"
@@ -96,7 +97,7 @@ RECURSO_OSC = "USB0::0x0957::0x17A4::MY59240844::0::INSTR"
 LARGURA_MARCADOR = 24      # amostras (lombada de cosseno elevado)
 LARGURA_EVENTO = 4         # amostras (impulso retangular estreito)
 BORDA_MARCADOR = 40        # amostras livres no começo e no fim do ciclo
-ESCRITAS_TRACE_MAX = 250
+ESCRITAS_TRACE_MAX = LIMITE_ESCRITAS_TRACE_CONEXAO
 SEMENTE_PERMUTACAO = 20261013
 VARIANTES = ("marcadores", "fronteira", "meio_ciclo")
 

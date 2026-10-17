@@ -17,6 +17,11 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
+try:
+    from .politica_traces import LIMITE_ESCRITAS_TRACE_CONEXAO, LimiteEscritasTraceError
+except ImportError:  # execução dos scripts com logica/ no sys.path
+    from politica_traces import LIMITE_ESCRITAS_TRACE_CONEXAO, LimiteEscritasTraceError
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -433,6 +438,21 @@ class AmetekMX30:
 
     def _raw_write(self, command: str, *, append_eot: Optional[bool] = None) -> None:
         command = command.strip()
+        # Contar ANTES do envio: timeout não prova que a fonte deixou de
+        # receber os dados. A tentativa incerta consome o orçamento também.
+        # DATA relativo após ';' também pode repetir o subsistema TRACe
+        # anterior. Contá-lo conservadoramente impede escapar pelo SCPI
+        # composto, ainda que o firmware rejeite a sintaxe enviada.
+        escritas = len(re.findall(
+            r"(?:^|;)\s*:?(?:(?:TRACE|TRAC):DATA|DATA)(?=\s)", command, re.I,
+        ))
+        if escritas:
+            with self._lock:
+                self.verificar_orcamento_traces(escritas)
+                self.escritas_trace += escritas
+                # Escrita direta ou incompleta invalida a forma anterior.
+                # program_capture só repõe a assinatura após todos os uploads.
+                self._last_capture_signature = None
         _transcrever("W", command)
         if append_eot is None:
             # A USB serial da MX30 da bancada exige LF e uma transferência EOT
@@ -1581,6 +1601,16 @@ class AmetekMX30:
             passo_final_sin=bool(passo_final_sin),
         )
 
+    def verificar_orcamento_traces(self, novas_escritas: int) -> None:
+        """Recusa sem I/O se as tentativas ultrapassariam a política vigente."""
+        if self.escritas_trace + novas_escritas > LIMITE_ESCRITAS_TRACE_CONEXAO:
+            raise LimiteEscritasTraceError(
+                f"Orçamento TRACe da conexão excedido: {self.escritas_trace} tentativas "
+                f"já consumidas + {novas_escritas} novas, limite operacional "
+                f"{LIMITE_ESCRITAS_TRACE_CONEXAO}. Divida a campanha e encerre a conexão; "
+                "não retente nesta conexão. O orçamento não é limite do fabricante."
+            )
+
     def program_capture(
         self,
         waveform_pu: Sequence[float],
@@ -1638,6 +1668,20 @@ class AmetekMX30:
         ciclos = programacao.ciclos
         trace_names = programacao.trace_names
 
+        signature = (
+            waveform.tobytes(), trace_names,
+            float(base_voltage_rms), float(frequency_hz), float(dc_offset_pu),
+        )
+        # Se a forma mudou, recusar ANTES de comandos, catálogo ou slots.
+        # Uma forma idêntica pode ser reutilizada, mas só após confirmação
+        # do catálogo. Se ele sumiu, aplicar o orçamento antes de mutações.
+        candidata_cache = not self.simulated and self._last_capture_signature == signature
+        if not candidata_cache:
+            self.verificar_orcamento_traces(len(trace_names))
+        reaproveitar = candidata_cache and self._trace_catalog_contains(trace_names)
+        if not reaproveitar:
+            self.verificar_orcamento_traces(len(trace_names))
+
         # ABORt aqui não desliga OUTPUT (a saída fica ligada durante toda a
         # bateria — ver energize_baseline()). Só reseta o sistema de trigger.
         self.write("ABORt")
@@ -1673,15 +1717,6 @@ class AmetekMX30:
         # ~1s por TRACE (~12-15s para 12 ciclos a 60 Hz), o custo recorrente
         # que se repetia mesmo sem nenhuma mudança de forma/tensão/frequência
         # (ex.: repetir o preflight de 5V várias vezes na mesma sessão da CLI).
-        signature = (
-            waveform.tobytes(), trace_names,
-            float(base_voltage_rms), float(frequency_hz), float(dc_offset_pu),
-        )
-        reaproveitar = (
-            not self.simulated
-            and self._last_capture_signature == signature
-            and self._trace_catalog_contains(trace_names)
-        )
         if reaproveitar:
             logger.info(
                 "TRACe idêntica à última programada nesta conexão (%d ciclos, "
@@ -1695,7 +1730,6 @@ class AmetekMX30:
 
             for index, name in enumerate(trace_names):
                 self.write(programacao.comando_trace(index))
-                self.escritas_trace += 1
                 # A transferência serial em 115200 baud na Rev. 5.53 pode deixar o buffer ocupado
                 # se checado imediatamente via SYST:ERR?. Limpamos com *CLS e aguardamos o processamento.
                 if not self.simulated:

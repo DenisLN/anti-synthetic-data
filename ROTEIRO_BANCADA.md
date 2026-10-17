@@ -119,7 +119,7 @@ $env:BENCH_MODE = "1"
 env\Scripts\python.exe scripts\diag_marcadores_trace.py --probe <FATOR escrito na probe> --vrms 127
 ```
 
-Digitar `ENERGIZAR-MARCADORES`. Padrão: 50 e 60 Hz, três variantes (`marcadores`, `fronteira`, `meio_ciclo`), 10 capturas, **110 gravações de TRACe** em uma conexão (abaixo de 250). Para dividir em duas rodadas: `--frequencias 50` e depois `--frequencias 60`. Só o par ponto 0 / meio ciclo: `--variantes fronteira,meio_ciclo`.
+Digitar `ENERGIZAR-MARCADORES`. Padrão: 50 e 60 Hz, três variantes (`marcadores`, `fronteira`, `meio_ciclo`), 10 capturas, **110 gravações de TRACe** em uma conexão (abaixo do orçamento de 216). Para dividir em duas rodadas: `--frequencias 50` e depois `--frequencias 60`. Só o par ponto 0 / meio ciclo: `--variantes fronteira,meio_ciclo`.
 
 Conferir (`logs\diag_marcadores_trace-*.md` e `.json`; `.log` e `-scpi.log` são para entregar):
 - por captura, o `k` tocado em cada ciclo e o deslocamento em ciclos; o atraso global em amostras;
@@ -130,7 +130,7 @@ Conferir (`logs\diag_marcadores_trace-*.md` e `.json`; `.log` e `-scpi.log` são
 Get-Content (Get-ChildItem logs\diag_marcadores_trace-*.md | Sort-Object LastWriteTime | Select-Object -Last 1).FullName
 ```
 
-Seguir se: terminou e identificou os marcadores. Se o script **recusar** antes de energizar (pico/rms acima do limite, mais de 250 TRACes): não contornar, entregar a mensagem. Se terminar mas **não reconhecer** os marcadores (a banda da fonte pode achatar a lombada de 24 amostras; limiares não calibrados): resultado inconclusivo, seguir (tabela, linha "Marcadores inconclusivos").
+Seguir se: terminou e identificou os marcadores. Se o script **recusar** antes de energizar (pico/rms acima do limite, mais de 216 TRACes): não contornar, entregar a mensagem. Se terminar mas **não reconhecer** os marcadores (a banda da fonte pode achatar a lombada de 24 amostras; limiares não calibrados): resultado inconclusivo, seguir (tabela, linha "Marcadores inconclusivos").
 Parar se: infraestrutura (seção 0). Tempo: 5 a 8 min com a definição das TRACes na Flash (~3 s cada nas primeiras 12) e as confirmações.
 
 ### Bloco 5. Amplitude CA em ACDC (energiza, script)
@@ -343,7 +343,7 @@ foreach ($c in "10","11","12","16") { Get-Content "$s\metadata\${c}_*.jsonl" -Er
 
 Conferência extra na 1.ª sessão com as classes 10, 11, 12 e 16 (o rms por ciclo da TRACe mudou, o `LIST:VOLTage` agora é o rms da componente CA e o pico previsto vem da TRACe enviada): `VMAX`/`VMIN` medidos (`pico_medido_v`, `vale_medido_v`) **não** devem passar de `extremo_previsto_v` (a previsão antiga subestimava até 38 % em degraus). Se algum passar mas ficar abaixo de 415,8 V: registrar e rodar `env\Scripts\python.exe scripts\recalibrar_extremos.py $s` (sem `--gravar`); acima de 415,8 V a bateria já aborta a classe.
 
-Seguir se: cada parte termina e os contadores ficam < 250. Parar se: infraestrutura (seção 0), ou `pico_medido_v`/`vale_medido_v` perto do teto de 415,8 V (achado de segurança: avisar antes de continuar).
+Seguir se: cada parte termina e os contadores ficam ≤ 216. Parar se: infraestrutura (seção 0), ou `pico_medido_v`/`vale_medido_v` perto do teto de 415,8 V (achado de segurança: avisar antes de continuar).
 
 ### Bloco 10. Entrega (seção 6)
 
@@ -403,11 +403,11 @@ Contas feitas rodando offline `_capturas_das_classes`/`capturas_efetivas_da_clas
 | 3 | `run 12-17` | `EXECUTAR-CLASSES-12-17` | 18 | **216** / 180 | 8,1 min (12,2) / 6,8 min (10,2) |
 | Total | | | 50 | 468 / 390 | 18,8 min (28,1) / 15,9 min (23,8) |
 
-Maior conexão: 216 gravações a 60 Hz (< 250). Sem a 19 (Bloco 5 recomendou): Parte 1 = `run 01-05,18,20`, 11 capturas. Sem a 08 (tabela): Parte 2 = `run 06-07,09-11` (`EXECUTAR-CLASSES-06-07,09-11`), 180 gravações. Sem 07/17: Parte 2 = `run 06,08-11`, Parte 3 = `run 12-16`.
+Maior conexão: 216 gravações a 60 Hz (≤ 216). Sem a 19 (Bloco 5 recomendou): Parte 1 = `run 01-05,18,20`, 11 capturas. Sem a 08 (tabela): Parte 2 = `run 06-07,09-11` (`EXECUTAR-CLASSES-06-07,09-11`), 180 gravações. Sem 07/17: Parte 2 = `run 06,08-11`, Parte 3 = `run 12-16`.
 
 ### 5.2 `set perfil todos`: 1116 gravações (60 Hz) / 930 (50 Hz) em 6 conexões
 
-Com `todos`, as classes que dependem do perfil (02, 03, 05, 06, 10 a 16, 20) rodam uma vez por perfil (norma, literatura, fronteira); as 8 que não dependem (01, 04, 07, 08, 09, 17, 18, 19) rodam **uma só vez**, sob `literatura`, e o metadata dos outros perfis aponta para a mesma captura. Um `run <lista>` percorre tudo numa conexão só, então a lista precisa caber em < 250 gravações: uma classe TRACe dependente de perfil custa 108 (60 Hz) / 90 (50 Hz).
+Com `todos`, as classes que dependem do perfil (02, 03, 05, 06, 10 a 16, 20) rodam uma vez por perfil (norma, literatura, fronteira); as 8 que não dependem (01, 04, 07, 08, 09, 17, 18, 19) rodam **uma só vez**, sob `literatura`, e o metadata dos outros perfis aponta para a mesma captura. Um `run <lista>` percorre tudo numa conexão só, então a lista precisa caber em ≤ 216 gravações: uma classe TRACe dependente de perfil custa 108 (60 Hz) / 90 (50 Hz).
 
 Digitar antes: `set perfil todos` (e conferir em `status`).
 
@@ -421,7 +421,7 @@ Digitar antes: `set perfil todos` (e conferir em `status`).
 | 6 | `run 07-09,20` | `EXECUTAR-CLASSES-07-09,20` | 18 | **216** / 180 | 8,1 (12,2) / 6,8 (10,2) |
 | Total | | | 110 | 1116 / 930 | 43,3 min (65,0) / 36,5 min (54,8) |
 
-Maior conexão: 216 gravações (< 250). Se alguma classe sair do plano (08, 07/17, 19), a soma só diminui; nenhuma combinação deste plano passa de 216. As partes 2 a 5 têm 2 classes dependentes de perfil (2 x 108); a 6 junta 3 classes de uma execução (36 cada) e a 20 (108). A 17 está na Parte 1 (nativas + 17: 36 gravações).
+Maior conexão: 216 gravações (≤ 216). Se alguma classe sair do plano (08, 07/17, 19), a soma só diminui; nenhuma combinação deste plano passa de 216. As partes 2 a 5 têm 2 classes dependentes de perfil (2 x 108); a 6 junta 3 classes de uma execução (36 cada) e a 20 (108). A 17 está na Parte 1 (nativas + 17: 36 gravações).
 
 A estimativa que a CLI imprime antes de cada confirmação (`TRACe: N gravações ...`) deve **bater** com a coluna "Gravações de TRACe" destas tabelas; se não bater, a CLI está vendo outra configuração (`set capturas` esquecido, perfil errado, frequência errada): cancelar (qualquer texto diferente da confirmação) e conferir `status`.
 

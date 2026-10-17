@@ -20,7 +20,7 @@ import relatorio_limites_bancada as referencia
 mestre = referencia.mestre
 perfis = referencia.perfis
 CONDICOES = ((127., 60.), (127., 50.), (230., 50.), (220., 60.), (33., 60.))
-ORCAMENTO_TRACE = 216
+ORCAMENTO_TRACE = mestre.LIMITE_ESCRITAS_TRACE_CONEXAO
 
 
 def agrupar_comandos(itens, orcamento=ORCAMENTO_TRACE):

@@ -6743,6 +6743,8 @@ class CliRecalibracaoEHtmlTests(unittest.TestCase):
                     mock.patch.object(self.sessao_cli, "_garantir_pasta_sessao"), \
                     mock.patch.object(self.sessao_cli, "autorizar_saida"), \
                     mock.patch.object(mestre, "SESSION_RESULTS_DIR", self.sessao), \
+                mock.patch.object(mestre, "scripts_da_bateria_fisica",
+                                  return_value=[p for p in mestre._experiment_scripts() if p.stem in ("01", "02")]), \
                     mock.patch.object(mestre.Bancada, "from_env", return_value=self._bancada_falsa(resultados)), \
                     mock.patch.object(self.sessao_cli, "_recalibrar_ao_fim") as recal, \
                     mock.patch.object(self.sessao_cli, "_gerar_html_ao_fim") as html:
@@ -6758,6 +6760,8 @@ class CliRecalibracaoEHtmlTests(unittest.TestCase):
                 mock.patch.object(self.sessao_cli, "_garantir_pasta_sessao"), \
                 mock.patch.object(self.sessao_cli, "autorizar_saida"), \
                 mock.patch.object(mestre, "SESSION_RESULTS_DIR", self.sessao), \
+                mock.patch.object(mestre, "scripts_da_bateria_fisica",
+                                  return_value=[p for p in mestre._experiment_scripts() if p.stem in ("01", "02")]), \
                 mock.patch.object(mestre.Bancada, "from_env",
                                   return_value=self._bancada_falsa(erro=mestre.CommunicationError("serial caiu"))), \
                 mock.patch.object(self.sessao_cli, "_recalibrar_ao_fim") as recal, \
@@ -6776,6 +6780,8 @@ class CliRecalibracaoEHtmlTests(unittest.TestCase):
                 mock.patch.object(self.sessao_cli, "_garantir_pasta_sessao"), \
                 mock.patch.object(self.sessao_cli, "autorizar_saida"), \
                 mock.patch.object(mestre, "SESSION_RESULTS_DIR", self.sessao), \
+                mock.patch.object(mestre, "scripts_da_bateria_fisica",
+                                  return_value=[p for p in mestre._experiment_scripts() if p.stem in ("01", "02")]), \
                 mock.patch.object(mestre.Bancada, "from_env", return_value=self._bancada_falsa(resultados)), \
                 mock.patch.object(self.sessao_cli, "_recalibrar_ao_fim", side_effect=RuntimeError("boom")), \
                 mock.patch.object(self.sessao_cli, "_gerar_html_ao_fim", side_effect=RuntimeError("boom")):
@@ -7198,8 +7204,10 @@ class RunListaTests(unittest.TestCase):
         self.assertEqual(codigo, 1)
         self.assertEqual(confirmar.call_args[0][1], "EXECUTAR-CLASSE-05")
 
-    def test_run_all_mantem_a_confirmacao_antiga(self):
-        with mock.patch.object(self.sessao, "confirmar", return_value=False) as confirmar:
+    def test_run_all_viavel_mantem_a_confirmacao_antiga(self):
+        with mock.patch.object(mestre, "scripts_da_bateria_fisica",
+                               return_value=[p for p in mestre._experiment_scripts() if p.stem in ("01", "02")]), \
+                mock.patch.object(self.sessao, "confirmar", return_value=False) as confirmar:
             codigo, _ = self._rodar(self.sessao.cmd_run, ["all"])
         self.assertEqual(codigo, 1)
         self.assertEqual(confirmar.call_args[0][1], "EXECUTAR-20-CLASSES")
@@ -7220,14 +7228,14 @@ class RunListaTests(unittest.TestCase):
         self.assertNotIn("  08  ", saida)
 
     def test_confirmacao_exige_a_lista_normalizada_case_sensitive(self):
-        recusadas = ("EXECUTAR-CLASSES-1-7,9-20", "executar-classes-01-07,09-20",
-                     "EXECUTAR-CLASSES-01-07,09-20 ", "EXECUTAR-CLASSE-01-07,09-20",
+        recusadas = ("EXECUTAR-CLASSES-1-3,5", "executar-classes-01-03,05",
+                     "EXECUTAR-CLASSES-01-03,05 ", "EXECUTAR-CLASSE-01-03,05",
                      "EXECUTAR-20-CLASSES", "")
         for resposta in recusadas:
             with self.subTest(resposta=resposta), \
                     mock.patch("builtins.input", return_value=resposta), \
                     mock.patch.object(mestre.Bancada, "from_env") as from_env:
-                codigo, saida = self._rodar(self.sessao.cmd_run, ["01-07,09-20"])
+                codigo, saida = self._rodar(self.sessao.cmd_run, ["01-03,05"])
                 self.assertEqual(codigo, 1)
                 self.assertIn("Cancelado", saida)
                 from_env.assert_not_called()
@@ -8846,7 +8854,7 @@ class NpzPorClasseTests(unittest.TestCase):
                 self.assertEqual(sessao.cmd_set(["perfil", "xyz"]), 1)
         self.assertIn("set perfil norma|literatura|fronteira|todos", cli.HELP_TEXT)
 
-    def test_confirmacao_do_run_all_soma_capturas_e_trace_dos_tres_perfis(self):
+    def test_resumo_dos_tres_perfis_preserva_contagem_e_recusa_excesso(self):
         import io
         from contextlib import redirect_stdout
         cli, sessao = self._cli()
@@ -8871,10 +8879,9 @@ class NpzPorClasseTests(unittest.TestCase):
         self.assertEqual(sum(i["total"] for _, _, i in linhas), sozinhos)
         self.assertEqual(sum(i["escritas_trace"] for _, _, i in linhas), escritas)
         self.assertTrue(all("por_perfil" in i for _, _, i in linhas))
-        aviso, esperado = mensagens[0]
-        self.assertEqual(esperado, "EXECUTAR-20-CLASSES")
-        self.assertIn(f"Planejadas: {sozinhos} capturas", aviso)
-        self.assertIn("norma, literatura, fronteira", aviso)
+        self.assertEqual(mensagens, [])  # O orçamento precede confirmação.
+        self.assertGreater(escritas, mestre.LIMITE_ESCRITAS_TRACE_CONEXAO)
+        aviso = sessao._aviso_escritas_trace(linhas)
         self.assertIn(f"{escritas} gravações", aviso)
         self.assertIn("capturas repetidas evitadas", aviso)
 

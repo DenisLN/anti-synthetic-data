@@ -22,6 +22,7 @@ from ametek_orm import (
     AmetekMX30, CommunicationError, FalhaFatalDeInstrumento, InstrumentHardwareError,
     LeituraTraceError, ParameterOutOfBoundsError, ProgramacaoCaptura,
 )
+from politica_traces import LIMITE_ESCRITAS_TRACE_CONEXAO, LimiteEscritasTraceError
 import perfis
 import sessao_io
 from sinais import (
@@ -1228,7 +1229,7 @@ class Bancada:
                 invalidas = getattr(experimento, "_capturas_invalidas_count", 0)
                 puladas = getattr(experimento, "_capturas_puladas_count", 0)
                 break
-            except (CommunicationError, FalhaFatalDeInstrumento):
+            except (CommunicationError, FalhaFatalDeInstrumento, LimiteEscritasTraceError):
                 logger.error(
                     "[%s] Falha de infraestrutura — abortando o restante da bateria", class_id
                 )
@@ -3241,7 +3242,7 @@ def _experiment_scripts() -> List[Path]:
 
 # Gravações de TRACe:DATA numa mesma conexão: a fonte travou na ~280.ª em
 # 2026-09-16 (``AmetekMX30.escritas_trace``). Não é limite do manual, é a
-# única referência medida — a CLI só AVISA quando a estimativa passa dela.
+# referência histórica; o orçamento operacional é menor e bloqueia a execução.
 ESCRITAS_TRACE_REFERENCIA_TRAVA = 280
 
 
@@ -3272,6 +3273,23 @@ def capturas_efetivas_da_classe(experimento_cls: type, config: Optional[Config] 
     }
 
 
+def estimar_escritas_trace_bateria(
+    scripts: Sequence[Path], config: Optional[Config] = None,
+    perfis_selecionados: Optional[Sequence[str]] = None,
+) -> int:
+    """Teto offline por conexão, contando somente perfis com aquisição própria."""
+    config = config or _build_config()
+    selecionados = tuple(perfis_selecionados or perfis_da_rodada())
+    total = 0
+    for script in scripts:
+        tipo = Bancada._carregar_classe_experimento(script)
+        for perfil, _ in perfis.plano_de_perfis(
+            script.stem, selecionados, config.sorteio_posicao,
+        ):
+            total += capturas_efetivas_da_classe(tipo, replace(config, perfil=perfil))["escritas_trace"]
+    return total
+
+
 def scripts_da_bateria_fisica() -> List[Path]:
     """Scripts do ``run all`` na bancada: todos menos ``BATERIA_EXCLUIR``
     (logado, nunca em silêncio)."""
@@ -3287,7 +3305,6 @@ def scripts_da_bateria_fisica() -> List[Path]:
 
 
 def main() -> int:
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     scripts = scripts_da_bateria_fisica() if BENCH_MODE else _experiment_scripts()
     logger.info(
         "Modo=%s; fs=%.0f Hz; pontos=%d; fundamental=%.1f Hz; tensão-base=%.3f Vrms",
@@ -3298,6 +3315,15 @@ def main() -> int:
         BASE_VOLTAGE_RMS,
     )
     try:
+        if BENCH_MODE:
+            escritas = estimar_escritas_trace_bateria(scripts)
+            if escritas > LIMITE_ESCRITAS_TRACE_CONEXAO:
+                raise LimiteEscritasTraceError(
+                    f"Bateria prevê até {escritas} gravações TRACe; orçamento por conexão "
+                    f"é {LIMITE_ESCRITAS_TRACE_CONEXAO}. Divida classes/capturas em conexões novas "
+                    "pela CLI; nenhum instrumento foi aberto."
+                )
+        RESULTS_DIR.mkdir(parents=True, exist_ok=True)
         with Bancada.from_env() as bancada:
             resultados = bancada.executar_bateria(scripts)
         falharam = [resultado for resultado in resultados if not resultado.ok]

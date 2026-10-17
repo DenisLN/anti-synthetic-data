@@ -31,7 +31,7 @@ Nenhum item é encerrado apenas por existir um script. Um fechamento de software
 | P-15 | Concluída — software | Limite padrão de três capturas por classe/perfil no HTML físico/simulado; seleções explícitas preservadas e leitura dos dados originais integral. Testes aprovados. |
 | P-18 | SINE integrado experimentalmente no checkout, desligado por padrão (`AMETEK_PASSO_FINAL_SIN=0`, `passo_final_sin=False`); validação física permanece pendente. |
 | P-20 | Preparar material de publicação sem inventar licença, autoria ou DOI. O fork não concede direitos de relicenciamento. |
-| P-23 | Campanha por partes do roteiro, até 216 gravações por conexão no plano padrão; recontar ao mudar configuração. Fechar CLI antes de scripts físicos que usam COM10. |
+| P-23 | Orçamento operacional de 216 gravações TRACe por conexão aplicado no CLI, entrada principal e ORM; inclui tentativas de envio incertas e comandos diretos. Esgotamento aborta a bateria sem retry. A causa física da trava continua aberta. |
 
 ## Responsabilidade e sequência
 
@@ -69,7 +69,7 @@ O coordenador integra código, registra baseline e revisa critérios de aceite. 
 | P-20 | Aberta — depende de direitos/publicação | Preparar congelamento, licença e autoria verificadas, citação e Zenodo após validação; não criar licença ou DOI fictícios. |
 | P-21 | Preparada / aguarda bancada | Calibrar condições novas antes de coleta científica e registrar origem dos fatores, sem elevar limites para acomodar classes. |
 | P-22 | Parcial — benchmark sintético entregue | `benchmark_sintetico.json` mede tempo/tamanho/tracemalloc para 3/10/30 capturas e verifica leitura/aliases. Falta medir dados físicos reais e custo no PC/disco da bancada. |
-| P-23 | Parcial — orientação corrigida | README/operação usam partes do roteiro ≤216 gravações no plano padrão e liberação de COM10; causa da trava continua dependente de diagnóstico real. |
+| P-23 | Parcial — proteção implementada | CLI e entrada principal recusam estimativas acima de 216 antes de abrir instrumentos; ORM verifica a captura inteira e conta tentativas cumulativas, inclusive comandos diretos e falhas de envio. Cache confirmado não consome novas gravações. Esgotamento aborta a bateria sem retry. Causa física da trava ainda depende de diagnóstico real. |
 | P-24 | Concluída — revisão e build local | Referências atuais por símbolos/25 `pyobject` validados AST; 1136 citações históricas fixadas por permalink SHA; B8 e contagens corrigidos; build Sphinx estrito aprovado e tabelas P-03/decisões verificadas no HTML. Publicação remota do site não é afirmada. |
 | P-25 | Concluída — decisão editorial | Removidos identificadores `spec NN` das páginas operacionais atuais; aceitas renomeação local e manutenção do texto `uso_limite_bancada` sem alterar o JSON/hash. Mantidos histórico fechado e termos de governança em AGENTS por decisão explícita. |
 | P-26 | Preparada / aguarda operador | Registrar antes da coleta perfil/frequência/tensão e escopo ACDC opcional 230 V; resolver essa exceção ao roteiro de 127 V antes de executá-la. |
