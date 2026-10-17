@@ -23,7 +23,7 @@ Cada captura tem 200 ms = 6000 amostras a 30 kSa/s, em pu do pico nominal, com r
 cd C:\Users\denis\TCC\code
 scripts\START_BENCH.cmd      # pergunta fator da probe, tensão e frequência; abre a CLI "bancada>"
 ```
-Dentro da CLI: `help`; sequência recomendada `comm` → `trigger` → `native` → `run all`. Cada comando que energiza a saída pede uma string digitada (case-sensitive). **Leia [`docs/operacao.md`](docs/operacao.md) antes de energizar qualquer coisa.**
+Dentro da CLI: `help`; sequência recomendada `comm` → `trigger` → `native` → listas por conexão conforme [`ROTEIRO_BANCADA.md`](ROTEIRO_BANCADA.md) (até 216 gravações de TRACe no plano padrão). Cada comando que energiza a saída pede uma string digitada (case-sensitive). **Leia [`docs/operacao.md`](docs/operacao.md) antes de energizar qualquer coisa.**
 
 ## Segurança (resumo; regras completas em [`AGENTS.md`](AGENTS.md))
 - Porta `COM10` e `115200` baud fixas; limites de software 300 Vrms e 415,8 Vp (hardware: 300 Vrms por fase, 425 Vp); tensão de teste ≤ 270 V fase-neutro (380 V é recusado).
@@ -36,6 +36,7 @@ Dentro da CLI: `help`; sequência recomendada `comm` → `trigger` → `native` 
 |---|---|
 | [`AGENTS.md`](AGENTS.md) | regras para agentes de IA e limites inegociáveis; como escrever mudanças e versionar |
 | [`docs/arquitetura.md`](docs/arquitetura.md) | mapa de arquivos, componentes, fluxos (bateria, captura), camadas de segurança, scripts |
+| [`docs/execucao_pendencias.md`](docs/execucao_pendencias.md) | plano de execução P-01 a P-31, decisões atuais, evidências e bloqueios |
 | [`docs/operacao.md`](docs/operacao.md) | ligação física, `START_BENCH`, todos os comandos da CLI, falhas, depois da sessão, relatório HTML e recalibração ao fim do run (§9) |
 | [`docs/configuracao.md`](docs/configuracao.md) | todas as variáveis de ambiente, validações de configuração |
 | [`docs/limites_e_calibracao.md`](docs/limites_e_calibracao.md) | pré-validação de pico, limite de bancada, fatores de extremo por condição, 220/380 V |

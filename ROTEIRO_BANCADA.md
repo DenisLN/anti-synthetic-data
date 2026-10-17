@@ -10,6 +10,7 @@ Este roteiro foi escrito sem acesso à bancada. Todo comando e toda confirmaçã
 - **Confirmações digitadas, case-sensitive, nunca automatizadas**: `ENERGIZAR-TESTE`, `ENERGIZAR-COMANDOS`, `EXECUTAR-CLASSE-<NN>`, `EXECUTAR-CLASSES-<lista normalizada>`, `EXECUTAR-20-CLASSES` (não usada hoje), `ENERGIZAR-MARCADORES`, `ENERGIZAR-ACDC`. Antes de digitar: probe, cabos, E-stop, EUT, **disjuntores entre a fonte e a probe fechados**.
 - **Captura de corrente desligada** (`CAPTURE_CURRENT=0`). Não ativar.
 - **Tensão do dia: 127 V.** Sem 220/380 V. Frequências: sessão A em **50 Hz** (diagnóstico da 08/09), sessão B em **60 Hz** (campanha).
+- **Antes de scripts `diag_*` que acessam instrumentos, sair da CLI com `quit` e confirmar OUTPUT OFF**; COM10 é exclusiva. Scripts offline de análise não abrem instrumentos.
 - **Uma conexão com a fonte = um comando `run`**. A fonte travou na ~280.ª gravação de TRACe de uma conexão (2026-09-16); neste roteiro nenhuma conexão passa de 216 gravações. `run all` (468 gravações a 60 Hz) **não** é usado.
 - **Toda sessão de coleta sai de commit limpo** e a CLI é reiniciada depois de commitar (o metadata grava `git_commit`/`git_sujo`).
 - **Falha de infraestrutura** (porta serial caiu, `CommunicationError`, impossível confirmar OUTPUT, `FalhaFatalDeInstrumento`, `CadeiaDeMedicaoError`): 1) confirmar fisicamente **OUTPUT OFF** no painel da AMETEK; 2) **não repetir** automaticamente; 3) entregar `sessao.log` e `scpi_transcricao.log` da pasta `resultados\sessao_<timestamp>[_runNN]` mais recente (para `run`), ou `logs\preflight_new-*.log` mais recente (para `comm`/`trigger`/`lowvoltage`/`native`), ou `logs\diag_*-*.log` e `-scpi.log` (scripts `diag_*`); 4) nunca remover validação de IDN, timeout, 6000 pontos ou SCPI. Falha de **experimento** (RMS fora de tolerância, captura inválida) não é infraestrutura: a bateria isola e segue.
@@ -55,13 +56,13 @@ env\Scripts\python.exe -m unittest tests.test_offline
 (Se `env\` ainda não existe: `scripts\setup_windows.ps1`; o `START_BENCH` também o cria.)
 
 Conferir:
-- `git log` mostra este roteiro (`ROTEIRO_BANCADA.md` existe na raiz) e o commit da crista com o fator calibrado (spec 26).
-- `git status` sem **nenhuma alteração rastreada** (arquivos novos não rastreados não contam como "sujo", mas commite-os também).
-- A suíte termina em `OK` com **0 falhas e 0 pulados** (no Linux eram 2 pulados: os SHA-256 exatos; no Windows eles rodam). Tempo da suíte: medido no Linux, 497 testes em ~68 s; no Windows não medido (estimar 1 a 3 min).
+- `git log` mostra este roteiro (`ROTEIRO_BANCADA.md` existe na raiz) e o commit da crista com o fator calibrado .
+- `git status` sem alterações rastreadas nem arquivos novos não ignorados nas pastas `mestre.PASTAS_DO_CODIGO`; `info_do_codigo` recalcula esse estado a cada pasta de sessão. Arquivos novos fora dessas pastas não contam para `git_sujo`.
+- A suíte termina em `OK` com **0 falhas e 0 pulados** (no Linux eram 2 pulados: os SHA-256 exatos; no Windows eles rodam). A baseline contém 497 métodos identificados estaticamente; novos testes podem aumentar o total. Rodar também `.\env\Scripts\python.exe -m unittest discover -s tests -p "test*.py" -v`, registrar total/tempo/versões/SHA e justificar qualquer skip; não usar a contagem histórica como prova de execução.
 - Conferência física: probe diferencial no CH1 entre fase A e neutro, fator **lido na probe**; BNC AMETEK Trigger Out -> Keysight EXT Trigger; USB da AMETEK conectado e **DB9 RS-232 desconectado**; MX GUI **fechado**; disjuntores fechados; E-stop ao alcance; EUT conectado; OUTPUT OFF no painel.
 
 Seguir se: suíte `OK`, 0 falhas, 0 pulados, árvore limpa.
-Parar se: algum teste de **assinatura portável** falhar (a causa não seria só o último bit de `np.sin`): entregar a saída completa, anotar `numpy` (`env\Scripts\python.exe -c "import numpy; print(numpy.__version__)"`) e **não coletar** até analisar. Se falharem **só** os 2 testes `*_exato_na_plataforma_de_origem` (SHA-256), pode coletar, mas entregar a saída: o `gerar()` do Windows difere do que gerou os hashes. Árvore suja: commitar ou descartar a causa antes de qualquer sessão.
+Parar se: algum teste de **assinatura portável** falhar (a causa não seria só o último bit de `np.sin`): entregar a saída completa, anotar `numpy` (`env\Scripts\python.exe -c "import numpy; print(numpy.__version__)"`) e **não coletar** até analisar. Se falharem **só** os testes `*_exato_na_plataforma_de_origem` (SHA-256), registrar plataforma, Python/numpy e saída completa para diagnóstico antes de coletar; não considerar uma falha de fixture como autorização automática para coleta. Árvore suja: commitar ou descartar a causa antes de qualquer sessão.
 
 ### Bloco 2. Infraestrutura na CLI, sessão A (127 V / 50 Hz)
 
@@ -315,11 +316,11 @@ Conferir (critérios propostos, **sem dado de bancada**, os limiares do verifica
 
 | Item | Onde | Aprovado se |
 |---|---|---|
-| 18: continuidade de fase (57 -> 63 Hz) | linha `fase_18` do verificador | `|salto|` <= 10 graus; f1/f2 medidas a <= 0,2 Hz de `start_hz`/`end_hz`; `intersecao_ms` perto de 0 (salto grande com `intersecao_ms` ≈ 0 = a fase saltou; com `intersecao_ms` longe de 0 = a troca foi fora do meio, fase contínua) |
+| 18: continuidade de fase (57 -> 63 Hz) | linha `fase_18` do verificador | `\|salto\|` <= 10 graus; f1/f2 medidas a <= 0,2 Hz de `start_hz`/`end_hz`; `intersecao_ms` perto de 0 (salto grande com `intersecao_ms` ≈ 0 = a fase saltou; com `intersecao_ms` longe de 0 = a troca foi fora do meio, fase contínua) |
 | 18: frequência base restaurada | `Select-String ... FREQuency` | `SOURce:FREQuency <base>` escrito depois da lista e sem erro `-2xx`; a classe seguinte (19) com `validacao_fisica.ok` |
-| 02/03/04: largura do PULSe | linhas `largura_pulse` + `PULSe:WIDTh` | `|erro|` <= 2 ms em todas; readback igual ao escrito; sem erro SCPI. Erro sistemático (largura saturada) = limite de resolução do comando |
-| Pré-trigger | linhas `pre_trigger` | `|desvio|` <= 2 amostras em todas (o mesmo limite do aviso do mestre); desvio constante = viés de `TIMebase:POSition` (registrar) |
-| Disparo em fase (01, 05, 18, 19) | `analisar_sessao` | `|lag|` < 0,2 ms e correlação >= 0,99; fase ignorada aparece como correlação baixa ou lag de fração de ciclo (a 60 Hz, 1 grau ≈ 46 µs) |
+| 02/03/04: largura do PULSe | linhas `largura_pulse` + `PULSe:WIDTh` | `\|erro\|` <= 2 ms em todas; readback igual ao escrito; sem erro SCPI. Erro sistemático (largura saturada) = limite de resolução do comando |
+| Pré-trigger | linhas `pre_trigger` | `\|desvio\|` <= 2 amostras em todas (o mesmo limite do aviso do mestre); desvio constante = viés de `TIMebase:POSition` (registrar) |
+| Disparo em fase (01, 05, 18, 19) | `analisar_sessao` | `\|lag\|` < 0,2 ms e correlação >= 0,99; fase ignorada aparece como correlação baixa ou lag de fração de ciclo (a 60 Hz, 1 grau ≈ 46 µs) |
 | 05: a CSINusoid preserva o rms | `validacao_fisica.envelope_mediana_medida` de `05_*` | 0,7071 +- 0,01 e THD medido dentro de 20 % do pedido; ~0,72 invalida a premissa do modelo |
 | 19 (se coletada): CA, CC | `analisar_sessao`, `validacao_fisica` de `19_*` | CA conforme o Bloco 5 (déficit conhecido); sem queda a 0 V entre capturas (`MODE ACDC` reenviado a cada captura é inócuo) |
 
@@ -340,7 +341,7 @@ Get-Content "$s\metadata\*.jsonl" | ForEach-Object { ($_ | ConvertFrom-Json).esc
 foreach ($c in "10","11","12","16") { Get-Content "$s\metadata\${c}_*.jsonl" -ErrorAction SilentlyContinue | ForEach-Object { $j = $_ | ConvertFrom-Json; "{0} ok={1} pico={2} vale={3} previsto={4}" -f $j.id_captura,$j.validacao_fisica.ok,$j.pico_medido_v,$j.vale_medido_v,$j.extremo_previsto_v } }
 ```
 
-Conferência extra na 1.ª sessão com as classes 10, 11, 12 e 16 (o rms por ciclo da TRACe mudou, spec 11: o `LIST:VOLTage` agora é o rms da componente CA e o pico previsto vem da TRACe enviada): `VMAX`/`VMIN` medidos (`pico_medido_v`, `vale_medido_v`) **não** devem passar de `extremo_previsto_v` (a previsão antiga subestimava até 38 % em degraus). Se algum passar mas ficar abaixo de 415,8 V: registrar e rodar `env\Scripts\python.exe scripts\recalibrar_extremos.py $s` (sem `--gravar`); acima de 415,8 V a bateria já aborta a classe.
+Conferência extra na 1.ª sessão com as classes 10, 11, 12 e 16 (o rms por ciclo da TRACe mudou, o `LIST:VOLTage` agora é o rms da componente CA e o pico previsto vem da TRACe enviada): `VMAX`/`VMIN` medidos (`pico_medido_v`, `vale_medido_v`) **não** devem passar de `extremo_previsto_v` (a previsão antiga subestimava até 38 % em degraus). Se algum passar mas ficar abaixo de 415,8 V: registrar e rodar `env\Scripts\python.exe scripts\recalibrar_extremos.py $s` (sem `--gravar`); acima de 415,8 V a bateria já aborta a classe.
 
 Seguir se: cada parte termina e os contadores ficam < 250. Parar se: infraestrutura (seção 0), ou `pico_medido_v`/`vale_medido_v` perto do teto de 415,8 V (achado de segurança: avisar antes de continuar).
 
@@ -377,7 +378,7 @@ Convenção: "proposta" é a recomendação deste roteiro; a decisão final é d
 | 07/17 | 1.ª rodada já `ok=True` (a fonte atenuou os entalhes menos que o modelo) | Fatores calibrados bastam | A recalibração pode não mudar nada (`git diff` vazio, nenhum commit necessário); seguir |
 | 07/17 | 2.ª rodada ainda reprova por crista (acima de crista x fator x 1,1) | O fator recalibrado ainda não cobre | Não afrouxar tolerância (fora de autorização). Tirar 07 e 17 da campanha (`06,08-11` e `12-16`); entregar as sessões; decisão de tolerância própria por classe fica para depois do dia |
 | 07/17 | Reprova por THD ou envelope | Achado novo (a fonte atenua os entalhes) | Mesmo tratamento: sem 07/17 na campanha, entregar |
-| 07/17 | `max(|pico|,|vale|)` perto de 415,8 V ou maior que `extremo_previsto_v` por margem grande | Previsão de pico insuficiente | Parar 07/17; recalibrar; avisar antes de 220/380 V |
+| 07/17 | `max(\|pico\|,\|vale\|)` perto de 415,8 V ou maior que `extremo_previsto_v` por margem grande | Previsão de pico insuficiente | Parar 07/17; recalibrar; avisar antes de 220/380 V |
 | Suíte no Windows (Bloco 1) | 0 falhas, 0 pulados | Fixtures portáveis valem no Windows | Seguir |
 | Suíte no Windows | Falha de assinatura portável | Diferença maior que o último bit de `np.sin` | Não coletar; entregar a saída |
 | Rms por ciclo (Parte 2/3) | `pico_medido_v`/`vale_medido_v` das 10/11/12/16 maiores que `extremo_previsto_v` | Previsão ainda subestima | Seguir se < 415,8 V; registrar; recalibrar depois da parte |

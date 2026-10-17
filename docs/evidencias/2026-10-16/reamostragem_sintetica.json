@@ -1,0 +1,60 @@
+{
+  "fs_bruto_hz": 120000.00000001321,
+  "fs_salvo_hz": 30000.0,
+  "amostras_brutas": 12000,
+  "amostras_salvas": 3000,
+  "bruto": {
+    "rms_v": 0.7288689868556623,
+    "pico_absoluto_v": 1.2165063509461924
+  },
+  "filtro": {
+    "tipo": "FIR sinc / janela Hamming, ganho DC 1",
+    "taps": 257,
+    "corte_hz": 13500.0,
+    "bordas": "reflexão",
+    "margem_descartada_por_borda_amostras": 33,
+    "meia_janela_s": 0.0010666666666665492
+  },
+  "espectro_bruto": {
+    "metodo": "DFT retangular unilateral com pesos de Parseval; inclui DC",
+    "energia_acima_nyquist_v2": 0.03125000000000002,
+    "fracao_acima_nyquist": 0.058823529411764795
+  },
+  "registro_completo": {
+    "interp": {
+      "rms_v": 0.7288689868556628,
+      "pico_absoluto_v": 1.2165063509461924
+    },
+    "fir_interp": {
+      "rms_v": 0.7070799715159163,
+      "pico_absoluto_v": 1.000054995056273
+    },
+    "erro_rms_v": 0.17671846621266915,
+    "erro_maximo_v": 0.23413013167491034,
+    "correlacao": 0.9701624719619071
+  },
+  "interior_sem_bordas": {
+    "interp": {
+      "rms_v": 0.7356707391926458,
+      "pico_absoluto_v": 1.2165063509461924
+    },
+    "fir_interp": {
+      "rms_v": 0.7141120669394851,
+      "pico_absoluto_v": 1.000054995056273
+    },
+    "erro_rms_v": 0.17669574752270673,
+    "erro_maximo_v": 0.2164513558900787,
+    "correlacao": 0.9707275789762984
+  },
+  "limitacoes": [
+    "FIR é referência offline; não é verdade física nem correção aprovada do ORM.",
+    "Reflexão afeta bordas; métricas do interior excluem meia janela do FIR.",
+    "Transientes dentro do registro também são suavizados; examine sua forma e duração.",
+    "Energia acima do Nyquist usa DFT retangular, sujeita a vazamento espectral.",
+    "Rejeição depende dos taps e da razão de taxas; confira a banda de transição."
+  ],
+  "fonte": {
+    "tipo": "sintetica_nao_fisica",
+    "descricao": "60 Hz + 0,25 × 20 kHz, 120 kSa/s"
+  }
+}

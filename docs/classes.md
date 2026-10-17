@@ -1,8 +1,8 @@
 # As 20 classes de distúrbio
 
-Especificação original: `experimentos.txt`. Este documento descreve o que o **código atual** (commit `d37e403`) faz. Faixas por perfil: `docs/perfis.md`. Como criar uma classe: `docs/estender.md`.
+Especificação original: `experimentos.txt`. Referências revisadas por símbolos sobre a baseline `fa82f496`; mudanças em execução e seus limites estão em `docs/execucao_pendencias.md`. Os números físicos históricos abaixo não foram medidos novamente nesta revisão. Faixas por perfil: `docs/perfis.md`. Como criar uma classe: `docs/estender.md`.
 
-Todas geram 200 ms = 6000 amostras a 30 kSa/s, em pu, por `gerar(t, f0, capture_index, rng)` (`ExperimentoBase.gerar`, `mestre.py:1495`). No **simulado** só `gerar()` importa. Na **bancada** a classe é **nativa** (a fonte produz o distúrbio com um recurso próprio) ou **waveform** (o Python calcula a forma, a fonte a toca por TRACe/LIST).
+Todas geram 200 ms = 6000 amostras a 30 kSa/s, em pu, por `gerar(t, f0, capture_index, rng)` (`ExperimentoBase.gerar`, `logica/mestre.py`, `ExperimentoBase.gerar`). No **simulado** só `gerar()` importa. Na **bancada** a classe é **nativa** (a fonte produz o distúrbio com um recurso próprio) ou **waveform** (o Python calcula a forma, a fonte a toca por TRACe/LIST).
 
 ## 1. Tabela
 
@@ -33,8 +33,9 @@ Todas geram 200 ms = 6000 amostras a 30 kSa/s, em pu, por `gerar(t, f0, capture_
 
 Fontes: arquivos das classes; `capturas_padrao` e sorteio conferidos por leitura (`experimentos_*/NN.py`) e por `capturas_efetivas_da_classe` (50 capturas planejadas com os padrões). As compostas 10–16 sorteiam os parâmetros listados com `perfis.composto` quando o sorteio está ligado; desligado valem os valores fixos de `docs/perfis.md`.
 
+(sorteio-de-posicao)=
 ### Onde o código difere de `experimentos.txt`
-- Início/duração: a especificação fixa 60 ms / 60 ms (80 ms nas 08/09); com o sorteio ligado eles são sorteados (`sortear_posicao`, `mestre.py:810`: início ≥ 1 ciclo da borda, duração de ½ ciclo até 200 ms − 2 ciclos, fase U(0°, 360°) em passos de 0,1°). `set sorteio off` reproduz as posições fixas.
+- Início/duração: a especificação fixa 60 ms / 60 ms (80 ms nas 08/09); com o sorteio ligado eles são sorteados (`sortear_posicao`, `logica/mestre.py`, `sortear_posicao`: início ≥ 1 ciclo da borda, duração de ½ ciclo até 200 ms − 2 ciclos, fase U(0°, 360°) em passos de 0,1°). `set sorteio off` reproduz as posições fixas.
 - 05: o modelo dos níveis ≤ 20 % é a senoide clipada normalizada por rms (`sinais.senoide_clipada_pu`), não a soma de harmônicas; só o nível por TRACe (30 %) usa a soma 3ª/5ª/7ª.
 - 07 e 17: entalhes em **todos** os ciclos da janela (IEEE 1159-2019, 4.4.5.4), não só 4 ciclos a partir de 60 ms.
 - 18: rampa f0 ± 3 Hz (47 → 53 Hz a 50 Hz); sorteio desligado: 57 → 63 Hz.
@@ -44,11 +45,11 @@ Fontes: arquivos das classes; `capturas_padrao` e sorteio conferidos por leitura
 
 ## 2. Capturas por classe na bancada
 
-Número que roda = `max(set capturas N ou REAL_CAPTURES_PER_CLASS, capturas_padrao da classe)`, **por nível** nas classes com níveis (02, 03, 05) (`Config.capturas`, `mestre.py:730`; `dimensionar_capturas`, `:1517`). Padrão 3 nas classes cujo `gerar()` sorteia parâmetros: **04, 06–17, 19, 20**; padrão 1 nas demais (01, 02, 03, 05, 18). Com os padrões: 50 capturas planejadas.
+Número que roda = `max(set capturas N ou REAL_CAPTURES_PER_CLASS, capturas_padrao da classe)`, **por nível** nas classes com níveis (02, 03, 05) (`Config.capturas`, `logica/mestre.py`, `Config.capturas` e `ExperimentoBase.dimensionar_capturas`). Padrão 3 nas classes cujo `gerar()` sorteia parâmetros: **04, 06–17, 19, 20**; padrão 1 nas demais (01, 02, 03, 05, 18). Com os padrões: 50 capturas planejadas.
 
-Sem `set capturas` as capturas padrão sorteiam (a 08 aplica o impulso máximo seguro em todas). Com `set capturas` (qualquer N), 04/06/09/19 cobrem o intervalo do parâmetro com `linspace` (`sinais.valor_para_captura`, `sinais.py:24`) e a 08 faz a rampa de caracterização sobre o total efetivo.
+Sem `set capturas` as capturas padrão sorteiam (a 08 aplica o impulso máximo seguro em todas). Com `set capturas` (qualquer N), 04/06/09/19 cobrem o intervalo do parâmetro com `linspace` (`sinais.valor_para_captura`, `logica/sinais.py`, `valor_para_captura`) e a 08 faz a rampa de caracterização sobre o total efetivo.
 
-Seed da captura: `BASE_SEED + int(id) × 1 000 000 + indice_global` (`mestre.py:1536-1540`). 04 e 19 repetem essa conta em `configurar()` com o id fixo (`base_seed + 4_000_000 + capture_index`, `04.py:36`; `19_000_000`, `19.py:32`) — só vale porque nessas classes `capture_index == indice_global`.
+Seed da captura: `BASE_SEED + int(id) × 1 000 000 + indice_global` (`logica/mestre.py`, `ExperimentoBase.seed_da_captura`). 04 e 19 repetem essa conta em `configurar()` com o id fixo (`base_seed + 4_000_000 + capture_index`, `experimentos_nativos/04.py`, `configurar`; `19_000_000`, `experimentos_nativos/19.py`, `configurar`) — só vale porque nessas classes `capture_index == indice_global`.
 
 ## 3. Classe 08: impulso filtrado pela fonte
 
@@ -57,11 +58,11 @@ O modelo (`gerar()`) é um impulso unidirecional de 5 a 10 pu somado à senoide,
 2. **Velocidade**: o datasheet dá 200 µs para 10–90 % do fundo de escala; o impulso de 50 µs acaba antes da subida. Mede-se a resposta do amplificador ao degrau.
 3. **Representação**: cada TRACe tem 1024 pontos por ciclo (19,5 µs a 50 Hz); o impulso ocupa 3–4 pontos.
 
-Posição: 80 ms (60 Hz). A 50 Hz o 80 ms cai na fronteira de ciclo e a fonte tocou o impulso a 100 ms (3 capturas de 07/10); com o sorteio ligado o impulso vai para 90 ms (meio do mesmo ciclo), nunca a menos de 30 amostras (1 ms) de uma fronteira (`08.py:34,81-98`). A validação física confere que o maior desvio da senoide está a ≤ 10 amostras do início previsto (`conferir_posicao_do_evento`, `08.py:180`); senão a captura é marcada inválida. Mecanismo do deslocamento: **NÃO VERIFICADO** (`arquivo/analises:docs/analise-2026-10-12/pendente/classe08_fronteira_REVISAR.md`). A 08 fica fora do sorteio de posição/fase porque o sobressinal foi calibrado para um ponto de partida.
+Posição: 80 ms (60 Hz). A 50 Hz o 80 ms cai na fronteira de ciclo e a fonte tocou o impulso a 100 ms (3 capturas de 07/10); com o sorteio ligado o impulso vai para 90 ms (meio do mesmo ciclo), nunca a menos de 30 amostras (1 ms) de uma fronteira (`experimentos_waveform/08.py`, `gerar` e `forma_para_bancada`). A validação física confere que o maior desvio da senoide está a ≤ 10 amostras do início previsto (`conferir_posicao_do_evento`, `experimentos_waveform/08.py`, `conferir_posicao_do_evento`); senão a captura é marcada inválida. Mecanismo do deslocamento: **NÃO VERIFICADO** (`arquivo/analises:docs/analise-2026-10-12/pendente/classe08_fronteira_REVISAR.md`). A 08 fica fora do sorteio de posição/fase porque o sobressinal foi calibrado para um ponto de partida.
 
 ## 4. Classe 05 e o teto do CSINusoid
 
-`MAX_CSINE_THD_PCT = 20` (`ametek_orm.py:156`). Perfil `literatura`: 5/10/15/20 % por CSINusoid e 30 % por TRACe (`usar_trace`, `05.py:69`). Perfil `norma`: todos ≤ 20 %, todos por CSINusoid. O nível de 2 % e o rms da CSINusoid interna **não foram verificados na bancada**.
+`MAX_CSINE_THD_PCT = 20` (`logica/ametek_orm.py`, `MAX_CSINE_THD_PCT`). Perfil `literatura`: 5/10/15/20 % por CSINusoid e 30 % por TRACe (`usar_trace`, `experimentos_nativos/05.py`, `usar_trace`). Perfil `norma`: todos ≤ 20 %, todos por CSINusoid. O nível de 2 % e o rms da CSINusoid interna **não foram verificados na bancada**.
 
 ### Nível de 30 % da 05 (por TRACe): rms e fundamental
 
@@ -74,3 +75,28 @@ Na TRACe/LIST cada ciclo é uma TRACe de média zero (a fonte remove o component
 ## 6. Classe 09 e o impulso em 100 ms
 
 `diag_ciclos_trace.py` e `modelo_lista_fonte.py` aceitam a 09 sorteada (teste sintético `PendentesCorrelacaoDisturbioTests`). Com início sorteado, 100 ms cai dentro do evento rotulado em ~18 % das capturas. Mecanismo da cópia: **NÃO VERIFICADO** (`docs/quirks.md` A25).
+
+```{toctree}
+:hidden:
+
+classes/01-normal
+classes/02-sag
+classes/03-swell
+classes/04-interruption
+classes/05-harmonics
+classes/06-flicker
+classes/07-notch
+classes/08-transient
+classes/09-oscillatory-transient
+classes/10-sag-harmonics
+classes/11-sag-flicker
+classes/12-sag-oscillatory-transient
+classes/13-swell-harmonics
+classes/14-swell-oscillatory-transient
+classes/15-harmonics-flicker
+classes/16-interruption-harmonics
+classes/17-notch-oscillatory-transient
+classes/18-frequency-drift
+classes/19-dc-offset
+classes/20-interharmonics
+```

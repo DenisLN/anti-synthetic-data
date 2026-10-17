@@ -1,0 +1,8 @@
+{
+  "comando": "sphinx-build -W -n --keep-going -b html docs <saida>",
+  "resultado": "build succeeded",
+  "exit_code": 0,
+  "log": "build_documentacao.log",
+  "sha256_log": "ad76693c50b43d8c9f96bcca95e425d30efd36f1eecd7781efb99e13d173b248",
+  "publicado": false
+}

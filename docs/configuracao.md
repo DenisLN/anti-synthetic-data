@@ -43,7 +43,7 @@ Valores booleanos aceitos: `1/true/yes/on` e `0/false/no/off` (`env_bool`, `mest
 | `MARGEM_ANTES_S`, `MARGEM_DEPOIS_S` | `0.020`, `0.050` | folga de captura física; **não reduzir** sem refazer a medida (`mestre.py:2004-2022`) |
 | `VALIDACAO_FISICA` | `1` | liga a validação pós-captura |
 | `VALIDACAO_TOL_ENVELOPE`, `VALIDACAO_TOL_THD` | `0.15`, `0.20` | tolerâncias da validação |
-| `BATERIA_EXCLUIR` | vazio | ids separados por vírgula que o `run all` físico pula (ex.: `08`); `run <NN>` ainda roda |
+| `BATERIA_EXCLUIR` | vazio | ids separados por vírgula que `run all` e `run <lista>` físicos excluem antes da confirmação (ex.: `08`); `run <NN>` isolado ainda roda |
 | `DIAGNOSTICO_RETRIEVE_ESPERA_S` | `2.0` | espera mínima (s) entre a última escrita de TRACe e a leitura de `set diagnostico retrieve`; abaixo de 2 s avisa (quirk A2; `docs/diagnostico.md` §1.1). O liga/desliga é o comando `set diagnostico retrieve`, desligado por padrão |
 | `DIAGNOSTICO_ABRIR_TERMINAL` | `1` | `0`/`false`/`off`/`no` impede `set diagnostico on` de abrir a janela de `tail -f` |
 
@@ -57,4 +57,4 @@ Dentro do ORM, uma segunda barreira (`configure_safe_baseline`, `ametek_orm.py:1
 
 ## Variáveis que NÃO existem na `main`
 
-`AMETEK_PASSO_FINAL_SIN` pertence ao branch `feat/passo-final-sin` (PR #3, **pendente de validação na bancada**, não mesclado). Não use nem documente como existente na `main`.
+`AMETEK_PASSO_FINAL_SIN=0` é o padrão atual: passo final SINE experimental integrado ao checkout de execução, desligado até validação física (P-18). `1` habilita o passo extra na lista; não habilitar automaticamente durante coleta. Ver `docs/projeto/passo-final-sin.md`.

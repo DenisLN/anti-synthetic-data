@@ -1,5 +1,8 @@
 # Decisões de projeto (registro)
 
+Decisões atualizadas para a execução P-01–P-31 estão em [`execucao_pendencias.md`](execucao_pendencias.md). Em particular, exclusões em listas (P-14), limite de três capturas no HTML físico (P-15) e direções P-09/P-11/P-12 prevalecem sobre escolhas anteriores conflitantes. A tabela abaixo preserva a motivação histórica e não é prova de nova validação física.
+
+
 Por que o código é como é. Cada linha: decisão, motivo, onde está, fonte. As datas e versões são as do `CHANGELOG/`. Princípio geral do projeto: **validar (read-back, logs, testes) em vez de contornar** (sleeps maiores, retries, margens grandes) — ver `AGENTS.md`.
 
 ## Arquitetura e dados
@@ -62,5 +65,5 @@ Por que o código é como é. Cada linha: decisão, motivo, onde está, fonte. A
 | Não reduzir a margem de captura sem refazer a medida | `mestre.py:2019-2022` | — |
 | Modo Digitizer do osciloscópio descartado | não entrega 36 000 pontos | `oscilloscope_orm.py:276-284` |
 | 08: teto de 0,9 × `max_peak_v` e medida de pico obrigatória | a saída oscila além do programado | `08.py:63-69` |
-| Crista da validação física = crista do modelo × fator de extremo calibrado (aceita `[×0,9, ×fator×1,1]`) | a fonte toca a cada entalhe de 0,1 ms e o pico do ciclo mediano sobe (spec 20: +31 a +59 %); decisão de projeto (2026-10-13): usar a calibração em vez de afrouxar a tolerância; a calibração já mede o sobressinal por classe e condição. Bilateral porque a fonte pode tocar menos que o máximo calibrado | `mestre.py:1872`, `sinais.py:429` |
+| Crista da validação física = crista do modelo × fator de extremo calibrado (aceita `[×0,9, ×fator×1,1]`) | a fonte toca a cada entalhe de 0,1 ms e o pico do ciclo mediano sobe (+31 a +59 %); decisão de projeto (2026-10-13): usar a calibração em vez de afrouxar a tolerância; a calibração já mede o sobressinal por classe e condição. Bilateral porque a fonte pode tocar menos que o máximo calibrado | `mestre.py:1872`, `sinais.py:429` |
 | Pré-validação pula antes de qualquer SCPI | nada é enviado à fonte para o que não cabe | `mestre.py:1928` |

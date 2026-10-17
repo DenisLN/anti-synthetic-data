@@ -1,6 +1,6 @@
 # Operação na bancada física
 
-Para quem vai energizar a fonte. Leia tudo antes de conectar qualquer cabo. Regras de segurança invioláveis: `AGENTS.md`. Linhas citadas: commit `d37e403`.
+Para quem vai energizar a fonte. Leia tudo antes de conectar qualquer cabo. Regras de segurança invioláveis: `AGENTS.md`. A revisão de pendências atual está em `docs/execucao_pendencias.md`; referências numéricas remanescentes são históricas e não devem ser usadas como prova do estado atual. Localize os símbolos citados no checkout identificado.
 
 ## 1. Ligação física obrigatória
 
@@ -43,7 +43,7 @@ Seed opcional: variável `BASE_SEED` antes do `START_BENCH`, ou `set seed N` na 
 | `native` | **sim** | `preflight_new.run_native_commands`: STEP, PULSe, CSINe, `LIST:FREQuency`, ACDC, `MEASure:*`, canal 2. Pede `ENERGIZAR-COMANDOS` |
 | `run <NN\|nome>` | **sim** | uma classe (`run 02`, `run SAG`). Pede `EXECUTAR-CLASSE-<NN>` |
 | `run all` | **sim** | as 20 classes (menos `BATERIA_EXCLUIR`), resiliente por classe. Pede `EXECUTAR-20-CLASSES` e mostra capturas planejadas e gravações de TRACe |
-| `run <lista>` | **sim** | uma lista por intervalos e/ou ids soltos, na ordem numérica (`run 01-07,09-20`, `run 2,5,8`; espaços ignorados). Passa por `Bancada.executar_bateria`, com os mesmos ganchos e resumo do `run all`. Ignora `BATERIA_EXCLUIR` (roda o que foi pedido). Pede `EXECUTAR-CLASSES-<lista normalizada>` (ex.: `EXECUTAR-CLASSES-01-07,09-20`, case-sensitive) e mostra as capturas de cada classe escolhida e a estimativa de TRACe só delas. Lista inválida (id fora de 01-20, intervalo invertido ou vazio, item vazio) é recusada com código 1 antes de qualquer confirmação, sem energizar (`cli.py`, `parsear_lista_classes`) |
+| `run <lista>` | **sim** | uma lista por intervalos e/ou ids soltos, na ordem numérica (`run 01-07,09-20`, `run 2,5,8`; espaços ao redor de vírgulas/intervalos aceitos; argumentos extras ambíguos como `run 01 02` ou `run all extra` recusados). Passa por `Bancada.executar_bateria`, com os mesmos ganchos e resumo do `run all`. Aplica `BATERIA_EXCLUIR` também à lista explícita; as exclusões aparecem antes da confirmação. Lista totalmente excluída não executa nenhuma classe. Pede `EXECUTAR-CLASSES-<lista normalizada>` (ex.: `EXECUTAR-CLASSES-01-07,09-20`, case-sensitive) e mostra as capturas de cada classe escolhida e a estimativa de TRACe só delas. Lista inválida (id fora de 01-20, intervalo invertido ou vazio, item vazio) é recusada com código 1 antes de qualquer confirmação, sem energizar (`cli.py`, `parsear_lista_classes`) |
 | `set diagnostico on\|off` | não | log extra de estado da fonte em pontos-chave; com `on` abre um terminal com `tail -f` da transcrição SCPI (opt-out: `DIAGNOSTICO_ABRIR_TERMINAL=0`) |
 | `set capturas <N>` / `set capturas padrao` | não | piso global de capturas: cada classe roda `max(N, padrão da classe)`, por nível nas classes com níveis (`Config.capturas`, `mestre.py:730`). Com `set capturas` ativo, 04/06/09/19 cobrem o intervalo do parâmetro e a 08 faz caracterização (rampa de amplitude). `padrao` (ou `off`) desfaz |
 | `set seed <N>` / `set seed padrao` | não | seed base (inteiro ≥ 0) dos próximos `run`; `padrao` volta à do início da CLI |
@@ -60,7 +60,7 @@ Seed opcional: variável `BASE_SEED` antes do `START_BENCH`, ou `set seed N` na 
 
 Sem hardware (`BENCH_MODE=0`): `status`, `list` e `run` funcionam em modo simulado; `comm`, `trigger`, `lowvoltage`, `native` exigem bancada.
 
-Ordem recomendada para uma sessão do zero: `comm` → `trigger` → `native` → (`lowvoltage`, só se mexeu em fiação/probe) → `run all`.
+Ordem recomendada para uma sessão do zero: `comm` → `trigger` → `native` → (`lowvoltage`, só se mexeu em fiação/probe) → listas do {doc}`roteiro-bancada`, com até 216 gravações de TRACe por conexão no plano padrão. Não usar `run all` para a campanha. Antes de scripts `diag_*` que acessam hardware, sair com `quit` e confirmar OUTPUT OFF para liberar COM10.
 
 ## 4. Confirmações físicas (não automatizar)
 
@@ -70,13 +70,15 @@ Ordem recomendada para uma sessão do zero: `comm` → `trigger` → `native` �
 ## 5. O que acontece em um `run` e como ler o resultado
 
 1. A CLI cria `resultados/sessao_<timestamp>/` (do segundo `run` da mesma CLI em diante, `_run02`, `_run03`, …; `cli.py:199-223`), liga `sessao.log` e `scpi_transcricao.log`, copia a calibração e grava `sessao.json`.
-2. **Árvore git suja** (alteração rastreada não commitada) em sessão de bancada: aviso em destaque (linhas de `!`), sem bloquear. Regra do projeto: toda sessão sai de commit limpo (`docs/versionamento.md`).
+2. **Árvore git suja** (alteração rastreada em qualquer arquivo ou novo não ignorado nas pastas `mestre.PASTAS_DO_CODIGO`, recalculada a cada pasta de sessão por `info_do_codigo`) em sessão de bancada: aviso em destaque (linhas de `!`), sem bloquear. Regra do projeto: toda sessão sai de commit limpo (`docs/versionamento.md`).
 3. `Bancada.from_env`: baseline, energiza, **checagem da cadeia** (log `Cadeia de medição OK: fonte X Vrms, CH1 Y Vrms (razão Z)`; razão fora de 1 ± 0,10 aborta antes da primeira classe).
 4. Por classe: pré-validação (capturas que não cabem são **puladas** e logadas), captura, validação física, gravação. Resumo final: quantas classes OK, quais falharam, capturas puladas/descartadas/inválidas.
 5. Saída desligada ao fechar. **Confira OUTPUT OFF no painel da AMETEK.**
 6. Com `set html on` / `set recalibracao on`, os ganchos rodam depois (falha só avisa); ver §9.
 
-Para ficar abaixo da trava, rode por listas (`run 01-07` e depois `run 09-20`; cada `run` abre uma conexão nova com a fonte via `Bancada.from_env`, `mestre.py:969`, em `cli.py` `_executar_scripts`) em vez de `run all` numa conexão só. Tempo e TRACes: com os padrões, `run all` planeja **50 capturas** e **468 gravações de TRACe** a 60 Hz (**390** a 50 Hz; 13 classes × 3 capturas × ciclos da janela; medido rodando `capturas_efetivas_da_classe`). A fonte travou na ~280.ª gravação de TRACe de uma mesma conexão em 2026-09-16 (`ESCRITAS_TRACE_REFERENCIA_TRAVA`, `mestre.py:3003`); a CLI só **avisa**. Com sorteio ligado, cada captura TRACe regrava a Flash (não reaproveita o cache) e a estimativa é exata; cada TRACe leva ≥ 1 s de espera.
+Usar as partes da seção 5 do {doc}`roteiro-bancada`. Com um perfil e os padrões: `run 01-05,18-20`, `run 06-11` e `run 12-17`. Com `set perfil todos`: `run 01-05,17-19`, `run 06,10`, `run 11,12`, `run 13,14`, `run 15,16` e `run 07-09,20`. Cada `run` cria uma conexão nova (`Bancada.from_env`, chamado por `SessaoCLI._executar_scripts`). No plano documentado cada conexão fica em até **216 gravações a 60 Hz**, abaixo das ~280 da ocorrência histórica de trava. Conferir `status` e a confirmação antes de cada parte; mudar capturas, níveis, perfil, frequência ou incluir a 05 por TRACe exige recalcular o orçamento. A contagem é uma estimativa de software, não garantia física nem causa comprovada da trava. Preservar os diagnósticos anteriores à campanha no roteiro.
+
+A referência histórica com um perfil é 50 capturas e 468 gravações a 60 Hz (390 a 50 Hz). A CLI avisa sobre esse volume; isso não torna `run all` o fluxo recomendado. Investigar a causa com dados reais, sem ensaio cego até travar.
 
 ## 6. Limites por tensão e frequência
 
@@ -119,7 +121,7 @@ Os dois ganchos são OFF por padrão (`set html`, `set recalibracao`; `logica/cl
 - **O que gera:** (1) `<sessao>/sem_margem/`, a janela nominal de cada captura sem a folga de 20/50 ms (`logica/recortar_margem.py`, `PASTA_SAIDA_PADRAO`; os originais não são tocados); (2) `<sessao>/relatorio_<sessao>.html`, HTML autocontido com as figuras em base64 (`logica/relatorio_html.py:672`, `gerar_relatorio_recortado`). O hook não confere `BENCH_MODE`: gera também no simulado.
 - **Onde fica:** na pasta da sessão, `resultados\sessao_<timestamp>[_runNN]\relatorio_<sessao>.html`.
 - **Custo:** tempo (o próprio `set html` avisa que pode levar minutos numa bateria completa) e tamanho. Acima de 20 MB (`TAMANHO_EMAIL_MB`, `relatorio_html.py:76`) a CLI avisa que o arquivo pode não passar como anexo de e-mail. Para reduzir: `--classes`, `--max-capturas-por-classe` ou `--dpi 80`.
-- **Quantas capturas:** sem `--capturas` e sem `--max-capturas-por-classe`, o relatório mostra só as **3 primeiras** de cada classe e perfil (`relatorio_html.py:310`; `logica/sessao_io.py:731-739`, que avisa "só as 3 primeiras entram"). Para outra quantidade, rodar à mão.
+- **Quantas capturas:** sem `--capturas` e sem `--max-capturas-por-classe`, o relatório mostra só as **3 primeiras** de cada classe e perfil (`logica/relatorio_html.py`, `ler_capturas`, com aviso; vale para formatos legado/atual e bancada/simulação, sem alterar os arquivos originais). Para outra quantidade, rodar à mão.
 - **Falha:** só avisa. Para refazer: `python logica\relatorio_html.py <sessao>`.
 
 ### Seleção do relatório à mão

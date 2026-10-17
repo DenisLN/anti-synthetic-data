@@ -1,9 +1,9 @@
 # Testes
 
-Uma única suíte, **sem hardware**: `tests/test_offline.py` (370 testes, todos OK em `d37e403`; 57 classes `unittest`). Os dois ORMs rodam em modo simulado (`simulated=True`) ou com `ScriptedVisaConnection`/`ScriptedSerialVisaResource` (`:134-206`), que respondem a comandos roteirizados.
+Suíte **sem hardware**: baseline `tests/test_offline.py` com 497 métodos de teste identificados por leitura estática em `fa82f496`; essa contagem não é resultado de execução. Os novos testes `tests/test_pendencias_*.py` também devem ser descobertos. O total atual e os skips são os informados pelo comando abaixo, com Python, dependências e SHA registrados. Os dois ORMs rodam em modo simulado (`simulated=True`) ou com `ScriptedVisaConnection`/`ScriptedSerialVisaResource` (símbolos no próprio módulo), que respondem a comandos roteirizados.
 
 ```powershell
-.\env\Scripts\python.exe -m unittest tests.test_offline            # tudo (~35 s)
+.\env\Scripts\python.exe -m unittest discover -s tests -p "test*.py" -v  # suíte atual; duração depende do ambiente
 .\env\Scripts\python.exe -m unittest tests.test_offline.PerfisDeFaixasTests -v
 .\env\Scripts\python.exe -m unittest tests.test_offline.PerfisDeFaixasTests.test_literatura_reproduz_byte_a_byte_o_gerar_do_commit_34a0d82
 ```

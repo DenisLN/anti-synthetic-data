@@ -1,6 +1,6 @@
 # Correlação da componente de distúrbio
 
-Data: 2026-10-12. Árvore NÃO commitada (v1.15 em andamento por cima de `34a0d82`).
+Origem do relato: 2026-10-12, v1.15 em andamento sobre `34a0d82`. Os valores históricos abaixo são transcritos do relato anterior; não foram recalculados nesta revisão. A fonte `validacao_gerador_v1.14.md` e as sessões físicas não estão disponíveis neste checkout: a coluna de referência e o comparativo ‘bate?’ são **não verificáveis** aqui, não critérios de aceite (P-27).
 
 ## 1. Função
 
@@ -30,39 +30,34 @@ Saída (`analisar_sessao.py` CLI): coluna `corr. distúrbio` mostra `n/a` e uma 
 - `analisar_sessao.py`: chaves `correlacao_disturbio`/`correlacao_disturbio_motivo` em cada linha (`:307-308`) e coluna nova no terminal (`:356-360`), ao lado de `correlacao`.
 - `relatorio_html.py`: linha "Correlação com o esperado" na tabela de metadados da captura ("total X · só do distúrbio Y (após alinhar; lag Z ms)"), de `_correlacoes` (`:228`) e `tabela_metadados` (`:427`). O HTML não tinha correlação total; passou a ter. A forma esperada agora é reconstruída sempre (`:543`) para isso, mas só é desenhada com `--com-esperado`, como antes. Conferido: `relatorio_html.py resultados/sessao_2026-10-07_127V_50Hz --classes 05,08,01 --saida <scratchpad>` deu 05 = 0,504 e 08 = 0,005/0,004/0,011, iguais ao terminal.
 
-## 4. Tabela nas sessões de 07/10
+## 4. Tabela histórica reportada para as sessões de 07/10
 
 Comando: `.\env\Scripts\python.exe logica\analisar_sessao.py resultados\sessao_2026-10-07_<sessão>` (127 V/60 Hz = `14-59-54_run02`; as três reconstruídas sem sorteio). Valores por captura; intervalo quando a classe tem várias. "—" = classe não está na sessão (230 V não tem 02, 03, 04, 08, 16).
 
-| classe | 127 V/60 Hz | 127 V/50 Hz | 230 V/50 Hz | faixa de referência | bate? |
-|---|---|---|---|---|---|
-| 01 | n/a | n/a | n/a | não citada | — |
-| 02 | 0,997 | 0,999 | — | 0,95–1,00 | sim |
-| 03 | 0,943 | 0,945 | — | 0,75–0,94 | borda (0,943–0,945 contra teto 0,94) |
-| 04 | 0,996–0,997 | 0,999 | — | 0,95–1,00 | sim |
-| 05 | 0,503 | 0,504 | 0,499 | 0,50 | sim |
-| 06 | 0,878–0,960 | 0,826–0,935 | 0,836–0,945 | 0,95–1,00 | NÃO (só 10 e 12 Hz a 60 Hz chegam a 0,95; a de 21 Hz fica em 0,83–0,88) |
-| 07 | 0,912–0,924 | 0,916–0,942 | 0,899–0,922 | 0,75–0,94 | sim (0,942 na borda) |
-| 08 | 0,824–0,831 | 0,004–0,011 | — | 0,005 | 127 V/50 Hz sim; 127 V/60 Hz NÃO (ver abaixo) |
-| 09 | 0,883–0,910 | 0,749–0,797 | 0,850–0,925 | 0,75–0,94 | sim |
-| 10 | 0,975 | 0,999 | 0,998 | 0,95–1,00 | sim |
-| 11 | 0,969 | 0,999 | 0,996 | 0,95–1,00 | sim |
-| 12 | 0,967 | 0,998 | 0,998 | 0,95–1,00 | sim |
-| 13 | 0,976 | 0,996 | 0,997 | 0,95–1,00 | sim |
-| 14 | 0,961 | 0,989 | 0,972 | 0,95–1,00 | sim |
-| 15 | 0,991 | 0,988 | 0,988 | 0,95–1,00 | sim |
-| 16 | 0,972 | 1,000 | — | 0,95–1,00 | sim |
-| 17 | 0,921–0,931 | 0,914–0,923 | 0,902–0,918 | 0,75–0,94 | sim |
-| 18 | 0,939 | 0,982 | 0,982 | não citada | — |
-| 19 | n/a | n/a | n/a | não citada | — |
-| 20 | 0,907–0,966 | 0,954–0,957 | 0,975–0,981 | 0,95–1,00 | parcial (a 60 Hz: 0,907 e 0,943) |
+As faixas de referência e os julgamentos “bate?” foram retirados: dependiam de `validacao_gerador_v1.14.md`, cuja origem não pode ser verificada. Os números abaixo são um registro histórico reportado, não limiares de aprovação nem uma nova medição. A aprovação das sessões novas depende dos critérios físicos e das duas métricas identificadas separadamente.
 
-**08 e 05.** 05 = 0,50 nas três sessões, igual à referência. 08 = 0,004–0,011 a 127 V/50 Hz, igual ao 0,005 de referência: nessas capturas o pico está na amostra 3000/2997 da janela e não na 2401 onde o modelo põe o pulso, razão de pico 0,18–0,29 (a transitória não foi registrada). A 127 V/60 Hz a 08 dá 0,82–0,83: o pico capturado cai em 2404/2401, perto do esperado, com melhor lag −1 amostra (script de apoio, não versionado: busca de lag ±40 amostras). Ou seja, o 0,005 de referência corresponde à sessão 127 V/50 Hz, e a sessão 127 V/60 Hz (mais nova, com os fatores da v1.14) capturou o pulso. [média: a métrica é sensível ao alinhamento de uma amostra em pulso de 2 amostras; o lag vem do sinal inteiro]
-
-**Divergências (todas conferidas na tabela acima):**
-- 06 (flicker): 0,83–0,96, abaixo da faixa de referência 0,95–1,00 em 7 de 9 capturas. [média]
-- 20: duas capturas a 60 Hz abaixo de 0,95. [baixa]
-- 03: 0,943/0,945 acima do 0,94 declarado (diferença de arredondamento). [baixa]
+| classe | 127 V/60 Hz | 127 V/50 Hz | 230 V/50 Hz |
+|---|---|---|---|
+| 01 | n/a | n/a | n/a |
+| 02 | 0,997 | 0,999 | — |
+| 03 | 0,943 | 0,945 | — |
+| 04 | 0,996–0,997 | 0,999 | — |
+| 05 | 0,503 | 0,504 | 0,499 |
+| 06 | 0,878–0,960 | 0,826–0,935 | 0,836–0,945 |
+| 07 | 0,912–0,924 | 0,916–0,942 | 0,899–0,922 |
+| 08 | 0,824–0,831 | 0,004–0,011 | — |
+| 09 | 0,883–0,910 | 0,749–0,797 | 0,850–0,925 |
+| 10 | 0,975 | 0,999 | 0,998 |
+| 11 | 0,969 | 0,999 | 0,996 |
+| 12 | 0,967 | 0,998 | 0,998 |
+| 13 | 0,976 | 0,996 | 0,997 |
+| 14 | 0,961 | 0,989 | 0,972 |
+| 15 | 0,991 | 0,988 | 0,988 |
+| 16 | 0,972 | 1,000 | — |
+| 17 | 0,921–0,931 | 0,914–0,923 | 0,902–0,918 |
+| 18 | 0,939 | 0,982 | 0,982 |
+| 19 | n/a | n/a | n/a |
+| 20 | 0,907–0,966 | 0,954–0,957 | 0,975–0,981 |
 
 ## 5. Teste
 
@@ -77,7 +72,7 @@ OK
 
 ## NÃO VERIFICADO
 
-- Origem da faixa de referência: `validacao_gerador_v1.14.md` não está no repositório, então não se sabe qual sessão gerou cada número dela. A coluna "bate?" compara contra a faixa por classe.
+- `validacao_gerador_v1.14.md` continua ausente; suas faixas e a coluna comparativa foram removidas e não são usadas como critério de aceite (P-27).
 - Causa da diferença na 06 e na 20: não investigada (alinhamento por lag do sinal inteiro, fase ou o próprio gerador).
 - Sessões com `sorteio_posicao` ligado (fase sorteada, janela rotulada menor): a função usa `fase_graus`, mas nenhuma sessão real com sorteio foi analisada; só o teste sintético da fase.
 - Alinhamento quando o registro não tem margem (arquivo `sem_margem/`): o deslocamento por lag fica limitado ao registro e pode não ser aplicado por inteiro.

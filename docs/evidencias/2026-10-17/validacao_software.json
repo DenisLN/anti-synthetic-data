@@ -1,0 +1,31 @@
+{
+  "tipo": "validacao_software_sem_hardware",
+  "data": "2026-10-17",
+  "commit_codigo": "58130af2e58b914e17b5e15615bdc655f905ca3f",
+  "baseline": "fa82f49600543456adf78e22485ab6de5dd032b9",
+  "comando": "python -m unittest discover -s tests -p \"test*.py\"",
+  "python": "3.11.15",
+  "plataforma": "Darwin",
+  "arquitetura": "arm64",
+  "pacotes": {
+    "numpy": "2.4.6",
+    "PyMeasure": "0.16.0",
+    "PyVISA": "1.14.1",
+    "matplotlib": "3.11.2"
+  },
+  "testes": 574,
+  "duracao_s": 63.686,
+  "resultado": "OK",
+  "pulados": 2,
+  "motivo_pulados": "Hashes exatos específicos de Windows; assinaturas portáveis executadas.",
+  "log": "testes_offline.log",
+  "sha256_log": "bb7238e2fca3ab531d3256e29f3cb11d3c3f27479cd3698f22b7306d7f387882",
+  "hardware_acionado": false,
+  "calibracao_alterada": false,
+  "gerar_alterado": false,
+  "limitacoes": [
+    "Sem execução no PC da bancada.",
+    "Sem sessões físicas da v1.15 ou validação das cinco condições.",
+    "Licença, autoria e publicação final ainda pendentes."
+  ]
+}

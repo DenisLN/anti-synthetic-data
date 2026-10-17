@@ -76,7 +76,7 @@ Se a faixa muda com a norma, ponha o componente em `perfis.FAIXAS` (uma entrada 
 4. Fixtures: acrescentar as entradas da classe (seeds 1234567 e 7654321, f0 50 e 60, índices 0–4) em `tests/fixtures/gerar_sorteio_v1_15.json`. A assinatura é o SHA-256 de `np.asarray(tensao, "<f8").tobytes() + json.dumps(parametros, sort_keys=True).encode()` (`PerfisDeFaixasTests._assinatura`, `:5100`); não há script de regravação versionado — chame essa função. **Nunca** regrave `gerar_literatura_34a0d82.json` para classes existentes.
 5. Bancada simulada: uma `executar()` completa com `AmetekMX30(simulated=True)` e osciloscópio de mentira (`CaminhoNativoIntegridadeTests`, `ErroDeterministicoEPreValidacaoTests`, `ParametrosSorteadosNasCompostasTests`).
 6. Limite de bancada (waveform): `parametros_com_disturbio_reduzido` devolve chaves `*_bancada` coerentes (`LimiteDeBancada220VTests`).
-7. A suíte inteira: `.\env\Scripts\python.exe -m unittest tests.test_offline` (370 testes verdes na data desta revisão).
+7. A suíte inteira: `.\env\Scripts\python.exe -m unittest discover -s tests -p "test*.py" -v` (registrar resultado, total e skips da execução atual).
 
 ### 1.9 Relatório de limites e calibração
 Rode `scripts\relatorio_limites_bancada.py --tensao 127 --frequencia 60` (e 50) para ver se a classe cabe. Os fatores de extremo da classe nova não existem: usa o maior fator conhecido até a primeira bateria física (`recalibrar_extremos.py --gravar` depois). Um impulso rápido ou borda abrupta precisa de modelo próprio como a 08 (`excursao_fisica_prevista_v`, `exige_medida_de_pico`).

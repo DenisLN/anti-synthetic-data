@@ -1,0 +1,7 @@
+# Versões instaladas e testadas em 2026-10-15 (Windows 11, Python 3.11.9; Linux x86_64, Python 3.14.7).
+# O Read the Docs usa Python 3.12 (.readthedocs.yaml); 3.12 não foi testado localmente.
+Sphinx==9.0.4
+myst-parser==5.1.0
+furo==2025.12.19
+sphinx-design==0.7.0
+sphinxcontrib-mermaid==2.1.1

@@ -1,0 +1,27 @@
+/* Selos de status (sphinx-design `bdg-*`) e avisos padronizados do ASD Docs. */
+
+/* Comando SCPI em texto: monoespaçado com fundo discreto, sem sublinhado pesado. */
+code.scpi-cmd, .scpi-cmd {
+  white-space: nowrap;
+}
+
+/* Selos: espaçamento entre vários na mesma linha. */
+.bdg-success, .bdg-info, .bdg-warning, .bdg-danger, .bdg-secondary {
+  margin-right: 0.35rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* Linha de selos que abre uma página de classe ou de comando. */
+.linha-de-selos {
+  margin: 0.25rem 0 1rem 0;
+}
+
+/* Avisos padronizados: o título identifica o tipo, a borda o reforça. */
+.admonition.asd-verificacao { border-left: 0.2rem solid #2d7ff9; }
+.admonition.asd-decisao { border-left: 0.2rem solid #f0ad00; }
+.admonition.asd-pendencia { border-left: 0.2rem solid #d33a3a; }
+.admonition.asd-limitacao { border-left: 0.2rem solid #8a5a00; }
+
+/* Tabelas largas por condição: rolagem horizontal em vez de quebrar o layout. */
+.table-wrapper, article table { display: block; overflow-x: auto; }
