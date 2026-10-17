@@ -5727,6 +5727,22 @@ class TresVersoesTests(unittest.TestCase):
                     forma, base_voltage_rms=base, frequency_hz=f0, dc_offset_pu=dc,
                 )
                 fonte = self._fonte()
+                # P04: o teste de serialização não pode exigir que o ORM
+                # programe formas que excedem os limites reais. Primeiro
+                # comprova a recusa sem IO; testa a mesma forma a 5 Vrms.
+                acima = (
+                    np.max(np.abs(forma)) * base * np.sqrt(2) > fonte.max_peak_v
+                    or programacao.pico_reconstruido_v > fonte.max_peak_v
+                    or np.max(programacao.list_voltages_rms) > fonte.max_voltage_rms
+                )
+                if acima:
+                    with self.assertRaises(ParameterOutOfBoundsError):
+                        fonte.program_capture(forma, base_voltage_rms=base, frequency_hz=f0, dc_offset_pu=dc)
+                    self.assertEqual(fonte.command_log, [])
+                    base = 5.0
+                    programacao = AmetekMX30.montar_programacao(
+                        forma, base_voltage_rms=base, frequency_hz=f0, dc_offset_pu=dc,
+                    )
                 fonte.program_capture(forma, base_voltage_rms=base, frequency_hz=f0, dc_offset_pu=dc)
                 enviados = [c for c in fonte.command_log if c.startswith("TRACe:DATA ")]
                 self.assertEqual(enviados, [programacao.comando_trace(i) for i in range(programacao.ciclos)])
@@ -7270,13 +7286,13 @@ class RunListaTests(unittest.TestCase):
         self.assertIn("4/4 classes OK", saida)
         self.assertEqual(sorted(self.sessao.ultimo_resultado), ["01", "02", "03", "05"])
 
-    def test_run_lista_ignora_bateria_excluir_porque_roda_o_pedido(self):
+    def test_run_lista_aplica_bateria_excluir_conforme_pendencia_atualizada(self):
         executadas = []
         codigo, _ = self._executar_com_classes_falsas(
             ["02,03"], executadas,
             extra=[mock.patch.object(mestre, "BATERIA_EXCLUIR", ("02",))],
         )
-        self.assertEqual(executadas, ["02", "03"])
+        self.assertEqual(executadas, ["03"])
         self.assertEqual(codigo, 0)
 
     def test_run_lista_falha_de_experimento_nao_para_a_lista(self):
@@ -8574,6 +8590,7 @@ class NpzPorClasseTests(unittest.TestCase):
         a.iniciar_perfil("literatura")
         captura(a, "literatura", 1, 3.0)  # o processo morre aqui: sem consolidar
         self.assertEqual(len(list((pasta / "parcial" / "96_teste").glob("*.npz"))), 1)
+        a.close()  # Simula o lease liberado pelo SO ao morrer o escritor.
         recuperados = io.recuperar_parcial(pasta)
         self.assertEqual(recuperados, [pasta / "96_teste.npz"])
         with np.load(pasta / "96_teste.npz") as dados:
@@ -8737,7 +8754,7 @@ class NpzPorClasseTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             relatorio_html.main([str(pasta), "--perfis", "inexistente"])
 
-    def test_html_de_sessao_de_bancada_mostra_todas_as_capturas_sem_o_limite_do_simulado(self):
+    def test_html_de_sessao_de_bancada_limita_capturas_por_padrao(self):
         import relatorio_html
         classe, _ = self._classe_fisica()
         config = self._config(self.tmp / "fisica", snr_levels_db=(), capturas_override=5)
@@ -8745,7 +8762,7 @@ class NpzPorClasseTests(unittest.TestCase):
         with mock.patch.object(mestre.Bancada, "_carregar_classe_experimento", staticmethod(lambda p: classe)):
             bancada.executar_bateria([Path("96.py")], ("norma",))
         _, total = relatorio_html.gerar_relatorio(config.results_dir, self.tmp / "f.html", detalhes=0, dpi=30)
-        self.assertEqual(total, 5)
+        self.assertEqual(total, 3)
 
     def test_gerar_ruido_janela_le_o_formato_2_e_grava_snr_por_classe(self):
         gerar = _carregar_script("gerar_ruido_janela")
@@ -9415,6 +9432,7 @@ class PerfisCompartilhadosTests(unittest.TestCase):
             "\n".join(json.dumps(r) for r in a.registros()) + "\n", encoding="utf-8")
         a.iniciar_perfil("fronteira")
         cap(a, "fronteira", 1, 3.0)  # processo morre antes de consolidar
+        a.close()  # Escritor encerrado antes da recuperação exclusiva.
         io.recuperar_parcial(pasta)
         with np.load(pasta / "97_teste.npz") as dados:
             self.assertEqual(sorted(str(p) for p in dados["perfis"]), ["fronteira", "literatura"])

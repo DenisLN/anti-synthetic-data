@@ -4,6 +4,7 @@ import numpy as np
 
 import perfis
 import sinais
+from ametek_orm import AmetekMX30
 from mestre import ExperimentoWaveform
 
 
@@ -14,6 +15,33 @@ class Experimento(ExperimentoWaveform):
     # captura mostra uma só realização do sorteio; CHANGELOG/v1.13.md). Não
     # muda o dataset simulado.
     capturas_padrao = 3
+
+    def forma_esperada_para_validacao(self, capture_index, t, seed):
+        # O FLICKER tem média não nula em cada ciclo: a fonte remove essa
+        # média e reamostra a TRACe. Compare a medida com a reconstrução do
+        # que foi programado, preservando gerar()/modelo como referência
+        # matemática independente. Nunca use a própria medida como esperado.
+        versoes = self._versoes_atuais or {}
+        if "programada" in versoes:
+            try:
+                programada = np.asarray(versoes["programada"], dtype=np.float64)
+                if (programada.shape == (AmetekMX30.CAPTURE_POINTS,)
+                        and programada.shape == np.asarray(t).shape
+                        and np.all(np.isfinite(programada))):
+                    return programada
+            except (TypeError, ValueError):
+                pass
+        forma = super().forma_esperada_para_validacao(capture_index, t, seed)
+        if forma is None:
+            return None
+        # Sem captura em curso (ex.: análise offline), reconstrua pelo mesmo
+        # planejador puro, incluindo a forma reduzida pelos limites da bancada
+        # quando _forma_programada_pu estiver disponível. Classe 06 não usa DC.
+        return AmetekMX30.montar_programacao(
+            forma, base_voltage_rms=self.config.base_voltage_rms,
+            frequency_hz=self.config.grid_frequency_hz, dc_offset_pu=0.0,
+            passo_final_sin=bool(getattr(self.fonte, "passo_final_sin", False)),
+        ).programada_pu()
 
     def gerar(self, t, f0, capture_index, rng):
         simulado = self.osc is None

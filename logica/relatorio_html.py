@@ -70,8 +70,8 @@ from recortar_margem import calcular_recorte, carregar_metadados  # noqa: E402
 
 MODELO_PADRAO = PROJECT_ROOT / "logica" / "modelos" / "relatorio_capturas.html"
 MAX_DETALHES = 3
-# Arquivos do dataset simulado têm milhares de capturas empilhadas; sem
-# limite explícito, o relatório mostra só as primeiras destas.
+# Sem seleção explícita, tanto bancada quanto simulação mostram apenas
+# as primeiras capturas de cada classe e perfil.
 MAX_CAPTURAS_EMPILHADAS_PADRAO = 3
 TAMANHO_EMAIL_MB = 20.0
 F0_PADRAO_HZ = 60.0
@@ -299,14 +299,19 @@ def ler_capturas(
     arquivo, perfil e posição; ``classes`` filtra pelo prefixo ``NN_``,
     ``perfis``/``versoes``/``capturas`` como no módulo. ``max_por_classe``
     vale por (classe, perfil). Sem ``capturas`` nem ``max_por_classe``, o
-    dataset SIMULADO (milhares de capturas por classe) mostra só as primeiras
+    relatório de bancada ou simulação mostra só as primeiras
     ``MAX_CAPTURAS_EMPILHADAS_PADRAO`` de cada bloco."""
     pedidas = [v for v in sessao_io.VERSOES if v in versoes]
     if not pedidas:
         raise ValueError(f"versoes deve conter {', '.join(sessao_io.VERSOES)}; recebido {list(versoes)!r}")
+    limite = max_por_classe
+    if limite is None and not capturas:
+        limite = MAX_CAPTURAS_EMPILHADAS_PADRAO
+        print(f"AVISO: relatório limitado às {limite} primeiras capturas por classe e perfil "
+              "(use --capturas ou --max-capturas-por-classe para alterar).")
     lidas = sessao_io.ler_pasta(
         dados_dir, metadados, versoes=pedidas, classes=classes, perfis=perfis, capturas=capturas,
-        max_por_bloco=max_por_classe,
+        max_por_bloco=limite,
         limite_padrao_empilhado=None if capturas else MAX_CAPTURAS_EMPILHADAS_PADRAO,
         avisar=lambda mensagem: print(f"AVISO: {mensagem}"),
     )

@@ -27,6 +27,7 @@ from typing import List, Optional
 import mestre
 import perfis
 import preflight_new
+import sessao_io
 
 logger = logging.getLogger(__name__)
 
@@ -85,10 +86,11 @@ Comandos disponíveis (nenhum energiza a saída sem pedir confirmação própria
                        EXECUTAR-CLASSE-<NN>.                                [ON]
   run <lista>         Roda uma LISTA de classes por intervalos e/ou ids
                        soltos, na ordem numérica: "run 01-07,09-20",
-                       "run 2,5,8", "run 10-16" (espaços são ignorados).
+                       "run 2,5,8", "run 10-16" (espaços ao redor de
+                       vírgulas e hífens são aceitos).
                        Mesma execução e ganchos do run all (resumo final,
-                       set recalibracao/html). Ignora BATERIA_EXCLUIR: roda
-                       exatamente o que foi pedido. Mostra as capturas de
+                       set recalibracao/html). Aplica BATERIA_EXCLUIR e pede
+                       confirmação só da lista efetiva. Mostra as capturas de
                        cada classe e a estimativa de TRACe das escolhidas.
                        Pede EXECUTAR-CLASSES-<lista normalizada>, ex.:
                        EXECUTAR-CLASSES-01-07,09-20.                        [ON]
@@ -253,6 +255,7 @@ class SessaoCLI:
         # Seed com que a CLI começou (env BASE_SEED ou o padrão): destino de
         # "set seed padrao".
         self._seed_inicial = mestre.BASE_SEED
+        self._bloqueio_sessao = None
         self._runs_nesta_sessao = 0
         # Perfil de faixas de cada run desta CLI, na ordem (vai para sessao.json
         # de cada pasta, em "perfis_usados_na_cli").
@@ -293,22 +296,41 @@ class SessaoCLI:
 
         Também anexa o log de execução e a transcrição SCPI à pasta — sem
         isso nada do que foi enviado à fonte sobrevive ao fim do processo."""
-        self._runs_nesta_sessao += 1
-        sufixo = "" if self._runs_nesta_sessao == 1 else f"_run{self._runs_nesta_sessao:02d}"
-        sessao_dir = mestre.RESULTS_DIR / f"sessao_{self._sessao_timestamp}{sufixo}"
-        sessao_dir.mkdir(parents=True, exist_ok=True)
-        mestre.SESSION_RESULTS_DIR = sessao_dir
-        mestre.configurar_log_de_sessao(sessao_dir)
-        print(f"Sessão gravando em: {sessao_dir}")
-        # Cópia da calibração + sessao.json (commit, numpy) e aviso de árvore
-        # suja em destaque, já no início do run (ver mestre.preparar_pasta_da_sessao).
-        # A procedência (árvore suja, arquivos novos) é recalculada aqui, a cada run.
-        self._perfis_usados.append(mestre.PERFIL_TODOS_ROTULO if mestre.PERFIL_TODOS else mestre.PERFIL)
-        mestre.preparar_pasta_da_sessao(
-            sessao_dir, bancada=mestre.BENCH_MODE, perfis_usados=list(self._perfis_usados),
-        )
-        if mestre.DIAGNOSTICO_MODE and mestre.BENCH_MODE and DIAGNOSTICO_ABRIR_TERMINAL:
-            self._abrir_terminal_de_diagnostico(sessao_dir / "scpi_transcricao.log")
+        # Recuperar somente arquivos: nunca repetir capturas nem abrir instrumentos.
+        # A pasta do novo run ainda não existe e não entra nesta varredura.
+        sessao_io.recuperar_sessoes_interrompidas(mestre.RESULTS_DIR)
+        self._liberar_bloqueio_sessao()
+        # mkdir exclusivo também protege CLIs iniciadas no mesmo segundo:
+        # nunca reutilize uma pasta existente, mesmo se seu escritor terminou.
+        while True:
+            self._runs_nesta_sessao += 1
+            sufixo = "" if self._runs_nesta_sessao == 1 else f"_run{self._runs_nesta_sessao:02d}"
+            sessao_dir = mestre.RESULTS_DIR / f"sessao_{self._sessao_timestamp}{sufixo}"
+            try:
+                sessao_dir.mkdir(parents=True, exist_ok=False)
+            except FileExistsError:
+                continue
+            break
+        try:
+            self._bloqueio_sessao = sessao_io.BloqueioSessao(sessao_dir)
+            mestre.SESSION_RESULTS_DIR = sessao_dir
+            mestre.configurar_log_de_sessao(sessao_dir)
+            print(f"Sessão gravando em: {sessao_dir}")
+            # A procedência é recalculada a cada pasta; a calibração é copiada.
+            self._perfis_usados.append(mestre.PERFIL_TODOS_ROTULO if mestre.PERFIL_TODOS else mestre.PERFIL)
+            mestre.preparar_pasta_da_sessao(
+                sessao_dir, bancada=mestre.BENCH_MODE, perfis_usados=list(self._perfis_usados),
+            )
+            if mestre.DIAGNOSTICO_MODE and mestre.BENCH_MODE and DIAGNOSTICO_ABRIR_TERMINAL:
+                self._abrir_terminal_de_diagnostico(sessao_dir / "scpi_transcricao.log")
+        except BaseException:
+            self._liberar_bloqueio_sessao()
+            raise
+
+    def _liberar_bloqueio_sessao(self) -> None:
+        if self._bloqueio_sessao is not None:
+            self._bloqueio_sessao.close()
+            self._bloqueio_sessao = None
 
     def _abrir_terminal_de_diagnostico(self, caminho_log: Path) -> None:
         """Abre uma janela de console nova fazendo ``tail -f`` de
@@ -719,10 +741,19 @@ class SessaoCLI:
             print("Uso: run <NN|nome>   ou   run all")
             return 1
         if args[0].lower() == "all":
+            if len(args) != 1:
+                print("Comando recusado: 'run all' não aceita argumentos extras. Nada foi energizado.")
+                return 1
             return self._run_all()
-        texto = "".join(args)
+        # Preserva limites entre tokens: juntar sem separador transformava
+        # 'run 1 2,3' em 'run 12,3', executando uma seleção diferente.
+        texto = " ".join(args)
         if "," in texto or "-" in texto:
             return self._run_lista(texto)
+        if len(args) != 1:
+            print("Comando recusado: use vírgulas ou intervalos para várias classes "
+                  "(ex.: run 01,02). Nada foi energizado.")
+            return 1
         return self._run_uma(args[0])
 
     def _run_lista(self, texto: str) -> int:
@@ -733,6 +764,14 @@ class SessaoCLI:
         except ValueError as exc:
             print(f"Lista de classes recusada: {exc}. Exemplos: run 01-07,09-20 | run 2,5,8 | "
                   "run 10-16. Nada foi energizado.")
+            return 1
+        removidas = [numero for numero in ids if f"{numero:02d}" in mestre.BATERIA_EXCLUIR]
+        ids = [numero for numero in ids if f"{numero:02d}" not in mestre.BATERIA_EXCLUIR]
+        if removidas:
+            print(f"Classes removidas por BATERIA_EXCLUIR: {normalizar_lista_classes(removidas)}.")
+        if not ids:
+            print("Nenhuma classe restante após BATERIA_EXCLUIR. Nada foi energizado. "
+                  "Para uma execução isolada intencional, use 'run <NN>'.")
             return 1
         mapa = {script.stem: script for script in mestre._experiment_scripts()}
         scripts = [mapa[f"{numero:02d}"] for numero in ids]
@@ -799,6 +838,7 @@ class SessaoCLI:
             traceback.print_exc()
         finally:
             self.autorizar_saida(False)
+            self._liberar_bloqueio_sessao()
         self.ultimo_resultado[resultado.id] = resultado
         # Saída já desligada e Bancada fechada. Classe que falhou pode ter sido
         # falha de infraestrutura: só o run que terminou OK dispara os ganchos.
@@ -812,7 +852,11 @@ class SessaoCLI:
             "isoladas com 'run <NN>' se precisar)."
             if mestre.BATERIA_EXCLUIR else ""
         )
-        linhas = self._capturas_das_classes(mestre.scripts_da_bateria_fisica())
+        scripts = mestre.scripts_da_bateria_fisica()
+        if not scripts:
+            print("Nenhuma classe restante após BATERIA_EXCLUIR. Nada foi energizado.")
+            return 1
+        linhas = self._capturas_das_classes(scripts)
         total_capturas = sum(info["total"] for _, _, info in linhas)
         if not self.confirmar(
             "Bateria completa das 20 classes, sequencial, sem parar numa falha isolada"
@@ -823,7 +867,7 @@ class SessaoCLI:
             "EXECUTAR-20-CLASSES",
         ):
             return 1
-        return self._executar_scripts(mestre.scripts_da_bateria_fisica())
+        return self._executar_scripts(scripts)
 
     def _executar_scripts(self, scripts: List[Path]) -> int:
         """Corpo comum de ``run all`` e ``run <lista>``: uma pasta de sessão,
@@ -841,6 +885,7 @@ class SessaoCLI:
             return 1
         finally:
             self.autorizar_saida(False)
+            self._liberar_bloqueio_sessao()
 
         for resultado in resultados:
             self.ultimo_resultado[resultado.id] = resultado
@@ -996,7 +1041,11 @@ class SessaoCLI:
 
 
 def main() -> int:
-    return SessaoCLI().loop()
+    sessao = SessaoCLI()
+    try:
+        return sessao.loop()
+    finally:
+        sessao._liberar_bloqueio_sessao()
 
 
 if __name__ == "__main__":

@@ -25,6 +25,7 @@ import hashlib
 import json
 import os
 import re
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
@@ -39,6 +40,98 @@ PERFIL_LEGADO = "literatura"
 PASTA_PARCIAL = "parcial"
 PASTA_TRES_VERSOES = "tres_versoes"
 GRANDEZAS = {"medida": "Tensão", "tensao_pu": "Tensão", "corrente_pu": "Corrente"}
+
+
+# Protocolo de exclusão entre escritores e recuperação. O arquivo nunca é
+# apagado: remover um inode bloqueado permite dois donos de locks distintos.
+ARQUIVO_BLOQUEIO = ".sessao.lock"
+_BLOQUEIOS_LOCAIS = {}
+_MUTEX_BLOQUEIOS = threading.RLock()
+
+
+class SessaoEmUsoError(RuntimeError):
+    """Outra execução mantém a sessão ativa; recuperação deve esperar."""
+
+
+class BloqueioSessao:
+    """Lease de lock OS não bloqueante; liberado pelo SO se o processo morrer.
+
+    Escritores do mesmo processo compartilham o lease (CLI/Bancada/acumulador).
+    Recuperadores nunca compartilham, nem mesmo com um escritor local.
+    """
+    def __init__(self, sessao_dir: Path, *, escritor: bool = True):
+        self._chave = str(Path(sessao_dir).resolve())
+        self._liberado = True
+        with _MUTEX_BLOQUEIOS:
+            estado = _BLOQUEIOS_LOCAIS.get(self._chave)
+            if estado is not None:
+                if not escritor or not estado["escritor"]:
+                    raise SessaoEmUsoError(f"sessão ativa: {sessao_dir}")
+                estado["leases"] += 1
+                self._liberado = False
+                return
+            pasta = Path(sessao_dir)
+            pasta.mkdir(parents=True, exist_ok=True)
+            caminho = pasta / ARQUIVO_BLOQUEIO
+            if caminho.is_symlink():
+                raise ValueError(f"lock de sessão não pode ser link simbólico: {caminho}")
+            handle = caminho.open("a+b")
+            try:
+                if os.name == "nt":
+                    import msvcrt
+                    if caminho.stat().st_size == 0:
+                        handle.write(b"0")
+                        handle.flush()
+                    handle.seek(0)
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError as exc:
+                handle.close()
+                raise SessaoEmUsoError(f"sessão ativa ou lock indisponível: {pasta}") from exc
+            except BaseException:
+                handle.close()
+                raise
+            _BLOQUEIOS_LOCAIS[self._chave] = {
+                "handle": handle, "leases": 1, "escritor": escritor,
+            }
+            self._liberado = False
+
+    def close(self):
+        with _MUTEX_BLOQUEIOS:
+            if self._liberado:
+                return
+            self._liberado = True
+            estado = _BLOQUEIOS_LOCAIS[self._chave]
+            estado["leases"] -= 1
+            if estado["leases"]:
+                return
+            handle = estado["handle"]
+            try:
+                if os.name == "nt":
+                    import msvcrt
+                    handle.seek(0)
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            finally:
+                handle.close()
+                del _BLOQUEIOS_LOCAIS[self._chave]
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+    def __del__(self):
+        # A construção pode falhar e os globais podem desaparecer no teardown.
+        try:
+            self.close()
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------- nomes
@@ -133,10 +226,36 @@ class ArquivoDaClasse:
         self.id = class_id
         self.nome = nome
         self.spool = spool
+        self._fechado = False
+        self._bloqueio_sessao = BloqueioSessao(self.results_dir) if spool else None
         self._ordem: List[str] = []
         self._capturas: Dict[str, List[dict]] = {}
         # perfil espelho -> perfil de origem (cujo bloco guarda os dados)
         self._espelhos: Dict[str, str] = {}
+
+    def close(self) -> None:
+        """Libera o lease do escritor; não consolida nem remove capturas."""
+        self._fechado = True
+        bloqueio = getattr(self, "_bloqueio_sessao", None)
+        if bloqueio is not None:
+            self._bloqueio_sessao = None
+            bloqueio.close()
+
+    def _exigir_aberto(self) -> None:
+        if self._fechado:
+            raise RuntimeError("escritor de sessão encerrado; crie um novo acumulador antes de gravar")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+    def __del__(self):
+        try:
+            self.close()
+        except Exception:
+            pass
 
     # -- nomes ----------------------------------------------------------
 
@@ -181,6 +300,7 @@ class ArquivoDaClasse:
         ``compartilhada_com_perfis`` e ``sha256_captura``; ``registros()`` e o
         ``.npz`` passam a trazer os espelhos. Substitui um espelhamento
         anterior da mesma origem."""
+        self._exigir_aberto()
         if not self._capturas.get(origem):
             raise ValueError(f"[{self.id}] não há capturas do perfil {origem} para espelhar")
         destinos = [d for d in destinos if d != origem]
@@ -210,6 +330,7 @@ class ArquivoDaClasse:
     def iniciar_perfil(self, perfil: str) -> None:
         """Começa (ou REPETE) o bloco de ``perfil``: o que havia dele some;
         os outros perfis ficam como estão."""
+        self._exigir_aberto()
         if perfil not in self._capturas:
             self._ordem.append(perfil)
         self._capturas[perfil] = []
@@ -240,6 +361,7 @@ class ArquivoDaClasse:
         dela no arquivo (posição dentro do perfil, 0-based). Preenche no
         ``metadado`` (por referência) ``arquivo_classe``, ``perfil`` (se
         faltar) e ``indice_no_arquivo``."""
+        self._exigir_aberto()
         if perfil not in self._capturas:
             self.iniciar_perfil(perfil)
         bloco = self._capturas[perfil]
@@ -278,6 +400,7 @@ class ArquivoDaClasse:
         return self.pasta_spool / f"{perfil}__{indice:06d}.npz"
 
     def _gravar_spool(self, perfil: str, indice: int, c: dict) -> None:
+        self._exigir_aberto()
         arrays: Dict[str, object] = {
             "id_captura": np.array(c["id_captura"]), "classe": np.array(self.nome),
             "medida": c["medida"], "tempo_ms": c["tempo_ms"], "fs_hz": np.array(c["fs_hz"]),
@@ -296,6 +419,7 @@ class ArquivoDaClasse:
         gravar_npz(self._arquivo_spool(perfil, indice), comprimido=False, **arrays)
 
     def _apagar_spool(self, perfil: Optional[str] = None) -> None:
+        self._exigir_aberto()
         pasta = self.pasta_spool
         if not pasta.is_dir():
             return
@@ -309,6 +433,7 @@ class ArquivoDaClasse:
 
     def encerrar_perfil(self, perfil: str) -> None:
         """Descarta o spool do ``perfil`` (chamar só DEPOIS de ``consolidar``)."""
+        self._exigir_aberto()
         self._apagar_spool(perfil)
 
     @classmethod
@@ -423,6 +548,7 @@ class ArquivoDaClasse:
         promoção: um erro no meio nunca deixa a classe meio gravada. Sem
         nenhuma captura, não toca em nada e devolve ``None``. ``so_snr`` grava
         só os ``snr_XXdb/NN_classe.npz`` (``scripts/gerar_ruido_janela.py``)."""
+        self._exigir_aberto()
         if not self.perfis:
             return None
         # (destino, arrays, comprimido). O ruído branco dos snr_XXdb/ quase não
@@ -453,6 +579,19 @@ class ArquivoDaClasse:
 
 
 def recuperar_parcial(sessao_dir: Path) -> List[Path]:
+    """Recuperação explícita (inclusive legada), sempre sob lock exclusivo.
+
+    Não execute sobre uma sessão legada ainda em escrita: versões anteriores
+    ao protocolo não participam do lock OS e só podem ser recuperadas offline.
+    """
+    sessao_dir = Path(sessao_dir)
+    if not (sessao_dir / PASTA_PARCIAL).is_dir():
+        return []
+    with BloqueioSessao(sessao_dir, escritor=False):
+        return _recuperar_parcial_sem_bloqueio(sessao_dir)
+
+
+def _recuperar_parcial_sem_bloqueio(sessao_dir: Path) -> List[Path]:
     """Promove ao formato 2 as capturas que ficaram em ``parcial/NN_classe/``
     (processo morto no meio de um perfil). Os outros perfis do arquivo da
     classe, se já existiam, são preservados. Devolve os ``.npz`` de classe
@@ -463,23 +602,42 @@ def recuperar_parcial(sessao_dir: Path) -> List[Path]:
     gravados: List[Path] = []
     if not base.is_dir():
         return gravados
-    for pasta in sorted(p for p in base.iterdir() if p.is_dir()):
+    for pasta in sorted(p for p in base.iterdir()
+                        if p.is_dir() and not p.is_symlink() and re.fullmatch(r"\d{2}_.+", p.name)):
+        if any(p.is_symlink() for p in pasta.iterdir()):
+            raise ValueError(f"spool com link simbólico não pode ser recuperado: {pasta}")
         class_id, _, nome_min = pasta.name.partition("_")
         existente = sessao_dir / f"{pasta.name}.npz"
         bruto = ArquivoDaClasse.do_spool(sessao_dir, class_id, nome_min)
         if not bruto.perfis:
             continue
         novos = set(bruto.perfis)
+        # Só as linhas do spool substituem metadata: os perfis já consolidados
+        # serão relidos para os arrays, mas não devem ser acrescentados de novo.
+        novas = [json.dumps(r, ensure_ascii=False, sort_keys=True) for r in bruto.registros()]
+        destino = sessao_dir / "metadata" / f"{pasta.name}.jsonl"
+        anteriores = []
+        if destino.is_file():
+            for linha in destino.read_text(encoding="utf-8").splitlines():
+                if not linha.strip():
+                    continue
+                anterior = json.loads(linha)
+                if anterior.get("perfil", PERFIL_LEGADO) not in novos \
+                        and anterior.get("perfil_de_origem") not in novos:
+                    anteriores.append(linha)
+        metadados = carregar_metadados(sessao_dir)
         # Antigos (outros perfis): relidos do arquivo de classe e re-adicionados.
         if existente.is_file():
             snr_antigo: Dict[Tuple[str, str], Dict[float, np.ndarray]] = {}
             for pasta_nivel in sorted(sessao_dir.glob("snr_*db")):
                 nivel = nivel_da_pasta_snr(pasta_nivel.name)
-                for c in ler_pasta(pasta_nivel, classes=[class_id]):
+                for c in ler_pasta(pasta_nivel, metadados, classes=[class_id]):
                     if nivel is not None and c.formato == "classe":
                         snr_antigo.setdefault(c.chave, {})[nivel] = c.sinal
+            correntes = {c.chave: c.sinal for c in ler_pasta(
+                sessao_dir / "corrente", metadados, classes=[class_id]) if c.formato == "classe"}
             espelhos_antigos: Dict[str, str] = {}
-            for captura in ler_pasta(sessao_dir, versoes=VERSOES, classes=[class_id], perfis=None):
+            for captura in ler_pasta(sessao_dir, metadados, versoes=VERSOES, classes=[class_id], perfis=None):
                 if captura.formato == "classe" and captura.espelho and captura.arquivo == existente:
                     espelhos_antigos[captura.perfil] = str(captura.perfil_de_origem)
                     continue  # espelho: dado só no bloco da origem (re-espelhado abaixo)
@@ -492,7 +650,8 @@ def recuperar_parcial(sessao_dir: Path) -> List[Path]:
                     fs_hz=float((captura.metadado or {}).get("fs_hz", 30_000.0)),
                     modelo=captura.versoes.get("modelo"), programada=captura.versoes.get("programada"),
                     origem_programada=captura.origem_programada,
-                    inicio_janela=captura.inicio_janela or 0, snr=snr, metadado=captura.metadado,
+                    inicio_janela=captura.inicio_janela or 0, snr=snr,
+                    corrente=correntes.get(captura.chave), metadado=captura.metadado,
                 )
             # Espelhos cuja origem e cujo próprio perfil não foram refeitos continuam valendo.
             por_origem: Dict[str, List[str]] = {}
@@ -504,22 +663,53 @@ def recuperar_parcial(sessao_dir: Path) -> List[Path]:
         caminho = bruto.consolidar()
         if caminho is not None:
             gravados.append(caminho)
-            destino = sessao_dir / "metadata" / f"{pasta.name}.jsonl"
             destino.parent.mkdir(parents=True, exist_ok=True)
-            anteriores = []
-            if destino.is_file():
-                for linha in destino.read_text(encoding="utf-8").splitlines():
-                    if not linha.strip():
-                        continue
-                    anterior = json.loads(linha)
-                    if anterior.get("perfil", PERFIL_LEGADO) not in novos \
-                            and anterior.get("perfil_de_origem") not in novos:
-                        anteriores.append(linha)
-            novas = [json.dumps(r, ensure_ascii=False, sort_keys=True) for r in bruto.registros()]
             parcial = destino.with_suffix(".jsonl.part")
             parcial.write_text("\n".join(anteriores + novas) + "\n", encoding="utf-8")
             os.replace(parcial, destino)
             bruto._apagar_spool()
+    return gravados
+
+
+def recuperar_sessoes_interrompidas(base_dir: Path, *, avisar=print) -> List[Path]:
+    """Recupera apenas filhos diretos ``sessao_*/parcial`` antes de nova sessão.
+
+    Somente sessões com marcador do protocolo OS são elegíveis; sessões
+    legadas sem marcador exigem recuperação explícita com escritor encerrado.
+    O lock permanece adquirido durante leitura, consolidação e remoção.
+    Não importa nem aciona hardware. Um erro é registrado e deixa o spool
+    disponível para nova tentativa; outras sessões ainda são examinadas.
+    Chamada explícita pelo coordenador, nunca executada ao importar o módulo.
+    """
+    base_dir = Path(base_dir)
+    gravados: List[Path] = []
+    if not base_dir.is_dir():
+        return gravados
+    for sessao in sorted(base_dir.glob("sessao_*")):
+        parcial = sessao / PASTA_PARCIAL
+        if sessao.is_symlink() or not sessao.is_dir() or parcial.is_symlink() or not parcial.is_dir():
+            continue
+        if not (sessao / ARQUIVO_BLOQUEIO).is_file():
+            if avisar is not None:
+                avisar(f"Recuperação: sessão legada sem protocolo de lock em {sessao}; "
+                       "use recuperar_parcial explicitamente com o escritor encerrado.")
+            continue
+        try:
+            with BloqueioSessao(sessao, escritor=False):
+                if avisar is not None:
+                    avisar(f"Recuperação: verificando capturas interrompidas em {sessao}.")
+                recuperados = _recuperar_parcial_sem_bloqueio(sessao)
+        except SessaoEmUsoError:
+            if avisar is not None:
+                avisar(f"Recuperação: sessão ativa em {sessao}; ignorada sem alterar capturas.")
+            continue
+        except Exception as exc:
+            if avisar is not None:
+                avisar(f"Recuperação pendente em {sessao}: {exc}. Spool preservado para nova tentativa.")
+            continue
+        gravados.extend(recuperados)
+        if avisar is not None:
+            avisar(f"Recuperação: {len(recuperados)} classe(s) consolidada(s) em {sessao}; nenhuma captura refeita.")
     return gravados
 
 

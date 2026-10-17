@@ -389,6 +389,8 @@ AMETEK_TIMEOUT_S = env_float("AMETEK_TIMEOUT_S", 5.0)
 AMETEK_QUERY_EOT = env_bool("AMETEK_QUERY_EOT", default=True)
 AMETEK_EXPECTED_MODEL = os.getenv("AMETEK_EXPECTED_MODEL", "MX30")
 AMETEK_CLEAR_USER_WAVEFORMS = env_bool("AMETEK_CLEAR_USER_WAVEFORMS", default=False)
+# Experimental: validar a margem física antes de tornar padrão.
+AMETEK_PASSO_FINAL_SIN = env_bool("AMETEK_PASSO_FINAL_SIN", default=False)
 
 # Keysight USB/VISA informado para a bancada. Use AUTO apenas para descoberta.
 KEYSIGHT_RESOURCE = os.getenv(
@@ -1014,6 +1016,7 @@ class Bancada:
         self.fonte = fonte
         self.osc = osc
         self.config = config
+        self._bloqueio_sessao = None
 
     def __enter__(self) -> "Bancada":
         return self
@@ -1023,12 +1026,33 @@ class Bancada:
 
     def shutdown(self) -> None:
         logger.info("Shutdown fail-safe")
-        self.fonte.disconnect()
-        if self.osc is not None:
-            self.osc.close()
+        try:
+            self.fonte.disconnect()
+        finally:
+            try:
+                if self.osc is not None:
+                    self.osc.close()
+            finally:
+                for arquivo in self.__dict__.pop("_arquivos_classe", {}).values():
+                    arquivo.close()
+                if self._bloqueio_sessao is not None:
+                    self._bloqueio_sessao.close()
+                    self._bloqueio_sessao = None
 
     @classmethod
     def from_env(cls, *, require_output: bool = True) -> "Bancada":
+        # Reservar antes de setup/hardware e reter até o shutdown completo.
+        bloqueio = sessao_io.BloqueioSessao(_build_config().results_dir)
+        try:
+            bancada = cls._from_env_sem_bloqueio(require_output=require_output)
+            bancada._bloqueio_sessao = bloqueio
+            return bancada
+        except BaseException:
+            bloqueio.close()
+            raise
+
+    @classmethod
+    def _from_env_sem_bloqueio(cls, *, require_output: bool = True) -> "Bancada":
         config = _build_config()
         if SIMULATED_MODE:
             logger.warning("MODO SIMULADO: nenhum instrumento será aberto")
@@ -1047,6 +1071,7 @@ class Bancada:
                 query_eot=AMETEK_QUERY_EOT,
                 expected_model=AMETEK_EXPECTED_MODEL,
                 clear_user_waveforms=AMETEK_CLEAR_USER_WAVEFORMS,
+                passo_final_sin=AMETEK_PASSO_FINAL_SIN,
                 max_voltage_rms=EUT_MAX_VOLTAGE_RMS,
                 max_peak_v=EUT_MAX_PEAK_V,
                 max_current_a=CURRENT_LIMIT_A,
@@ -1305,7 +1330,9 @@ class Bancada:
                 self._manter_arquivos_classe = False
                 pasta = getattr(config_original, "results_dir", None)
                 if pasta is not None:
-                    self.__dict__.get("_arquivos_classe", {}).pop((str(Path(pasta).resolve()), class_id), None)
+                    arquivo = self.__dict__.get("_arquivos_classe", {}).pop((str(Path(pasta).resolve()), class_id), None)
+                    if arquivo is not None:
+                        arquivo.close()
 
             if ok_geral:
                 resultados.append(ResultadoClasse(
@@ -1363,9 +1390,11 @@ class Bancada:
             self._manter_arquivos_classe = False
             pasta = getattr(config_original, "results_dir", None)
             if pasta is not None and executados:
-                self.__dict__.get("_arquivos_classe", {}).pop(
+                arquivo = self.__dict__.get("_arquivos_classe", {}).pop(
                     (str(Path(pasta).resolve()), executados[0].id), None,
                 )
+                if arquivo is not None:
+                    arquivo.close()
         return executados
 
     def _instanciar_experimento(self, experimento_cls: type) -> "ExperimentoBase":
@@ -1591,6 +1620,7 @@ class ExperimentoBase(ABC):
                 programacao = AmetekMX30.montar_programacao(
                     forma_bancada_pu, base_voltage_rms=base, frequency_hz=f0,
                     dc_offset_pu=float(parametros.get("dc_offset_pu", 0.0)),
+                    passo_final_sin=bool(getattr(self.fonte, "passo_final_sin", False)),
                 )
             return programacao.programada_pu(), "TRACe+LIST:VOLTage (AmetekMX30.montar_programacao)"
         teto_rms = float(getattr(self.fonte, "max_voltage_rms", 300.0))
@@ -2413,7 +2443,9 @@ class ExperimentoBase(ABC):
         if pai is not None and getattr(pai, "_manter_arquivos_classe", False):
             return
         registro = (pai if pai is not None else self).__dict__.get("_arquivos_classe", {})
-        registro.pop((str(Path(self.config.results_dir).resolve()), self.id), None)
+        arquivo = registro.pop((str(Path(self.config.results_dir).resolve()), self.id), None)
+        if arquivo is not None:
+            arquivo.close()
 
     def _iniciar_gravacao_incremental(self) -> None:
         """Abre o bloco do perfil atual no ``NN_classe.npz`` da classe e zera

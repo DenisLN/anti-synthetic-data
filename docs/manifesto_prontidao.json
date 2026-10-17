@@ -1,0 +1,136 @@
+{
+  "instrucoes": "Caminhos relativos a este manifesto, apenas arquivos reais revisados. Não preencher com dados sintéticos. A verificação é estrutural e não autentica a origem física nem substitui a análise científica.",
+  "pendencias": {
+    "P01": {
+      "status": "aberta",
+      "evidencias": []
+    },
+    "P02": {
+      "status": "aberta",
+      "evidencias": []
+    },
+    "P03": {
+      "status": "aberta",
+      "evidencias": []
+    },
+    "P04": {
+      "status": "aberta",
+      "evidencias": []
+    },
+    "P05": {
+      "status": "aberta",
+      "evidencias": []
+    },
+    "P06": {
+      "status": "aberta",
+      "evidencias": []
+    },
+    "P07": {
+      "status": "aberta",
+      "evidencias": []
+    },
+    "P08": {
+      "status": "aberta",
+      "evidencias": []
+    },
+    "P09": {
+      "status": "aberta",
+      "evidencias": []
+    },
+    "P10": {
+      "status": "aberta",
+      "evidencias": []
+    },
+    "P11": {
+      "status": "aberta",
+      "evidencias": []
+    },
+    "P12": {
+      "status": "aberta",
+      "evidencias": []
+    },
+    "P13": {
+      "status": "aberta",
+      "evidencias": []
+    },
+    "P14": {
+      "status": "aberta",
+      "evidencias": []
+    },
+    "P15": {
+      "status": "aberta",
+      "evidencias": []
+    },
+    "P16": {
+      "status": "aberta",
+      "evidencias": []
+    },
+    "P17": {
+      "status": "aberta",
+      "evidencias": []
+    },
+    "P18": {
+      "status": "aberta",
+      "evidencias": []
+    },
+    "P19": {
+      "status": "aberta",
+      "evidencias": []
+    },
+    "P20": {
+      "status": "aberta",
+      "evidencias": []
+    },
+    "P21": {
+      "status": "aberta",
+      "evidencias": []
+    },
+    "P22": {
+      "status": "aberta",
+      "evidencias": []
+    },
+    "P23": {
+      "status": "aberta",
+      "evidencias": []
+    },
+    "P24": {
+      "status": "aberta",
+      "evidencias": []
+    },
+    "P25": {
+      "status": "aberta",
+      "evidencias": []
+    },
+    "P26": {
+      "status": "aberta",
+      "evidencias": []
+    },
+    "P27": {
+      "status": "aberta",
+      "evidencias": []
+    },
+    "P28": {
+      "status": "aberta",
+      "evidencias": []
+    },
+    "P29": {
+      "status": "aberta",
+      "evidencias": []
+    },
+    "P30": {
+      "status": "aberta",
+      "evidencias": []
+    },
+    "P31": {
+      "status": "aberta",
+      "evidencias": []
+    }
+  },
+  "sessoes": {
+    "127V_60Hz": null,
+    "127V_50Hz": null,
+    "230V_50Hz": null,
+    "220V_60Hz": null,
+    "33V_60Hz": null
+  }
+}

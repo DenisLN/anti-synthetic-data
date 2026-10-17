@@ -1,4 +1,4 @@
-"""Verificador OFFLINE de uma sessão de bancada (spec 20, 2026-10-13).
+"""Verificador OFFLINE de uma sessão de bancada (validação de sorteio, 2026-10-13).
 
 Roda DEPOIS da bancada, sobre a pasta ``resultados\\sessao_<timestamp>[_runNN]``.
 Não toca instrumento nenhum (nem importa PyVISA); só lê ``metadata/*.jsonl`` e
@@ -31,7 +31,7 @@ Código de saída: 0 = tudo aprovado; 1 = alguma verificação reprovada; 2 = na
 a verificar (pasta sem capturas das classes 02-04/18 nem campo de pré-trigger).
 
 O CARREGAMENTO da sessão está isolado em ``carregar_sessao()`` (e a janela
-nominal em ``janela_da_captura()``): se o formato de arquivo mudar (spec 17),
+nominal em ``janela_da_captura()``): se o formato de arquivo mudar (arquivo único por classe),
 só essas duas funções precisam ser trocadas; as verificações recebem arrays.
 """
 from __future__ import annotations

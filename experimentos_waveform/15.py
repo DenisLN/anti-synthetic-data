@@ -22,3 +22,32 @@ class Experimento(ExperimentoWaveform):
         sorteio = self.sortear(rng, f0)
         voltage = flicker * onda_com_harmonicos(t + sorteio.deslocamento_s, thd, frequencia_hz=f0)
         return voltage, {"thd": thd, "flicker_hz": flicker_hz, "flicker_depth": profundidade, **sorteio.parametros()}
+
+    def parametros_com_disturbio_reduzido(self, parametros, fracao):
+        """Envelopes exatos de senoide + f * (modelo - senoide).
+
+        No modelo o flicker multiplica fundamental E harmônicos. Após a
+        redução, a fundamental tem envelope 1 + f*d*m, e os harmônicos
+        f*(1 + d*m), com m = sin(2*pi*flicker_hz*t). Logo a THD local é
+        f*thd*(1 + d*m)/(1 + f*d*m), não uma constante f*thd. Os extremos
+        abaixo cobrem m em [-1, 1], independentemente da janela de captura.
+        """
+        f = float(fracao)
+        d = float(parametros["flicker_depth"])
+        thd = float(parametros["thd"])
+        if not np.isfinite(f) or not 0 <= f <= 1:
+            raise ValueError("Fração de redução deve estar entre 0 e 1")
+        if not np.isfinite(d) or not 0 <= d < 1:
+            raise ValueError("Profundidade de flicker deve estar entre 0 (inclusive) e 1")
+        if not np.isfinite(thd) or thd < 0:
+            raise ValueError("THD deve ser finita e não negativa")
+        return {
+            "flicker_depth_bancada": f * d,
+            "thd_bancada_centro": f * thd,
+            "thd_bancada_min": f * thd * (1 - d) / (1 - f * d),
+            "thd_bancada_max": f * thd * (1 + d) / (1 + f * d),
+            # Junto com fator_disturbio_bancada e os parâmetros do modelo,
+            # estes coeficientes permitem reconstruir os dois envelopes.
+            "harmonicos_envelope_centro_bancada": f,
+            "harmonicos_envelope_modulacao_bancada": f * d,
+        }
