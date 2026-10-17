@@ -3,6 +3,8 @@
   "resultado": "build succeeded",
   "exit_code": 0,
   "log": "build_documentacao.log",
-  "sha256_log": "ad76693c50b43d8c9f96bcca95e425d30efd36f1eecd7781efb99e13d173b248",
-  "publicado": false
+  "sha256_log": "a907adf279f4a9db39b5c244728e70113bdbf372b3d1b965dcadb62607ba1a04",
+  "publicado": false,
+  "sha256_saida_original": "ad76693c50b43d8c9f96bcca95e425d30efd36f1eecd7781efb99e13d173b248",
+  "normalizacao_log": "Espaços à direita removidos; conteúdo e resultado preservados."
 }

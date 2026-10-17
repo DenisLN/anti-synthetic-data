@@ -168,4 +168,3 @@ Resumo: 01: 1/1 rodam; 02: 0/1 rodam, 1 PULADA(S); 03: 0/1 rodam, 1 PULADA(S); 0
 | 20 INTERHARMONICS | 3 (2) | — | 50.5 | 81.9 | 415.8 | 100% | 109 | sim |  |
 
 Resumo: 01: 1/1 rodam; 02: 1/1 rodam; 03: 1/1 rodam; 04: 3/3 rodam; 05: 1/1 rodam; 06: 3/3 rodam; 07: 3/3 rodam; 08: 3/3 rodam; 09: 3/3 rodam; 10: 3/3 rodam; 11: 3/3 rodam; 12: 3/3 rodam; 13: 3/3 rodam; 14: 3/3 rodam; 15: 3/3 rodam; 16: 3/3 rodam; 17: 3/3 rodam; 18: 1/1 rodam; 19: 3/3 rodam; 20: 3/3 rodam
-

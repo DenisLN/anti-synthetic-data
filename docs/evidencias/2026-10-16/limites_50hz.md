@@ -111,4 +111,3 @@ Resumo: 01: 1/1 rodam; 02: 1/1 rodam; 03: 1/1 rodam; 04: 3/3 rodam; 05: 1/1 roda
 | 20 INTERHARMONICS | 3 (2) | — | 357.3 | 415.1 | 415.8 | 100% | 596 | sim |  |
 
 Resumo: 01: 1/1 rodam; 02: 1/1 rodam; 03: 0/1 rodam, 1 PULADA(S); 04: 3/3 rodam; 05: 1/1 rodam; 06: 3/3 rodam, 3 com distúrbio reduzido; 07: 3/3 rodam, 3 com distúrbio reduzido; 08: 3/3 rodam; 09: 3/3 rodam, 1 com distúrbio reduzido; 10: 3/3 rodam; 11: 3/3 rodam; 12: 3/3 rodam; 13: 2/3 rodam, 2 com distúrbio reduzido, 1 PULADA(S); 14: 0/3 rodam, 3 PULADA(S); 15: 3/3 rodam; 16: 3/3 rodam; 17: 3/3 rodam, 3 com distúrbio reduzido; 18: 1/1 rodam; 19: 3/3 rodam; 20: 3/3 rodam, 2 com distúrbio reduzido
-
