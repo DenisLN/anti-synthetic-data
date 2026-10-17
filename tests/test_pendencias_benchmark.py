@@ -52,6 +52,28 @@ class PendenciasBenchmark(unittest.TestCase):
                 self.assertRaisesRegex(AssertionError, "sinal não preservado"):
             bench.benchmark(1, 32)
 
+    def test_fecha_writer_mesmo_quando_leitura_falha(self):
+        construtor = bench.ArquivoDaClasse
+        for falha in (False, True):
+            with self.subTest(falha=falha):
+                writers = []
+
+                def construir(*args, **kwargs):
+                    writer = construtor(*args, **kwargs)
+                    writers.append(writer)  # Impede que __del__ mascare a falta de close.
+                    return writer
+
+                with mock.patch.object(bench, "ArquivoDaClasse", side_effect=construir):
+                    if falha:
+                        with mock.patch.object(bench, "ler_capturas", side_effect=RuntimeError("leitura falhou")), \
+                                self.assertRaisesRegex(RuntimeError, "leitura falhou"):
+                            bench.benchmark(1, 32)
+                    else:
+                        bench.benchmark(1, 32)
+                self.assertEqual(len(writers), 1)
+                with self.assertRaisesRegex(RuntimeError, "encerrado"):
+                    writers[0].consolidar()
+
     def test_valida_entrada_antes_da_carga(self):
         for args in ((0, 32, 0), (1, 1, 0), (1, 32, -1), (True, 32, 0)):
             with self.subTest(args=args), self.assertRaises(ValueError):

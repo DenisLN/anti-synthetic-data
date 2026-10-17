@@ -8,6 +8,7 @@ formato existente. O pico tracemalloc não equivale ao RSS do processo.
 from __future__ import annotations
 
 import argparse
+from contextlib import ExitStack
 import hashlib
 import json
 import platform
@@ -28,7 +29,7 @@ def _hash(array):
 
 
 def _tamanhos(pasta):
-    arquivos = {str(p.relative_to(pasta)): p.stat().st_size for p in pasta.rglob("*") if p.is_file()}
+    arquivos = {p.relative_to(pasta).as_posix(): p.stat().st_size for p in pasta.rglob("*") if p.is_file()}
     return {"total_bytes": sum(arquivos.values()), "arquivos_bytes": arquivos}
 
 
@@ -50,12 +51,13 @@ def benchmark(capturas=3, pontos=6000, seed=2026, *, spool=True):
     rng = np.random.default_rng(seed)
     checkpoints, esperados, esperados_snr = [], {}, {}
     tempo_adicionar = tempo_consolidar = 0.0
-    with tempfile.TemporaryDirectory(prefix="asd-benchmark-io-") as temporaria:
+    with tempfile.TemporaryDirectory(prefix="asd-benchmark-io-") as temporaria, ExitStack() as recursos:
         pasta = Path(temporaria)
         tracemalloc.start()
         inicio_total = time.perf_counter()
         try:
-            arquivo = ArquivoDaClasse(pasta, "99", "BENCHMARK_SINTETICO", spool=spool)
+            arquivo = recursos.enter_context(
+                ArquivoDaClasse(pasta, "99", "BENCHMARK_SINTETICO", spool=spool))
             t = np.arange(pontos) / 30_000.0
             for perfil in ("norma", "literatura"):
                 arquivo.iniciar_perfil(perfil)
