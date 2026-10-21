@@ -68,7 +68,7 @@ Estados: **✅** concluída · **🔧→🏭** software pronto, falta bancada ·
 
 ## Log de rodadas (uma linha por rodada, mais recente no topo)
 
-- 2026-10-21 — Pedido do responsável: capacidades da MX30 conferidas antes de I/O (LIST ≤32, TRACe ≤50, dwell, PULSe, offset), captura que excede é pulada e a bateria segue; orçamento esgotado desliga e registra; `falhas.json`; `run falhas` / `rerun`. Revisão Opus OK; 726 OK.
+- 2026-10-21 — Pedido do responsável: capacidades da MX30 conferidas antes de I/O (LIST ≤32, TRACe ≤50, dwell, PULSe, offset), captura que excede é pulada e a bateria segue; orçamento esgotado desliga e registra; `falhas.json`; `run falhas` / `rerun`. Revisão Opus OK; 726 OK no Mac e no Inspiron (`suite.ps1`, EXIT=0, sem instrumentos).
 
 - 2026-10-21 — P-09: experimento A/B/C (braço A byte a byte idêntico; B = AC+DC; C = offset por passo, com consulta de suporte e recusa sem fallback; métricas modelo→programada no metadata); revisão Opus sem violação de limites, 3 achados corrigidos; 704 OK. Bloco 10-B no roteiro.
 
