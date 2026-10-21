@@ -39,6 +39,30 @@ def _metadados_brutos(dados):
     return meta
 
 
+def arquivos_brutos_da_captura(sessao_dir, metadado_captura):
+    """Brutos NPZ de UMA captura gravada, só pelo que o metadata dela lista.
+
+    Nunca por ``id_captura`` nem glob: uma tentativa descartada pode deixar um
+    bruto órfão em ``bruto_osciloscopio/`` com o mesmo ``id_captura``. Entradas
+    com erro/sem arquivo são ignoradas; caminho fora da sessão é recusado.
+    """
+    info = (metadado_captura or {}).get("bruto_osciloscopio")
+    if not isinstance(info, dict):
+        return []
+    raiz = Path(sessao_dir).resolve()
+    encontrados = []
+    for item in info.get("arquivos") or []:
+        relativo = item.get("arquivo") if isinstance(item, dict) else None
+        if not relativo or item.get("erro"):
+            continue
+        caminho = (raiz / relativo).resolve()
+        if raiz not in caminho.parents:
+            raise ValueError(f"bruto fora da pasta da sessão: {relativo}")
+        if caminho.is_file():
+            encontrados.append(caminho)
+    return encontrados
+
+
 def _comparacao(atual, referencia):
     erro = atual - referencia
     correlacao = None

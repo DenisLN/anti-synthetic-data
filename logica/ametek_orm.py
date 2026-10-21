@@ -436,8 +436,20 @@ class AmetekMX30:
         upper = command.strip().upper()
         return upper.startswith(cls._GRAVA_FLASH) and "?" not in upper.split(",", 1)[0]
 
+    @staticmethod
+    def _recusar_quebra_de_linha(command: str) -> None:
+        """Um comando é UMA linha SCPI. ``\\n``/``\\r`` internos fariam a fonte
+        executar linhas que a contagem de TRACe (por comando) não vê, burlando
+        o orçamento por conexão. Recusa antes de qualquer contagem ou I/O."""
+        if "\r" in command or "\n" in command:
+            raise ValueError(
+                f"Comando SCPI com quebra de linha embutida recusado: {command!r}. "
+                "Envie uma linha por chamada."
+            )
+
     def _raw_write(self, command: str, *, append_eot: Optional[bool] = None) -> None:
         command = command.strip()
+        self._recusar_quebra_de_linha(command)
         # Contar ANTES do envio: timeout não prova que a fonte deixou de
         # receber os dados. A tentativa incerta consome o orçamento também.
         # DATA relativo após ';' também pode repetir o subsistema TRACe
@@ -539,6 +551,7 @@ class AmetekMX30:
 
     def query(self, command: str) -> str:
         command = command.strip()
+        self._recusar_quebra_de_linha(command)
         _transcrever("Q", command)
         with self._lock:
             if self.simulated:

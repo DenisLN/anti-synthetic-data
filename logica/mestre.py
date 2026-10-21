@@ -3373,9 +3373,9 @@ def main() -> int:
             escritas = estimar_escritas_trace_bateria(scripts)
             if escritas > LIMITE_ESCRITAS_TRACE_CONEXAO:
                 raise LimiteEscritasTraceError(
-                    f"Bateria prevê até {escritas} gravações TRACe; orçamento por conexão "
-                    f"é {LIMITE_ESCRITAS_TRACE_CONEXAO}. Divida classes/capturas em conexões novas "
-                    "pela CLI; nenhum instrumento foi aberto."
+                    f"Estimativa sem retentativas: {escritas} gravações TRACe; orçamento por conexão "
+                    f"é {LIMITE_ESCRITAS_TRACE_CONEXAO} (o ORM aborta a bateria se esgotar). "
+                    "Divida classes/capturas em conexões novas pela CLI; nenhum instrumento foi aberto."
                 )
         RESULTS_DIR.mkdir(parents=True, exist_ok=True)
         with Bancada.from_env() as bancada:

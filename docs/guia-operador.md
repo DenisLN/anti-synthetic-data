@@ -58,7 +58,7 @@ Todas **case-sensitive**. `help` imprime a referência completa; `status` e `lis
 
 ## 4. Como rodar sem passar da trava da fonte
 
-A fonte travou por volta da 280.ª gravação de TRACe de uma conexão em 16/09/2026. Com os padrões, `run all` planeja **50 capturas** e **468 gravações de TRACe a 60 Hz** (390 a 50 Hz; conferido offline em 2026-10-16); com `set perfil todos` chega a 1116. A CLI só avisa. Para ficar abaixo, **divida em listas**: `run 01-07` e depois `run 09-20` (cada `run` abre conexão nova). O roteiro usa listas de menos de 250 gravações por conexão. {bdg-danger}`PENDENTE P-23`
+A fonte travou por volta da 280.ª gravação de TRACe de uma conexão em 16/09/2026. Com os padrões, `run all` planeja **50 capturas** e **468 gravações de TRACe a 60 Hz** (390 a 50 Hz; conferido offline em 2026-10-16); com `set perfil todos` chega a 1116. O orçamento operacional é de **216 gravações TRACe por conexão** (`LIMITE_ESCRITAS_TRACE_CONEXAO`): a CLI **recusa**, antes de abrir qualquer instrumento, um `run` cuja estimativa (sem retentativas) passe de 216, e o ORM aborta a bateria se o orçamento esgotar durante a conexão (retentativas também consomem). Para ficar abaixo, **divida em listas**: `run 01-07` e depois `run 09-20` (cada `run` abre conexão nova). O roteiro usa listas de até 216 gravações por conexão. {bdg-danger}`PENDENTE P-23`
 
 ## 5. O que olhar durante e depois
 

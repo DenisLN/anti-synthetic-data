@@ -530,8 +530,9 @@ class SessaoCLI:
         if escritas <= mestre.LIMITE_ESCRITAS_TRACE_CONEXAO:
             return True
         print(
-            f"Execução recusada: até {escritas} gravações TRACe excedem o orçamento de "
-            f"{mestre.LIMITE_ESCRITAS_TRACE_CONEXAO} por conexão. Divida classes/capturas "
+            f"Execução recusada: estimativa sem retentativas de {escritas} gravações TRACe excede o "
+            f"orçamento de {mestre.LIMITE_ESCRITAS_TRACE_CONEXAO} por conexão (o ORM também aborta a "
+            f"bateria se o orçamento esgotar com retentativas). Divida classes/capturas "
             "em conexões novas. Nada foi energizado."
         )
         return False
@@ -844,37 +845,41 @@ class SessaoCLI:
         ):
             return 1
         self._garantir_pasta_sessao()
-        self.autorizar_saida(True)
+        # O bloqueio da sessão só cai DEPOIS dos ganchos de fim (HTML,
+        # recalibração), que escrevem na pasta; try/finally cobre qualquer saída.
         try:
-            with mestre.Bancada.from_env(require_output=True) as bancada:
-                # run_all() sempre passa por 01/NORMAL primeiro, que eleva a
-                # saída a BASE_VOLTAGE_RMS (STEP é "sticky"). Uma classe
-                # isolada aqui não tem essa garantia — sem isto, SAG/SWELL/
-                # INTERRUPTION mediriam baseline no nível de segurança (0 V)
-                # em vez de BASE_VOLTAGE_RMS (ver Bancada.assegurar_tensao_base).
-                bancada.assegurar_tensao_base()
-                executados = bancada.executar_classe_nos_perfis(experimento_cls)
-            resultado = mestre.ResultadoClasse(
-                script_path.stem, nome, ok=True,
-                descartadas=sum(getattr(e, "_capturas_descartadas_count", 0) for e in executados),
-                invalidas=sum(getattr(e, "_capturas_invalidas_count", 0) for e in executados),
-                puladas=sum(getattr(e, "_capturas_puladas_count", 0) for e in executados),
-            )
-            print(f"OK: [{resultado.id}] {resultado.nome} -> {resultado.pasta_esperada}{self._ressalvas(resultado)}")
-            sucesso = True
-        except Exception as exc:
-            sucesso = False
-            resultado = mestre.ResultadoClasse(script_path.stem, nome, ok=False, motivo=str(exc))
-            print(f"FALHOU: [{resultado.id}] {resultado.nome}: {exc}")
-            traceback.print_exc()
+            self.autorizar_saida(True)
+            try:
+                with mestre.Bancada.from_env(require_output=True) as bancada:
+                    # run_all() sempre passa por 01/NORMAL primeiro, que eleva a
+                    # saída a BASE_VOLTAGE_RMS (STEP é "sticky"). Uma classe
+                    # isolada aqui não tem essa garantia — sem isto, SAG/SWELL/
+                    # INTERRUPTION mediriam baseline no nível de segurança (0 V)
+                    # em vez de BASE_VOLTAGE_RMS (ver Bancada.assegurar_tensao_base).
+                    bancada.assegurar_tensao_base()
+                    executados = bancada.executar_classe_nos_perfis(experimento_cls)
+                resultado = mestre.ResultadoClasse(
+                    script_path.stem, nome, ok=True,
+                    descartadas=sum(getattr(e, "_capturas_descartadas_count", 0) for e in executados),
+                    invalidas=sum(getattr(e, "_capturas_invalidas_count", 0) for e in executados),
+                    puladas=sum(getattr(e, "_capturas_puladas_count", 0) for e in executados),
+                )
+                print(f"OK: [{resultado.id}] {resultado.nome} -> {resultado.pasta_esperada}{self._ressalvas(resultado)}")
+                sucesso = True
+            except Exception as exc:
+                sucesso = False
+                resultado = mestre.ResultadoClasse(script_path.stem, nome, ok=False, motivo=str(exc))
+                print(f"FALHOU: [{resultado.id}] {resultado.nome}: {exc}")
+                traceback.print_exc()
+            finally:
+                self.autorizar_saida(False)
+            self.ultimo_resultado[resultado.id] = resultado
+            # Saída já desligada e Bancada fechada. Classe que falhou pode ter sido
+            # falha de infraestrutura: só o run que terminou OK dispara os ganchos.
+            if sucesso:
+                self._fim_da_sessao(mestre.SESSION_RESULTS_DIR)
         finally:
-            self.autorizar_saida(False)
             self._liberar_bloqueio_sessao()
-        self.ultimo_resultado[resultado.id] = resultado
-        # Saída já desligada e Bancada fechada. Classe que falhou pode ter sido
-        # falha de infraestrutura: só o run que terminou OK dispara os ganchos.
-        if sucesso:
-            self._fim_da_sessao(mestre.SESSION_RESULTS_DIR)
         return 0 if resultado.ok else 1
 
     def _run_all(self) -> int:
@@ -908,34 +913,37 @@ class SessaoCLI:
         experimento e aborta em falha de infraestrutura), resumo final e os
         ganchos de fim de run. Quem chama já confirmou a execução."""
         self._garantir_pasta_sessao()
-        self.autorizar_saida(True)
+        # Bloqueio liberado só depois dos ganchos de fim (ver run de classe única).
         try:
-            with mestre.Bancada.from_env(require_output=True) as bancada:
-                resultados = bancada.executar_bateria(scripts)
-        except Exception as exc:
-            print(f"BATERIA ABORTADA por falha de infraestrutura: {exc}")
-            traceback.print_exc()
-            return 1
-        finally:
-            self.autorizar_saida(False)
-            self._liberar_bloqueio_sessao()
+            self.autorizar_saida(True)
+            try:
+                with mestre.Bancada.from_env(require_output=True) as bancada:
+                    resultados = bancada.executar_bateria(scripts)
+            except Exception as exc:
+                print(f"BATERIA ABORTADA por falha de infraestrutura: {exc}")
+                traceback.print_exc()
+                return 1
+            finally:
+                self.autorizar_saida(False)
 
-        for resultado in resultados:
-            self.ultimo_resultado[resultado.id] = resultado
-        ok = sum(1 for resultado in resultados if resultado.ok)
-        print(f"\nResumo final: {ok}/{len(resultados)} classes OK")
-        for resultado in resultados:
-            if resultado.ok:
-                print(
-                    f"  OK     [{resultado.id}] {resultado.nome} -> {resultado.pasta_esperada}"
-                    f"{self._ressalvas(resultado)}"
-                )
-            else:
-                print(f"  FALHOU [{resultado.id}] {resultado.nome}: {resultado.motivo}")
-        # Falha de EXPERIMENTO não impede os ganchos (a bateria seguiu); a de
-        # infraestrutura saiu acima, sem eles.
-        self._fim_da_sessao(mestre.SESSION_RESULTS_DIR)
-        return 0 if ok == len(resultados) else 1
+            for resultado in resultados:
+                self.ultimo_resultado[resultado.id] = resultado
+            ok = sum(1 for resultado in resultados if resultado.ok)
+            print(f"\nResumo final: {ok}/{len(resultados)} classes OK")
+            for resultado in resultados:
+                if resultado.ok:
+                    print(
+                        f"  OK     [{resultado.id}] {resultado.nome} -> {resultado.pasta_esperada}"
+                        f"{self._ressalvas(resultado)}"
+                    )
+                else:
+                    print(f"  FALHOU [{resultado.id}] {resultado.nome}: {resultado.motivo}")
+            # Falha de EXPERIMENTO não impede os ganchos (a bateria seguiu); a de
+            # infraestrutura saiu acima, sem eles.
+            self._fim_da_sessao(mestre.SESSION_RESULTS_DIR)
+            return 0 if ok == len(resultados) else 1
+        finally:
+            self._liberar_bloqueio_sessao()
 
     # -- ganchos de fim de run (set recalibracao / set html) ----------------
 
