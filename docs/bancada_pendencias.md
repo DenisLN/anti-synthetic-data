@@ -206,6 +206,20 @@ Fora do `ROTEIRO_BANCADA.md`: vem de {doc}`projeto/passo-final-sin` (seção 4).
 | 10A.1 | `env\Scripts\python.exe scripts\teste_passo_final_sin.py --classe 06 --repeticoes 1` | P-18 | `resultados\passo_final_sin_<data>\registros.npz` e `resultado.json`; `logs\` do script | Código de saída 0. rms por ciclo da margem final com o passo = 1,00 +- 0,01 pu; janela rotulada com e sem o passo: correlação >= 0,999 e diferença máxima de rms por ciclo <= 0,01 pu; nenhum erro SCPI. Limiares são escolha do autor do script, sem dado de bancada |
 | 10A.2 | Se aprovado: `run 06` pela CLI e conferir as três versões ({doc}`tres_versoes`) | P-18 | sessão | Restauração na fonte e aceitação LIST observadas; critério numérico não definido. O **padrão do passo continua OFF** até o responsável decidir (P-26/D) |
 
+## Bloco 10-B. Experimento P-09 A/B/C (extensão, **não consta no roteiro**). Sessão B, 127 V/60 Hz, depois do Bloco 5 (P-17)
+
+Objetivo: decidir pela medição se o offset DC por passo de LIST recupera a média por ciclo que a TRACe perde (decisão P-09 em `decisoes_pendentes.md`). Mesmas classes, seed, perfil e condição nos três braços; só muda `set p09`.
+
+| Passo | Comando | P-NN | Evidência | Critério |
+|---|---|---|---|---|
+| 10B.1 | **Sem energizar:** com a CLI fechada, `env\Scripts\python.exe scripts\diag_list_offset.py --saida logs\diag_list_offset.json` (o script só consulta e mantém OUTPUT OFF) | P-09 | `logs\diag_list_offset.json` | Se `SOURce:LIST:VOLTage:OFFSet` **não** for aceito: pular 10B.3 (braço C), rodar só A e B e fechar a P-09 como limitação aceita, com as métricas (d) |
+| 10B.2 | CLI: `set p09 A`, `run 10-12,16` (confirmação digitada) | P-09, P-17 | sessão A | Linha de base |
+| 10B.3 | CLI: `set p09 C`, `run 10-12,16` | P-09 | sessão C | Só se 10B.1 confirmou o comando; a CLI recusa C antes de energizar se a fonte não aceitar |
+| 10B.4 | CLI: `set p09 B`, `run 10-12,16` | P-09, P-17 | sessão B | Controle: AC+DC sem offset, isola o déficit da P-17 |
+| 10B.5 | Offline: `env\Scripts\python.exe scripts\analisar_modelo_programado.py --sessao <A> --sessao <B> --sessao <C> --classes 10 11 12 16 --saida logs\p09_abc.json` | P-09 | `logs\p09_abc.json` | C melhor que A e B na correlação medida × modelo e no erro de média por ciclo, sem violar picos → adotar C; caso contrário, manter A e aceitar a limitação |
+
+Observações: com B/C a conexão inteira fica em AC+DC (inclusive classes nativas). Os offsets de LIST são zerados fora das capturas C e no desligamento. Volte para `set p09 A` antes da campanha principal, a menos que o resultado mande adotar C.
+
 ## Campanhas por condição (P-26)
 
 Decisão do responsável em 21/10/2026: a campanha roda em **cinco condições**. Elas coincidem com `CONDICOES` em `scripts/verificar_prontidao.py`. Planejamento offline com `--perfis todos`, 150 capturas por condição: `docs/evidencias/2026-10-21/plano_campanhas_5_condicoes.json`. É planejamento, não sessão.

@@ -42,7 +42,7 @@ Estados: **✅** concluída · **🔧→🏭** software pronto, falta bancada ·
 | P-06 | 🔧→🏭 | Bug de estado corrigido; falta continuidade de fase 47→53 Hz real | K,R |
 | P-07 | 🔧→🏭 | Recalibrar 07/17 com medidas reais e validar na coleta seguinte | K,R |
 | P-08 | 🔧→🏭 | Pico/vale 10/11/12/16 contra teto previsto, por condição | K,R |
-| P-09 | 🔧→🏭 | Pesquisa feita (21/10): implementar (d) registro modelo→programada + protótipo simulado de offset por passo; na bancada consultar `LIST:VOLT:OFFS?` (sem energizar); se não existir, aceitar como limitação | K,D |
+| P-09 | 🔧→🏭 | Experimento A/B/C implementado (OFF=A; `set p09`); na bancada: `diag_list_offset.py` sem energizar e Bloco 10-B; se C não for aceito/não ganhar, aceitar limitação com métricas (d) | K,R |
 | P-10 | 🔧→🏭 | RMS/THD da 05: CSIN 10/15/20%, norma 2%, TRACe 30% | K,R |
 | P-11 | ✅ | — | — |
 | P-12 | ✅ | — | — |
@@ -67,6 +67,8 @@ Estados: **✅** concluída · **🔧→🏭** software pronto, falta bancada ·
 | P-31 | 🔧→🏭 | Métricas offline publicadas; falta sessões novas + escolha da métrica oficial | K,R,D |
 
 ## Log de rodadas (uma linha por rodada, mais recente no topo)
+
+- 2026-10-21 — P-09: experimento A/B/C (braço A byte a byte idêntico; B = AC+DC; C = offset por passo, com consulta de suporte e recusa sem fallback; métricas modelo→programada no metadata); revisão Opus sem violação de limites, 3 achados corrigidos; 704 OK. Bloco 10-B no roteiro.
 
 - 2026-10-21 — **P-30 concluída** (decisão D: contagens históricas não verificáveis). P-09: implementação do experimento A/B/C (OFF por padrão) em andamento.
 

@@ -73,14 +73,14 @@ def analisar_forma(modelo, *, frequency_hz, base_voltage_rms=127., fase_graus=0.
     programada = plano.programada_pu()
     fs = AmetekMX30.FS_HZ
     n = plano.pontos_por_ciclo
-    erro = programada - modelo
+    distancia = sinais.distancia_modelo_programada(modelo, programada, pontos_por_ciclo=n)
     nominal, motivo_nominal = sinais.correlacao_disturbio(
         modelo, programada, fs_hz=fs, f0_hz=frequency_hz, fase_graus=fase_graus,
     )
     ajustada, motivo_ajustada = sinais.correlacao_disturbio_fundamental_ajustada(
         modelo, programada, fs_hz=fs, f0_hz=frequency_hz,
     )
-    media_perdida = np.mean(modelo.reshape(-1, n), axis=1) - np.mean(programada.reshape(-1, n), axis=1)
+    media_perdida = distancia['media_perdida_por_ciclo_pu']
     escala_v = base_voltage_rms * math.sqrt(2)
     return {
         'fs_hz': fs, 'amostras': int(modelo.size), 'pontos_por_ciclo': n,
@@ -88,12 +88,12 @@ def analisar_forma(modelo, *, frequency_hz, base_voltage_rms=127., fase_graus=0.
         'unidade_pu': 'fração do pico nominal base_voltage_rms * sqrt(2)',
         'modelo': _estatisticas(modelo, n, fs, frequency_hz),
         'programada': _estatisticas(programada, n, fs, frequency_hz),
-        'erro_rms_pu': float(np.sqrt(np.mean(erro ** 2))),
-        'erro_maximo_pu': float(np.max(np.abs(erro))),
-        'erro_rms_v': float(np.sqrt(np.mean(erro ** 2))) * escala_v,
-        'erro_maximo_v': float(np.max(np.abs(erro))) * escala_v,
+        'erro_rms_pu': distancia['erro_rms_pu'],
+        'erro_maximo_pu': distancia['erro_maximo_pu'],
+        'erro_rms_v': distancia['erro_rms_pu'] * escala_v,
+        'erro_maximo_v': distancia['erro_maximo_pu'] * escala_v,
         'media_perdida_por_ciclo_pu': media_perdida.tolist(),
-        'media_perdida_maxima_absoluta_pu': float(np.max(np.abs(media_perdida))),
+        'media_perdida_maxima_absoluta_pu': distancia['media_perdida_maxima_absoluta_pu'],
         'pico_reconstruido_conservador_v': plano.pico_reconstruido_v,
         'correlacao_disturbio_nominal': {'valor': nominal, 'motivo_indefinida': motivo_nominal},
         'correlacao_disturbio_fundamental_ajustada': {'valor': ajustada, 'motivo_indefinida': motivo_ajustada},

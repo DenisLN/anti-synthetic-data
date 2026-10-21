@@ -119,6 +119,14 @@ Comandos disponíveis (nenhum energiza a saída sem pedir confirmação própria
                        Preserva a exportação BYTE/NORMal dos canais antes da
                        interpolação, sem nova aquisição, em bruto_osciloscopio/.
                        Arquivos independentes com preamble, tempos e hash.  [OFF]
+  set p09 A|B|C       Experimento P-09 (vale a partir da próxima conexão/run):
+                       A = como sempre (modo AC); B = AC+DC com offset zero;
+                       C = AC+DC com offset DC por passo de LIST (comando NÃO
+                       confirmado no manual: a conexão consulta o suporte com
+                       a saída OFF e recusa o run se a fonte não aceitar, sem
+                       cair para A/B). B/C deixam TODA a conexão em AC+DC,
+                       inclusive as classes nativas. Gravado no metadata como
+                       p09_braco (docs/configuracao.md).                    [A]
   set capturas <N>    Mínimo de capturas por classe na bancada real: cada
                        classe roda max(N, padrão da classe) — ver "list".
                        Em classes com níveis discretos (SAG/SWELL/
@@ -408,6 +416,7 @@ class SessaoCLI:
             f"diagnostico: {'ON' if mestre.DIAGNOSTICO_MODE else 'OFF'}   "
             f"diagnostico retrieve: {'ON' if mestre.DIAGNOSTICO_RETRIEVE else 'OFF'}   "
             f"diagnostico bruto: {'ON' if mestre.SALVAR_BRUTO_OSCILOSCOPIO else 'OFF'}   "
+            f"p09: {mestre.P09_BRACO}   "
             f"set capturas: "
             f"{mestre.CAPTURAS_OVERRIDE if mestre.CAPTURAS_OVERRIDE is not None else 'não (padrão das classes)'}"
         )
@@ -567,7 +576,7 @@ class SessaoCLI:
 
     def cmd_set(self, args: List[str]) -> int:
         if len(args) < 2:
-            print("Uso: set diagnostico on|off|retrieve|bruto   |   set capturas <N>|padrao   |   set seed <N>|padrao   |   "
+            print("Uso: set diagnostico on|off|retrieve|bruto   |   set p09 A|B|C   |   set capturas <N>|padrao   |   set seed <N>|padrao   |   "
                 "set perfil norma|literatura|fronteira|todos   |   set sorteio on|off   |   "
                 "set recalibracao on|off   |   set html on|off")
             return 1
@@ -612,6 +621,20 @@ class SessaoCLI:
                 return 1
             mestre.DIAGNOSTICO_MODE = valor == "on"
             print(f"diagnostico: {'ON' if mestre.DIAGNOSTICO_MODE else 'OFF'}")
+            return 0
+        if chave == "p09":
+            braco = args[1].strip().upper()
+            if braco not in ("A", "B", "C") or len(args) > 2:
+                print(f"Uso: set p09 A|B|C (mantendo {mestre.P09_BRACO})")
+                return 1
+            mestre.P09_BRACO = braco
+            descricao = {
+                "A": "modo AC, como sempre",
+                "B": "AC+DC com offset zero em todos os passos (isola o efeito AC+DC/P-17)",
+                "C": "AC+DC com offset DC por passo de LIST (consulta o suporte com a saída OFF "
+                     "e recusa o run se a fonte não aceitar; sem fallback)",
+            }[braco]
+            print(f"p09: {braco} — {descricao} (vale a partir do próximo run; gravado no metadata como p09_braco)")
             return 0
         if chave == "capturas":
             if valor in ("padrao", "padrão", "off"):

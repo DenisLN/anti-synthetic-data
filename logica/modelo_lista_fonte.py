@@ -172,8 +172,9 @@ def prever_forma(programacao, mecanismo: str = "ideal", **parametros) -> np.ndar
     """Forma (pu do pico nominal, grade de 30 kSa/s, ``ciclos * pontos_por_ciclo``
     amostras) que a fonte emitiria para ``programacao`` (uma
     ``ProgramacaoCaptura``) SE o ``mecanismo`` (hipótese) fosse verdadeiro.
-    O offset DC da programação é somado no fim, como em ``programada_pu``.
-    Levanta ``ValueError`` para mecanismo ou parâmetro desconhecido."""
+    O offset DC da programação é somado no fim, como em ``programada_pu``:
+    o global, ou, no braço C da P-09 (``dc_offset_por_passo_pu``), o de cada
+    passo. Levanta ``ValueError`` para mecanismo ou parâmetro desconhecido."""
     if mecanismo not in MECANISMOS:
         raise ValueError(f"mecanismo desconhecido {mecanismo!r}; válidos: {sorted(MECANISMOS)}")
     formas = _formas_unitarias(programacao)
@@ -181,6 +182,14 @@ def prever_forma(programacao, mecanismo: str = "ideal", **parametros) -> np.ndar
         saida = MECANISMOS[mecanismo](programacao, formas, **parametros)
     except TypeError as exc:
         raise ValueError(f"parâmetros inválidos para {mecanismo!r}: {exc}") from exc
+    if getattr(programacao, "dc_offset_por_passo_pu", None) is not None:
+        offsets = programacao.offset_por_amostra_pu()
+        n = min(saida.size, offsets.size)
+        saida = saida.copy()
+        saida[:n] = saida[:n] + offsets[:n]
+        if saida.size > n:
+            saida[n:] = saida[n:] + float(programacao.dc_offset_pu)
+        return saida
     return saida + float(programacao.dc_offset_pu)
 
 

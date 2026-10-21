@@ -144,10 +144,10 @@
   "acao": "quantificar perda da média por ciclo e viabilidade física de offset; recomendar aceitar limite até haver evidência",
   "dependencia": "P-17 para eventual compensação ACDC",
   "criterio": "Decisão registrada com erro quantificado; se optar por mudança, demonstração técnica e regressões antes/depois",
-  "falta": "Pesquisa feita (21/10): implementar (d) registro modelo→programada + protótipo simulado de offset por passo; na bancada consultar `LIST:VOLT:OFFS?` (sem energizar); se não existir, aceitar como limitação",
+  "falta": "Experimento A/B/C implementado (OFF=A; `set p09`); na bancada: `diag_list_offset.py` sem energizar e Bloco 10-B; se C não for aceito/não ganhar, aceitar limitação com métricas (d)",
   "frentes": [
    "K",
-   "D"
+   "R"
   ],
   "evidencias": [
    "evidencias/2026-10-16/modelo_programado.json"

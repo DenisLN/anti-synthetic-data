@@ -20,7 +20,7 @@ from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 import numpy as np
 
 from ametek_orm import (
-    AmetekMX30, CommunicationError, FalhaFatalDeInstrumento, InstrumentHardwareError,
+    AmetekMX30, BracoP09Error, CommunicationError, FalhaFatalDeInstrumento, InstrumentHardwareError,
     LeituraTraceError, ParameterOutOfBoundsError, ProgramacaoCaptura,
 )
 from politica_traces import LIMITE_ESCRITAS_TRACE_CONEXAO, LimiteEscritasTraceError
@@ -28,8 +28,8 @@ import perfis
 import sessao_io
 import bruto_osciloscopio_io
 from sinais import (
-    FORMA_NATIVA_POR_CLASSE, comparar_fisicamente, forma_programada_nativa, janela_nominal,
-    ruido_na_janela, tempo,
+    FORMA_NATIVA_POR_CLASSE, comparar_fisicamente, distancia_modelo_programada,
+    forma_programada_nativa, janela_nominal, ruido_na_janela, tempo,
 )
 
 
@@ -395,6 +395,9 @@ AMETEK_EXPECTED_MODEL = os.getenv("AMETEK_EXPECTED_MODEL", "MX30")
 AMETEK_CLEAR_USER_WAVEFORMS = env_bool("AMETEK_CLEAR_USER_WAVEFORMS", default=False)
 # Experimental: validar a margem física antes de tornar padrão.
 AMETEK_PASSO_FINAL_SIN = env_bool("AMETEK_PASSO_FINAL_SIN", default=False)
+# Experimento P-09 (A|B|C, padrão A = comportamento de sempre). Validado por
+# AmetekMX30 ao abrir a conexão; "set p09 A|B|C" na CLI troca para o próximo run.
+P09_BRACO = os.getenv("AMETEK_P09_BRACO", "A").strip().upper() or "A"
 
 # Keysight USB/VISA informado para a bancada. Use AUTO apenas para descoberta.
 KEYSIGHT_RESOURCE = os.getenv(
@@ -1064,7 +1067,10 @@ class Bancada:
             logger.warning("MODO SIMULADO: nenhum instrumento será aberto")
             # Nenhum experimento toca fonte/osc no modo simulado (usam gerar());
             # a instância existe só por consistência de assinatura.
-            return cls(AmetekMX30(simulated=True, diagnostico=DIAGNOSTICO_MODE), None, config)
+            return cls(
+                AmetekMX30(simulated=True, diagnostico=DIAGNOSTICO_MODE, p09_braco=P09_BRACO),
+                None, config,
+            )
 
         validate_bench_configuration(require_output=require_output)
         fonte: Optional[AmetekMX30] = None
@@ -1078,6 +1084,7 @@ class Bancada:
                 expected_model=AMETEK_EXPECTED_MODEL,
                 clear_user_waveforms=AMETEK_CLEAR_USER_WAVEFORMS,
                 passo_final_sin=AMETEK_PASSO_FINAL_SIN,
+                p09_braco=P09_BRACO,
                 max_voltage_rms=EUT_MAX_VOLTAGE_RMS,
                 max_peak_v=EUT_MAX_PEAK_V,
                 max_current_a=CURRENT_LIMIT_A,
@@ -1493,6 +1500,10 @@ class Bancada:
 
         try:
             fonte.restaurar_forma_e_modo_padrao()
+        except BracoP09Error:
+            # P-09 B/C: offsets de LIST não confirmados zerados (ou AC+DC
+            # perdido) — não é estado seguro conhecido; aborta a bateria.
+            raise
         except Exception:
             logger.warning(
                 "Falha ao restaurar forma/modo padrão durante a recuperação — "
@@ -1627,6 +1638,7 @@ class ExperimentoBase(ABC):
                     forma_bancada_pu, base_voltage_rms=base, frequency_hz=f0,
                     dc_offset_pu=float(parametros.get("dc_offset_pu", 0.0)),
                     passo_final_sin=bool(getattr(self.fonte, "passo_final_sin", False)),
+                    p09_braco=str(getattr(self.fonte, "p09_braco", "A")),
                 )
             return programacao.programada_pu(), "TRACe+LIST:VOLTage (AmetekMX30.montar_programacao)"
         teto_rms = float(getattr(self.fonte, "max_voltage_rms", 300.0))
@@ -1637,6 +1649,32 @@ class ExperimentoBase(ABC):
             duracao_legada_s=getattr(self, "DURACAO_S", None),
         )
         return forma, f"{FORMA_NATIVA_POR_CLASSE[self.id]} nativo (sinais.forma_programada_nativa)"
+
+    def _metricas_p09(self, capture_index: int) -> Dict[str, object]:
+        """Campos P-09 do metadata (só acrescentados): ``p09_braco`` sempre;
+        nas capturas TRACe/LIST com modelo e programada, a distância modelo ->
+        programada efetiva do braço (``sinais.distancia_modelo_programada``):
+        ``media_perdida_maxima_absoluta_pu``, ``erro_rms_modelo_programada_pu``
+        e ``salto_pico_modelo_programada_v``. Nunca derruba a captura."""
+        campos: Dict[str, object] = {"p09_braco": str(getattr(self.fonte, "p09_braco", "A"))}
+        versoes = self._versoes_atuais or {}
+        if not self.grava_trace(capture_index) or "programada" not in versoes:
+            return campos
+        try:
+            n = int(round(float(self.config.fs_hz) / float(self.config.grid_frequency_hz)))
+            distancia = distancia_modelo_programada(
+                versoes["modelo"], versoes["programada"], pontos_por_ciclo=n,
+            )
+        except (ValueError, TypeError, ZeroDivisionError) as exc:
+            logger.warning("[%s] métricas P-09 não calculadas (%s)", self.id, exc)
+            return campos
+        nominal_v = float(self.config.base_voltage_rms) * math.sqrt(2.0)
+        campos.update(
+            media_perdida_maxima_absoluta_pu=distancia["media_perdida_maxima_absoluta_pu"],
+            erro_rms_modelo_programada_pu=distancia["erro_rms_pu"],
+            salto_pico_modelo_programada_v=distancia["salto_pico_pu"] * nominal_v,
+        )
+        return campos
 
     def _programacao_enviada(self) -> Optional[ProgramacaoCaptura]:
         """A ``ProgramacaoCaptura`` que o ``program_capture`` que acabou de rodar
@@ -2802,6 +2840,7 @@ class ExperimentoBase(ABC):
                     "parametros": parametros,
                     "nivel_indice": capture_index if (cobertura_por_nivel_ativa or not simulated) else 0,
                 })
+                metadados[-1].update(self._metricas_p09(capture_index))
                 extremos: Dict[str, object] = {}
                 if not simulated:
                     metadados[-1].update(self._contexto_da_sessao())

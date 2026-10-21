@@ -74,6 +74,10 @@ Nenhum campo existente foi removido. Campos novos:
 | `perfil_de_origem` | idem | perfil cujo bloco do `.npz` guarda os dados (`literatura`) (v1.15, acrescentado) |
 | `compartilhada_com_perfis` | idem | lista de todos os perfis que apontam para a captura, origem primeiro (v1.15, acrescentado) |
 | `sha256_captura` | idem | SHA-256 dos arrays da captura (`sessao_io.hash_captura`: `medida`, `modelo`, `programada` em float64 little-endian, com rótulo e tamanho; versão ausente = `NaN`) (v1.15, acrescentado) |
+| `p09_braco` | toda captura (v1.15, acrescentado) | braço do experimento P-09 da conexão: `"A"` (padrão, modo AC), `"B"` (AC+DC, offset 0) ou `"C"` (AC+DC, offset por passo). `AMETEK_P09_BRACO`/`set p09`; no simulado, o da fonte simulada |
+| `media_perdida_maxima_absoluta_pu` | captura TRACe/LIST com modelo e programada (v1.15, acrescentado) | maior `abs(média do ciclo no modelo − média do ciclo na programada)`, pu do pico nominal (`sinais.distancia_modelo_programada`, as mesmas contas de `scripts/analisar_modelo_programado.py`). A programada é a efetiva do braço (no C, com o offset por passo). Na física, o modelo é `gerar()` antes da redução de bancada (08) |
+| `erro_rms_modelo_programada_pu` | idem | rms de `programada − modelo`, pu do pico nominal |
+| `salto_pico_modelo_programada_v` | idem | `(max abs(programada) − max abs(modelo)) × base × √2`, em V: quanto o pico programado se afasta do pico do modelo. `pico_programado_v` (física) não muda |
 | `snr_medido_db` | toda captura | SNR **acrescentado** por nível (`"20.0"`, `"30.0"`, `"40.0"`): janela limpa contra ruído somado, medido só na janela rotulada |
 | `snr_bancada_db` | só física | SNR do ruído próprio da bancada nesta captura (potência da janela / ruído medido na margem anterior por segunda diferença); `null` no simulado |
 | `snr_efetivo_db` | toda captura | por nível: sinal / (ruído da bancada + ruído acrescentado); no simulado igual a `snr_medido_db` |

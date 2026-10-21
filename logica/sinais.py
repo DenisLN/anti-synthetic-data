@@ -482,6 +482,34 @@ def janela_nominal(
 LIMITE_RESIDUO_DEGENERADO_PU = 1e-6
 
 
+def distancia_modelo_programada(
+    modelo_pu: np.ndarray, programada_pu: np.ndarray, *, pontos_por_ciclo: int,
+) -> Dict[str, object]:
+    """Distância modelo -> programada (P-09, item d), em pu do pico nominal:
+    ``erro_rms_pu`` e ``erro_maximo_pu`` de ``programada - modelo``; a média
+    perdida por ciclo (média do modelo menos a da programada, em ciclos de
+    ``pontos_por_ciclo`` amostras) e o seu máximo absoluto; e o salto de pico
+    absoluto (``max|programada| - max|modelo|``). Mesmas contas de
+    ``scripts/analisar_modelo_programado.analisar_forma``. Exige as duas
+    formas do mesmo tamanho, múltiplo de ``pontos_por_ciclo``."""
+    modelo = np.asarray(modelo_pu, dtype=np.float64)
+    programada = np.asarray(programada_pu, dtype=np.float64)
+    n = int(pontos_por_ciclo)
+    if modelo.shape != programada.shape or modelo.ndim != 1 or n < 1 or modelo.size % n:
+        raise ValueError(
+            f"modelo {modelo.shape} e programada {programada.shape} incompatíveis com ciclos de {n} amostras"
+        )
+    erro = programada - modelo
+    media_perdida = np.mean(modelo.reshape(-1, n), axis=1) - np.mean(programada.reshape(-1, n), axis=1)
+    return {
+        "erro_rms_pu": float(np.sqrt(np.mean(erro ** 2))),
+        "erro_maximo_pu": float(np.max(np.abs(erro))),
+        "media_perdida_por_ciclo_pu": media_perdida,
+        "media_perdida_maxima_absoluta_pu": float(np.max(np.abs(media_perdida))),
+        "salto_pico_pu": float(np.max(np.abs(programada)) - np.max(np.abs(modelo))),
+    }
+
+
 def correlacao_disturbio(
     esperado: np.ndarray, capturado: np.ndarray, *, fs_hz: float, f0_hz: float, fase_graus: float = 0.0,
 ) -> Tuple[Optional[float], Optional[str]]:
