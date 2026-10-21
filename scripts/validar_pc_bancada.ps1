@@ -68,7 +68,12 @@ print(json.dumps({"python": sys.version, "python_executavel": sys.executable,
                   "numpy": v("numpy"), "pymeasure": v("PyMeasure"), "pyvisa": v("PyVISA"),
                   "plataforma": platform.platform(), "sistema": platform.system()}))
 '@
-$versoes = Invoke-Capturando @("-c", $versoesCodigo)
+# Arquivo temporario em vez de "-c": o PowerShell 5.1 nao escapa aspas duplas
+# internas ao passar argumentos a programas nativos, e o codigo chegaria truncado.
+$versoesPy = Join-Path ([IO.Path]::GetTempPath()) ("asd_versoes_{0}.py" -f [guid]::NewGuid())
+[IO.File]::WriteAllText($versoesPy, $versoesCodigo, (New-Object System.Text.UTF8Encoding($false)))
+try { $versoes = Invoke-Capturando @($versoesPy) }
+finally { Remove-Item -Force -ErrorAction SilentlyContinue $versoesPy }
 $infoVersoes = $null
 try { $infoVersoes = ($versoes.Saida -join "`n") | ConvertFrom-Json } catch { $infoVersoes = $null }
 
