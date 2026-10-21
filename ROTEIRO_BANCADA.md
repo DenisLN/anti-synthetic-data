@@ -7,12 +7,13 @@ Este roteiro foi escrito sem acesso à bancada. Todo comando e toda confirmaçã
 ## 0. Regras fixas do dia
 
 - **Fator da probe de tensão**: o que está **escrito na probe física**, conferido na hora. Em todo comando abaixo aparece como `<FATOR escrito na probe>`; não presuma o valor de sessões anteriores. O `START_BENCH` pergunta; os scripts `diag_*` recebem em `--probe`.
-- **Confirmações digitadas, case-sensitive, nunca automatizadas**: `ENERGIZAR-TESTE`, `ENERGIZAR-COMANDOS`, `EXECUTAR-CLASSE-<NN>`, `EXECUTAR-CLASSES-<lista normalizada>`, `EXECUTAR-20-CLASSES` (não usada hoje), `ENERGIZAR-MARCADORES`, `ENERGIZAR-ACDC`. Antes de digitar: probe, cabos, E-stop, EUT, **disjuntores entre a fonte e a probe fechados**.
+- **Confirmações digitadas, case-sensitive, nunca automatizadas**: `ENERGIZAR-TESTE`, `ENERGIZAR-COMANDOS`, `EXECUTAR-CLASSE-<NN>`, `EXECUTAR-CLASSES-<lista normalizada>`, `EXECUTAR-20-CLASSES` (não usada hoje), `ENERGIZAR-MARCADORES`, `ENERGIZAR-ACDC` e, **só no passo P-18** (Bloco 10-A, `scripts/teste_passo_final_sin.py`), `ENERGIZAR-PASSO-SIN`. **Nenhum script, macro ou agente digita qualquer uma delas: o operador está presente e digita cada uma.** Antes de digitar: probe, cabos, E-stop, EUT, **disjuntores entre a fonte e a probe fechados**.
 - **Captura de corrente desligada** (`CAPTURE_CURRENT=0`). Não ativar.
-- **Tensão do dia: 127 V.** Sem 220/380 V. Frequências: sessão A em **50 Hz** (diagnóstico da 08/09), sessão B em **60 Hz** (campanha).
+- **Tensão do dia: 127 V.** Sem 220/380 V. A execução ACDC a 230 V (Bloco 5, 3.ª execução) é **NÃO AUTORIZADA** até a decisão P-26 (`docs/decisoes_pendentes.md`) estar preenchida e registrada; sem ela, não energizar 230 V. Frequências: sessão A em **50 Hz** (diagnóstico da 08/09), sessão B em **60 Hz** (campanha).
 - **Antes de scripts `diag_*` que acessam instrumentos, sair da CLI com `quit` e confirmar OUTPUT OFF**; COM10 é exclusiva. Scripts offline de análise não abrem instrumentos.
 - **Uma conexão com a fonte = um comando `run`**. A fonte travou na ~280.ª gravação de TRACe de uma conexão (2026-09-16); neste roteiro nenhuma conexão passa de 216 gravações. `run all` (468 gravações a 60 Hz) **não** é usado.
-- **Toda sessão de coleta sai de commit limpo** e a CLI é reiniciada depois de commitar (o metadata grava `git_commit`/`git_sujo`).
+- **Toda sessão de coleta sai de commit limpo** e a CLI é reiniciada depois de commitar (o metadata grava `git_commit`/`git_sujo`). Isto vale **bloco a bloco**: cada bloco que coleta começa com `git status` limpo. Os scripts novos (`benchmark_sessao_io.py`, `analisar_modelo_programado.py`, `fechar_pendencias.py`, `validar_pc_bancada.ps1`, `teste_passo_final_sin.py` etc.) já estão commitados no branch; arquivo novo não commitado em `scripts/`, `logica/` ou `experimentos_*` torna `git_sujo` verdadeiro. No Bloco 7 o commit da calibração gera um **NOVO SHA**: as sessões dos Blocos 1 a 7 registram o SHA anterior e as do Bloco 8 em diante registram o SHA novo (o `git_commit` esperado muda no meio do dia; anotar os dois).
+- **Diagnóstico bruto (P-28)**: antes de cada `run` cujas classes interessam ao P-28, digitar `set diagnostico bruto on` na CLI (padrão OFF; não faz aquisição extra); conferir em `status` (`diagnostico bruto: ON`).
 - **Falha de infraestrutura** (porta serial caiu, `CommunicationError`, impossível confirmar OUTPUT, `FalhaFatalDeInstrumento`, `CadeiaDeMedicaoError`): 1) confirmar fisicamente **OUTPUT OFF** no painel da AMETEK; 2) **não repetir** automaticamente; 3) entregar `sessao.log` e `scpi_transcricao.log` da pasta `resultados\sessao_<timestamp>[_runNN]` mais recente (para `run`), ou `logs\preflight_new-*.log` mais recente (para `comm`/`trigger`/`lowvoltage`/`native`), ou `logs\diag_*-*.log` e `-scpi.log` (scripts `diag_*`); 4) nunca remover validação de IDN, timeout, 6000 pontos ou SCPI. Falha de **experimento** (RMS fora de tolerância, captura inválida) não é infraestrutura: a bateria isola e segue.
 - Variável de ajuda nos blocos de CLI: depois de cada `run`, em outro PowerShell:
 
@@ -34,8 +35,9 @@ $s
 | 6 | CLI sessão A (50 Hz): recaptura da 08, depois a 09 | sim | `EXECUTAR-CLASSE-08`, `EXECUTAR-CLASSE-09` | 10 a 15 min |
 | 7 | CLI sessão B (60 Hz): 07 e 17 com recalibração, commit, reinício | sim | `EXECUTAR-CLASSES-07,17` (x2) | 25 a 35 min |
 | 8 | Parte 1 da campanha = verificações do sorteio (02/03/04, 05, 18, 19, 01) | sim | `EXECUTAR-CLASSES-...` | 6 a 10 min |
+| 8-A | P-10: 05 por nível (`set perfil norma`/`literatura`, `set capturas 1`, `run 05` x2) | sim | `EXECUTAR-CLASSE-05` (x2) | 5 a 8 min (não cronometrado) |
 | 9 | Partes 2 e 3 da campanha (1 perfil), ou 2 a 6 com `set perfil todos` | sim | `EXECUTAR-CLASSES-...` | 1 perfil: 20 a 30 min; `todos`: 50 a 70 min |
-| 10 | Entrega (checklist) | não | nenhuma | 10 a 15 min |
+| 10 | Entrega (checklist; P-22, P-31 e fechamento) | não | nenhuma | 10 a 15 min (sem os benchmarks) |
 
 Total estimado do dia (soma dos intervalos acima): **cerca de 2 h a 3 h** com um perfil; **cerca de 2 h 30 a 3 h 30** com `set perfil todos`. Se quiser economizar um `START_BENCH`, faça o Bloco 6 na mesma CLI do Bloco 2 e deixe os blocos 3 a 5 (scripts, que precisam da CLI fechada porque a COM10 é exclusiva) para antes ou depois; a ordem entre eles não muda nenhum critério.
 
@@ -58,10 +60,10 @@ env\Scripts\python.exe -m unittest tests.test_offline
 Conferir:
 - `git log` mostra este roteiro (`ROTEIRO_BANCADA.md` existe na raiz) e o commit da crista com o fator calibrado .
 - `git status` sem alterações rastreadas nem arquivos novos não ignorados nas pastas `mestre.PASTAS_DO_CODIGO`; `info_do_codigo` recalcula esse estado a cada pasta de sessão. Arquivos novos fora dessas pastas não contam para `git_sujo`.
-- A suíte termina em `OK` com **0 falhas e 0 pulados** (no Linux eram 2 pulados: os SHA-256 exatos; no Windows eles rodam). A baseline contém 497 métodos identificados estaticamente; novos testes podem aumentar o total. Rodar também `.\env\Scripts\python.exe -m unittest discover -s tests -p "test*.py" -v`, registrar total/tempo/versões/SHA e justificar qualquer skip; não usar a contagem histórica como prova de execução.
+- A suíte termina em `OK`, **todos os testes passando e 0 falhas**; a contagem de testes **não é fixa** (novos testes aumentam o total). Skips aceitáveis: só os dois testes de hash exato específico de plataforma (`*_exato_na_plataforma_de_origem`), se houverem; qualquer outro skip precisa de justificativa. Rodar também `.\env\Scripts\python.exe -m unittest discover -s tests -p "test*.py" -v` e `scripts\validar_pc_bancada.ps1`: este script é o **registro** da validação do PC (P-16): grava `pc_bancada.json` com total, tempo, versões, SHA e skips (entregar como `docs/evidencias/<data>/pc_bancada.json`). Não usar contagem histórica como prova de execução.
 - Conferência física: probe diferencial no CH1 entre fase A e neutro, fator **lido na probe**; BNC AMETEK Trigger Out -> Keysight EXT Trigger; USB da AMETEK conectado e **DB9 RS-232 desconectado**; MX GUI **fechado**; disjuntores fechados; E-stop ao alcance; EUT conectado; OUTPUT OFF no painel.
 
-Seguir se: suíte `OK`, 0 falhas, 0 pulados, árvore limpa.
+Seguir se: suíte `OK`, 0 falhas, skips só os dois de hash específico de plataforma (se houver) e `pc_bancada.json` gerado, árvore limpa.
 Parar se: algum teste de **assinatura portável** falhar (a causa não seria só o último bit de `np.sin`): entregar a saída completa, anotar `numpy` (`env\Scripts\python.exe -c "import numpy; print(numpy.__version__)"`) e **não coletar** até analisar. Se falharem **só** os testes `*_exato_na_plataforma_de_origem` (SHA-256), registrar plataforma, Python/numpy e saída completa para diagnóstico antes de coletar; não considerar uma falha de fixture como autorização automática para coleta. Árvore suja: commitar ou descartar a causa antes de qualquer sessão.
 
 ### Bloco 2. Infraestrutura na CLI, sessão A (127 V / 50 Hz)
@@ -148,7 +150,7 @@ env\Scripts\python.exe scripts\diag_acdc_amplitude.py --probe <FATOR escrito na 
 Get-Content (Get-ChildItem logs\diag_acdc_amplitude-*.md | Sort-Object LastWriteTime | Select-Object -Last 1).FullName
 ```
 
-A terceira condição (230 V) só separa a dependência da tensão (H7); o script limita a V <= 270 e planeja o pior caso de pico <= 415,8 Vp. Se não quiser energizar 230 V neste dia, pule-a e anote que `g` não foi medido a 230 V.
+**A 3.ª execução (230 V) está NÃO AUTORIZADA até a decisão P-26** (`docs/decisoes_pendentes.md`, item 4: opção A = fora desta campanha, recomendada; opção B = exceção formal ao roteiro de 127 V). Sem a decisão registrada por escrito, **não executar**: pule-a e anote que `g` não foi medido a 230 V (P-17 fecha só para 127 V). Se a opção B for decidida, a 3.ª condição só separa a dependência da tensão (H7); o script limita a V <= 270 e planeja o pior caso de pico <= 415,8 Vp. 
 
 Conferir (tabela `.md`, colunas `CH1 AC / alvo`, `fonte DC?`, `fonte AC?`, `CH1 CC`; e `VOLTage:RANGe?`):
 - linhas 1 e 5 (AC, controle inicial e final) ≈ 1,000 (sem deriva);
@@ -174,9 +176,12 @@ scripts\START_BENCH.cmd
 
 ```
 status
+set diagnostico bruto on
 set diagnostico retrieve on
 run 08
 ```
+
+(`set diagnostico bruto on` é a pré-condição P-28 da seção 0.)
 
 - `status`: sorteio `on`, perfil `literatura`, **sem** `set capturas` (com ele a 08 vira rampa de caracterização, não é o que se quer), capturas da 08 = 3.
 - Digitar `EXECUTAR-CLASSE-08`.
@@ -187,14 +192,14 @@ Depois da 08, em outro PowerShell:
 ```powershell
 cd C:\Users\denis\TCC\code
 $s = (Get-ChildItem resultados -Directory | Sort-Object LastWriteTime | Select-Object -Last 1).FullName
-Get-Content "$s\metadata\08_*.jsonl" | ForEach-Object { $j = $_ | ConvertFrom-Json; "{0} ok={1} impulso previsto {2} medido {3} desvio {4} | pico {5} vale {6} | inicio_impulso_s {7} | trigger {8} | retrieve desvio_max {9} erro {10}" -f $j.id_captura,$j.validacao_fisica.ok,$j.validacao_fisica.posicao_evento.inicio_previsto_amostra,$j.validacao_fisica.posicao_evento.pico_medido_amostra,$j.validacao_fisica.posicao_evento.desvio_amostras,$j.pico_medido_v,$j.vale_medido_v,$j.parametros.inicio_impulso_s,$j.indice_trigger,$j.diagnostico_trace.desvio_max,$j.diagnostico_trace.erro }
+Get-Content "$s\metadata\08_*.jsonl" | ForEach-Object { $j = $_ | ConvertFrom-Json; "{0} ok={1} impulso previsto {2} medido {3} desvio {4} | pico {5} vale {6} | inicio_impulso_s {7} | trigger {8} | retrieve desvio_max {9} erro {10} | sobressinal {11} acima_limite {12}" -f $j.id_captura,$j.validacao_fisica.ok,$j.validacao_fisica.posicao_evento.inicio_previsto_amostra,$j.validacao_fisica.posicao_evento.pico_medido_amostra,$j.validacao_fisica.posicao_evento.desvio_amostras,$j.pico_medido_v,$j.vale_medido_v,$j.parametros.inicio_impulso_s,$j.indice_trigger,$j.diagnostico_trace.desvio_max,$j.diagnostico_trace.erro,$j.validacao_fisica.posicao_evento.sobressinal_medido,$j.validacao_fisica.posicao_evento.sobressinal_acima_do_limite }
 Select-String "$s\sessao.log" -Pattern "NÃO corresponde" 
 Get-ChildItem "$s\diagnostico_trace"
 ```
 
 Critério de aprovação da 08 (50 Hz):
 - `parametros.inicio_impulso_s` = 0,09; `validacao_fisica.ok` = `True` nas 3; `desvio_amostras` entre -3 e +3 (aceitável até +-10; em 07/10 a 60 Hz deu 0, 0, -1); `pico_medido_amostra` ≈ 2700;
-- `pico_medido_v` <= 374,2 V (`teto`), sobressinal <= 0,55: acima disso é **achado de segurança**: parar e avisar;
+- `pico_medido_v` <= 374,2 V (`teto`), sobressinal <= 0,55: acima disso é **achado de segurança**: parar e avisar. O metadata agora grava `validacao_fisica.posicao_evento.sobressinal_medido` e `validacao_fisica.posicao_evento.sobressinal_acima_do_limite` (P-03): se `sobressinal_acima_do_limite` for `true` em qualquer captura, **parar e registrar achado de segurança** (não repetir sozinho);
 - `indice_trigger` iguais entre as capturas (+-2); nenhuma linha `NÃO corresponde ao que foi programado` no `sessao.log`;
 - retrieve: `erro` vazio nas 3 capturas; `desvio_max` é a diferença bruta contra a TRACe enviada (pico 1): um valor diferente de zero pode ser normalização da fonte, não erro; o que importa é se é **pequeno e constante** entre TRACes. Arquivos em `diagnostico_trace\`.
 
@@ -273,6 +278,8 @@ git commit -m "chore: recalibra fatores de extremo 07 e 17 a 127 V/60 Hz"
 git status
 ```
 
+Depois do commit: `git log --oneline -1` e anote o **novo SHA**. A 1.ª rodada sai de commit limpo; a 2.ª sai de um checkout cujo `calibracao_extremos.json` foi reescrito pela recalibração e ainda não estava commitado (`git_sujo=true` esperado), e serve para **validar a calibração**, não como coleta da campanha. As sessões de coleta são as do Bloco 8 em diante, todas com `git_sujo` falso e `git_commit` = o SHA novo.
+
 Conferir o `git diff`: fatores **só subiram**, só nas classes 07 e 17 da condição 127 V/60 Hz, valores plausíveis (a simulação pedia ~1,34 a 1,42 pu; fator calibrado >= 1,344 para a 07 e >= 1,420 para a 17 cobriria o máximo do modelo; valor menor que isso pode ainda reprovar). Se a suíte falhar após a mudança, entregar a saída antes de commitar.
 
 Seguir se: 2.ª rodada `ok=True` em todas e suíte verde. Cenários diferentes: tabela da seção 3, linhas "07/17". Parar e avisar se: `max(|pico|,|vale|)` >= `extremo_previsto_v` por muito, ou perto de 415,8 V (achado de segurança; a bateria já aborta a classe se passar do teto). Tempo: 25 a 35 min com as duas rodadas, o `diff`, a suíte e o commit.
@@ -326,6 +333,29 @@ Conferir (critérios propostos, **sem dado de bancada**, os limiares do verifica
 
 Seguir se: os critérios passam, ou os que falham são registrados como achado (são dado de bancada, não infraestrutura). Parar se: infraestrutura (seção 0). Tempo: `run` ~1 a 3 min (nativas ~2,5 s por captura, mais 18 s da conexão e 36 gravações de TRACe da 20), verificações 3 a 5 min: 6 a 10 min.
 
+### Bloco 8-A. Sequência da P-10: RMS e THD da 05 por nível (CLI, sessão B, 60 Hz, commit limpo)
+
+Objetivo: medir RMS/THD da classe 05 em todos os níveis e rotas (norma 2 % e CSIN 5 a 20 %; TRACe 30 %). Sem `set capturas`, a 05 roda só o nível 0 do perfil; `set capturas 1` explícito agrupa por nível e roda os cinco (`docs/configuracao.md`, "Sequência da P-10"). Cada `run` é uma conexão própria e pede a **confirmação digitada pelo operador**; não use `set perfil todos` aqui. Mesma CLI do Bloco 8 (ou reinicie com `git status` limpo; fator `<FATOR escrito na probe>`, `127`, `60`).
+
+```
+set diagnostico bruto on
+set perfil norma
+set capturas 1
+run 05
+```
+
+Digitar `EXECUTAR-CLASSE-05`. Esperado: 5 capturas, níveis 2/5/10/15/20 %, todos por CSIN (`rota_programacao` = `CSIN`), 0 gravações de TRACe. Depois, na mesma CLI:
+
+```
+set perfil literatura
+set capturas 1
+run 05
+```
+
+Digitar `EXECUTAR-CLASSE-05` de novo. Esperado: 5 capturas, níveis 5/10/15/20 % por CSIN e 30 % por TRACe, **12 gravações de TRACe** a 60 Hz (10 a 50 Hz), muito abaixo do orçamento de 216 por conexão. A estimativa que a CLI imprime pode não contar a 05 por TRACe (seção 8); o contador que vale é `escritas_trace_na_conexao` do metadata. Ao fim: `set capturas padrao` (e `set perfil literatura`, o padrão).
+
+Conferir por nível, em `metadata\05_*.jsonl`: `parametros.thd`, `rota_programacao`, `validacao_fisica.envelope_mediana_medida` e o THD medido. Critério herdado da 05 (Bloco 8): envelope 0,7071 +- 0,01 e THD medido dentro de 20 % do pedido; ~0,72 invalida a premissa do modelo. Não há critério adicional por nível além deste; o agregador `scripts/fechar_pendencias.py` avalia a P-10 por nível e rota. Se a CLI mostrar estimativa de TRACe diferente de 0 (norma) e 12 (literatura) a 60 Hz, cancele e confira `status`.
+
 ### Bloco 9. Campanha em partes (mesma CLI do Bloco 8)
 
 Os comandos, as contas de gravações de TRACe por conexão e os tempos estão na **seção 5**. Resumo do procedimento, para cada parte:
@@ -346,6 +376,24 @@ Conferência extra na 1.ª sessão com as classes 10, 11, 12 e 16 (o rms por cic
 Seguir se: cada parte termina e os contadores ficam ≤ 216. Parar se: infraestrutura (seção 0), ou `pico_medido_v`/`vale_medido_v` perto do teto de 415,8 V (achado de segurança: avisar antes de continuar).
 
 ### Bloco 10. Entrega (seção 6)
+
+Medições e agregação (offline, **no PC da bancada** onde indicado; CLI fechada, OUTPUT OFF; nenhuma destas etapas energiza nem digita confirmação):
+
+```powershell
+cd C:\Users\denis\TCC\code
+# P-22: custo de I/O das sessões físicas, medido NO PC DA BANCADA (grava hostname e simulado)
+env\Scripts\python.exe scripts\benchmark_sessao_io.py --sessao <dir_sessao_1> [--sessao <dir_sessao_2> ...] --saida logs\benchmark_sessao_io_bancada.json
+# P-31: comparação modelo x programada nas sessões físicas
+env\Scripts\python.exe scripts\analisar_modelo_programado.py --sessao <dir_sessao_1> [--sessao <dir_sessao_2> ...] --saida logs\modelo_programada_sessoes_bancada.json
+```
+
+`--saida` não sobrescreve arquivo existente. Fechamento (pode rodar no computador de análise, com as pastas copiadas; `--artefatos` aceita `logs` e `resultados\passo_final_sin_*`):
+
+```powershell
+python scripts/fechar_pendencias.py --sessao <dir> [--sessao <dir> ...] --artefatos logs --artefatos resultados --pc-bancada docs/evidencias/<data>/pc_bancada.json --saida docs/evidencias/<data>/fechamento.json
+```
+
+O fechamento só reúne evidência e **não encerra pendência**: a decisão é do responsável. Ver `docs/bancada_pendencias.md`.
 
 ## 3. Tabela de decisão: o que muda na campanha do mesmo dia
 
@@ -379,7 +427,7 @@ Convenção: "proposta" é a recomendação deste roteiro; a decisão final é d
 | 07/17 | 2.ª rodada ainda reprova por crista (acima de crista x fator x 1,1) | O fator recalibrado ainda não cobre | Não afrouxar tolerância (fora de autorização). Tirar 07 e 17 da campanha (`06,08-11` e `12-16`); entregar as sessões; decisão de tolerância própria por classe fica para depois do dia |
 | 07/17 | Reprova por THD ou envelope | Achado novo (a fonte atenua os entalhes) | Mesmo tratamento: sem 07/17 na campanha, entregar |
 | 07/17 | `max(\|pico\|,\|vale\|)` perto de 415,8 V ou maior que `extremo_previsto_v` por margem grande | Previsão de pico insuficiente | Parar 07/17; recalibrar; avisar antes de 220/380 V |
-| Suíte no Windows (Bloco 1) | 0 falhas, 0 pulados | Fixtures portáveis valem no Windows | Seguir |
+| Suíte no Windows (Bloco 1) | 0 falhas; skips só os dois de hash específico de plataforma, se houver | Fixtures portáveis valem no Windows | Seguir; registrar em `pc_bancada.json` (`validar_pc_bancada.ps1`) |
 | Suíte no Windows | Falha de assinatura portável | Diferença maior que o último bit de `np.sin` | Não coletar; entregar a saída |
 | Rms por ciclo (Parte 2/3) | `pico_medido_v`/`vale_medido_v` das 10/11/12/16 maiores que `extremo_previsto_v` | Previsão ainda subestima | Seguir se < 415,8 V; registrar; recalibrar depois da parte |
 
@@ -454,7 +502,7 @@ env\Scripts\python.exe logica\analisar_sessao.py $s
 
 (com `set html on` na CLI isso roda sozinho ao fim de cada `run` bem-sucedido; falha só avisa.)
 
-7. **O que copiar** (para o computador de análise), por sessão: a pasta `resultados\sessao_<timestamp>[_runNN]` inteira (inclui `sessao.log`, `scpi_transcricao.log`, `sessao.json`, `calibracao_extremos.json` da sessão, `metadata\`, os `.npz` por classe, `diagnostico_trace\` se houve retrieve) e o HTML; mais, de `logs\`: `diag_ciclos_trace-*.md/.json`, `diag_marcadores_trace-*.md/.json/.log/-scpi.log`, `diag_acdc_amplitude-*.md/.json/.log/-scpi.log`, `verificar_parte1.json` e os `preflight_new-*.log` do dia. Opcional: `scripts\package_windows.ps1`.
+7. **O que copiar** (para o computador de análise), por sessão: a pasta `resultados\sessao_<timestamp>[_runNN]` inteira (inclui `sessao.log`, `scpi_transcricao.log`, `sessao.json`, `calibracao_extremos.json` da sessão, `metadata\`, os `.npz` por classe, `diagnostico_trace\` se houve retrieve) e o HTML; mais, de `logs\`: `diag_ciclos_trace-*.md/.json`, `diag_marcadores_trace-*.md/.json/.log/-scpi.log`, `diag_acdc_amplitude-*.md/.json/.log/-scpi.log`, `verificar_parte1.json`, `benchmark_sessao_io_bancada.json`, `modelo_programada_sessoes_bancada.json` e os `preflight_new-*.log` do dia; mais `pc_bancada.json` (`validar_pc_bancada.ps1`) e, se houve o passo P-18, `resultados\passo_final_sin_<data>\`. Opcional: `scripts\package_windows.ps1`.
 8. **Anotar numa linha por bloco** (valor medido, não impressão): fator da probe usado; resultado dos Blocos 3, 4, 5 (linha da tabela de decisão aplicada); fatores 07/17 antes e depois; contador máximo de TRACe por conexão (`escritas_trace_na_conexao`); qual 19/08/07/17 ficaram fora da campanha e por quê.
 9. Pendências para o responsável (decidir depois do dia): mecanismo da cópia em 100 ms (se não resolvido); compensação do ganho ACDC; tolerância própria de crista por classe (se 07/17 ainda reprovaram); janelas a excluir em torno de 100 ms.
 
@@ -480,6 +528,11 @@ Cada item abaixo foi conferido com `git grep` na árvore deste roteiro:
 | `diag_acdc_amplitude.py --probe --vrms --hz --testar-compensacao` | `scripts/diag_acdc_amplitude.py` |
 | `verificar_sessao_bancada.py <sessao> --json` | `scripts/verificar_sessao_bancada.py` |
 | `recalibrar_extremos.py <sessao>` (sem `--gravar`) | `scripts/recalibrar_extremos.py` |
+| `ENERGIZAR-PASSO-SIN` (só P-18) | `scripts/teste_passo_final_sin.py:33` (`CONFIRMACAO`) |
+| `benchmark_sessao_io.py --sessao --saida` (P-22) | `scripts/benchmark_sessao_io.py` (`main`) |
+| `analisar_modelo_programado.py --sessao --saida` (P-31) | `scripts/analisar_modelo_programado.py` (`main`) |
+| `fechar_pendencias.py --sessao --artefatos --pc-bancada --saida` | `scripts/fechar_pendencias.py` (`main`; `--artefatos` repetível) |
+| `set diagnostico bruto on\|off` (P-28) | `logica/cli.py`: `cmd_set` e `HELP_TEXT` |
 | `analisar_sessao.py`, `recortar_margem.py`, `relatorio_html.py` | `logica/analisar_sessao.py`, `logica/recortar_margem.py`, `logica/relatorio_html.py` |
 | Campos do metadata usados nos `Get-Content` | `logica/mestre.py` (`id_captura`, `pico_medido_v`, `vale_medido_v`, `extremo_previsto_v`, `indice_trigger`, `escritas_trace_na_conexao`, `diagnostico_trace`), `logica/sinais.py` (`crista_*`, `fator_extremo_crista`, `thd_*`), `experimentos_waveform/08.py` (`posicao_evento`, `inicio_impulso_s`) |
 
@@ -488,4 +541,4 @@ Cada item abaixo foi conferido com `git grep` na árvore deste roteiro:
 - Nada foi executado na bancada. Tempos são estimativas do modelo da seção 4; conferir o primeiro `run` contra o relógio e ajustar o resto do dia.
 - A suíte no Windows, o formato dos `.npz` das sessões de 07/10 em `diag_ciclos_trace.py`, `TRACe:DATA?` na fonte, os limiares do verificador (10 graus, 2 ms, 2 amostras) e a leitura de marcadores (limiares de 12 amostras de posição e 25 % de amplitude) são propostas sem dado de bancada.
 - O mecanismo da cópia em 100 ms, a causa do déficit ACDC e o toque real da fonte nos entalhes das 07/17 continuam em aberto até este dia.
-- A 05 por TRACe (nível de 30 %) não entra na conta de gravações da estimativa da CLI (a 05 aparece com 0 gravações com 1 captura padrão); se for pedida com `set capturas`, recontar com `status`.
+- A 05 por TRACe (nível de 30 %) não entra na conta de gravações da estimativa da CLI (a 05 aparece com 0 gravações com 1 captura padrão); no Bloco 8-A (`set capturas 1`, perfil `literatura`) o esperado é 12 gravações a 60 Hz, **NÃO VERIFICADO**: recontar com `status` e conferir `escritas_trace_na_conexao`.

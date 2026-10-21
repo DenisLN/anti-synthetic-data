@@ -50,6 +50,17 @@ Valores booleanos aceitos: `1/true/yes/on` e `0/false/no/off` (`env_bool`, `mest
 
 `scripts/diag_acdc_amplitude.py` também lê `BASE_VOLTAGE_RMS`, `GRID_FREQUENCY_HZ`, `VOLTAGE_PROBE_ATTENUATION`, `BENCH_MODE`.
 
+## Sequência da P-10 (classe 05: RMS e THD por nível)
+
+Sem variável nova: o nível sai de `capture_index` e da faixa do perfil (`thd_niveis`: norma 2/5/10/15/20 %, literatura 5/10/15/20/30 %). Sem `set capturas`, a 05 roda **só o nível 0** do perfil; `set capturas 1` (explícito) agrupa por nível e roda os cinco. Rota: até 20 % por CSINusoid, 30 % por TRACe (`rota_programacao` no metadata).
+
+| Ponto | Comandos | Capturas |
+|---|---|---|
+| 2 % (norma, CSIN) | `set perfil norma`, `set capturas 1`, `run 05` | 2, 5, 10, 15, 20 % (todos CSIN) |
+| 10, 15, 20 % (CSIN) e 30 % (TRACe) | `set perfil literatura`, `set capturas 1`, `run 05` | 5, 10, 15, 20 % (CSIN) e 30 % (TRACe, 12 gravações) |
+
+Cada `run` pede a confirmação digitada. Avaliação: `scripts/fechar_pendencias.py` (P-10) por nível e rota.
+
 ## Regras de `validate_bench_configuration()` (`mestre.py:366-387`)
 
 Roda antes de abrir qualquer instrumento com `BENCH_MODE=1` e recusa se: a porta não for `COM10`; o baud não for `115200`; `VOLTAGE_PROBE_ATTENUATION` for ausente ou ≤ 0; `CAPTURE_CURRENT=1` sem `CURRENT_PROBE_ATTENUATION` e `CURRENT_BASE_A`; `BASE_VOLTAGE_RMS > EUT_MAX_VOLTAGE_RMS`; `EUT_MAX_VOLTAGE_RMS > SOURCE_VOLTAGE_RANGE_RMS`; ou a saída for pedida sem `ARM_OUTPUT=YES`.

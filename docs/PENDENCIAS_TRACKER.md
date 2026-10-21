@@ -2,7 +2,7 @@
 
 Fonte única de **estado**. Narrativa e critérios completos: `execucao_pendencias.md`. Estado de máquina: `estado_prontidao.json` (manter coerente com esta tabela). Visita à bancada: `bancada_pendencias.md`. Decisões do responsável: `decisoes_pendentes.md`. Fechamento: `python scripts/fechar_pendencias.py --sessao <dir> ... --pc-bancada <json> --saida <json>`.
 
-**Atualizado:** 2026-10-20 · branch `feat/execucao-pendencias-v1-15` · suíte offline 650 OK / 2 skips (macOS, Python 3.11.15, `/tmp/asd-exec-venv`).
+**Atualizado:** 2026-10-20 · branch `feat/execucao-pendencias-v1-15` · suíte offline 680 OK / 2 skips (macOS, Python 3.11.15, `/tmp/asd-exec-venv`).
 
 ## Placar
 
@@ -66,6 +66,8 @@ Estados: **✅** concluída · **🔧→🏭** software pronto, falta bancada ·
 | P-31 | 🔧→🏭 | Métricas offline publicadas; falta sessões novas + escolha da métrica oficial | K,R,D |
 
 ## Log de rodadas (uma linha por rodada, mais recente no topo)
+
+- 2026-10-21 — Software das P-03 (sobressinal gravado), P-10 (rota + sequência Bloco 8-A), P-22/P-31 (ferramentas sobre sessões reais) e roteiro sem contradições; revisão Opus sem achado alto; 680 OK. Inspiron 15 (DESKTOP-FSEESJI) preparado: Python 3.11.9, env com versões validadas, NI-VISA. Restante destas quatro: só bancada.
 
 - 2026-10-20 — Revisão independente (Opus) do trabalho do Codex e desta sessão: sem violação dos limites; P-04, P-11–P-15 confirmadas no código. 17 achados corrigidos (ver CHANGELOG "Correções da revisão independente"); 650 OK. Lacunas abertas: campo de sobressinal na coleta (P-03), hostname no benchmark (P-22), `TRACe:DEFine` no orçamento (P-23, decisão).
 

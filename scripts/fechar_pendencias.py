@@ -53,6 +53,7 @@ PERFIS = ("norma", "literatura", "fronteira")  # docs/perfis.md
 CONDICOES = {"127V_60Hz": (127, 60), "127V_50Hz": (127, 50), "230V_50Hz": (230, 50),
              "220V_60Hz": (220, 60), "33V_60Hz": (33, 60)}
 TETO_08_V = 374.2  # 0,9 x max_peak_v 415,8 (docs/classes/08-transient.md; execucao_pendencias P-03)
+SOBRESSINAL_REVISAO_08 = 0.45  # acima disso o valor amostrado pode subestimar o real: revisão humana
 SOBRESSINAL_MAX_08 = 0.55  # ROTEIRO_BANCADA.md:197/374 e docs/classes/08-transient.md: acima é achado de segurança
 TOL_POSICAO_08 = 10  # amostras (docs/metadata.md, validacao_fisica.posicao_evento)
 ORCAMENTO_TRACES = 216  # gravações TRACe por conexão (execucao_pendencias P-23)
@@ -404,9 +405,12 @@ def p03(ctx: Contexto) -> tuple:
                    {"capturas": len(evento90), "com_ok_falso_ou_ausente": invalidas}, "validacao_fisica.ok = true em todas",
                    "metadata validacao_fisica.ok (mestre.py); captura reprovada não prova P-03"))
     for r in evento90:
-        sb = _num(r.get("sobressinal_medido"))
+        vf = r.get("validacao_fisica") or {}
+        sb = _num((vf.get("posicao_evento") or {}).get("sobressinal_medido"))
+        if sb is None:  # formato legado/ainda não gravado pela coleta
+            sb = _num(vf.get("sobressinal_medido"))
         if sb is None:
-            sb = _num((r.get("validacao_fisica") or {}).get("sobressinal_medido"))
+            sb = _num(r.get("sobressinal_medido"))
         if sb is not None:
             sobressinais.append(sb)
         d = ((r.get("validacao_fisica") or {}).get("posicao_evento") or {}).get("desvio_amostras")
@@ -416,11 +420,26 @@ def p03(ctx: Contexto) -> tuple:
         if pk is not None and vl is not None:
             picos.append(max(abs(pk), abs(vl)))
             pico_detalhe.append({"id": r["id_captura"], "pico_v": pk, "vale_v": vl})
-    cs.append(crit("sobressinal_pu", ND if not sobressinais else (OK if max(sobressinais) <= SOBRESSINAL_MAX_08 else FALHA),
-                   max(sobressinais) if sobressinais else None, SOBRESSINAL_MAX_08,
-                   "ROTEIRO_BANCADA.md:197/374 e docs/classes/08-transient.md: sobressinal > 0,55 é achado de segurança",
-                   nota=None if sobressinais else "metadata não traz sobressinal medido (campo sobressinal_medido); "
-                   "conferir manualmente contra 0,55"))
+    picos_v = [abs(v) for v in (_num(r.get("pico_medido_v")) for r in evento90) if v is not None]
+    sb_max = max(sobressinais) if sobressinais else None
+    pk_max = max(picos_v) if picos_v else None
+    if sb_max is not None and (sb_max > SOBRESSINAL_MAX_08 or (pk_max is not None and pk_max > TETO_08_V + 1e-9)):
+        res_sb, nota_sb = FALHA, None
+    elif sb_max is None or pk_max is None:
+        res_sb = ND
+        nota_sb = ("metadata não traz validacao_fisica.posicao_evento.sobressinal_medido; conferir manualmente contra 0,55"
+                   if sb_max is None else "metadata não traz pico_medido_v; conferir manualmente contra 374,2 V")
+    elif sb_max > SOBRESSINAL_REVISAO_08:
+        res_sb = AVISO
+        nota_sb = (f"sobressinal {sb_max:.3f} > {SOBRESSINAL_REVISAO_08}: o valor amostrado (30 kSa/s, oscilação de ~10 kHz) "
+                   "subestima o pico real e pode já estar acima de 0,55; revisão humana obrigatória")
+    else:
+        res_sb, nota_sb = OK, None
+    cs.append(crit("sobressinal_pu", res_sb, sb_max, SOBRESSINAL_MAX_08,
+                   "ROTEIRO_BANCADA.md:197/374 e docs/classes/08-transient.md: sobressinal > 0,55 ou pico_medido_v > 374,2 V "
+                   "é achado de segurança",
+                   nota="; ".join(x for x in (nota_sb, f"pico_medido_v máx |.| = {pk_max:.1f} V (teto {TETO_08_V})"
+                                              if pk_max is not None else None) if x) or None))
     cs.append(crit("desvio_de_posicao_amostras", SEMDADOS if not desvios else (OK if max(desvios) <= TOL_POSICAO_08 else FALHA),
                    max(desvios) if desvios else None, TOL_POSICAO_08,
                    "docs/metadata.md validacao_fisica.posicao_evento (tolerância 10)"))
@@ -430,6 +449,25 @@ def p03(ctx: Contexto) -> tuple:
                    nota="; ".join(f"{d['id']}: +{d['pico_v']:.1f}/{d['vale_v']:.1f} V" for d in pico_detalhe) or None))
     cs.append(criterio_procedencia(ctx, evento90 or r08))
     return cs, True, {}
+
+
+def _conferir_sessao_citada(ctx: "Contexto", ref: Any, hashes: Dict[str, Any]) -> List[str]:
+    """Toda sessão citada por um artefato tem de estar em ``--sessao`` (mesmo nome de pasta) e cada arquivo citado
+    tem de existir nela com o mesmo sha256. Retorna os problemas (vazio = confere)."""
+    nome = Path(str(ref)).name
+    s_ = next((x for x in ctx.sessoes if x.pasta.name == nome), None)
+    if s_ is None:
+        return [f"sessão citada '{nome}' não foi passada em --sessao"]
+    ruins = []
+    if not hashes:
+        ruins.append(f"sessão '{nome}' citada sem hash de arquivo")
+    for arq, esperado in hashes.items():
+        cand = s_.pasta / arq
+        if not cand.is_file():
+            ruins.append(f"{nome}/{arq} citado e ausente em --sessao")
+        elif not isinstance(esperado, str) or sha256_arquivo(cand).lower() != esperado.lower():
+            ruins.append(f"sha256 divergente em {nome}/{arq}")
+    return ruins
 
 
 def p05(ctx: Contexto) -> tuple:
@@ -572,29 +610,63 @@ def _nivel_thd(r: dict) -> Optional[float]:
     return round(t / 100.0 if t > 1.0 else t, 6)
 
 
+ROTA_ESPERADA_05 = {0.02: "CSIN", 0.10: "CSIN", 0.15: "CSIN", 0.20: "CSIN", 0.30: "TRACe"}
+
+
+def _rota_05(r: dict) -> tuple:
+    """(rota, inferida?). Campo ``rota_programacao`` do metadata; sem ele, inferida
+    pelo nível (acima de 20 % = TRACe, teto do CSINe) e marcada como inferida."""
+    rota = r.get("rota_programacao")
+    if isinstance(rota, str) and rota:
+        return rota, False
+    nivel = _nivel_thd(r)
+    if nivel is None:
+        return None, True
+    return ("TRACe" if nivel > 0.20 + 1e-9 else "CSIN"), True
+
+
 def p10(ctx: Contexto) -> tuple:
     r = ctx.da_classe("05")
     if not r:
         return [], False, {}
     niveis = {_nivel_thd(x) for x in r} - {None}
-    exigidos = {0.02, 0.10, 0.15, 0.20, 0.30}
+    exigidos = set(ROTA_ESPERADA_05)
     faltam = sorted(exigidos - niveis)
     linhas, ruins = [], []
+    por_ponto: dict = {}
     for x in r:
         v = x.get("validacao_fisica") or {}
-        linhas.append({"id": x["id_captura"], "perfil": x.get("perfil"), "thd_programado": _nivel_thd(x),
+        nivel = _nivel_thd(x)
+        rota, inferida = _rota_05(x)
+        linhas.append({"id": x["id_captura"], "perfil": x.get("perfil"), "thd_programado": nivel, "rota": rota,
+                       "rota_inferida": inferida,
                        "thd_medida": v.get("thd_medida"), "thd_esperada": v.get("thd_esperada"),
                        "envelope_mediana_medida": v.get("envelope_mediana_medida"),
                        "envelope_mediana_esperada": v.get("envelope_mediana_esperada"), "ok": v.get("ok")})
         if v.get("ok") is not True:
             ruins.append(x["id_captura"])
+        if nivel in ROTA_ESPERADA_05:
+            por_ponto.setdefault(nivel, []).append((x["id_captura"], rota, inferida, v.get("ok") is True))
+    sem_campo = [l["id"] for l in linhas if l["rota_inferida"]]
+    rota_errada = [f"{i}: nível {n:g} rota {rt}" for n, itens in por_ponto.items() for i, rt, _inf, _ok in itens
+                   if rt != ROTA_ESPERADA_05[n]]
+    pontos_ruins = sorted(n for n in exigidos if n in por_ponto and not any(ok for *_x, ok in por_ponto[n]))
+    pontos = {f"{n:g}": {"rota_esperada": ROTA_ESPERADA_05[n], "capturas": len(por_ponto.get(n, [])),
+                         "com_validacao_ok": sum(1 for *_x, ok in por_ponto.get(n, []) if ok)} for n in sorted(exigidos)}
     cs = [crit("niveis_thd_cobertos", OK if not faltam else INSUF, sorted(niveis), sorted(exigidos),
                "execucao_pendencias P-10 (CSIN 10/15/20 %, norma 2 %, TRACe 30 %)",
                nota=f"faltam: {faltam}" if faltam else None),
           crit("validacao_fisica_ok", OK if not ruins else FALHA, ruins or None, "ok=true em todas",
                "mestre.py comparar_fisicamente (tol. envelope/THD de VALIDACAO_TOL_*)"),
-          crit("rota_csin_vs_trace", ND, None, None, "a identificação da rota por captura não é gravada com campo próprio; "
-               "inferir pelo nível (TETO_CSINE em experimentos_nativos/05.py) na revisão"),
+          crit("validacao_fisica_ok_por_nivel", SEMDADOS if not por_ponto else (FALHA if pontos_ruins else OK),
+               pontos, "cada nível exigido com ao menos uma captura validacao_fisica.ok=true",
+               "P-10: RMS/THD por nível (envelope_mediana_* e thd_* em validacao_fisica)",
+               nota=f"níveis sem captura válida: {pontos_ruins}" if pontos_ruins else None),
+          crit("rota_csin_vs_trace", SEMDADOS if not por_ponto else (FALHA if rota_errada else (AVISO if sem_campo else OK)),
+               rota_errada or ROTA_ESPERADA_05, "10/15/20 % e 2 % por CSIN; 30 % por TRACe",
+               "metadata rotulo rota_programacao (05.py rota_programacao); sem ele a rota é inferida pelo nível",
+               nota=(f"rota inferida pelo nível (campo rota_programacao ausente) em {len(sem_campo)} captura(s)"
+                     if sem_campo else None)),
           criterio_procedencia(ctx, r)]
     return cs, True, {"medidas_por_captura": linhas}
 
@@ -811,8 +883,8 @@ def p22(ctx: Contexto) -> tuple:
     for padrao in ("benchmark_bancada*.json", "benchmark_sessao_io*.json"):
         for a in ctx.procura(padrao):
             j = ctx.json_de(a)
-            if j is not None and (a, j) not in medicoes:
-                medicoes.append((a, j))
+            if j is not None and j.get("simulado") is not True and (a, j) not in medicoes:
+                medicoes.append((a, j))  # benchmark simulado/sintético nunca vale como medição da bancada
     if ctx.pc is None:
         cs.append(crit("executado_no_pc_da_bancada", SEMDADOS, None, "hostname do artefato = hostname de --pc-bancada", origem22))
     else:
@@ -831,6 +903,32 @@ def p22(ctx: Contexto) -> tuple:
             cs.append(crit("executado_no_pc_da_bancada", OK if mesmo else INSUF,
                            {"hostname_do_artefato": hosts, "pc_bancada": ctx.pc.get("hostname")},
                            "iguais (sem diferenciar maiúsculas; truncamento NetBIOS de 15 caracteres tolerado)", origem22))
+    fisicos22 = [(a, j) for a, j in medicoes if j.get("tipo") == "benchmark_sessoes_fisicas" and j.get("simulado") is False]
+    if not fisicos22:
+        cs.append(crit("benchmark_de_sessoes_fisicas", SEMDADOS, None,
+                       "JSON de scripts/benchmark_sessao_io.py --sessao (simulado=false) em --artefatos", origem22))
+    else:
+        ruins22, resumo22 = [], []
+        for a, j in fisicos22:
+            ctx.marcar(a)
+            if not j.get("sessoes"):
+                ruins22.append(f"{a.name}: nenhuma sessão citada")
+            for sb in j.get("sessoes") or []:
+                ruins22.extend(f"{a.name}: {m}" for m in _conferir_sessao_citada(ctx, sb.get("sessao"), {
+                    **{k: v for k, v in (sb.get("sha256_npz") or {}).items()},
+                    **{f"metadata/{k}": v for k, v in (sb.get("sha256_metadata") or {}).items()},
+                    **({"sessao.json": sb["sha256_sessao_json"]} if sb.get("sha256_sessao_json") else {})}))
+                integ = sb.get("integridade") or {}
+                if not (integ.get("hash_arrays_antes_depois_iguais") is True and sb.get("originais_inalterados") is True):
+                    ruins22.append(f"{a.name}:{Path(str(sb.get('sessao'))).name}")
+                resumo22.append({"artefato": a.name, "sessao": sb.get("sessao"), "leitura_s": sb.get("leitura_s"),
+                                 "bytes_npz": sb.get("bytes_npz"), "aliases": sb.get("aliases_identificados"),
+                                 "consolidacao": (sb.get("consolidacao_em_copia") or {}).get("consolidar_s")})
+            if j.get("git_sujo") is not False or not j.get("git_commit"):
+                ruins22.append(f"{a.name}: git_sujo={j.get('git_sujo')!r}, git_commit={j.get('git_commit')!r}")
+        cs.append(crit("benchmark_de_sessoes_fisicas", INSUF if ruins22 or not resumo22 else OK,
+                       {"sessoes": resumo22, "problemas": ruins22 or None},
+                       "hash antes/depois iguais, originais inalterados, procedência limpa", origem22))
     cs.append(crit("tempo_e_tamanho_aceitaveis", ND, None, None,
                    "nenhum limite de tempo/tamanho definido no código/docs; valores medidos em 'medidas'"))
     cs.append(criterio_procedencia(ctx, ctx.fisicos))
@@ -951,6 +1049,44 @@ def p31(ctx: Contexto) -> tuple:
                nota=f"faltam: {faltam}" if faltam else None),
           crit("metrica_oficial", ND, None, None, "execucao_pendencias P-31: falta justificar a métrica (nominal x fundamental ajustada)"),
           criterio_procedencia(ctx, r)]
+    arts = []
+    for a in ctx.procura("modelo_programada_sessoes*.json"):
+        j = ctx.json_de(a)
+        if j is not None and j.get("tipo") == "correlacao_modelo_programada_medida_sessoes_fisicas":
+            arts.append((a, j))
+    origem31 = "scripts/analisar_modelo_programado.py --sessao (nominal e fundamental ajustada)"
+    ok31 = [(a, j) for a, j in arts if j.get("simulado") is False]
+    if not ok31:
+        cs.append(crit("correlacoes_nominal_e_ajustada_publicadas", SEMDADOS, None,
+                       "JSON com simulado=false em --artefatos", origem31))
+    else:
+        problemas, cobertas = [], set()
+        for a, j in ok31:
+            ctx.marcar(a)
+            if j.get("git_sujo") is not False or not j.get("git_commit"):
+                problemas.append(f"{a.name}: git_sujo={j.get('git_sujo')!r}, git_commit={j.get('git_commit')!r}")
+            for rg in j.get("registros") or []:
+                pares = rg.get("pares") or {}
+                if all(set((pares.get(p) or {}).keys()) >= {"nominal", "fundamental_ajustada"}
+                       for p in ("modelo_x_programada", "modelo_x_medida", "programada_x_medida")):
+                    cobertas.add(str(rg.get("classe")))
+                else:
+                    problemas.append(f"{a.name}: {rg.get('id_captura')} sem as duas correlações")
+            entradas = [e for e in j.get("arquivos_entrada") or [] if isinstance(e, dict)]
+            if not entradas:
+                problemas.append(f"{a.name}: sem arquivos_entrada")
+            citadas: Dict[str, Dict[str, Any]] = {}
+            for e in entradas:
+                citadas.setdefault(str(e.get("sessao")), {})[str(e.get("arquivo"))] = e.get("sha256")
+            for ref in {str(rg.get("sessao")) for rg in j.get("registros") or []} - set(citadas):
+                citadas[ref] = {}  # registro cita sessão sem arquivos de entrada: precisa ao menos estar em --sessao
+            for ref, hashes in citadas.items():
+                problemas.extend(f"{a.name}: {m}" for m in _conferir_sessao_citada(ctx, ref, hashes))
+        faltam31 = [c for c in classes if c not in cobertas]
+        cs.append(crit("correlacoes_nominal_e_ajustada_publicadas",
+                       OK if not problemas and not faltam31 else INSUF,
+                       {"classes_cobertas": sorted(cobertas), "problemas": problemas or None}, list(classes), origem31,
+                       nota=f"faltam classes: {faltam31}" if faltam31 else None))
     return cs, True, {}
 
 

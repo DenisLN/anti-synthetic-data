@@ -69,6 +69,10 @@ class Experimento(ExperimentoNativo):
     def usar_trace(self, capture_index):
         return self.NIVEIS_THD[capture_index % len(self.NIVEIS_THD)] > TETO_CSINE
 
+    def rota_programacao(self, capture_index):
+        # CSIN = CSINusoid nativa (até 20 %); TRACe = 30 % da literatura.
+        return "TRACe" if self.usar_trace(capture_index) else "CSIN"
+
     def scope_scale_v(self):
         # Headroom generoso: a soma de harmônicas em 30% THD tem crista um
         # pouco maior que a senoide limpa; escala pra caber com folga.

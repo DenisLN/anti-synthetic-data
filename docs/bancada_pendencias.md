@@ -18,9 +18,9 @@ Nenhum passo abaixo encerra pendência por si. A visita **gera evidência**; o f
 
 | # | Item | Como conferir | Alimenta |
 |---|---|---|---|
-| 1 | Commit limpo, **incluindo arquivos novos** em `scripts/`, `logica/`, `experimentos_*` (o `git_sujo` os conta) | `git status` sem rastreados alterados nem novos não ignorados; `git log --oneline -5` | todas as sessões |
+| 1 | Commit limpo **para cada bloco que coleta**, incluindo arquivos novos em `scripts/`, `logica/`, `experimentos_*` (o `git_sujo` os conta); os scripts novos já estão commitados no branch. No Bloco 7 o commit da calibração gera **novo SHA**: sessões do Bloco 8 em diante registram o SHA novo | `git status` sem rastreados alterados nem novos não ignorados; `git log --oneline -5` | todas as sessões |
 | 2 | Perfil, frequências, tensões e escopo ACDC decididos e **registrados antes de energizar** | Decisões do responsável (P-26), abaixo | P-01, P-17, P-21, P-26 |
-| 3 | `set diagnostico bruto on` na CLI de cada `run` que deva gerar bruto (opção existente; padrão OFF; ver {doc}`diagnostico`, seção 1.2) | `status` mostra `diagnostico bruto: ON` | P-28 |
+| 3 | `set diagnostico bruto on` na CLI antes de cada `run` das classes de interesse do P-28 (opção existente; padrão OFF; ver {doc}`diagnostico`, seção 1.2) | `status` mostra `diagnostico bruto: ON` | P-28 |
 | 4 | Validação do PC da bancada | `scripts\validar_pc_bancada.ps1` no próprio PC (Bloco 1), saída `pc_bancada.json` | P-16 |
 | 5 | Orçamento: no máximo **216 gravações TRACe por conexão**; **um `run` por conexão**; **nunca `run all`** (468 gravações a 60 Hz) | Estimativa `TRACe: N gravações` da CLI deve bater com as tabelas da seção 5; se não bater, cancelar e conferir `status` | P-23 |
 | 6 | COM10 / 115200; USB da AMETEK conectado, DB9 RS-232 desconectado, MX GUI fechado; BNC AMETEK Trigger Out para Keysight EXT Trigger | Bloco 1, conferência física | todas |
@@ -32,8 +32,8 @@ Nenhum passo abaixo encerra pendência por si. A visita **gera evidência**; o f
 |---|---|---|
 | Perfil da campanha: `literatura` (um perfil, 468 gravações em 3 conexões) ou `set perfil todos` (1116 gravações em 6 conexões) | pendente (responsável) | Bloco 8 não pode começar; escolher antes (roteiro, Bloco 8 e seção 5) |
 | Frequência da campanha: 60 Hz (padrão do roteiro) ou 50 Hz (seção 5.3) | pendente | Muda o Bloco 7 e as colunas da seção 5 |
-| Tensão: o roteiro fixa **127 V** (seção 0). | decidida no roteiro | Sem 220/380 V neste dia |
-| **Exceção ACDC 230 V / 50 Hz (3.ª execução do Bloco 5)** | **pendente (P-26); não autorizada** | O roteiro a trata como opcional (Bloco 5, "se não quiser energizar 230 V, pule-a e anote que `g` não foi medido a 230 V"). Enquanto o responsável não decidir por escrito, **não executar**; P-17 fecha só para as condições de 127 V |
+| Tensão: o roteiro fixa **127 V** (seção 0). | decidida no roteiro | Sem 220/380 V neste dia; a única exceção em análise é a ACDC 230 V, abaixo |
+| **Exceção ACDC 230 V / 50 Hz (3.ª execução do Bloco 5)** | **pendente (P-26); não autorizada** | O roteiro a marca como NÃO AUTORIZADA (seção 0 e Bloco 5); se pulada, anota-se que `g` não foi medido a 230 V. Enquanto o responsável não decidir por escrito, **não executar**; P-17 fecha só para as condições de 127 V |
 | Padrão do passo final SINE (P-18) | pendente (responsável), depois do teste do Bloco 10-A | Padrão continua OFF |
 
 ## Tempo
@@ -51,9 +51,10 @@ Estimativas do próprio roteiro (seção 1; modelo da seção 4; **NÃO VERIFICA
 | 5 ACDC | sim | P-17 (P-26 para 230 V) |
 | 6 Recaptura 08 e 09 | sim | P-03, P-02, P-19 |
 | 7 07 e 17 recalibradas | sim | P-07, P-21 |
-| 8 Parte 1 da campanha | sim | P-05, P-06, P-10, P-01, P-17, P-28 |
+| 8 Parte 1 da campanha | sim | P-05, P-06, P-01, P-17, P-28 |
+| 8-A Sequência P-10 (05 por nível) | sim | P-10, P-28 |
 | 9 Partes 2 e 3 (ou 2 a 6) | sim | P-01, P-08, P-23, P-28 |
-| 10 Entrega | não | P-22, P-31, P-28, P-16 e consolidação de todas |
+| 10 Entrega | não | P-22 (no PC da bancada), P-31, P-28, P-16 e consolidação de todas (`fechar_pendencias.py`) |
 | 10-A Passo final SINE (extensão) | sim | P-18 |
 
 ## Bloco 1. Preparação (sem energizar). Roteiro: Bloco 1. Tempo: 15 a 25 min
@@ -61,8 +62,8 @@ Estimativas do próprio roteiro (seção 1; modelo da seção 4; **NÃO VERIFICA
 | Passo | Comando exato | P-NN | Arquivo de evidência | Critério de aceite |
 |---|---|---|---|---|
 | 1.1 | `cd C:\Users\denis\TCC\code`, depois `git pull`, `git log --oneline -5`, `git status` | todas | saída anotada | Árvore limpa; `git log` mostra o commit esperado (roteiro, Bloco 1) |
-| 1.2 | `env\Scripts\python.exe -m unittest tests.test_offline` | P-16 | log do console | `OK`, 0 falhas, 0 pulados (roteiro, Bloco 1, "Seguir se") |
-| 1.3 | `.\env\Scripts\python.exe -m unittest discover -s tests -p "test*.py" -v` | P-16 | log completo, total, tempo, versões Python/numpy, SHA | Resultado, skips e versões registrados; skip justificado. Contagem histórica não vale como prova (roteiro, Bloco 1) |
+| 1.2 | `env\Scripts\python.exe -m unittest tests.test_offline` | P-16 | log do console | `OK`, 0 falhas; skips só os dois de hash específico de plataforma, se houver; contagem de testes não fixa (roteiro, Bloco 1) |
+| 1.3 | `.\env\Scripts\python.exe -m unittest discover -s tests -p "test*.py" -v` | P-16 | log completo, total, tempo, versões Python/numpy, SHA | Resultado, skips e versões registrados (o registro oficial é `scripts\validar_pc_bancada.ps1`, passo 1.4); skip fora dos dois de hash de plataforma precisa de justificativa. Contagem histórica não vale como prova (roteiro, Bloco 1) |
 | 1.4 | `scripts\validar_pc_bancada.ps1` | P-16 | `pc_bancada.json` (entregar como `docs/evidencias/<data>/pc_bancada.json`) | Descoberta da suíte no Windows efetivo da bancada, com log, SHA e skips (matriz de execução, P-16). Parâmetros do script: conferir no cabeçalho da ferramenta; este documento não os fixa |
 | 1.5 | Conferência física (probe no CH1, BNC, USB sem DB9, MX GUI fechado, disjuntores, E-stop, EUT, OUTPUT OFF) | todas | anotação do operador | Itens da lista do roteiro, Bloco 1 |
 
@@ -119,8 +120,8 @@ Efeito na campanha: se o Bloco 5 mostrar que a 19 não deve ser coletada, o Bloc
 
 | Passo | Comando exato | P-NN | Arquivo de evidência | Critério de aceite |
 |---|---|---|---|---|
-| 6.1 | CLI: `status`, `set diagnostico bruto on`, `set diagnostico retrieve on`, `run 08` | P-03, P-19, P-28 | `resultados\sessao_*\metadata\08_*.jsonl`, `diagnostico_trace\`, `bruto_osciloscopio\`, `sessao.log`, `scpi_transcricao.log` | `status` sem `set capturas` (a 08 roda 3 capturas) |
-| 6.2 | Inspeção da 08: `Get-Content "$s\metadata\08_*.jsonl"` com o formato do roteiro (Bloco 6) e `Select-String "$s\sessao.log" -Pattern "NÃO corresponde"` | P-03 | saída anotada | `inicio_impulso_s` = 0,09; `validacao_fisica.ok` = `True` nas 3; `desvio_amostras` entre -3 e +3 (aceitável até +-10); `pico_medido_amostra` aproximadamente 2700; `pico_medido_v` <= 374,2 V e sobressinal <= 0,55 (acima: **achado de segurança, parar e avisar**); `indice_trigger` igual entre capturas (+-2); nenhuma linha `NÃO corresponde` |
+| 6.1 | CLI: `status`, `set diagnostico bruto on` (P-28), `set diagnostico retrieve on`, `run 08` | P-03, P-19, P-28 | `resultados\sessao_*\metadata\08_*.jsonl`, `diagnostico_trace\`, `bruto_osciloscopio\`, `sessao.log`, `scpi_transcricao.log` | `status` sem `set capturas` (a 08 roda 3 capturas) |
+| 6.2 | Inspeção da 08: `Get-Content "$s\metadata\08_*.jsonl"` com o formato do roteiro (Bloco 6) e `Select-String "$s\sessao.log" -Pattern "NÃO corresponde"` | P-03 | saída anotada | `inicio_impulso_s` = 0,09; `validacao_fisica.ok` = `True` nas 3; `desvio_amostras` entre -3 e +3 (aceitável até +-10); `pico_medido_amostra` aproximadamente 2700; `pico_medido_v` <= 374,2 V e sobressinal <= 0,55 (acima: **achado de segurança, parar e avisar**); o metadata grava `validacao_fisica.posicao_evento.sobressinal_medido` e `sobressinal_acima_do_limite`: se este for `true`, parar e registrar achado de segurança; `indice_trigger` igual entre capturas (+-2); nenhuma linha `NÃO corresponde` |
 | 6.3 | Mesma inspeção, campos `diagnostico_trace.desvio_max` e `erro`; `Get-ChildItem "$s\diagnostico_trace"` | P-19 | `diagnostico_trace\*.npz` | `erro` vazio nas 3 capturas. Matriz de execução: 1024 valores finitos, ou comando registrado como não suportado. `desvio_max` pequeno e constante entre TRACes. Se falhar: `set diagnostico retrieve off`, anotar a mensagem |
 | 6.4 | CLI: `set capturas 6`, `run 09`, `set capturas padrao`, `set diagnostico retrieve off` | P-02 | `metadata\09_*.jsonl` | Executar com 6 capturas (9 se houver tempo) |
 | 6.5 | Offline: `env\Scripts\python.exe scripts\diag_ciclos_trace.py $s --classes 08,09` (uma pasta por classe se estiverem em `_run01`/`_run02`) | P-02 | `logs\diag_ciclos_trace-*.md` | 09: aceitar sem ressalva só captura sem ciclo trocado e resíduo perto de 100 ms < ~0,05 pu; acima disso, marcar como suspeita e não usar para treino |
@@ -155,8 +156,19 @@ Reiniciar a CLI **depois** do commit do Bloco 7 (`git status` limpo; `scripts\ST
 | 8.4 | 18, restauração: `Select-String "$s\scpi_transcricao.log" -Pattern "FREQuency"` (últimas 15) | P-06 | `scpi_transcricao.log` | `SOURce:FREQuency <base>` escrito depois da lista, sem erro `-2xx`; a classe seguinte com `validacao_fisica.ok` |
 | 8.5 | `env\Scripts\python.exe logica\analisar_sessao.py $s` | P-05, P-17 | saída da análise | Disparo em fase (01, 05, 18, 19): `\|lag\|` < 0,2 ms e correlação >= 0,99 |
 | 8.6 | `Select-String "$s\scpi_transcricao.log" -Pattern "PULSe:WIDTh"` e `-Pattern "MODE ACDC"` | P-05, P-17 | `scpi_transcricao.log` | Largura: readback igual ao escrito. 19: sem queda a 0 V entre capturas |
-| 8.7 | 05: ler `validacao_fisica.envelope_mediana_medida` de `05_*` | P-10 | `metadata\05_*.jsonl` | 0,7071 +- 0,01 e THD medido dentro de 20 % do pedido; ~0,72 invalida a premissa do modelo. **Cobertura dos níveis CSIN 10/15/20 %, norma 2 % e TRACe 30 % exigida pela matriz de P-10: o roteiro não traz passo nem contagem de gravações para isso (seção 8 do roteiro); critério por nível não definido** |
+| 8.7 | 05 (execução padrão, nível 0 do perfil): ler `validacao_fisica.envelope_mediana_medida` de `05_*` | P-10 | `metadata\05_*.jsonl` | 0,7071 +- 0,01 e THD medido dentro de 20 % do pedido; ~0,72 invalida a premissa do modelo. A cobertura por nível é o Bloco 8-A |
 | 8.8 | 19: `validacao_fisica` de `19_*` | P-17 | `metadata\19_*.jsonl` | CA conforme o Bloco 5 (déficit conhecido) |
+
+## Bloco 8-A. Sequência P-10: 05 por nível (CLI, sessão B, 60 Hz, commit limpo). Roteiro: Bloco 8-A. Tempo: 5 a 8 min (não cronometrado)
+
+Cada `run` é uma conexão e pede confirmação digitada pelo operador (`EXECUTAR-CLASSE-05`); não usar `set perfil todos`. Opções conferidas em {doc}`configuracao` ("Sequência da P-10"): sem `set capturas` a 05 roda só o nível 0; `set capturas 1` explícito roda os cinco níveis.
+
+| Passo | Comando exato | P-NN | Arquivo de evidência | Critério de aceite |
+|---|---|---|---|---|
+| 8A.1 | CLI: `set diagnostico bruto on`, `set perfil norma`, `set capturas 1`, `run 05` | P-10, P-28 | `metadata\05_*.jsonl`, `.npz` da 05, `bruto_osciloscopio\` | 5 capturas: 2, 5, 10, 15 e 20 %, todas `rota_programacao` = `CSIN`; 0 gravações de TRACe |
+| 8A.2 | CLI: `set perfil literatura`, `set capturas 1`, `run 05` | P-10 | idem | 5 capturas: 5, 10, 15, 20 % (CSIN) e 30 % (TRACe); 12 gravações de TRACe a 60 Hz (10 a 50 Hz), abaixo de 216; a estimativa da CLI pode não contar a 05 por TRACe (**NÃO VERIFICADO**), conferir `escritas_trace_na_conexao` |
+| 8A.3 | Ler por nível `parametros.thd`, `rota_programacao`, `validacao_fisica.envelope_mediana_medida` e THD medido | P-10 | saída anotada | Critério herdado da 05: envelope 0,7071 +- 0,01 e THD medido dentro de 20 % do pedido. Não há critério adicional por nível; `scripts/fechar_pendencias.py` avalia por nível e rota |
+| 8A.4 | CLI: `set capturas padrao`; `quit` | | | |
 
 ## Bloco 9. Campanha em partes (mesma CLI do Bloco 8). Roteiro: Bloco 9 e seção 5. Tempo: 1 perfil, 20 a 30 min; `todos`, 50 a 70 min
 
@@ -179,9 +191,9 @@ OUTPUT OFF no painel e CLI fechada (`quit`).
 | 10.1 | `git status`; `git log -3 --stat -- logica\calibracao_extremos.json`; `env\Scripts\python.exe -m unittest tests.test_offline` | P-07, P-21, P-16 | saídas anotadas | Nenhum rastreado alterado; suíte com 0 falhas (seção 6, itens 2 a 4) |
 | 10.2 | Conferir `git_commit`/`git_sujo` das sessões (comando do roteiro, seção 6, item 5) | P-01 | saída anotada | `git_sujo` falso e `git_commit` igual ao commit limpo |
 | 10.3 | `env\Scripts\python.exe logica\recortar_margem.py $s`, `env\Scripts\python.exe logica\relatorio_html.py $s\sem_margem --dpi 80`, `env\Scripts\python.exe logica\analisar_sessao.py $s` | P-01 | relatório HTML, análise | Opcional; seção 6, item 6 |
-| 10.4 | `env\Scripts\python.exe scripts\benchmark_sessao_io.py --capturas 3 10 30 --saida <benchmark_bancada.json>` | P-22 | `benchmark_bancada.json` novo (recusa sobrescrita) | critério não definido; a matriz pede dados físicos reais e custo no PC/disco da bancada. `benchmark_sessao_io.py` mede apenas dados sintéticos em diretórios temporários e não grava `hostname`; ele não prova P-22. O tempo de leitura das sessões físicas é medido por `scripts/fechar_pendencias.py` (item P-22, `detalhes.medidas`, via `sessao_io.ler_capturas`). O critério "executado no PC da bancada" só é avaliado se um artefato de medição passado em `--artefatos` (`benchmark_bancada*.json`) trouxer `hostname`, comparado sem diferenciar maiúsculas e com tolerância ao truncamento NetBIOS de 15 caracteres contra o `pc_bancada.json`; sem `hostname` no artefato o critério fica `criterio_nao_definido` e exige revisão humana. O hostname do computador de análise não é usado |
+| 10.4 | **No PC da bancada**: `env\Scripts\python.exe scripts\benchmark_sessao_io.py --sessao <dir_sessao_1> [--sessao <dir_sessao_2> ...] --saida logs\benchmark_sessao_io_bancada.json` | P-22 | `logs\benchmark_sessao_io_bancada.json` (recusa sobrescrita) | Mede as sessões físicas sem modificá-las (leitura, reescrita em cópia temporária, hash, memória, tamanho) e grava `hostname` e `simulado`. `fechar_pendencias.py` só avalia "executado no PC da bancada" se o `hostname` do artefato coincidir com o de `pc_bancada.json` (sem diferenciar maiúsculas, tolerando o truncamento NetBIOS de 15 caracteres); benchmark sintético (sem `--sessao`) ou `simulado` verdadeiro nunca vale como medição da bancada. Não há limite de tempo/tamanho definido no código/docs: critério numérico não definido, revisão humana |
 | 10.5 | Para cada NPZ de `bruto_osciloscopio\<perfil>\` do CH1: `env\Scripts\python.exe scripts\analisar_reamostragem.py --entrada <bruto_CH1.npz> --f0-hz 60 --harmonicos 10 --saida <analise_bruto_novo.json>` (`--f0-hz 50` para sessões a 50 Hz) | P-28 | `analise_bruto_novo.json` por arquivo | Publica RMS, pico, erro temporal, espectro e THD na grade salva. Critério de aceite numérico não definido; a matriz pede revisão dos resultados físicos. O FIR não substitui o interpolador do dataset |
-| 10.6 | Registrar os dados das sessões novas para as métricas nominal e fundamental ajustada (relatório modelo/programada) | P-31 | sessões copiadas | Cálculo reprodutível nas sessões novas e definição da métrica oficial (decisão do responsável). O roteiro não cita a ferramenta; o item P-31 de `scripts/fechar_pendencias.py` verifica se há capturas físicas com `tres_versoes` nas classes 06, 10, 11, 12, 15 e 16, e `scripts/analisar_modelo_programado.py` gera a comparação offline modelo/programada. A escolha da métrica oficial é do responsável; critério numérico não definido |
+| 10.6 | `env\Scripts\python.exe scripts\analisar_modelo_programado.py --sessao <dir_sessao_1> [--sessao <dir_sessao_2> ...] --saida logs\modelo_programada_sessoes_bancada.json` | P-31 | `logs\modelo_programada_sessoes_bancada.json` (não sobrescreve) | Cálculo reprodutível sobre as sessões físicas (métricas nominal e fundamental ajustada). `fechar_pendencias.py` verifica capturas físicas com `tres_versoes` nas classes 06, 10, 11, 12, 15 e 16. A métrica oficial é decisão do responsável; critério numérico não definido |
 | 10.7 | Copiar para o computador de análise (seção 6, item 7): `resultados\sessao_*` inteiras, HTML, e de `logs\` os `diag_ciclos_trace-*`, `diag_marcadores_trace-*`, `diag_acdc_amplitude-*`, `diag_nativo-*`, `verificar_parte1.json`, `preflight_new-*.log` | todas | pastas copiadas | Sessões originais imutáveis; análises derivadas em outro destino |
 | 10.8 | Anotar uma linha por bloco (seção 6, item 8): valor medido, fator da probe, fatores 07/17 antes e depois, contador máximo de TRACe, o que ficou fora da campanha e por quê | todas | anotação | Valor medido, não impressão |
 
@@ -199,10 +211,10 @@ Fora do `ROTEIRO_BANCADA.md`: vem de {doc}`projeto/passo-final-sin` (seção 4).
 Depois da visita, com as pastas copiadas (passo 10.7) e o `pc_bancada.json` do passo 1.4. A ferramenta `scripts/fechar_pendencias.py` roda só offline (não abre instrumento nem importa PyVISA/PyMeasure), lê as sessões e os artefatos, e emite por pendência um status (`evidencia_suficiente`, `insuficiente`, `reprovado` ou `sem_dados`), os critérios avaliados e o SHA-256 dos arquivos de origem. Não fecha pendência e recusa sobrescrever a saída. Opções em `--help`.
 
 ```powershell
-python scripts/fechar_pendencias.py --sessao <dir_sessao_1> --sessao <dir_sessao_2> --artefatos <copia_de_logs> --artefatos <resultados/passo_final_sin_data> --pc-bancada docs/evidencias/<data>/pc_bancada.json --saida docs/evidencias/<data>/fechamento.json
+python scripts/fechar_pendencias.py --sessao <dir_sessao_1> --sessao <dir_sessao_2> --artefatos logs --artefatos resultados --pc-bancada docs/evidencias/<data>/pc_bancada.json --saida docs/evidencias/<data>/fechamento.json
 ```
 
-`--sessao` e `--artefatos` são repetíveis (uma pasta por opção). `--artefatos` aponta pastas fora das sessões, onde os scripts gravam: `logs\` (`diag_acdc_amplitude-*.json`, `diag_nativo-*.json`, `diag_marcadores_trace-*.json`, `benchmark_bancada*.json`) e `resultados\passo_final_sin_<data>\`. Diagnósticos de P-17, P-18 e P-23 só contam com `simulado` falso, `git_commit` e `git_sujo` falso gravados no próprio JSON (scripts atualizados; arquivos gerados antes disso saem como `insuficiente`). A saída não sobrescreve arquivo existente.
+`--sessao` e `--artefatos` são repetíveis (uma pasta por opção). `--artefatos` aponta pastas fora das sessões, onde os scripts gravam: `logs\` (`diag_acdc_amplitude-*.json`, `diag_nativo-*.json`, `diag_marcadores_trace-*.json`, `benchmark_sessao_io_bancada.json`, `modelo_programada_sessoes_bancada.json`) e `resultados\` (que contém `passo_final_sin_<data>\`, procurado por `resultado.json`). Forma completa: `--artefatos logs --artefatos resultados`. Diagnósticos de P-17, P-18 e P-23 só contam com `simulado` falso, `git_commit` e `git_sujo` falso gravados no próprio JSON (scripts atualizados; arquivos gerados antes disso saem como `insuficiente`). A saída não sobrescreve arquivo existente.
 
 ## O que entregar ao coordenador
 

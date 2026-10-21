@@ -2,6 +2,11 @@
 """P09/P12/P31: análise de representação TRACe/LIST inteiramente offline.
 
 Compara gerar() com montar_programacao().programada_pu(), sem instrumentos.
+Com ``--sessao <dir>`` (repetível) lê capturas FÍSICAS já gravadas (classes
+06/10/11/12/15/16; programada x modelo x medida) e publica as DUAS correlações
+(nominal e fundamental ajustada) por captura e por classe/perfil/condição,
+ignorando aliases (perfis espelhados) e capturas simuladas. Não escolhe métrica
+oficial (decisão do responsável).
 Não resolve a perda física de média/offset por ciclo e não aceita correlações
 como aprovação automática. Não substitui validação na bancada.
 """
@@ -9,8 +14,11 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import replace
+import hashlib
 import json
 import math
+import platform
+import socket
 from pathlib import Path
 import sys
 
@@ -22,6 +30,7 @@ if str(ROOT / 'logica') not in sys.path:
 
 import mestre
 import perfis
+import sessao_io
 import sinais
 from ametek_orm import AmetekMX30
 
@@ -132,20 +141,176 @@ def gerar_relatorio(*, classes=CLASSES, perfis_selecionados=perfis.PERFIS,
             'limitacoes': LIMITACOES, 'registros': registros}
 
 
+# ------------------------------------------------------ sessões físicas (P-31)
+TIPO_FISICO = 'correlacao_modelo_programada_medida_sessoes_fisicas'
+PARES = (('modelo', 'programada'), ('modelo', 'medida'), ('programada', 'medida'))
+
+
+def _sha_arquivo(caminho):
+    h = hashlib.sha256()
+    with Path(caminho).open('rb') as f:
+        for bloco in iter(lambda: f.read(1 << 20), b''):
+            h.update(bloco)
+    return h.hexdigest()
+
+
+def _duas_correlacoes(esperado, capturado, *, fs_hz, f0_hz, fase_graus):
+    """Mesmas funções do modo sintético (sinais.correlacao_disturbio*)."""
+    nominal, m_nom = sinais.correlacao_disturbio(
+        esperado, capturado, fs_hz=fs_hz, f0_hz=f0_hz, fase_graus=fase_graus)
+    ajustada, m_aj = sinais.correlacao_disturbio_fundamental_ajustada(
+        esperado, capturado, fs_hz=fs_hz, f0_hz=f0_hz)
+    return {'nominal': {'valor': nominal, 'motivo_indefinida': m_nom},
+            'fundamental_ajustada': {'valor': ajustada, 'motivo_indefinida': m_aj}}
+
+
+def _procedencia_codigo():
+    try:
+        info = mestre.info_do_codigo(recalcular=True)
+        return {k: info.get(k) for k in ('git_commit', 'git_sujo', 'versao_codigo', 'arquivos_nao_rastreados')}
+    except Exception as exc:  # noqa: BLE001 - procedência ausente vira None
+        return {'git_commit': None, 'git_sujo': None, 'versao_codigo': None,
+                'arquivos_nao_rastreados': [], 'erro': f'{type(exc).__name__}: {exc}'}
+
+
+def _resumo(valores):
+    validos = [v for v in valores if v is not None]
+    if not validos:
+        return {'n': 0, 'indefinidas': len(valores), 'media': None, 'minimo': None, 'maximo': None}
+    return {'n': len(validos), 'indefinidas': len(valores) - len(validos),
+            'media': float(np.mean(validos)), 'minimo': float(np.min(validos)),
+            'maximo': float(np.max(validos))}
+
+
+def analisar_sessoes(pastas, *, classes=CLASSES, perfis=None, frequencias=None):
+    """Correlações nominal e fundamental ajustada em capturas físicas já gravadas.
+
+    Só entram capturas com ``simulado is False`` no metadata, que não sejam
+    aliases e tenham modelo, programada e medida. A medida é recortada em
+    ``[inicio_janela, inicio_janela + pontos)`` sem correção de lag. ``simulado``
+    no resultado é False só se toda sessão for modo bancada."""
+    if not pastas:
+        raise ValueError('informe ao menos uma --sessao')
+    if len({Path(p).resolve() for p in pastas}) != len(pastas):
+        raise ValueError('--sessao repetida')
+    registros, entradas, sessoes = [], [], []
+    ignoradas = {'alias': 0, 'simulada_ou_sem_metadata': 0, 'sem_tres_versoes': 0,
+                 'classe_fora_do_escopo': 0, 'perfil_fora_do_filtro': 0, 'frequencia_fora_do_filtro': 0,
+                 'formas_incompativeis': 0}
+    for pasta in map(Path, pastas):
+        if not pasta.is_dir():
+            raise ValueError(f'{pasta} não é uma pasta')
+        arquivos = sorted(p for p in pasta.glob('*.npz') if p.is_file())
+        arquivos += sorted((pasta / 'metadata').glob('*.jsonl'))
+        if (pasta / 'sessao.json').is_file():
+            arquivos.append(pasta / 'sessao.json')
+        modo = None
+        try:
+            modo = json.loads((pasta / 'sessao.json').read_text(encoding='utf-8')).get('modo')
+        except (OSError, ValueError, AttributeError):
+            pass
+        for a in arquivos:
+            entradas.append({'sessao': str(pasta), 'arquivo': a.relative_to(pasta).as_posix(),
+                             'sha256': _sha_arquivo(a)})
+        capturas = sessao_io.ler_capturas(pasta, versoes=('medida', 'modelo', 'programada'))
+        usadas = 0
+        for c in capturas:
+            if c.espelho:
+                ignoradas['alias'] += 1
+                continue
+            if c.classe_id not in classes:
+                ignoradas['classe_fora_do_escopo'] += 1
+                continue
+            if perfis is not None and c.perfil not in perfis:
+                ignoradas['perfil_fora_do_filtro'] += 1
+                continue
+            meta = c.metadado
+            if frequencias is not None and (not meta or meta.get('f0_hz') is None
+                                            or float(meta['f0_hz']) not in {float(f) for f in frequencias}):
+                ignoradas['frequencia_fora_do_filtro'] += 1
+                continue
+            if not meta or meta.get('simulado') is not False:
+                ignoradas['simulada_ou_sem_metadata'] += 1
+                continue
+            if any(v not in c.versoes for v in ('medida', 'modelo', 'programada')):
+                ignoradas['sem_tres_versoes'] += 1
+                continue
+            n = int(c.versoes['modelo'].size)
+            if c.versoes['programada'].size != n:
+                ignoradas['formas_incompativeis'] += 1
+                continue
+            inicio = max(0, min(int(c.inicio_janela or 0), max(0, c.versoes['medida'].size - n)))
+            sinais_ = {'modelo': c.versoes['modelo'], 'programada': c.versoes['programada'],
+                       'medida': c.versoes['medida'][inicio:inicio + n]}
+            fs, f0 = float(meta.get('fs_hz') or AmetekMX30.FS_HZ), float(meta.get('f0_hz') or 60.0)
+            fase = float(meta.get('fase_graus') or (meta.get('parametros') or {}).get('fase_graus') or 0.0)
+            tensao = meta.get('tensao_base_rms')
+            if sinais_['medida'].size != n:
+                ignoradas['formas_incompativeis'] += 1
+                continue
+            registros.append({
+                'sessao': str(pasta), 'classe': c.classe_id, 'perfil': c.perfil, 'id_captura': c.id_captura,
+                'condicao': f'{float(tensao):g}V_{f0:g}Hz' if tensao is not None else None,
+                'f0_hz': f0, 'fs_hz': fs, 'fase_graus': fase, 'inicio_janela': inicio, 'pontos': n,
+                'arquivo': c.arquivo.name,
+                'pares': {f'{a}_x_{b}': _duas_correlacoes(sinais_[a], sinais_[b], fs_hz=fs, f0_hz=f0, fase_graus=fase)
+                          for a, b in PARES}})
+            usadas += 1
+        sessoes.append({'sessao': str(pasta), 'modo': modo, 'capturas_usadas': usadas})
+    grupos = {}
+    for r in registros:
+        grupos.setdefault((r['classe'], r['perfil'], r['condicao']), []).append(r)
+    agregados = []
+    for (classe, perfil, condicao), regs in sorted(grupos.items(), key=lambda kv: tuple(str(x) for x in kv[0])):
+        agregados.append({'classe': classe, 'perfil': perfil, 'condicao': condicao, 'capturas': len(regs),
+                          'pares': {par: {m: _resumo([r['pares'][par][m]['valor'] for r in regs])
+                                          for m in ('nominal', 'fundamental_ajustada')}
+                                    for par in (f'{a}_x_{b}' for a, b in PARES)}})
+    fisico = bool(registros) and all(s['modo'] == 'bancada' for s in sessoes)
+    codigo = _procedencia_codigo()
+    return {'tipo': TIPO_FISICO, 'versao_schema': 1, 'simulado': not fisico,
+            'hostname': socket.gethostname(), 'plataforma': platform.platform(),
+            'python': platform.python_version(), 'numpy_version': np.__version__,
+            'git_commit': codigo.get('git_commit'), 'git_sujo': codigo.get('git_sujo'),
+            'procedencia_codigo': codigo, 'classes_escopo': list(classes),
+            'filtros': {'perfis': None if perfis is None else list(perfis),
+                        'frequencias_hz': None if frequencias is None else [float(f) for f in frequencias]},
+            'metrica_oficial': None,
+            'sessoes': sessoes, 'arquivos_entrada': entradas, 'ignoradas': ignoradas,
+            'registros': registros, 'agregados_por_classe_perfil_condicao': agregados,
+            'limitacoes': [
+                'Recorte da medida por inicio_janela, sem correção de lag; pares com medida incluem erro de alinhamento.',
+                'As duas correlações são publicadas lado a lado; a métrica oficial é decisão do responsável.',
+                'Aliases (perfis espelhados) e capturas simuladas são ignorados; um agregado só com n pequeno não é estatística.',
+                'Nenhum limiar ou aceite automático é aplicado.']}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--classes', nargs='+', choices=CLASSES, default=CLASSES)
-    parser.add_argument('--perfis', nargs='+', choices=perfis.PERFIS, default=perfis.PERFIS)
-    parser.add_argument('--frequencias', nargs='+', type=float, choices=(50., 60.), default=(50., 60.))
+    parser.add_argument('--classes', nargs='+', choices=CLASSES, default=None)
+    parser.add_argument('--perfis', nargs='+', choices=perfis.PERFIS, default=None)
+    parser.add_argument('--frequencias', nargs='+', type=float, choices=(50., 60.), default=None)
     parser.add_argument('--seeds', nargs='+', type=int, default=(1, 2, 3))
+    parser.add_argument('--sessao', type=Path, action='append', default=[],
+                        help='sessão física a analisar (repetível); substitui o modo sintético')
     parser.add_argument('--saida', type=Path, required=True, help='JSON novo; não sobrescreve arquivo existente')
     args = parser.parse_args(argv)
     try:
-        relatorio = gerar_relatorio(classes=args.classes, perfis_selecionados=args.perfis,
-                                    frequencias=args.frequencias, seeds=args.seeds)
+        if args.sessao:
+            relatorio = analisar_sessoes(  # filtros só se pedidos explicitamente
+                args.sessao, classes=tuple(args.classes or CLASSES),
+                perfis=None if args.perfis is None else tuple(args.perfis),
+                frequencias=None if args.frequencias is None else tuple(args.frequencias))
+            texto = json.dumps(relatorio, ensure_ascii=False, indent=2, allow_nan=False) + '\n'  # antes de abrir: sem arquivo parcial
+            with args.saida.open('x', encoding='utf-8') as arquivo:
+                arquivo.write(texto)
+            print(f'Sessões físicas: {len(relatorio["registros"])} capturas em {args.saida}')
+            return 0
+        relatorio = gerar_relatorio(classes=args.classes or CLASSES, perfis_selecionados=args.perfis or perfis.PERFIS,
+                                    frequencias=args.frequencias or (50., 60.), seeds=args.seeds)
+        texto = json.dumps(relatorio, ensure_ascii=False, indent=2, allow_nan=False) + '\n'
         with args.saida.open('x', encoding='utf-8') as arquivo:
-            json.dump(relatorio, arquivo, ensure_ascii=False, indent=2, allow_nan=False)
-            arquivo.write('\n')
+            arquivo.write(texto)
     except (ValueError, OSError) as exc:
         parser.error(str(exc))
     print(f'Simulação offline: {len(relatorio["registros"])} casos em {args.saida}')

@@ -304,9 +304,12 @@ class P22P23P28(Base):
         self.assertEqual(self.criterio(item, "validacao_fisica_ok_nas_capturas_usadas")["resultado"], "falha")
         alto = self.agregar(montar_sessao(self.raiz, "sessao_sobre", [dict(r08(1), sobressinal_medido=0.6)]))[0]["itens"]["P-03"]
         self.assertEqual(alto["status"], "reprovado")
-        bom = self.agregar(montar_sessao(self.raiz, "sessao_sobre_ok", [dict(r08(1), sobressinal_medido=0.55)]))[0]["itens"]["P-03"]
+        bom = self.agregar(montar_sessao(self.raiz, "sessao_sobre_ok", [dict(r08(1), sobressinal_medido=0.40)]))[0]["itens"]["P-03"]
         self.assertEqual(bom["status"], "evidencia_suficiente")
         self.assertEqual(self.criterio(bom, "sobressinal_pu")["resultado"], "ok")
+        limite = self.agregar(montar_sessao(self.raiz, "sessao_sobre_lim", [dict(r08(1), sobressinal_medido=0.55)]))[0]["itens"]["P-03"]
+        self.assertEqual(self.criterio(limite, "sobressinal_pu")["resultado"], "aviso")  # ≤0,55 mas >0,45: revisão humana
+        self.assertTrue(limite["requer_revisao_humana"])
         sem = self.agregar(montar_sessao(self.raiz, "sessao_sem_sobre", [r08(1)]))[0]["itens"]["P-03"]
         self.assertEqual(self.criterio(sem, "sobressinal_pu")["resultado"], "criterio_nao_definido")
         self.assertTrue(sem["requer_revisao_humana"])

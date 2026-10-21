@@ -1757,6 +1757,13 @@ class ExperimentoBase(ABC):
         Waveform: sempre. Nativa: só os índices de ``usar_trace`` (05 a 30%)."""
         return False
 
+    def rota_programacao(self, capture_index: int) -> str:
+        """Rota de programação da captura FÍSICA, gravada em ``rota_programacao``
+        (metadata, v1.15): ``"TRACe"`` se grava TRACE, senão ``"nativa"``. A 05
+        refina a nativa para ``"CSIN"`` (CSINusoid). Só diagnóstico: não muda
+        o que ``gerar()`` produz nem o que vai à fonte."""
+        return "TRACe" if self.grava_trace(capture_index) else "nativa"
+
     @abstractmethod
     def _capturar_real(
         self, capture_index: int, t: np.ndarray, rng: np.random.Generator
@@ -2798,6 +2805,7 @@ class ExperimentoBase(ABC):
                 extremos: Dict[str, object] = {}
                 if not simulated:
                     metadados[-1].update(self._contexto_da_sessao())
+                    metadados[-1]["rota_programacao"] = self.rota_programacao(capture_index)
                     self._gravar_diagnostico_trace(capture_id, metadados[-1])
                     if self.config.preservar_bruto_osciloscopio:
                         metadados[-1]["bruto_osciloscopio"] = {

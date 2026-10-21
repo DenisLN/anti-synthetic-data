@@ -58,6 +58,10 @@ class Experimento(ExperimentoWaveform):
     # limitando).
     SOBRESSINAL_DO_DEGRAU = 0.55
     SUBSINAL_DO_DEGRAU = 0.70
+    # Sobressinal MEDIDO acima disto é achado de segurança (ROTEIRO_BANCADA.md
+    # linhas 197 e 374; docs/classes/08-transient.md). Só vira flag no metadata:
+    # não recusa a captura (o roteiro manda parar e avisar, não descartar).
+    SOBRESSINAL_ACHADO_DE_SEGURANCA = 0.55
     # Primeiro degrau da varredura de caracterização (0,25 pu ≈ 45 V a 127 V).
     AMPLITUDE_MIN_CARACTERIZACAO_PU = 0.25
 
@@ -199,8 +203,30 @@ class Experimento(ExperimentoWaveform):
             "tolerancia_amostras": self.TOLERANCIA_POSICAO_AMOSTRAS,
             "desvio_pico_pu": float(desvio[achado]),
         }
-        motivos = []
         amplitude = getattr(self, "_amplitude_bancada_pu", None)
+        # Sobressinal medido (P-03). O roteiro (linhas 197/374) só dá o limite
+        # (0,55); a grandeza é a de ``SOBRESSINAL_DO_DEGRAU`` / ``forma_para_bancada``:
+        # fração do degrau programado A que o pico passa de (senoide + A), isto é
+        # ``pico = s + A(1 + sobressinal)``. Como ``forma_para_bancada`` soma +A
+        # (A > 0), o pico é o MAIOR desvio SINALIZADO na direção do degrau,
+        # max(medido - senoide), e não o maior desvio absoluto (que pode ser o
+        # vale/subsinal). Resultado = esse desvio / A - 1. Resultado < -1 ou não
+        # finito é medição inválida: grava None e ``sobressinal_invalido``.
+        # Limite: a janela é amostrada a 30 kSa/s e a oscilação é de ~10 kHz, então
+        # o pico amostrado pode ficar abaixo do real (subestima); o pico absoluto
+        # real é conferido por ``medir_extremos`` (teto 374,2 V).
+        if amplitude is not None and float(amplitude) > 0:
+            sinalizado = medido - senoide  # degrau positivo: pico = maior desvio positivo
+            with np.errstate(invalid="ignore"):
+                sobressinal = float(np.max(sinalizado)) / float(amplitude) - 1.0
+            if not math.isfinite(sobressinal) or sobressinal < -1.0:
+                resultado["sobressinal_medido"] = None
+                resultado["sobressinal_invalido"] = True
+            else:
+                resultado["sobressinal_medido"] = sobressinal
+                resultado["sobressinal_limite"] = self.SOBRESSINAL_ACHADO_DE_SEGURANCA
+                resultado["sobressinal_acima_do_limite"] = bool(sobressinal > self.SOBRESSINAL_ACHADO_DE_SEGURANCA)
+        motivos = []
         if amplitude is not None and desvio[achado] < self.FRACAO_MIN_DESVIO_VISIVEL * float(amplitude):
             motivos.append(
                 f"impulso não encontrado: maior desvio da senoide {desvio[achado]:.3f} pu, "
