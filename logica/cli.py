@@ -302,6 +302,10 @@ class SessaoCLI:
         self.html_ao_fim = False
         # Última pasta de sessão criada por esta CLI (destino de "run falhas").
         self._ultima_sessao_dir: Optional[Path] = None
+        # Modo roteiro (--comando, usado por scripts/visita_bancada.py): uma
+        # exceção num run de classe ou a bateria abortada por infraestrutura
+        # liga esta marca, e o roteiro para (não repete nem segue sozinho).
+        self.falha_infraestrutura = False
 
     # -- infraestrutura ----------------------------------------------------
 
@@ -916,6 +920,7 @@ class SessaoCLI:
                 sucesso = True
             except Exception as exc:
                 sucesso = False
+                self.falha_infraestrutura = True
                 resultado = mestre.ResultadoClasse(script_path.stem, nome, ok=False, motivo=str(exc))
                 print(f"FALHOU: [{resultado.id}] {resultado.nome}: {exc}")
                 traceback.print_exc()
@@ -977,6 +982,7 @@ class SessaoCLI:
                         bancada.assegurar_tensao_base()
                         resultados = bancada.executar_bateria(scripts, perfis_rodada, selecao=selecao)
             except Exception as exc:
+                self.falha_infraestrutura = True
                 print(f"BATERIA ABORTADA por falha de infraestrutura: {exc}")
                 traceback.print_exc()
                 return 1
@@ -1302,10 +1308,89 @@ class SessaoCLI:
         return 0
 
 
-def main() -> int:
+    # -- modo roteiro (scripts/visita_bancada.py) ---------------------------
+
+    # Códigos de saída do roteiro, lidos pelo orquestrador da visita.
+    ROTEIRO_OK = 0
+    ROTEIRO_COM_FALHAS = 1       # bateria terminou, alguma classe/captura falhou
+    ROTEIRO_INFRAESTRUTURA = 2   # exceção, bateria abortada ou preflight falhou: PARAR
+    ROTEIRO_NAO_CONFIRMADO = 3   # operador não digitou a confirmação: nada energizado
+    ROTEIRO_INVALIDO = 4         # comando desconhecido ou set recusado: nada energizado
+
+    def executar_roteiro(self, comandos: List[str]) -> int:
+        """Executa ``comandos`` na ordem, como se o operador os digitasse no
+        prompt, e sai. As confirmações que energizam continuam sendo pedidas
+        pelo ``confirmar()`` de sempre, no teclado do operador: o roteiro só
+        fornece os comandos, nunca as respostas. Para no primeiro comando
+        inválido, na primeira confirmação não digitada e na primeira falha de
+        infraestrutura; uma bateria que terminou com classes falhas segue."""
+        original = self.confirmar
+        recusas: List[str] = []
+
+        def confirmar(aviso: str, esperado: str) -> bool:
+            if original(aviso, esperado):
+                return True
+            recusas.append(esperado)
+            return False
+
+        self.confirmar = confirmar
+        codigo = self.ROTEIRO_OK
+        try:
+            for linha in comandos:
+                partes = linha.split()
+                if not partes:
+                    continue
+                comando, args = partes[0].lower(), partes[1:]
+                handler = self.COMANDOS.get(comando)
+                if handler is None:
+                    print(f"Roteiro: comando desconhecido {comando!r}. Nada mais será executado.")
+                    return self.ROTEIRO_INVALIDO
+                print(f"\nbancada> {linha}")
+                try:
+                    retorno = handler(self, args)
+                except KeyboardInterrupt:
+                    print("\nINTERROMPIDO pelo operador (Ctrl+C). A saída foi desligada ao encerrar a "
+                          "conexão — confira OUTPUT OFF no painel da AMETEK.")
+                    return self.ROTEIRO_INFRAESTRUTURA
+                except Exception as exc:  # noqa: BLE001 - qualquer falha encerra o roteiro
+                    print(f"ERRO: {exc}")
+                    traceback.print_exc()
+                    return self.ROTEIRO_INFRAESTRUTURA
+                if recusas:
+                    return self.ROTEIRO_NAO_CONFIRMADO
+                if self.falha_infraestrutura:
+                    return self.ROTEIRO_INFRAESTRUTURA
+                if retorno:
+                    if comando in ("run", "rerun"):
+                        codigo = self.ROTEIRO_COM_FALHAS
+                    elif comando in ("comm", "trigger", "lowvoltage", "native"):
+                        return self.ROTEIRO_INFRAESTRUTURA
+                    else:
+                        print(f"Roteiro: '{linha}' recusado. Nada mais será executado.")
+                        return self.ROTEIRO_INVALIDO
+            return codigo
+        finally:
+            self.confirmar = original
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser(description="CLI da bancada (sem argumentos: prompt interativo).")
+    parser.add_argument(
+        "--comando", action="append", default=[],
+        help="executa este comando da CLI e sai (repetível, na ordem). As confirmações que "
+             "energizam continuam sendo digitadas pelo operador no teclado.",
+    )
+    args = parser.parse_args(argv)
+    if args.comando and not sys.stdin.isatty():
+        # Confirmação vinda de pipe/arquivo não é do operador: recusa antes de tudo.
+        print("Modo roteiro recusado: a entrada não é um terminal. As confirmações que energizam "
+              "precisam ser digitadas pelo operador. Nada foi executado.")
+        return SessaoCLI.ROTEIRO_INVALIDO
     sessao = SessaoCLI()
     try:
-        return sessao.loop()
+        return sessao.executar_roteiro(args.comando) if args.comando else sessao.loop()
     finally:
         sessao._liberar_bloqueio_sessao()
 

@@ -13,6 +13,7 @@ Comece por `mapa/00 Início.md` (vault Obsidian na raiz do repositório). Ele in
 - Projeto: `C:\Users\Ricardo Marin Israel\anti-synthetic-data`. Python: `.\env\Scripts\python.exe` (3.11.9, versões de `requirements.txt`).
 - Instrumentos: AMETEK por USB em **COM10**/115200 (driver TUSB3410; cópia em `C:\drivers_bancada\ametek_vcp`). Keysight em `USB0::0x0957::0x17A4::MY59240844::0::INSTR` via NI-VISA 26.5. Cabo BNC: Trigger Out → EXT Trigger.
 - Início da bancada: `scripts\START_BENCH.cmd` (atalho na área de trabalho). Pergunta fator da probe, tensão e frequência.
+- Visita inteira num comando: `scripts\VISITA_BANCADA.cmd` (`scripts/visita_bancada.py`; `--plano` mostra o estado). O operador digita as confirmações; retoma de onde parou.
 - Suíte: `.\env\Scripts\python.exe -m unittest discover -s tests -p "test*.py"`. Registro formal: `scripts\validar_pc_bancada.ps1`.
 - Peculiaridades do Windows: o PowerShell 5.1 trunca `python -c` que tenha aspas internas (use arquivo `.py`); a saída de subprocesso vem em cp1252. A entrada `OpenAI\Codex\bin` do PATH quebra o `pip` (remova-a do PATH só no processo).
 

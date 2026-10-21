@@ -6,6 +6,17 @@ Roteiro de **uma** visita que gera a evidência para P-01, P-02, P-03, P-05, P-0
 Nenhum passo abaixo encerra pendência por si. A visita **gera evidência**; o fechamento é decidido pelo coordenador e pelo responsável com a evidência em mãos. Simulação não é medição. Diagnóstico vem antes da campanha: não mude a ordem dos Blocos 1 a 10.
 :::
 
+## Atalho: a visita inteira num comando
+
+No PC da bancada: **`scripts\VISITA_BANCADA.cmd`** (atalho na área de trabalho). Ele pergunta o fator da probe e conduz, na ordem, todos os blocos abaixo, inclusive 8-A, 10-A, 10-B e as campanhas por condição (P-26, com a calibração P-21 de 220 V e 33 V), e termina com o fechamento (`fechamento.json`) e o commit das evidências. O comando:
+
+- muda a tensão e a frequência sozinho, por etapa;
+- confere a segurança depois de cada sessão;
+- para em falha de infraestrutura;
+- pergunta se você quer rodar de novo só as capturas que falharam.
+
+**Você continua digitando a confirmação de cada etapa que energiza.** Pode parar em qualquer pausa e rodar de novo outro dia: ele retoma de onde parou. `VISITA_BANCADA.cmd --plano` mostra as etapas e o estado. Detalhes: `scripts/visita_bancada.py`.
+
 ## Limites inegociáveis (resumo; texto completo em `AGENTS.md`)
 
 - `AMETEK_PORT=COM10` e `AMETEK_BAUDRATE=115200`, fixos e validados; não trocar.
