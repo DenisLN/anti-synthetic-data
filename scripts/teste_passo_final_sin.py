@@ -202,8 +202,11 @@ def modo_bancada(args) -> int:
                      depois=depois, n_ciclo=n_ciclo)
         resultados.append(r)
         todos_ok &= imprimir(r)
+    codigo = mestre.info_do_codigo(recalcular=True)  # procedência: scripts/fechar_pendencias.py P-18 a exige
     (pasta / "resultado.json").write_text(json.dumps(
         {"vrms": vrms, "freq_hz": freq, "probe": probe, "classe": args.classe, "seed": seed,
+         "simulado": False, "modo": "bancada", "git_commit": codigo.get("git_commit"),
+         "git_sujo": codigo.get("git_sujo"), "versao_codigo": codigo.get("versao_codigo"),
          "resultados": resultados}, indent=1), encoding="utf-8")
     print(f"\nVEREDITO: {'EFICAZ' if todos_ok else 'NAO EFICAZ (ou inconclusivo)'} "
           f"em {args.repeticoes} repeticao(oes). Entregue tambem logs\\ mais recente.")

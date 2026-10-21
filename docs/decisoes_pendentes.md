@@ -15,7 +15,7 @@ Branches consultados: `origin/main`, `origin/feat/execucao-pendencias-v1-15`, `u
 
 ## P-09 Perda da média por ciclo
 
-**Contexto.** A programada (LIST) não reproduz o deslocamento de média por ciclo do modelo. Em `docs/evidencias/2026-10-16/modelo_programado.json` (108 registros, classes 06, 10, 11, 12, 15, 16, perfis norma, literatura e fronteira, 50 e 60 Hz, 127 V, simulação offline) a perda máxima absoluta é 0,0009 a 0,0166 pu na 06, 0,0026 a 0,029 pu na 15 e 0,018 a 0,288 pu nas compostas com sag (10, 11, 12, 16); mediana geral 0,081 pu, máximo 0,288 pu (classe 16, 50 Hz). A fração de pu é do pico nominal 127 V x raiz de 2. Compensação física depende de P-17 (ACDC) e de dados reais.
+**Contexto.** A programada (LIST) não reproduz o deslocamento de média por ciclo do modelo. Em `docs/evidencias/2026-10-16/modelo_programado.json` (108 registros, classes 06, 10, 11, 12, 15, 16, perfis norma, literatura e fronteira, 50 e 60 Hz, 127 V, simulação offline) a perda máxima absoluta é 0,0009 a 0,0166 pu na 06, 0,0026 a 0,029 pu na 15 e 0,018 a 0,288 pu nas compostas com sag (10, 11, 12, 16); mediana geral 0,072 pu (mediana dos 108 valores de `media_perdida_maxima_absoluta_pu`), máximo 0,288 pu (classe 16, 50 Hz). A fração de pu é do pico nominal 127 V x raiz de 2. Compensação física depende de P-17 (ACDC) e de dados reais.
 
 - A. Aceitar como limitação documentada, sem compensar. **[recomendado]**
 - B. Não aceitar; abrir investigação de offset por passo (exige P-17 e bancada).

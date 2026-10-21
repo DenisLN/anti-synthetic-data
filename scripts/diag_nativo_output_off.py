@@ -505,6 +505,11 @@ def _selecionar(argv=None):
 
 def main(argv=None) -> int:
     escolhidos = _selecionar(argv)
+    try:  # procedência (scripts/fechar_pendencias.py P-23 a exige), calculada ANTES de tocar a fonte
+        import mestre
+        codigo = mestre.info_do_codigo(recalcular=True)
+    except Exception:  # noqa: BLE001 - nunca impede o diagnóstico
+        codigo = {}
     carimbo = _dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     pasta = RAIZ / "logs"
     pasta.mkdir(exist_ok=True)
@@ -553,6 +558,9 @@ def main(argv=None) -> int:
             diag.reset_modos()
         except Exception:  # noqa: BLE001
             logger.exception("Falha restaurando modos (a conexão seguinte roda configure_safe_baseline)")
+        diag.resultados["_procedencia"] = {
+            "simulado": False, "modo": "bancada", "git_commit": codigo.get("git_commit"),
+            "git_sujo": codigo.get("git_sujo")}
         (pasta / f"diag_nativo-{carimbo}.json").write_text(
             json.dumps(diag.resultados, ensure_ascii=False, indent=1, default=str), encoding="utf-8",
         )

@@ -38,7 +38,9 @@
     },
     "P09": {
       "status": "aberta",
-      "evidencias": []
+      "evidencias": [
+        "evidencias/2026-10-16/modelo_programado.json"
+      ]
     },
     "P10": {
       "status": "aberta",

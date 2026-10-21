@@ -9,6 +9,7 @@ lida da sessão. NÃO fecha pendência: o status máximo é ``evidencia_suficien
 e a decisão de encerrar continua com o responsável (``docs/PENDENCIAS_TRACKER.md``).
 
     python scripts/fechar_pendencias.py --sessao resultados/sessao_A [--sessao resultados/sessao_B ...] \\
+        [--artefatos logs] [--artefatos resultados/passo_final_sin_<data>] \\
         [--pc-bancada docs/evidencias/2026-10-21/pc_bancada.json] --saida docs/evidencias/2026-10-21/fechamento.json
 
 Status por item: ``evidencia_suficiente`` | ``insuficiente`` | ``reprovado`` | ``sem_dados``.
@@ -52,6 +53,7 @@ PERFIS = ("norma", "literatura", "fronteira")  # docs/perfis.md
 CONDICOES = {"127V_60Hz": (127, 60), "127V_50Hz": (127, 50), "230V_50Hz": (230, 50),
              "220V_60Hz": (220, 60), "33V_60Hz": (33, 60)}
 TETO_08_V = 374.2  # 0,9 x max_peak_v 415,8 (docs/classes/08-transient.md; execucao_pendencias P-03)
+SOBRESSINAL_MAX_08 = 0.55  # ROTEIRO_BANCADA.md:197/374 e docs/classes/08-transient.md: acima é achado de segurança
 TOL_POSICAO_08 = 10  # amostras (docs/metadata.md, validacao_fisica.posicao_evento)
 ORCAMENTO_TRACES = 216  # gravações TRACe por conexão (execucao_pendencias P-23)
 FISICAS = ("P-01", "P-02", "P-03", "P-05", "P-06", "P-07", "P-08", "P-10", "P-16", "P-17",
@@ -196,8 +198,10 @@ class Sessao:
 
 
 class Contexto:
-    def __init__(self, sessoes: Sequence[Sessao], pc: Optional[dict], pc_arquivo: Optional[Path]) -> None:
+    def __init__(self, sessoes: Sequence[Sessao], pc: Optional[dict], pc_arquivo: Optional[Path],
+                 artefatos: Sequence[Path] = ()) -> None:
         self.sessoes = list(sessoes)
+        self.artefatos = [Path(a) for a in artefatos]
         self.pc = pc
         self.pc_arquivo = pc_arquivo
         self.fisicos = [r for s in sessoes for r in s.fisicos]
@@ -215,12 +219,13 @@ class Contexto:
         return sel
 
     def procura(self, padrao: str) -> List[Path]:
-        """Artefatos ``padrao`` (glob recursivo) dentro das pastas de sessão."""
+        """Artefatos ``padrao`` (glob recursivo) nas pastas de sessão e nas ``--artefatos``
+        (``logs\\`` dos diagnósticos e ``resultados\\passo_final_sin_*`` ficam fora da sessão)."""
         if padrao not in self._artefatos:
             achados: List[Path] = []
-            for s in self.sessoes:
-                if s.pasta.is_dir():
-                    achados += [p for p in s.pasta.rglob(padrao) if p.is_file()]
+            for pasta in [s.pasta for s in self.sessoes] + self.artefatos:
+                if pasta.is_dir():
+                    achados += [p for p in pasta.rglob(padrao) if p.is_file()]
             self._artefatos[padrao] = sorted(set(achados))
         return self._artefatos[padrao]
 
@@ -255,6 +260,30 @@ def criterio_procedencia(ctx: Contexto, registros: Sequence[dict]) -> dict:
     return crit("procedencia_commit_limpo", INSUF if ruins else OK, valor=ruins or None,
                 limite="git_sujo=false e git_commit não vazio",
                 origem="AGENTS.md 'Como versionar': toda sessão de coleta sai de commit limpo")
+
+
+def procedencia_do_artefato(j: dict) -> List[str]:
+    """Motivos pelos quais um JSON de diagnóstico não prova coleta física de commit limpo."""
+    motivos = []
+    if j.get("simulado") is not False:
+        motivos.append(f"simulado={j.get('simulado')!r}")
+    commit = j.get("git_commit")
+    if not isinstance(commit, str) or not commit.strip():
+        motivos.append(f"git_commit={commit!r}")
+    if j.get("git_sujo") is not False:
+        motivos.append(f"git_sujo={j.get('git_sujo')!r}")
+    return motivos
+
+
+def criterio_procedencia_artefatos(nomes_e_jsons: Sequence[tuple]) -> dict:
+    ruins = []
+    for nome, j in nomes_e_jsons:
+        m = procedencia_do_artefato(j)
+        if m:
+            ruins.append(f"{nome}: " + ", ".join(m))
+    return crit("procedencia_commit_limpo", INSUF if ruins else OK, valor=ruins or None,
+                limite="simulado=false, git_sujo=false e git_commit não vazio gravados no próprio artefato",
+                origem="AGENTS.md 'Como versionar'; artefato sem procedência não vale como evidência")
 
 
 def decidir(criterios: Sequence[dict], tem_dados: bool, humano: Optional[str] = None) -> tuple:
@@ -368,8 +397,18 @@ def p03(ctx: Contexto) -> tuple:
     cs = [crit("capturas_127V_50Hz_evento_90ms", OK if evento90 else INSUF,
                {"127V/50Hz": len(alvo), "com_evento_90ms": len(evento90)}, ">=1",
                "execucao_pendencias P-03; parametros.inicio_impulso_s = 0,09 (docs/metadata.md)")]
-    desvios, picos, pico_detalhe = [], [], []
+    desvios, picos, pico_detalhe, sobressinais = [], [], [], []
+    invalidas = [r["id_captura"] for r in evento90 if not (
+        isinstance(r.get("validacao_fisica"), dict) and r["validacao_fisica"].get("ok") is True)]
+    cs.append(crit("validacao_fisica_ok_nas_capturas_usadas", SEMDADOS if not evento90 else (FALHA if invalidas else OK),
+                   {"capturas": len(evento90), "com_ok_falso_ou_ausente": invalidas}, "validacao_fisica.ok = true em todas",
+                   "metadata validacao_fisica.ok (mestre.py); captura reprovada não prova P-03"))
     for r in evento90:
+        sb = _num(r.get("sobressinal_medido"))
+        if sb is None:
+            sb = _num((r.get("validacao_fisica") or {}).get("sobressinal_medido"))
+        if sb is not None:
+            sobressinais.append(sb)
         d = ((r.get("validacao_fisica") or {}).get("posicao_evento") or {}).get("desvio_amostras")
         pk, vl = _num(r.get("pico_medido_v")), _num(r.get("vale_medido_v"))
         if d is not None:
@@ -377,6 +416,11 @@ def p03(ctx: Contexto) -> tuple:
         if pk is not None and vl is not None:
             picos.append(max(abs(pk), abs(vl)))
             pico_detalhe.append({"id": r["id_captura"], "pico_v": pk, "vale_v": vl})
+    cs.append(crit("sobressinal_pu", ND if not sobressinais else (OK if max(sobressinais) <= SOBRESSINAL_MAX_08 else FALHA),
+                   max(sobressinais) if sobressinais else None, SOBRESSINAL_MAX_08,
+                   "ROTEIRO_BANCADA.md:197/374 e docs/classes/08-transient.md: sobressinal > 0,55 é achado de segurança",
+                   nota=None if sobressinais else "metadata não traz sobressinal medido (campo sobressinal_medido); "
+                   "conferir manualmente contra 0,55"))
     cs.append(crit("desvio_de_posicao_amostras", SEMDADOS if not desvios else (OK if max(desvios) <= TOL_POSICAO_08 else FALHA),
                    max(desvios) if desvios else None, TOL_POSICAO_08,
                    "docs/metadata.md validacao_fisica.posicao_evento (tolerância 10)"))
@@ -385,8 +429,7 @@ def p03(ctx: Contexto) -> tuple:
                    "0,9 x max_peak_v (docs/classes/08-transient.md); excesso exige investigação, não relaxar teto",
                    nota="; ".join(f"{d['id']}: +{d['pico_v']:.1f}/{d['vale_v']:.1f} V" for d in pico_detalhe) or None))
     cs.append(criterio_procedencia(ctx, evento90 or r08))
-    return cs, True, {"nota_sobressinal": "'sobressinal conforme o roteiro' não tem tolerância no código; "
-                                          "conferir pico/vale registrados acima manualmente"}
+    return cs, True, {}
 
 
 def p05(ctx: Contexto) -> tuple:
@@ -556,6 +599,11 @@ def p10(ctx: Contexto) -> tuple:
     return cs, True, {"medidas_por_captura": linhas}
 
 
+def _versao_valida(v: Any) -> bool:
+    """Versão registrada de verdade: não vazia e sem o marcador ``indisponivel`` do .ps1."""
+    return isinstance(v, str) and bool(v.strip()) and not v.strip().lower().startswith("indisponivel")
+
+
 def p16(ctx: Contexto) -> tuple:
     if ctx.pc is None:
         return [], False, {}
@@ -572,12 +620,12 @@ def p16(ctx: Contexto) -> tuple:
              {"falhas": falhas, "erros": erros}, 0, "unittest discover"),
         crit("testes_executados", OK if isinstance(n, int) and n > 0 else INSUF,
              {"testes": n, "skips": pc.get("skips")}, "> 0",
-             "baseline macOS 615 OK/2 skips (PENDENCIAS_TRACKER); nº exato depende do ambiente, não fixado"),
+             "nº exato de testes depende do ambiente e da versão; não é fixado, só exige > 0"),
         crit("arvore_git_limpa", OK if pc.get("git_sujo") is False else INSUF, pc.get("git_sujo"), False,
              "AGENTS.md 'Como versionar'"),
         crit("git_commit_registrado", OK if isinstance(pc.get("git_commit"), str) and pc.get("git_commit") else INSUF,
              pc.get("git_commit"), "não vazio", "git rev-parse HEAD"),
-        crit("versoes_registradas", OK if all(pc.get(k) for k in ("python", "numpy", "pymeasure", "pyvisa")) else INSUF,
+        crit("versoes_registradas", OK if all(_versao_valida(pc.get(k)) for k in ("python", "numpy", "pymeasure", "pyvisa")) else INSUF,
              {k: pc.get(k) for k in ("python", "numpy", "pymeasure", "pyvisa")}, "todas presentes", "validar_pc_bancada.ps1"),
     ]
     if commits and pc.get("git_commit"):
@@ -614,14 +662,13 @@ def p17(ctx: Contexto) -> tuple:
                     "razao_ch1_total_sobre_fonte_ac": l.get("razao_ch1_total_sobre_fonte_ac")} for l in linhas]
     cs.append(crit("deficit_acdc_aceitavel", ND, None, None,
                    "execucao_pendencias P-17 só pede caracterizar (CA e RMS total); sem tolerância; V/g não é correção"))
-    s0 = ctx.sessao_do(reais[0][0])
-    cs.append(criterio_procedencia(ctx, (s0.registros if s0 else [])) if s0 and s0.registros else
-              crit("procedencia_commit_limpo", ND, None, None, "artefato fora de sessão com metadata: sem git_commit"))
+    cs.append(criterio_procedencia_artefatos([(a.name, j) for a, j in reais]))
     return cs, True, {"razoes": resumo}
 
 
 def p18(ctx: Contexto) -> tuple:
     arts = [a for a in ctx.procura("resultado.json") if a.parent.name.startswith("passo_final_sin_")]
+    arts = [a for a in arts if (ctx.json_de(a) or {}).get("simulado") is not True]
     if not arts:
         return [], False, {}
     spec = importlib.util.spec_from_file_location("teste_passo_final_sin_fp", RAIZ / "scripts" / "teste_passo_final_sin.py")
@@ -644,6 +691,7 @@ def p18(ctx: Contexto) -> tuple:
                            "scripts/teste_passo_final_sin.py::CORR_MIN_JANELA/TOL_JANELA_PU"))
     if not cs:
         cs.append(crit("resultados_no_json", INSUF, 0, ">=1", "resultado.json de teste_passo_final_sin.py"))
+    cs.append(criterio_procedencia_artefatos([(a.parent.name, ctx.json_de(a) or {}) for a in arts]))
     cs.append(crit("aceitacao_LIST_e_restauracao_na_fonte", ND, None, None,
                    "execucao_pendencias P-18: conferir no scpi_transcricao.log; sem critério automático"))
     cs.append(crit("padrao_OFF_confirmado_pelo_responsavel", ND, None, None, "decisão do responsável (frente D)"))
@@ -725,6 +773,14 @@ def p21(ctx: Contexto) -> tuple:
     return cs, True, {}
 
 
+def _mesmo_host(a: Any, b: Any) -> bool:
+    """Hostnames iguais sem diferenciar caixa, tolerando truncamento NetBIOS (15 caracteres)."""
+    if not isinstance(a, str) or not isinstance(b, str) or not a.strip() or not b.strip():
+        return False
+    a, b = a.strip().lower(), b.strip().lower()
+    return a == b or a[:15] == b[:15] and (len(a) > 15 or len(b) > 15)
+
+
 def p22(ctx: Contexto) -> tuple:
     if not ctx.fisicos:
         return [], False, {}
@@ -749,33 +805,74 @@ def p22(ctx: Contexto) -> tuple:
         cs.append(crit(f"{s.pasta.name}: leitura_sem_erro", OK if (erro is None and caps) else INSUF,
                        {"capturas": len(caps), "tempo_s": round(dt, 4)}, "leitura completa sem exceção",
                        "logica/sessao_io.py::ler_capturas", nota=erro))
-    host = platform.node()
-    if ctx.pc:
-        ctx.marcar(ctx.pc_arquivo)
-        mesmo = str(ctx.pc.get("hostname", "")).lower() == host.lower()
-        cs.append(crit("executado_no_pc_da_bancada", OK if mesmo else INSUF,
-                       {"este_host": host, "pc_bancada": ctx.pc.get("hostname")}, "hostnames iguais",
-                       "execucao_pendencias P-22: PC/disco da bancada"))
+    host = platform.node()  # só informativo: é o computador de ANÁLISE, não o que mediu
+    origem22 = "execucao_pendencias P-22: PC/disco da bancada; hostname gravado no próprio artefato de medição"
+    medicoes = []
+    for padrao in ("benchmark_bancada*.json", "benchmark_sessao_io*.json"):
+        for a in ctx.procura(padrao):
+            j = ctx.json_de(a)
+            if j is not None and (a, j) not in medicoes:
+                medicoes.append((a, j))
+    if ctx.pc is None:
+        cs.append(crit("executado_no_pc_da_bancada", SEMDADOS, None, "hostname do artefato = hostname de --pc-bancada", origem22))
     else:
-        cs.append(crit("executado_no_pc_da_bancada", SEMDADOS, host, "hostname de --pc-bancada",
-                       "execucao_pendencias P-22: PC/disco da bancada"))
+        ctx.marcar(ctx.pc_arquivo)
+        hosts = {a.name: j.get("hostname") for a, j in medicoes if isinstance(j.get("hostname"), str) and j["hostname"].strip()}
+        if not hosts:
+            cs.append(crit("executado_no_pc_da_bancada", ND, {"artefatos_de_medicao": [a.name for a, _ in medicoes],
+                                                              "pc_bancada": ctx.pc.get("hostname")},
+                           "hostname no artefato de medição", origem22,
+                           nota="nenhum artefato de medição (--artefatos) traz hostname; conferir manualmente"))
+        else:
+            for a, j in medicoes:
+                if a.name in hosts:
+                    ctx.marcar(a)
+            mesmo = all(_mesmo_host(h, ctx.pc.get("hostname")) for h in hosts.values())
+            cs.append(crit("executado_no_pc_da_bancada", OK if mesmo else INSUF,
+                           {"hostname_do_artefato": hosts, "pc_bancada": ctx.pc.get("hostname")},
+                           "iguais (sem diferenciar maiúsculas; truncamento NetBIOS de 15 caracteres tolerado)", origem22))
     cs.append(crit("tempo_e_tamanho_aceitaveis", ND, None, None,
                    "nenhum limite de tempo/tamanho definido no código/docs; valores medidos em 'medidas'"))
     cs.append(criterio_procedencia(ctx, ctx.fisicos))
-    return cs, True, {"medidas": medidas, "ambiente": {"hostname": host, "plataforma": platform.platform(),
+    return cs, True, {"medidas": medidas, "ambiente": {"hostname_do_computador_de_analise": host, "plataforma": platform.platform(),
                                                          "python": sys.version.split()[0]}}
 
 
+# Mesma semântica de logica/ametek_orm.py::_raw_write (contagem de escritas TRACe:DATA).
+_RE_ESCRITA_TRACE = re.compile(r"(?:^|;)\s*:?(?:(?:TRACE|TRAC):DATA|DATA)(?=\s)", re.I)
+_RE_ESCRITA_NO_LOG = re.compile(r"\bt=[0-9.]+ W (.*)$")
+
+
+def _gravacoes_trace_na_linha(linha: str) -> int:
+    m = _RE_ESCRITA_NO_LOG.search(linha)
+    return len(_RE_ESCRITA_TRACE.findall(m.group(1).strip() if m else linha.strip()))
+
+
 def p23(ctx: Contexto) -> tuple:
-    logs = ctx.procura("scpi_transcricao.log")
-    diag = [a for a in ctx.procura("diag_nativo-*.json")]
-    if not logs and not diag:
+    logs = []
+    for lg in ctx.procura("scpi_transcricao.log"):
+        s = ctx.sessao_do(lg)
+        if s is not None and (s.sessao_json or {}).get("modo") != "bancada":
+            continue  # sessão simulada (ou sem modo registrado) não prova orçamento de TRACe real
+        logs.append(lg)
+    diag_todos = list(ctx.procura("diag_nativo-*.json"))
+    diag, diag_rejeitados = [], []
+    for a in diag_todos:
+        j = ctx.json_de(a)
+        motivos = ["JSON ilegível ou não é objeto"] if j is None else []
+        if j is not None:
+            if not any(re.fullmatch(r"T\d+", str(k)) for k in j):
+                motivos.append("sem resultados de teste (chaves T<n>)")
+            proc = j.get("_procedencia")
+            motivos += procedencia_do_artefato(proc if isinstance(proc, dict) else {})
+        (diag_rejeitados.append(f"{a.name}: " + "; ".join(motivos)) if motivos else diag.append(a))
+    if not logs and not diag_todos:
         return [], False, {}
     cs, totais = [], {}
     for lg in logs:
         ctx.marcar(lg)
-        n = sum(1 for linha in lg.read_text(encoding="utf-8", errors="replace").splitlines()
-                if re.search(r"TRACe:DATA(?!\?)", linha))
+        n = sum(_gravacoes_trace_na_linha(linha)
+                for linha in lg.read_text(encoding="utf-8", errors="replace").splitlines())
         totais[str(lg)] = n
         cs.append(crit(f"{lg.parent.name}: gravacoes_TRACe_no_log", OK if n <= ORCAMENTO_TRACES else INSUF, n, ORCAMENTO_TRACES,
                        "orçamento por CONEXÃO (execucao_pendencias P-23); o log da sessão soma conexões",
@@ -786,7 +883,8 @@ def p23(ctx: Contexto) -> tuple:
     for a in diag:
         ctx.marcar(a)
     cs.append(crit("diag_nativo_output_off_presente", OK if diag else INSUF, len(diag), ">=1",
-                   "scripts/diag_nativo_output_off.py (diag_nativo-*.json)"))
+                   "scripts/diag_nativo_output_off.py (diag_nativo-*.json com resultados T<n> e _procedencia física, commit limpo)",
+                   nota="; ".join(diag_rejeitados) or None))
     cs.append(crit("causa_fisica_da_trava", ND, None, None,
                    "execucao_pendencias P-23: causa só com diagnóstico real e interpretação humana"))
     if ctx.fisicos:
@@ -799,6 +897,7 @@ def p28(ctx: Contexto) -> tuple:
     if not r:
         return [], False, {}
     total = faltando = com_erro = 0
+    hashes_bruto: set = set()
     for x in r:
         s = next((s for s in ctx.sessoes if x in s.registros), None)
         for info in x["bruto_osciloscopio"].get("arquivos", []):
@@ -811,6 +910,9 @@ def p28(ctx: Contexto) -> tuple:
                 faltando += 1
             else:
                 ctx.marcar(s.pasta / arq)
+                hashes_bruto.add(sha256_arquivo(s.pasta / arq))
+                if isinstance(info.get("arquivo_sha256"), str):
+                    hashes_bruto.add(info["arquivo_sha256"].lower())
     cs = [crit("exportacoes_brutas_integras", OK if total and not faltando and not com_erro else INSUF,
                {"arquivos_registrados": total, "ausentes": faltando, "com_erro": com_erro}, "todas presentes, sem erro",
                "metadata bruto_osciloscopio (mestre._preservar_bruto_lido)")]
@@ -821,10 +923,16 @@ def p28(ctx: Contexto) -> tuple:
         j = ctx.json_de(a)
         if j and isinstance(j.get("fonte"), dict) and j["fonte"].get("tipo") == "arquivo_bruto_fornecido":
             analises.append((a, j))
-    for a, j in analises:
+    casadas = [(a, j) for a, j in analises
+               if str(j["fonte"].get("arquivo_sha256", "")).lower() in hashes_bruto]
+    for a, j in casadas:
         ctx.marcar(a)
-    cs.append(crit("analise_de_reamostragem_sobre_bruto_real", OK if analises else INSUF, [str(a.name) for a, _ in analises],
-                   ">=1 JSON de scripts/analisar_reamostragem.py --entrada", "scripts/analisar_reamostragem.py"))
+    cs.append(crit("analise_de_reamostragem_sobre_bruto_real", OK if casadas else INSUF,
+                   {"casadas": [a.name for a, _ in casadas],
+                    "sem_casamento": [a.name for a, _ in analises if (a, _) not in casadas]},
+                   ">=1 JSON de scripts/analisar_reamostragem.py --entrada cujo fonte.arquivo_sha256 é o de um bruto_osciloscopio da sessão",
+                   "scripts/analisar_reamostragem.py; metadata bruto_osciloscopio",
+                   nota=None if casadas else "análise sem casamento de SHA-256 com os brutos registrados não conta"))
     cs.append(crit("fir_substitui_interpolador", ND, None, None,
                    "analisar_reamostragem: 'Nenhuma métrica desta ferramenta define critério de aceite físico'"))
     cs.append(criterio_procedencia(ctx, r))
@@ -915,7 +1023,8 @@ def bloco_estado(itens: Dict[str, dict], saida: Path, sessoes: Sequence[Sessao])
             "pendencias": pend, "sessoes": cond}
 
 
-def montar(sessoes_dirs: Sequence[Path], pc_arquivo: Optional[Path], saida: Path) -> dict:
+def montar(sessoes_dirs: Sequence[Path], pc_arquivo: Optional[Path], saida: Path,
+           artefatos: Sequence[Path] = ()) -> dict:
     sessoes = [Sessao(p) for p in sessoes_dirs]
     pc = None
     avisos: List[str] = []
@@ -929,7 +1038,10 @@ def montar(sessoes_dirs: Sequence[Path], pc_arquivo: Optional[Path], saida: Path
         avisos += [f"{s.pasta.name}: {e}" for e in s.erros]
         if s.pasta.is_dir() and not s.registros:
             avisos.append(f"{s.pasta.name}: sem metadata/*.jsonl (só artefatos serão avaliados)")
-    ctx = Contexto(sessoes, pc, pc_arquivo)
+    for a in artefatos:
+        if not Path(a).is_dir():
+            avisos.append(f"--artefatos {a} não é uma pasta")
+    ctx = Contexto(sessoes, pc, pc_arquivo, artefatos)
     itens = {pid: avaliar(pid, ctx) for pid in FISICAS}
     contagem: Dict[str, int] = {}
     for it in itens.values():
@@ -943,6 +1055,7 @@ def montar(sessoes_dirs: Sequence[Path], pc_arquivo: Optional[Path], saida: Path
                      "numpy": np.__version__},
         "sessoes": [s.procedencia() for s in sessoes],
         "pc_bancada": str(pc_arquivo) if pc_arquivo else None,
+        "artefatos": [str(a) for a in artefatos],
         "avisos": avisos,
         "resumo": contagem,
         "itens": itens,
@@ -953,14 +1066,17 @@ def montar(sessoes_dirs: Sequence[Path], pc_arquivo: Optional[Path], saida: Path
 def main(argv: Optional[Sequence[str]] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--sessao", action="append", type=Path, default=[], help="pasta resultados/sessao_* (repetível)")
+    ap.add_argument("--artefatos", action="append", type=Path, default=[],
+                    help="pasta com artefatos fora da sessão (ex.: logs\\ dos diag_*, resultados\\passo_final_sin_*); repetível")
     ap.add_argument("--pc-bancada", type=Path, default=None, help="JSON de scripts/validar_pc_bancada.ps1 (P-16)")
     ap.add_argument("--saida", type=Path, required=True, help="JSON novo; arquivo existente não será sobrescrito")
     args = ap.parse_args(argv)
     if not args.sessao and args.pc_bancada is None:
-        ap.error("informe ao menos uma --sessao ou --pc-bancada")
+        if not args.artefatos:
+            ap.error("informe ao menos uma --sessao, --artefatos ou --pc-bancada")
     if args.saida.exists():
         ap.error(f"{args.saida} já existe; recuso sobrescrever (use outro nome)")
-    relatorio = limpar(montar(args.sessao, args.pc_bancada, args.saida))
+    relatorio = limpar(montar(args.sessao, args.pc_bancada, args.saida, args.artefatos))
     texto = json.dumps(relatorio, ensure_ascii=False, indent=2, allow_nan=False) + "\n"
     args.saida.parent.mkdir(parents=True, exist_ok=True)
     try:

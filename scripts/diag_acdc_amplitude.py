@@ -384,6 +384,12 @@ def main(argv=None) -> int:
     h.setFormatter(logging.Formatter("[%(asctime)s.%(msecs)03d] %(message)s", datefmt="%H:%M:%S"))
     scpi.addHandler(h)
 
+    try:  # procedência (scripts/fechar_pendencias.py P-17 a exige), calculada ANTES de tocar a fonte
+        import mestre
+        codigo = mestre.info_do_codigo(recalcular=True)
+    except Exception:  # noqa: BLE001 - nunca impede o diagnóstico
+        codigo = {}
+
     if not args.simulado and os.environ.get("BENCH_MODE", "").strip() not in {"1", "true", "TRUE", "yes", "YES"}:
         raise SystemExit("Defina BENCH_MODE=1 para usar a bancada real (ou use --simulado).")
 
@@ -467,6 +473,8 @@ def main(argv=None) -> int:
         print("\n" + tabela)
         with open(f"{base}.json", "w", encoding="utf-8") as fh:
             json.dump({"argumentos": {k: str(x) for k, x in vars(args).items()}, "idn_fonte": fonte.idn,
+                       "modo": "simulado" if args.simulado else "bancada",
+                       "git_commit": codigo.get("git_commit"), "git_sujo": codigo.get("git_sujo"),
                        "simulado": args.simulado, "mea_dc_indisponivel": d.erros_scpi_aceitos,
                        "linhas": d.linhas}, fh, indent=1, ensure_ascii=False)
         with open(f"{base}.md", "w", encoding="utf-8") as fh:

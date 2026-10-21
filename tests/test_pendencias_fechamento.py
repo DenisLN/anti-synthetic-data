@@ -67,11 +67,13 @@ class Base(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.raiz = Path(self.tmp.name)
 
-    def agregar(self, *pastas, pc=None):
+    def agregar(self, *pastas, pc=None, artefatos=()):
         saida = self.raiz / f"saida_{len(list(self.raiz.glob('saida_*')))}.json"
         argv = []
         for p in pastas:
             argv += ["--sessao", str(p)]
+        for a in artefatos:
+            argv += ["--artefatos", str(a)]
         if pc is not None:
             argv += ["--pc-bancada", str(pc)]
         with contextlib.redirect_stdout(io.StringIO()):
@@ -230,16 +232,157 @@ class P16P19Artefatos(Base):
         self.assertEqual(item["status"], "evidencia_suficiente")
         self.assertTrue(item["requer_revisao_humana"])
 
-    def test_p17_so_conta_artefato_real(self):
-        linhas = [{"rotulo": "AC", "modo": "AC", "offset_pu": 0.0, "razao_ch1_ac_sobre_alvo": 1.0},
-                  {"rotulo": "ACDC0", "modo": "ACDC", "offset_pu": 0.0, "razao_ch1_ac_sobre_alvo": 0.95},
-                  {"rotulo": "ACDC10", "modo": "ACDC", "offset_pu": 0.1, "razao_ch1_ac_sobre_alvo": 0.94}]
+    LINHAS17 = [{"rotulo": "AC", "modo": "AC", "offset_pu": 0.0, "razao_ch1_ac_sobre_alvo": 1.0},
+                {"rotulo": "ACDC0", "modo": "ACDC", "offset_pu": 0.0, "razao_ch1_ac_sobre_alvo": 0.95},
+                {"rotulo": "ACDC10", "modo": "ACDC", "offset_pu": 0.1, "razao_ch1_ac_sobre_alvo": 0.94}]
+    PROC = {"git_commit": "abc123", "git_sujo": False}
+
+    def test_p17_so_conta_artefato_real_com_procedencia(self):
         pasta = montar_sessao(self.raiz, "sessao_p17", [], extras={
-            "logs/diag_acdc_amplitude-1.json": {"simulado": False, "linhas": linhas}})
+            "logs/diag_acdc_amplitude-1.json": dict({"simulado": False, "linhas": self.LINHAS17}, **self.PROC)})
         self.assertEqual(self.agregar(pasta)[0]["itens"]["P-17"]["status"], "evidencia_suficiente")
         pasta2 = montar_sessao(self.raiz, "sessao_p17sim", [], extras={
-            "logs/diag_acdc_amplitude-1.json": {"simulado": True, "linhas": linhas}})
+            "logs/diag_acdc_amplitude-1.json": dict({"simulado": True, "linhas": self.LINHAS17}, **self.PROC)})
         self.assertEqual(self.agregar(pasta2)[0]["itens"]["P-17"]["status"], "sem_dados")
+
+    def test_p17_sem_procedencia_ou_sujo_e_insuficiente(self):
+        for nome, proc in (("sem", {}), ("sujo", {"git_commit": "abc123", "git_sujo": True})):
+            pasta = montar_sessao(self.raiz, f"sessao_p17_{nome}", [], extras={
+                "logs/diag_acdc_amplitude-1.json": dict({"simulado": False, "linhas": self.LINHAS17}, **proc)})
+            self.assertEqual(self.agregar(pasta)[0]["itens"]["P-17"]["status"], "insuficiente", nome)
+
+    def test_artefatos_fora_da_sessao_via_opcao_repetivel(self):
+        logs = self.raiz / "logs"
+        logs.mkdir()
+        (logs / "diag_acdc_amplitude-1.json").write_text(json.dumps(
+            dict({"simulado": False, "linhas": self.LINHAS17}, **self.PROC)), encoding="utf-8")
+        outra = self.raiz / "outra"
+        outra.mkdir()
+        vazia = self.raiz / "vazia"
+        vazia.mkdir()
+        self.assertEqual(self.agregar(vazia)[0]["itens"]["P-17"]["status"], "sem_dados")
+        rel, _ = self.agregar(vazia, artefatos=[outra, logs])
+        self.assertEqual(rel["itens"]["P-17"]["status"], "evidencia_suficiente")
+        self.assertEqual(len(rel["artefatos"]), 2)
+        # só --artefatos também é aceito pela CLI
+        saida = self.raiz / "so_art.json"
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(fp.main(["--artefatos", str(logs), "--saida", str(saida)]), 0)
+
+    def resultado18(self, **extra):
+        r = {"margem_sem": [1.0], "margem_com": [1.0, 1.001], "janela_corr": 0.9999, "janela_dif_max_pu": 0.001}
+        return dict({"vrms": 127, "resultados": [r]}, **extra)
+
+    def test_p18_exige_procedencia_fisica_e_arvore_limpa(self):
+        casos = {"sem": ({}, "insuficiente"),
+                 "sujo": ({"simulado": False, "git_commit": "abc123", "git_sujo": True}, "insuficiente"),
+                 "limpo": ({"simulado": False, "git_commit": "abc123", "git_sujo": False}, "evidencia_suficiente")}
+        for nome, (proc, esperado) in casos.items():
+            pasta = self.raiz / f"passo_final_sin_{nome}"
+            pasta.mkdir()
+            (pasta / "resultado.json").write_text(json.dumps(self.resultado18(**proc)), encoding="utf-8")
+            vazia = self.raiz / f"vazia_{nome}"
+            vazia.mkdir()
+            item = self.agregar(vazia, artefatos=[pasta])[0]["itens"]["P-18"]
+            self.assertEqual(item["status"], esperado, nome)
+
+    def test_p16_versao_indisponivel_reprova_versoes_registradas(self):
+        rel, _ = self.agregar(pc=self.pc(pymeasure="indisponivel: No package metadata was found"))
+        item = rel["itens"]["P-16"]
+        self.assertEqual(self.criterio(item, "versoes_registradas")["resultado"], "insuficiente")
+        self.assertEqual(item["status"], "insuficiente")
+        rel, _ = self.agregar(pc=self.pc(numpy="Indisponivel"))
+        self.assertEqual(rel["itens"]["P-16"]["status"], "insuficiente")
+
+
+class P22P23P28(Base):
+    def test_p03_exige_validacao_fisica_ok_e_sobressinal(self):
+        ruim = dict(r08(1), validacao_fisica={"ok": False, "motivos": ["x"], "posicao_evento": {
+            "desvio_amostras": 1, "tolerancia_amostras": 10}})
+        item = self.agregar(montar_sessao(self.raiz, "sessao_okfalso", [ruim]))[0]["itens"]["P-03"]
+        self.assertEqual(item["status"], "reprovado")
+        self.assertEqual(self.criterio(item, "validacao_fisica_ok_nas_capturas_usadas")["resultado"], "falha")
+        alto = self.agregar(montar_sessao(self.raiz, "sessao_sobre", [dict(r08(1), sobressinal_medido=0.6)]))[0]["itens"]["P-03"]
+        self.assertEqual(alto["status"], "reprovado")
+        bom = self.agregar(montar_sessao(self.raiz, "sessao_sobre_ok", [dict(r08(1), sobressinal_medido=0.55)]))[0]["itens"]["P-03"]
+        self.assertEqual(bom["status"], "evidencia_suficiente")
+        self.assertEqual(self.criterio(bom, "sobressinal_pu")["resultado"], "ok")
+        sem = self.agregar(montar_sessao(self.raiz, "sessao_sem_sobre", [r08(1)]))[0]["itens"]["P-03"]
+        self.assertEqual(self.criterio(sem, "sobressinal_pu")["resultado"], "criterio_nao_definido")
+        self.assertTrue(sem["requer_revisao_humana"])
+
+    LOG = ("[10:00:00.000] t=1.0 W TRACe:DATA wave1,1,2\n[10:00:00.100] t=1.1 W trac:data wave2,1,2\n"
+           "[10:00:00.200] t=1.2 W TRACE:DATA wave3,1,2\n[10:00:00.300] t=1.3 W TRACe:DATA? wave1\n"
+           "[10:00:00.400] t=1.4 R TRACe:DATA\n")
+
+    def test_p23_contagem_igual_a_do_orm(self):
+        self.assertEqual(sum(fp._gravacoes_trace_na_linha(l) for l in self.LOG.splitlines()), 3)
+        self.assertEqual(fp._gravacoes_trace_na_linha("t=1.0 W OUTPut:STATe OFF; TRAC:DATA a,1; DATA b,2"), 2)
+
+    def diag(self, **mudar):
+        base = {"T0": {"ok": 1}, "_procedencia": {"simulado": False, "modo": "bancada", "git_commit": "abc123",
+                                                  "git_sujo": False}}
+        base.update(mudar)
+        return base
+
+    def test_p23_ignora_sessao_simulada_e_diag_arbitrario(self):
+        sim = montar_sessao(self.raiz, "sessao_sim23", [], modo="simulado", extras={
+            "scpi_transcricao.log": self.LOG, "logs/diag_nativo-1.json": self.diag()})
+        item = self.agregar(sim)[0]["itens"]["P-23"]
+        # log da sessão simulada não é contado; o diag dentro dela também vale por si (físico declarado)
+        self.assertEqual(item["detalhes"]["gravacoes_por_log"], {})
+        reais = montar_sessao(self.raiz, "sessao_real23", [], extras={"scpi_transcricao.log": self.LOG})
+        item = self.agregar(reais)[0]["itens"]["P-23"]
+        self.assertEqual(list(item["detalhes"]["gravacoes_por_log"].values()), [3])
+        for nome, conteudo in (("arbitrario", {"qualquer": 1}), ("sem_proc", {"T0": {}}),
+                               ("sujo", self.diag(_procedencia={"simulado": False, "git_commit": "a", "git_sujo": True})),
+                               ("simulado", self.diag(_procedencia={"simulado": True, "git_commit": "a", "git_sujo": False}))):
+            pasta = montar_sessao(self.raiz, f"sessao_d_{nome}", [], extras={"scpi_transcricao.log": self.LOG,
+                                                                       f"logs/diag_nativo-{nome}.json": conteudo})
+            item = self.agregar(pasta)[0]["itens"]["P-23"]
+            self.assertEqual(self.criterio(item, "diag_nativo_output_off_presente")["resultado"], "insuficiente", nome)
+        bom = montar_sessao(self.raiz, "sessao_d_bom", [], extras={"scpi_transcricao.log": self.LOG,
+                                                                  "logs/diag_nativo-1.json": self.diag()})
+        item = self.agregar(bom)[0]["itens"]["P-23"]
+        self.assertEqual(self.criterio(item, "diag_nativo_output_off_presente")["resultado"], "ok")
+
+    def sessao28(self, nome, conteudo=b"bruto-ch1"):
+        reg = registro("01-0001", bruto_osciloscopio={"arquivos": [
+            {"canal": 1, "arquivo": "bruto_osciloscopio/ch1.npz", "erro": None}]})
+        pasta = montar_sessao(self.raiz, nome, [reg])
+        (pasta / "bruto_osciloscopio").mkdir()
+        (pasta / "bruto_osciloscopio" / "ch1.npz").write_bytes(conteudo)
+        return pasta
+
+    def test_p28_exige_sha256_casado(self):
+        pasta = self.sessao28("sessao_p28")
+        sha = hashlib.sha256(b"bruto-ch1").hexdigest()
+        analise = self.raiz / "analises"
+        analise.mkdir()
+        (analise / "a.json").write_text(json.dumps({"fonte": {"tipo": "arquivo_bruto_fornecido", "arquivo_sha256": "0" * 64}}))
+        item = self.agregar(pasta, artefatos=[analise])[0]["itens"]["P-28"]
+        self.assertEqual(self.criterio(item, "analise_de_reamostragem_sobre_bruto_real")["resultado"], "insuficiente")
+        self.assertEqual(item["status"], "insuficiente")
+        (analise / "a.json").write_text(json.dumps({"fonte": {"tipo": "arquivo_bruto_fornecido", "arquivo_sha256": sha}}))
+        item = self.agregar(pasta, artefatos=[analise])[0]["itens"]["P-28"]
+        self.assertEqual(self.criterio(item, "analise_de_reamostragem_sobre_bruto_real")["resultado"], "ok")
+
+    def test_p22_usa_hostname_do_artefato_nao_o_do_computador_de_analise(self):
+        pasta = montar_sessao(self.raiz, "sessao_p22", [registro("01-0001")])
+        pc = self.raiz / "pc.json"
+        pc.write_text(json.dumps({"hostname": "BANCADA-LONGO-NOME-X"}), encoding="utf-8")
+        art = self.raiz / "art"
+        art.mkdir()
+        (art / "benchmark_bancada.json").write_text(json.dumps({"x": 1}), encoding="utf-8")
+        item = self.agregar(pasta, pc=pc, artefatos=[art])[0]["itens"]["P-22"]
+        self.assertEqual(self.criterio(item, "executado_no_pc_da_bancada")["resultado"], "criterio_nao_definido")
+        for host, esperado in (("bancada-longo-nome", "ok"), ("BANCADA-LONGO-NOME-X", "ok"), ("OUTRO", "insuficiente")):
+            (art / "benchmark_bancada.json").write_text(json.dumps({"hostname": host}), encoding="utf-8")
+            item = self.agregar(pasta, pc=pc, artefatos=[art])[0]["itens"]["P-22"]
+            self.assertEqual(self.criterio(item, "executado_no_pc_da_bancada")["resultado"], esperado, host)
+        self.assertFalse(fp._mesmo_host("abc", "abd"))
+        self.assertTrue(fp._mesmo_host("ABCDEFGHIJKLMNO", "abcdefghijklmnopq"))
+        self.assertFalse(fp._mesmo_host("abcdefghijklmn", "abcdefghijklmnX"[:14] + "z"))
 
 
 class IntegridadeEIsolamento(Base):
@@ -307,6 +450,10 @@ class ScriptPowerShell(unittest.TestCase):
                        "pyvisa", "numpy", "pc_bancada.json", "pc_bancada.log", "skips", "falhas", "erros"):
             self.assertIn(trecho, texto)
         self.assertIn("nao sobrescrevo", texto)
+        # sujeira só nas pastas de código + rastreados; git ausente não herda $LASTEXITCODE
+        for trecho in ("--untracked-files=no", "ls-files", "experimentos_waveform", "Get-Command git", "^Ran (",
+                       '"^FAILED', "indisponivel"):
+            self.assertIn(trecho, texto)
         for proibido in ("OUTPut", "ResourceManager", "ENERGIZAR"):
             self.assertNotIn(proibido, texto)
 
