@@ -434,9 +434,12 @@ class IntegridadeEIsolamento(Base):
             "ruins = sorted(m for m in sys.modules if m.split('.')[0] in ('pyvisa', 'pymeasure', 'visa', 'mestre', 'ametek_orm', 'oscilloscope_orm'))\n"
             "print('MODULOS_PROIBIDOS=' + repr(ruins))\n"
         )
-        p = subprocess.run([sys.executable, "-I", "-c", codigo], capture_output=True, text=True, timeout=300)
-        self.assertEqual(p.returncode, 0, p.stderr)
-        self.assertIn("MODULOS_PROIBIDOS=[]", p.stdout)
+        p = subprocess.run([sys.executable, "-I", "-c", codigo], capture_output=True, timeout=300)
+        # Bytes + decodificação tolerante: no Windows o filho escreve na
+        # codificação local (cp1252) e text=True pode devolver stdout=None.
+        stdout = p.stdout.decode("utf-8", errors="replace")
+        self.assertEqual(p.returncode, 0, p.stderr.decode("utf-8", errors="replace"))
+        self.assertIn("MODULOS_PROIBIDOS=[]", stdout)
         self.assertTrue(saida.exists())
 
     def test_codigo_nao_referencia_instrumentos(self):
