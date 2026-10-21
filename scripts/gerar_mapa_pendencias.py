@@ -62,7 +62,7 @@ def main(argv=None) -> int:
         itens = montar(plano.read_text(encoding="utf-8"),
                        (RAIZ / "docs" / "PENDENCIAS_TRACKER.md").read_text(encoding="utf-8"),
                        json.loads((RAIZ / "docs" / "estado_prontidao.json").read_text(encoding="utf-8")))
-        dados.write_text(json.dumps(itens, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+        dados.write_text(json.dumps(itens, ensure_ascii=False, indent=1) + "\n", encoding="utf-8", newline="\n")
     elif not dados.exists():
         raise SystemExit(f"Plano ausente ({plano}) e sem {dados} para reaproveitar")
     else:
@@ -76,7 +76,7 @@ def main(argv=None) -> int:
             it["status"], it["falta"] = ESTADOS[t.group(1)], t.group(2).strip()
             it["evidencias"] = estado["pendencias"][it["id"].replace("-", "")]["evidencias"]
             it["evidencias_txt"] = ", ".join(f"`docs/{e}`" for e in it["evidencias"]) or "—"
-        dados.write_text(json.dumps(itens, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+        dados.write_text(json.dumps(itens, ensure_ascii=False, indent=1) + "\n", encoding="utf-8", newline="\n")
     if a.sem_render:
         return 0
     npx = "npx.cmd" if sys.platform == "win32" else "npx"
