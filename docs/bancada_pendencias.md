@@ -30,10 +30,10 @@ Nenhum passo abaixo encerra pendência por si. A visita **gera evidência**; o f
 
 | Decisão | Situação | Efeito se não decidida |
 |---|---|---|
-| Perfil da campanha: `literatura` (um perfil, 468 gravações em 3 conexões) ou `set perfil todos` (1116 gravações em 6 conexões) | pendente (responsável) | Bloco 8 não pode começar; escolher antes (roteiro, Bloco 8 e seção 5) |
+| Perfil da campanha | **decidido em 21/10/2026: `set perfil todos`** (1116 gravações em 6 conexões a 127 V/60 Hz), 1 captura por classe (padrão) | Partes do Bloco 9 conforme a seção 5 do roteiro para `todos` |
 | Condições da campanha | **decidida em 21/10/2026**: 127 V/60 Hz, 127 V/50 Hz, 230 V/50 Hz, 220 V/60 Hz e 33 V/60 Hz | Ver a seção "Campanhas por condição (P-26)" abaixo |
 | Tensão do dia dos Blocos 1–10 | 127 V (roteiro, seção 0) | As demais condições vêm depois, em sessões próprias (seção abaixo) |
-| **Exceção ACDC 230 V / 50 Hz (3.ª execução do Bloco 5)** | **pendente; não autorizada** (a campanha CA a 230 V/50 Hz foi decidida; este diagnóstico ACDC é decisão à parte) | O roteiro a marca como NÃO AUTORIZADA (seção 0 e Bloco 5); se pulada, anota-se que `g` não foi medido a 230 V. Enquanto o responsável não decidir por escrito, **não executar**; P-17 fecha só para as condições de 127 V |
+| Diagnóstico ACDC 230 V / 50 Hz (3.ª execução do Bloco 5) | **decidido em 21/10/2026: fora (opção A)** | Não executar. Anotar que `g` não foi medido a 230 V; P-17 fecha para 127 V. A campanha CA a 230 V/50 Hz segue normalmente |
 | Padrão do passo final SINE (P-18) | pendente (responsável), depois do teste do Bloco 10-A | Padrão continua OFF |
 
 ## Tempo
@@ -226,7 +226,7 @@ Sequência para cada condição (uma sessão por condição; operador presente d
 4. Coleta em grupos de até 216 gravações TRACe por conexão (um `run` por grupo, como no Bloco 9), com `set diagnostico bruto on` nas classes de interesse (P-28).
 5. Entrega e fechamento como nos Blocos 10 e "Fechamento offline".
 
-Ainda pendente para a P-26: perfil (`literatura` ou `todos`), capturas por célula e o diagnóstico ACDC a 230 V.
+P-26 decidida: cinco condições, `set perfil todos`, 1 captura por classe, sem ACDC a 230 V. Fecha quando as sessões coletadas registrarem exatamente essa configuração.
 
 ## Fechamento offline (computador de análise)
 

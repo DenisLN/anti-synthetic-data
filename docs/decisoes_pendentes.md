@@ -82,7 +82,7 @@ Preencher:
    - B. Entra, como exceção formal ao roteiro de 127 V, com limites de `max_voltage_rms`/`max_peak_v` conferidos antes.
 5. Amostras por célula (capturas por classe, perfil e frequência):
 
-Resposta (parcial, 21/10/2026, responsável): condições da campanha = **127 V/60 Hz, 127 V/50 Hz, 230 V/50 Hz, 220 V/60 Hz e 33 V/60 Hz** (itens 2 e 3). Itens 1 (perfis), 4 (ACDC 230 V) e 5 (amostras por célula) continuam em aberto. Consequências: seção "Campanhas por condição (P-26)" de [](bancada_pendencias.md) — 220 V/60 Hz e 33 V/60 Hz não têm calibração (P-21).
+Resposta (21/10/2026, responsável): 1. perfis = **todos** (`set perfil todos`); 2–3. condições = **127 V/60 Hz, 127 V/50 Hz, 230 V/50 Hz, 220 V/60 Hz e 33 V/60 Hz**; 4. **A** — diagnóstico ACDC fora a 230 V (só 127 V); 5. **padrão** (1 captura por classe). Consequências na seção "Campanhas por condição (P-26)" de [](bancada_pendencias.md): 220 V/60 Hz e 33 V/60 Hz não têm calibração (P-21).
 
 ## P-29 Origem dos logs reais
 

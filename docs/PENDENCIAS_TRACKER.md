@@ -8,7 +8,7 @@ Fonte única de **estado**. Narrativa e critérios completos: `execucao_pendenci
 
 | Concluídas | Software pronto, falta bancada | Falta decisão/dado do responsável | Abertas |
 |---|---|---|---|
-| 10 | 16 | 5 | 0 |
+| 10 | 17 | 4 | 0 |
 
 ## Protocolo para agentes (economia de contexto)
 
@@ -50,7 +50,7 @@ Estados: **✅** concluída · **🔧→🏭** software pronto, falta bancada ·
 | P-14 | ✅ | — | — |
 | P-15 | ✅ | — | — |
 | P-16 | ✅ | — (suíte 680/0 falhas/0 skips no PC da bancada DESKTOP-FSEESJI, `21fb300`; `evidencias/2026-10-21/pc_bancada.json`) | — |
-| P-17 | 🔧→🏭 | Diagnóstico ACDC (`scripts/diag_acdc_amplitude.py`) real | K,R |
+| P-17 | 🔧→🏭 | Diagnóstico ACDC (`scripts/diag_acdc_amplitude.py`) real, só a 127 V (P-26: sem 230 V) | K,R |
 | P-18 | 🔧→🏭 | SINE integrado OFF; validar aceitação LIST/restauração na fonte; responsável confirma padrão OFF | K,R,D |
 | P-19 | 🔧→🏭 | `TRACe:DATA?` real: 1024 finitos ou não suportado | K,R |
 | P-20 | ❓ | Licença, autoria, citação, tag/Zenodo — só o responsável decide | D |
@@ -59,7 +59,7 @@ Estados: **✅** concluída · **🔧→🏭** software pronto, falta bancada ·
 | P-23 | 🔧→🏭 | Orçamento 216/conexão aplicado; causa física da trava só com diagnóstico real | K,R |
 | P-24 | ✅ | — | — |
 | P-25 | ✅ | — | — |
-| P-26 | ❓ | Condições fixadas em 21/10 (127/60, 127/50, 230/50, 220/60, 33/60); faltam perfil, capturas por célula e ACDC 230 V | D |
+| P-26 | 🔧→🏭 | Decidida em 21/10: 5 condições, `set perfil todos`, 1 captura/classe, sem ACDC a 230 V. Fecha quando as sessões registrarem essa configuração | K,R |
 | P-27 | ✅ | — | — |
 | P-28 | 🔧→🏭 | Preservação do bruto implementada (`f974954`); falta exportação real + análise | K,R |
 | P-29 | ❓ | Transcrições reais de sessões (logs locais do PC da bancada) | D |
@@ -67,6 +67,8 @@ Estados: **✅** concluída · **🔧→🏭** software pronto, falta bancada ·
 | P-31 | 🔧→🏭 | Métricas offline publicadas; falta sessões novas + escolha da métrica oficial | K,R,D |
 
 ## Log de rodadas (uma linha por rodada, mais recente no topo)
+
+- 2026-10-21 — P-26 decidida (todos, padrão, ACDC só a 127 V); passa a aguardar só a conferência nas sessões. Roteiro atualizado.
 
 - 2026-10-21 — P-26 parcial: responsável fixou as cinco condições. Plano offline (`evidencias/2026-10-21/plano_campanhas_5_condicoes.json`): 230/50 com 13 recusas (swells), 220/60 sem calibração e 52 recusas, 33/60 sem calibração. `bancada_pendencias.md` ganhou "Campanhas por condição".
 
