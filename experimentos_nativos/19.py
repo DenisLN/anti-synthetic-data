@@ -29,7 +29,8 @@ class Experimento(ExperimentoNativo):
         voltage = np.sin(2.0 * np.pi * f0 * (t + sorteio.deslocamento_s)) + dc_offset
         return voltage, {"dc_offset_pu": dc_offset, **sorteio.parametros()}
 
-    def configurar(self, capture_index):
+    def _offset_da_captura(self, capture_index):
+        """(dc_offset_pu, offset_v, ac_peak_v) que configurar() programa."""
         seed = self.config.base_seed + 19_000_000 + capture_index
         cobertura_ativa = self.config.capturas_override is not None
         total = self.config.capturas(False)
@@ -37,7 +38,14 @@ class Experimento(ExperimentoNativo):
             np.random.default_rng(seed), 0.02, 0.10, capture_index, total, cobertura_ativa=cobertura_ativa,
         )
         ac_peak_v = self.config.base_voltage_rms * math.sqrt(2.0)
-        offset_v = dc_offset * ac_peak_v
+        return dc_offset, dc_offset * ac_peak_v, ac_peak_v
+
+    def exigencias_nativas(self, capture_index, parametros):
+        """Offset DC em AC+DC: conferido contra ametek_orm.CAPACIDADES_MX30 antes de programar."""
+        return {"dc_offset_v": self._offset_da_captura(capture_index)[1]}
+
+    def configurar(self, capture_index):
+        dc_offset, offset_v, ac_peak_v = self._offset_da_captura(capture_index)
         self.fonte.enable_dc_offset(offset_v, ac_peak_v=ac_peak_v)
         self.fonte.trigger_step(self.config.base_voltage_rms)
         return {"dc_offset_pu": dc_offset}

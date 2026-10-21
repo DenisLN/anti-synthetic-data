@@ -65,7 +65,11 @@ class OrcamentoCliTests(unittest.TestCase):
             bancada.assert_not_called()
             self.assertFalse(mestre.RESULTS_DIR.exists())
 
-    def test_esgotamento_aborta_bateria_sem_retry_ou_proxima_classe(self):
+    def test_esgotamento_encerra_sem_retry_e_registra_restantes(self):
+        # v1.15 (pula-e-segue): o orçamento esgotado não propaga mais; a
+        # conexão é encerrada com OUTPUT OFF e a classe corrente e as
+        # seguintes ficam em falhas.json como nao_executada_orcamento, sem
+        # retry e sem executar a próxima classe.
         executadas = []
 
         class Falsa:
@@ -76,13 +80,18 @@ class OrcamentoCliTests(unittest.TestCase):
                 executadas.append('tentativa')
                 raise LimiteEscritasTraceError('orçamento esgotado')
 
-        bancada = mestre.Bancada(None, None, mestre._build_config())
-        with mock.patch.object(bancada, '_carregar_classe_experimento', return_value=Falsa), \
-                mock.patch.object(bancada, 'recuperar_estado_seguro') as recuperar, \
-                self.assertRaises(LimiteEscritasTraceError):
-            bancada.executar_bateria([Path('08.py'), Path('09.py')], ('literatura',))
-        self.assertEqual(executadas, ['tentativa'])
-        recuperar.assert_not_called()
+        with tempfile.TemporaryDirectory() as pasta:
+            config = mestre.replace(mestre._build_config(), results_dir=Path(pasta))
+            bancada = mestre.Bancada(None, None, config)
+            with mock.patch.object(bancada, '_carregar_classe_experimento', return_value=Falsa), \
+                    mock.patch.object(bancada, 'recuperar_estado_seguro') as recuperar:
+                resultados = bancada.executar_bateria([Path('08.py'), Path('09.py')], ('literatura',))
+            self.assertEqual(executadas, ['tentativa'])
+            recuperar.assert_not_called()
+            self.assertEqual([r.nao_executada_orcamento for r in resultados], [True, True])
+            itens = mestre.ler_falhas(Path(pasta))['itens']
+            self.assertEqual([(i['tipo'], i['classe']) for i in itens],
+                             [('nao_executada_orcamento', '09')])
 
 
 if __name__ == '__main__':

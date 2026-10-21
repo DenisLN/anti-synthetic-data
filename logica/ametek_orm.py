@@ -99,6 +99,70 @@ class OffsetPorPassoNaoSuportadoError(BracoP09Error):
     confirmação do instrumento a bateria é recusada antes de energizar."""
 
 
+class CapacidadeExcedidaError(ParameterOutOfBoundsError):
+    """Exigência acima da capacidade DOCUMENTADA da fonte (``CAPACIDADES_MX30``),
+    recusada antes de qualquer I/O. Subclasse de ``ParameterOutOfBoundsError``:
+    é recusa determinística (sem retry) e a pré-validação de captura
+    (``mestre.ExperimentoBase.avaliar_captura_na_bancada``) a usa para PULAR a
+    captura com motivo ``pulada_capacidade``."""
+
+
+@dataclass(frozen=True)
+class Capacidade:
+    """Faixa aceita pela fonte para uma exigência, com a fonte da informação."""
+
+    minimo: float
+    maximo: float
+    unidade: str
+    fonte: str
+
+
+# Capacidades da AMETEK MX30 que o código confere ANTES de I/O (tabela também
+# em docs/limites_e_calibracao.md). Páginas: AMETEK MX SCPI Programming Manual,
+# P/N 7003-961 Rev AB; linhas: docs/manuais_txt/AMETEK_MX_SCPI_Programming_Manual.txt.
+# Não inclui max_voltage_rms/max_peak_v/max_current_a (limites de software da
+# bancada, intocáveis) nem o orçamento de 216 TRACe (politica_traces: não é
+# limite do fabricante).
+CAPACIDADES_MX30: Dict[str, Capacidade] = {
+    "passos_list": Capacidade(1, 32, "pontos", "manual p. 153, l. 7104/7121: 'up to 32 settings (or points) in the list'"),
+    "traces_por_grupo": Capacidade(1, 50, "formas", "manual p. 126, l. 5849: 'Up to 50 user-defined waveforms ... per group'"),
+    "dwell_s": Capacidade(0.001, 9.0e4, "s", "manual p. 91, l. 4066: LIST:DWELl 0.001 to 9E4"),
+    "pulse_width_s": Capacidade(0.001, 90000.0, "s", "manual p. 106, l. 4795: PULSe:WIDTh 1 msecs to 90,000 secs"),
+    "dc_offset_v": Capacidade(-220.0, 220.0, "V", "manual p. 10, l. 406: 220 Vdc na Série II (250 na Série I; usa o menor)"),
+    # O manual NÃO traz a faixa numérica de frequência da MX30: ela é do
+    # instrumento (LIMit:FREQuency?, p. 86, l. 3789, só consulta). 45..500 Hz é
+    # a faixa de PROJETO já usada pelo setter, program_capture e
+    # frequency_drift_list (não verificada contra a fonte).
+    "frequencia_hz": Capacidade(45.0, 500.0, "Hz", "faixa de projeto; manual só remete a LIMit:FREQuency? (p. 86, l. 3789)"),
+}
+
+
+def verificar_capacidade(nome: str, valor: float, contexto: str = "") -> None:
+    """Recusa (``CapacidadeExcedidaError``) ``valor`` fora de ``CAPACIDADES_MX30[nome]``.
+    Função pura: não toca instrumento."""
+    capacidade = CAPACIDADES_MX30[nome]
+    try:
+        valor = float(valor)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise CapacidadeExcedidaError(f"{contexto or nome}: valor não numérico {valor!r}") from exc
+    if not math.isfinite(valor) or not capacidade.minimo <= valor <= capacidade.maximo:
+        raise CapacidadeExcedidaError(
+            f"{contexto or nome} = {valor:.8g} {capacidade.unidade} fora da capacidade da fonte "
+            f"{capacidade.minimo:g}..{capacidade.maximo:g} {capacidade.unidade} ({capacidade.fonte})"
+        )
+
+
+def verificar_exigencias(exigencias: Dict[str, object], contexto: str = "") -> None:
+    """Confere um dicionário ``{nome_da_capacidade: valor ou lista de valores}``
+    contra ``CAPACIDADES_MX30`` (primeira violação levanta)."""
+    for nome, valores in exigencias.items():
+        if isinstance(valores, (list, tuple, np.ndarray)):
+            for valor in valores:
+                verificar_capacidade(nome, valor, f"{contexto}{nome}" if contexto else nome)
+        else:
+            verificar_capacidade(nome, valores, f"{contexto}{nome}" if contexto else nome)
+
+
 def _normalized_identity(value: str) -> str:
     return re.sub(r"[^A-Z0-9]", "", value.upper())
 
@@ -163,6 +227,24 @@ class ProgramacaoCaptura:
 
     def texto_list_offsets(self) -> str:
         return formatar_valores(self.passos_offsets_v)
+
+    def exigencias_de_capacidade(self) -> Dict[str, object]:
+        """O que esta programação exige da fonte, nos nomes de
+        ``CAPACIDADES_MX30``: passos de LIST (TRACEs + SINE final), formas de
+        usuário no grupo, dwell de cada passo (1 ciclo) e offsets do braço C."""
+        dwell_s = self.pontos_por_ciclo / AmetekMX30.FS_HZ
+        exigencias: Dict[str, object] = {
+            "passos_list": len(self.passos_nomes),
+            "traces_por_grupo": len(self.trace_names),
+            "dwell_s": dwell_s,
+        }
+        if self.dc_offset_por_passo_pu is not None:
+            exigencias["dc_offset_v"] = [float(v) for v in self.passos_offsets_v]
+        return exigencias
+
+    def verificar_capacidades(self) -> None:
+        """Recusa (``CapacidadeExcedidaError``), sem I/O, o que excede ``CAPACIDADES_MX30``."""
+        verificar_exigencias(self.exigencias_de_capacidade(), "programação TRACe/LIST: ")
 
     @property
     def passos_nomes(self) -> Tuple[str, ...]:
@@ -1116,6 +1198,7 @@ class AmetekMX30:
             )
         if not width_s > 0:
             raise ParameterOutOfBoundsError(f"Duração do pulso deve ser positiva; recebido {width_s}")
+        verificar_capacidade("pulse_width_s", width_s, "PULSe:WIDTh")
         voltage_rms = self._na_resolucao_da_fonte(voltage_rms)
         self.aguardar_idle()
         # Ver comentário equivalente em trigger_step(): neutraliza listas de
@@ -1291,6 +1374,7 @@ class AmetekMX30:
             )
         if not dwell_s > 0:
             raise ParameterOutOfBoundsError(f"Dwell deve ser positivo; recebido {dwell_s}")
+        verificar_capacidade("dwell_s", dwell_s, "LIST:DWELl")
         self.aguardar_idle()
         # Causa EXATA do ``-226 Lists not same length`` da classe 18 quando ela
         # roda depois da 17 (manual §4.17, p. 90: "All active subsystems that
@@ -1338,6 +1422,7 @@ class AmetekMX30:
         não só a amplitude AC."""
         offset_v = float(offset_v)
         ac_peak_v = float(ac_peak_v)
+        verificar_capacidade("dc_offset_v", offset_v, "SOURce:VOLTage:OFFSet")
         combined_peak_v = abs(offset_v) + ac_peak_v
         if combined_peak_v > self.max_peak_v:
             raise ParameterOutOfBoundsError(
@@ -1726,6 +1811,18 @@ class AmetekMX30:
 
     def _ensure_trace_slots(self, trace_names: Sequence[str]) -> None:
         catalog = self._trace_catalog()
+        # Manual p. 126: até 50 formas de usuário por grupo. Recusa antes de
+        # qualquer TRACe:DEFine (gravação na Flash) se as novas não cabem.
+        # Conta só os slots do projeto (TCC*) + os novos: NÃO VERIFICADO se o
+        # catálogo da Rev. 5.53 lista também formas de fábrica (contá-las
+        # recusaria capturas que cabem) — docs/limites_e_calibracao.md §2.1.
+        ausentes = [name for name in trace_names if name not in catalog]
+        if ausentes:
+            do_projeto = {name for name in catalog if name.upper().startswith("TCC")}
+            verificar_capacidade(
+                "traces_por_grupo", len(do_projeto | set(ausentes)),
+                f"formas de usuário TCC* no grupo ({len(do_projeto)} no catálogo + {len(ausentes)} novas)",
+            )
         for name in trace_names:
             if name not in catalog:
                 # Gravação em Flash: com N nomes ausentes, isso sozinho leva
@@ -1985,6 +2082,9 @@ class AmetekMX30:
             dc_offset_pu=dc_offset_pu, passo_final_sin=self.passo_final_sin,
             p09_braco=self._p09_braco,
         )
+        # Capacidades do manual (LIST <= 32 passos, <= 50 TRACEs, dwell):
+        # recusa antes de qualquer escrita, consulta de catálogo ou slot.
+        programacao.verificar_capacidades()
         waveform = np.asarray(waveform_pu, dtype=np.float64)
         base_voltage_rms = programacao.base_voltage_rms
         frequency_hz = programacao.frequency_hz
@@ -2477,7 +2577,11 @@ class AmetekMX30:
             time.sleep(0.05)
         raise TimeoutError("AMETEK não concluiu a lista transitória")
 
-    def safe_shutdown(self) -> None:
+    def safe_shutdown(self) -> bool:
+        """ABORt + OUTPUT OFF. Devolve True só quando o OFF foi confirmado
+        (``OUTPut:STATe?`` na bancada; no simulado, o estado simulado) — False
+        quando não havia conexão ou a confirmação falhou (logado). Nunca levanta."""
+        confirmado = False
         try:
             if self.simulated or self._resource is not None:
                 # Saia primeiro de INIT/WAIT/BUSY. A Rev. 5.53 pode ignorar a
@@ -2500,6 +2604,7 @@ class AmetekMX30:
                         raise InstrumentHardwareError(
                             f"SHUTDOWN NÃO CONFIRMADO: OUTPut:STATe?={state!r}"
                         )
+                confirmado = True
                 if self._p09_braco != "A" and self._modo_saida != "AC":
                     # P-09 B/C: saída já OFF (confirmada acima na bancada);
                     # zera os offsets de LIST (ainda em AC+DC) e só então volta
@@ -2513,6 +2618,8 @@ class AmetekMX30:
                     self._p09_preparado = False
         except Exception:
             logger.exception("Não foi possível confirmar shutdown da AMETEK")
+            return False
+        return confirmado
 
     def measure_voltage(self) -> float:
         # ATENÇÃO (ACDC): com ``SOURce:MODE ACDC`` (classe 19) esta leitura é o

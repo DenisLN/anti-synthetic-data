@@ -15,7 +15,9 @@ Conteúdo de uma pasta de sessão:
 
 ```
 sessao_<ts>/
-  sessao.json                    procedência (commit, numpy, python, SHA-256 da calibração)
+  sessao.json                    procedência (commit, numpy, python, SHA-256 da calibração) e condição da rodada
+  falhas.json                    capturas puladas/descartadas/inválidas, classes que falharam e não executadas
+                                 por orçamento, com contexto para `run falhas`/`rerun` (só se houve falha; docs/metadata.md)
   calibracao_extremos.json       cópia da calibração em uso
   sessao.log                     log de execução (flush por linha)          [só CLI]
   scpi_transcricao.log           W/Q/R de todos os comandos da AMETEK       [só CLI]

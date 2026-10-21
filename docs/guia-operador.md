@@ -58,7 +58,18 @@ Todas **case-sensitive**. `help` imprime a referência completa; `status` e `lis
 
 ## 4. Como rodar sem passar da trava da fonte
 
-A fonte travou por volta da 280.ª gravação de TRACe de uma conexão em 16/09/2026. Com os padrões, `run all` planeja **50 capturas** e **468 gravações de TRACe a 60 Hz** (390 a 50 Hz; conferido offline em 2026-10-16); com `set perfil todos` chega a 1116. O orçamento operacional é de **216 gravações TRACe por conexão** (`LIMITE_ESCRITAS_TRACE_CONEXAO`): a CLI **recusa**, antes de abrir qualquer instrumento, um `run` cuja estimativa (sem retentativas) passe de 216, e o ORM aborta a bateria se o orçamento esgotar durante a conexão (retentativas também consomem). Para ficar abaixo, **divida em listas**: `run 01-07` e depois `run 09-20` (cada `run` abre conexão nova). O roteiro usa listas de até 216 gravações por conexão. {bdg-danger}`PENDENTE P-23`
+A fonte travou por volta da 280.ª gravação de TRACe de uma conexão em 16/09/2026. Com os padrões, `run all` planeja **50 capturas** e **468 gravações de TRACe a 60 Hz** (390 a 50 Hz; conferido offline em 2026-10-16); com `set perfil todos` chega a 1116. O orçamento operacional é de **216 gravações TRACe por conexão** (`LIMITE_ESCRITAS_TRACE_CONEXAO`): a CLI **recusa**, antes de abrir qualquer instrumento, um `run` cuja estimativa (sem retentativas) passe de 216, e, se o orçamento esgotar durante a conexão (retentativas também consomem), a bateria desliga a saída com confirmação, encerra a conexão e registra o que faltou em `falhas.json` para `run falhas` (v1.15). Para ficar abaixo, **divida em listas**: `run 01-07` e depois `run 09-20` (cada `run` abre conexão nova). O roteiro usa listas de até 216 gravações por conexão. {bdg-danger}`PENDENTE P-23`
+
+### Rodar só o que deu problema
+
+Toda sessão grava `falhas.json` quando algo não saiu: capturas puladas, descartadas, inválidas, classes que falharam e as que não rodaram porque o orçamento de TRACe esgotou. Para refazer só isso, **sem repetir o que já está bom**:
+
+1. Confira `OUTPUT OFF` no painel. Mantenha a mesma tensão, frequência, `set p09`, limites do ambiente e calibração de extremos da sessão de origem (se diferirem, a CLI recusa e diz o que mudar; tensão/frequência exigem reiniciar o `START_BENCH`; calibração: copie a `calibracao_extremos.json` da sessão de origem).
+2. `run falhas` (última sessão desta CLI) ou `run falhas <pasta_sessao>`; para itens escolhidos, `rerun <pasta_sessao> 10-0003 02`.
+3. A CLI mostra o que vai repetir e as gravações de TRACe só disso, e pede a confirmação normal (`EXECUTAR-CLASSE-NN` ou `EXECUTAR-CLASSES-...`), digitada por você.
+4. O resultado vai para uma **sessão nova**; `sessao.json` e cada captura têm `rerun_de` apontando para a origem. As capturas repetem a mesma seed, perfil e nível.
+
+Capturas puladas por capacidade da fonte ou pela pré-validação não entram no `run falhas` e são retiradas de um `rerun` (só elas = recusa): na mesma condição seriam puladas de novo.
 
 ## 5. O que olhar durante e depois
 
@@ -73,6 +84,7 @@ A fonte travou por volta da 280.ª gravação de TRACe de uma conexão em 16/09/
 | O que aconteceu | O que fazer |
 |---|---|
 | **uma classe** falhou (RMS fora de tolerância, timeout de trigger, exceção em `gerar()`) | nada: a bateria já tentou até 3 vezes, registrou `FALHOU` e seguiu |
+| orçamento de TRACe esgotado (resumo com `NÃO EXECUTADA`) | a saída já foi desligada e conferida; confira `OUTPUT OFF` no painel e rode `run falhas` com confirmação nova (nada reconecta sozinho) |
 | captura **pulada** pela pré-validação | esperado em tensões altas ou sem tabela de calibração; veja `relatorio_limites_bancada.py` antes ({doc}`medicao/recalibracao`) |
 | `CommunicationError`, `FalhaFatalDeInstrumento`, `CadeiaDeMedicaoError` | **pare**: confirme `OUTPUT OFF` no painel, **não repita sozinho**, entregue `sessao.log` e `scpi_transcricao.log` (ou o `logs\preflight_new-*.log` mais recente) a quem diagnostica |
 | fonte muda ou painel travado | `OUTPUT OFF` pelo painel; depois da 280.ª gravação numa conexão, suspeite da trava ({doc}`quirks`, A3) |

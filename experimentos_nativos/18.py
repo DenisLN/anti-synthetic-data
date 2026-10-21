@@ -42,6 +42,16 @@ class Experimento(ExperimentoNativo):
         voltage = np.sin(phase + np.deg2rad(sorteio.fase_graus))
         return voltage, {"start_hz": start_hz, "end_hz": end_hz, **sorteio.parametros()}
 
+    def exigencias_nativas(self, capture_index, parametros):
+        """LIST de 2 pontos (frequência início/fim) com dwell de meia janela:
+        conferido contra ametek_orm.CAPACIDADES_MX30 antes de programar."""
+        start_hz, end_hz = self.extremos_hz(self.config.grid_frequency_hz, capture_index)
+        return {
+            "frequencia_hz": [start_hz, end_hz],
+            "dwell_s": self.config.duration_s / 2.0,
+            "passos_list": 2,
+        }
+
     def configurar(self, capture_index):
         start_hz, end_hz = self.extremos_hz(self.config.grid_frequency_hz, capture_index)
         meio_s = self.config.duration_s / 2.0

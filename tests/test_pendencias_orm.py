@@ -81,9 +81,11 @@ class LimitesCapturaTests(unittest.TestCase):
 
     def test_faixa_fisica_ainda_exige_ciclos_inteiros_na_grade(self):
         # 45 Hz é o limite físico inferior, mas não fecha ciclos de
-        # amostras inteiras; 50 Hz e o limite superior 500 Hz fecham.
+        # amostras inteiras; 50 Hz fecha. 500 Hz fecha ciclos, mas pede 100
+        # passos de LIST (> 32, manual p. 153): recusado antes de I/O (v1.15).
         self.recusa_sem_io(frequency_hz=45)
-        for hz in (50, 500):
+        self.recusa_sem_io(np.sin(2 * np.pi * 500 * np.arange(6000) / 30000), frequency_hz=500)
+        for hz in (50,):
             with self.subTest(hz=hz):
                 fonte = AmetekMX30(simulated=True, max_voltage_rms=10, max_peak_v=100)
                 forma = np.sin(2 * np.pi * hz * np.arange(6000) / 30000)

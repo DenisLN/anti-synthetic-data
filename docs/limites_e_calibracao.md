@@ -19,6 +19,21 @@ Depois de cada captura física, `:MEASure:VMAX?/VMIN?` (taxa cheia do osciloscó
 
 A camada ORM também recusa `program_capture` antes de qualquer consulta/escrita ou alteração de cache: parâmetros/6000 amostras não finitos, tensão base acima do limite, pico da base/captura/TRACe reconstruída acima de `max_peak_v`, e RMS de qualquer passo fora de `0..max_voltage_rms`. A construção pura está em `AmetekMX30.montar_programacao`; as guardas de limite da instância estão em `AmetekMX30.program_capture`. Estado de integração/testes: `docs/execucao_pendencias.md` (P-04).
 
+### 2.1 Capacidades da fonte conferidas antes de I/O (v1.15)
+
+Tabela única em `logica/ametek_orm.py`, `CAPACIDADES_MX30` (conferida por `verificar_capacidade`/`verificar_exigencias`, que levantam `CapacidadeExcedidaError`, subclasse de `ParameterOutOfBoundsError`). Páginas do *AMETEK MX SCPI Programming Manual* (P/N 7003-961 Rev AB); linhas de `docs/manuais_txt/AMETEK_MX_SCPI_Programming_Manual.txt`.
+
+| Capacidade | Faixa | Fonte | Onde é conferida |
+|---|---|---|---|
+| `passos_list` (pontos de LIST) | 1..32 | p. 153, l. 7104/7121: "up to 32 settings (or points) in the list" | `ProgramacaoCaptura.verificar_capacidades` (em `program_capture`, antes de qualquer escrita/consulta) e pré-validação |
+| `traces_por_grupo` (formas de usuário) | 1..50 | p. 126, l. 5849: "Up to 50 user-defined waveforms ... per group" | idem; e `_ensure_trace_slots` (slots `TCC*` do projeto já no catálogo + novos) antes de qualquer `TRACe:DEFine`. **NÃO VERIFICADO** se o `TRACe:CATalog?` da Rev. 5.53 lista formas de fábrica junto: por isso só os nomes `TCC*` contam (formas de outro uso no grupo não entram na conta) |
+| `dwell_s` (`LIST:DWELl`) | 0,001..9E4 s | p. 91, l. 4066 | `program_capture` (1 ciclo por passo), `frequency_drift_list`, pré-validação (18) |
+| `pulse_width_s` (`PULSe:WIDTh`) | 1 ms..90 000 s | p. 106, l. 4795 | `trigger_pulse`, pré-validação (02/03/04) |
+| `dc_offset_v` (AC+DC) | ±220 Vdc | p. 10, l. 406 (220 Vdc Série II; 250 Série I — usa o menor, `MAX_DC_OFFSET_V`) | `enable_dc_offset`, offsets do braço C, pré-validação (19) |
+| `frequencia_hz` | 45..500 Hz | **faixa de projeto**: o manual não traz a faixa numérica da MX30, só `LIMit:FREQuency?` (p. 86, l. 3789, consulta). Não verificada contra a fonte | setter de frequência, `program_capture`, `frequency_drift_list`, pré-validação |
+
+A pré-validação (`avaliar_captura_na_bancada`) monta, sem I/O, o que a captura exigiria (`ExperimentoBase.exigencias_de_capacidade`: a `ProgramacaoCaptura` nas capturas TRACe/LIST; `ExperimentoNativo.exigencias_nativas` nas nativas, com 18 e 19 sobrescrevendo) e a captura que excede é **pulada** com motivo `capacidade da fonte excedida: ...`, registrada em `falhas.json` como `pulada_capacidade`; a bateria segue. Consequência: a 60 Hz (12 ciclos) nada muda; acima de 160 Hz (mais de 32 ciclos em 200 ms) toda captura TRACe é pulada. `max_voltage_rms`/`max_peak_v`/`max_current_a` não mudaram; o orçamento de 216 TRACe (`politica_traces`) não é capacidade do fabricante e não está nesta tabela.
+
 ## 3. Limite de bancada (classes waveform)
 
 Se o extremo previsto passa do teto, a captura **física** reduz só o distúrbio: `forma = senoide + k·(gerar() − senoide)`, com o maior `k` que cabe (bisseção, `_limitar_disturbio_para_bancada`, `logica/mestre.py`, `ExperimentoWaveform._limitar_disturbio_para_bancada`). `k` e os parâmetros aplicados (`*_bancada`) vão ao metadata. Abaixo de `LIMITE_BANCADA_FRACAO_MINIMA` (0,25) a captura é pulada; `LIMITE_BANCADA_DISTURBIO=0` volta a só pular. Classes nativas não reduzem (o nível é o parâmetro discreto da classe). `gerar()` e o dataset simulado não mudam. A fórmula do extremo com `k < 1` é `extremo_previsto_com_disturbio_v` (`logica/mestre.py`, `extremo_previsto_com_disturbio_v`).

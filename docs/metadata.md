@@ -44,9 +44,24 @@ um perfil, o metadata das capturas já feitas está em `parcial/NN_classe/` (cam
 | `calibracao_extremos.origem` | caminho do arquivo copiado |
 | `calibracao_extremos.copia_na_sessao` | nome da cópia dentro da pasta (`calibracao_extremos.json`) |
 | `calibracao_extremos.sha256` | SHA-256 da cópia |
+| `condicao` | condição da rodada para `rerun`/`run falhas` (v1.15, acrescentado): `tensao_base_rms`, `frequencia_hz`, `p09_braco`, `passo_final_sin` (`AMETEK_PASSO_FINAL_SIN`), `max_voltage_rms` (`EUT_MAX_VOLTAGE_RMS`), `max_peak_v` (min(`EUT_MAX_PEAK_V`, 425)), `source_voltage_range_rms`, `base_seed`, `capturas_override`, `sorteio_posicao`, `perfil`, `perfis_da_rodada`, `calibracao_extremos_sha256` (`mestre.condicao_atual`) |
+| `rerun_de` | só em sessão criada por `rerun`/`run falhas` (v1.15, acrescentado): `sessao` (pasta de origem), `calibracao_extremos_sha256` (o da origem, igual ao atual), `ids_captura`, `classes` e `itens` (tipo, classe, perfil, indice_global, id_captura de cada item escolhido) |
 
 Em sessão de bancada com `git_sujo = true`, o início do `run` imprime um aviso em destaque
 (linhas de `!`) e registra `WARNING` no log; não bloqueia (não existia mecanismo de bloqueio).
+
+## `falhas.json` (v1.15)
+
+Na pasta da sessão, criado na primeira falha e reescrito atomicamente (`.json.part` -> `os.replace`) a cada nova entrada, ao longo da bateria (`mestre.RegistroFalhas`). Ausente = nenhuma falha registrada. Topo: `formato_falhas` (1), `sessao`, `atualizado_em`, `contexto` e `itens`. Cada item:
+
+| Campo | Significado |
+|---|---|
+| `tipo` | `pulada_capacidade` (exigência acima de `CAPACIDADES_MX30`), `pulada_preflight` (rms/pico/extremo previsto acima do teto), `descartada` (erro durante a captura, nada gravado), `invalida` (gravada, reprovada na validação física), `classe_falhou` (a classe num perfil terminou FALHOU; inclui a que abortou por falha de infraestrutura, com motivo próprio), `nao_executada_orcamento` (não rodou porque o orçamento de 216 TRACe da conexão esgotou) |
+| `classe`, `classe_nome`, `perfil` | id (`"02"`), nome e perfil |
+| `indice_global`, `capture_index`, `nivel_indice`, `seed`, `id_captura` | da captura (`null` em entrada de classe inteira) |
+| `motivo` | texto do motivo |
+| `registrado_em` | ISO 8601 |
+| `contexto` | `base_seed`, `capturas_override`, `perfil`, `perfis_da_rodada`, `sorteio_posicao`, `rerun_de` e a condição de `mestre.CHAVES_CONDICAO_RERUN`: `tensao_base_rms`, `frequencia_hz`, `p09_braco`, `passo_final_sin`, `max_voltage_rms`, `max_peak_v`, `source_voltage_range_rms`, `calibracao_extremos_sha256` |
 
 ## Registro de captura (`NN_classe.json` / linha do `.jsonl`)
 
@@ -91,6 +106,7 @@ Leitores: `recortar_margem.calcular_recorte` (e, por ele, `relatorio_html`) e `a
 usam `inicio_janela` quando existe; sem ele, caem em `indice_trigger` e depois em
 `margem_amostras_antes`, como antes. No `sem_margem/` gerado, `inicio_janela` vale 0
 (o arquivo recortado já começa na janela).
+| `rerun_de` | só em captura feita por `rerun`/`run falhas` (v1.15, acrescentado) | `{"sessao": pasta de origem, "id_captura": mesmo id, "perfil": ...}`; `seed`, `nivel_indice` e `id_captura` são os da captura original |
 
 ## Exemplo (uma captura física; saída de teste com instrumentos simulados)
 

@@ -20,8 +20,9 @@ from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 import numpy as np
 
 from ametek_orm import (
-    AmetekMX30, BracoP09Error, CommunicationError, FalhaFatalDeInstrumento, InstrumentHardwareError,
-    LeituraTraceError, ParameterOutOfBoundsError, ProgramacaoCaptura,
+    AmetekMX30, BracoP09Error, CapacidadeExcedidaError, CommunicationError, FalhaFatalDeInstrumento,
+    InstrumentHardwareError, LeituraTraceError, ParameterOutOfBoundsError, ProgramacaoCaptura,
+    verificar_exigencias,
 )
 from politica_traces import LIMITE_ESCRITAS_TRACE_CONEXAO, LimiteEscritasTraceError
 import perfis
@@ -241,7 +242,23 @@ def preparar_pasta_da_sessao(
             "copia_na_sessao": NOME_CALIBRACAO_NA_SESSAO,
             "sha256": sha256_do_arquivo(copia),
         },
+        # Condição da rodada (v1.15, acrescentado): o que ``rerun``/``run
+        # falhas`` precisa para reproduzir uma captura desta pasta.
+        "condicao": {
+            "tensao_base_rms": float(BASE_VOLTAGE_RMS),
+            "frequencia_hz": float(GRID_FREQUENCY_HZ),
+            "p09_braco": str(P09_BRACO),
+            "base_seed": int(BASE_SEED),
+            "capturas_override": CAPTURAS_OVERRIDE,
+            "sorteio_posicao": bool(SORTEIO_POSICAO),
+            "perfil": PERFIL_TODOS_ROTULO if PERFIL_TODOS else PERFIL,
+            "perfis_da_rodada": list(perfis_da_rodada()),
+            **condicao_atual(),
+            "calibracao_extremos_sha256": sha256_do_arquivo(copia),
+        },
     }
+    if RERUN_DE is not None:
+        info["rerun_de"] = dict(RERUN_DE)
     destino = results_dir / NOME_METADATA_DA_SESSAO
     parcial = destino.with_suffix(".json.part")
     parcial.write_text(json.dumps(info, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
@@ -385,6 +402,9 @@ def perfis_da_rodada() -> Tuple[str, ...]:
 # Padrão ligado; SORTEIO=0 (ou "set sorteio off")
 # reproduz as posições fixas de antes (60 ms/80 ms, fase 0), byte a byte.
 SORTEIO_POSICAO: bool = env_bool("SORTEIO", default=True)
+# Rerun em andamento (``rerun``/``run falhas`` da CLI): origem gravada em
+# sessao.json e no metadata de cada captura. None fora de um rerun.
+RERUN_DE: Optional[Dict[str, object]] = None
 
 # AMETEK pela USB com porta COM virtual; 115200 foi confirmado no equipamento real.
 AMETEK_PORT = os.getenv("AMETEK_PORT", "COM10")
@@ -796,6 +816,12 @@ class Config:
     preservar_bruto_osciloscopio: bool = False
     diagnostico_retrieve: bool = False
     diagnostico_retrieve_espera_s: float = 2.0
+    # Rerun (v1.15): só estes ``indice_global`` do plano rodam (None = todos,
+    # o caminho normal). Posto por ``Bancada.executar_bateria(selecao=...)``.
+    indices_permitidos: Optional[Tuple[int, ...]] = None
+    # Rerun: {"sessao": pasta de origem, ...}; vai para o metadata de cada
+    # captura (``rerun_de``). None no caminho normal.
+    rerun_de: Optional[Dict[str, object]] = None
 
     def capturas(self, simulated: bool) -> int:
         """Capturas desta classe (por nível, nas classes com ``NIVEIS``).
@@ -943,10 +969,284 @@ class ResultadoClasse:
     # de programar (rms/pico/extremo previsto acima do teto) — nada foi
     # enviado à fonte para elas. Não é falha: é o limite da bancada.
     puladas: int = 0
+    # A classe (ou parte dela) não rodou porque o orçamento de gravações TRACe
+    # da conexão esgotou: registrada em falhas.json para ``run falhas``.
+    nao_executada_orcamento: bool = False
 
     @property
     def pasta_esperada(self) -> Path:
         return SESSION_RESULTS_DIR or RESULTS_DIR
+
+
+# ---------------------------------------------------------------------------
+# Registro de falhas da sessão (falhas.json) e seleção para rerun (v1.15)
+# ---------------------------------------------------------------------------
+
+NOME_FALHAS_DA_SESSAO = "falhas.json"
+FORMATO_FALHAS = 1
+TIPOS_FALHA = (
+    "pulada_capacidade",        # exigência acima de CAPACIDADES_MX30 (pré-validação, sem I/O)
+    "pulada_preflight",         # rms/pico/extremo previsto acima do teto (pré-validação, sem I/O)
+    "descartada",               # erro de ERROS_CAPTURA_DESCARTAVEL durante a captura; nada gravado
+    "invalida",                 # gravada, reprovada na validação física
+    "classe_falhou",            # a classe (num perfil) terminou FALHOU
+    "nao_executada_orcamento",  # não rodou: orçamento de TRACe da conexão esgotou
+)
+# ``run falhas`` reexecuta estes; as puladas repetiriam a mesma recusa na
+# mesma condição (só ``rerun`` explícito as aceita, com aviso).
+TIPOS_REEXECUTAVEIS = ("descartada", "invalida", "classe_falhou", "nao_executada_orcamento")
+CAMPOS_FALHA = (
+    "tipo", "classe", "classe_nome", "perfil", "indice_global", "capture_index", "nivel_indice",
+    "seed", "id_captura", "motivo",
+)
+
+
+class RegistroFalhas:
+    """``<sessao>/falhas.json``: uma entrada por captura pulada/descartada/
+    inválida, classe que falhou ou não executada por orçamento, com o contexto
+    para reproduzi-la (``contexto``). Reescrito atomicamente (``.part`` ->
+    ``os.replace``) a cada entrada, ao longo da bateria; criado só na primeira.
+    Uma falha de disco aqui é logada e NÃO derruba a bateria."""
+
+    def __init__(self, pasta: Path, contexto: Dict[str, object]):
+        self.pasta = Path(pasta)
+        self.caminho = self.pasta / NOME_FALHAS_DA_SESSAO
+        self.contexto = dict(contexto)
+        self.itens: List[Dict[str, object]] = []
+        if self.caminho.is_file():  # outra Bancada na mesma pasta: acrescenta
+            try:
+                self.itens = list(ler_falhas(self.pasta).get("itens", []))
+            except (OSError, ValueError):
+                logger.exception("falhas.json existente ilegível; recomeçando a lista")
+
+    def registrar(self, tipo: str, **campos) -> Dict[str, object]:
+        if tipo not in TIPOS_FALHA:
+            raise ValueError(f"tipo de falha desconhecido: {tipo!r}")
+        entrada: Dict[str, object] = {chave: None for chave in CAMPOS_FALHA}
+        entrada.update(campos)
+        entrada["tipo"] = tipo
+        entrada["registrado_em"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+        entrada["contexto"] = dict(campos.get("contexto") or self.contexto)
+        self.itens.append(entrada)
+        self.gravar()
+        return entrada
+
+    def gravar(self) -> None:
+        documento = {
+            "formato_falhas": FORMATO_FALHAS,
+            "sessao": str(self.pasta),
+            "atualizado_em": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "contexto": self.contexto,
+            "itens": self.itens,
+        }
+        try:
+            self.pasta.mkdir(parents=True, exist_ok=True)
+            parcial = self.caminho.with_suffix(".json.part")
+            parcial.write_text(
+                json.dumps(documento, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8",
+            )
+            os.replace(parcial, self.caminho)
+        except OSError:
+            logger.exception("Não foi possível gravar %s; a bateria continua", self.caminho)
+
+
+def ler_falhas(pasta: Path) -> Dict[str, object]:
+    """Conteúdo de ``<pasta>/falhas.json`` ({} se não existe)."""
+    caminho = Path(pasta) / NOME_FALHAS_DA_SESSAO
+    if not caminho.is_file():
+        return {}
+    return json.loads(caminho.read_text(encoding="utf-8"))
+
+
+class RerunRecusadoError(ValueError):
+    """Pedido de rerun que não pode reproduzir a captura original (condição da
+    CLI diferente, alvo inexistente, contexto ausente). Nada é energizado."""
+
+
+# Condição da bancada que o rerun NÃO muda sozinho: tensão e frequência vêm do
+# START_BENCH (fixas no processo), o braço P-09 e o passo final SINE são fixos
+# por conexão, os limites vêm do ambiente e a calibração muda a pré-validação e
+# o limite de bancada (logo a forma programada). Divergência = recusa.
+CHAVES_CONDICAO_RERUN = (
+    "tensao_base_rms", "frequencia_hz", "p09_braco", "passo_final_sin",
+    "max_voltage_rms", "max_peak_v", "source_voltage_range_rms", "calibracao_extremos_sha256",
+)
+
+
+def condicao_atual() -> Dict[str, object]:
+    """A condição desta CLI/processo nos nomes de ``CHAVES_CONDICAO_RERUN``
+    (limites efetivos que ``Bancada.from_env`` passa à fonte na bancada)."""
+    try:
+        sha = sha256_do_arquivo(CALIBRACAO_EXTREMOS_PATH)
+    except OSError:
+        sha = None
+    return {
+        "tensao_base_rms": float(BASE_VOLTAGE_RMS),
+        "frequencia_hz": float(GRID_FREQUENCY_HZ),
+        "p09_braco": str(P09_BRACO),
+        "passo_final_sin": bool(AMETEK_PASSO_FINAL_SIN),
+        "max_voltage_rms": float(EUT_MAX_VOLTAGE_RMS),
+        "max_peak_v": float(min(EUT_MAX_PEAK_V, AmetekMX30.MAX_SOURCE_PEAK_V)),
+        "source_voltage_range_rms": float(SOURCE_VOLTAGE_RANGE_RMS),
+        "calibracao_extremos_sha256": sha,
+    }
+
+
+_COMO_MUDAR = {
+    "tensao_base_rms": "reinicie a bancada com START_BENCH digitando a tensão original",
+    "frequencia_hz": "reinicie a bancada com START_BENCH digitando a frequência original",
+    "p09_braco": "use 'set p09 {original}'",
+    "passo_final_sin": "reinicie a CLI com AMETEK_PASSO_FINAL_SIN={valor_env}",
+    "max_voltage_rms": "reinicie a CLI com EUT_MAX_VOLTAGE_RMS={original}",
+    "max_peak_v": "reinicie a CLI com EUT_MAX_PEAK_V={original}",
+    "source_voltage_range_rms": "reinicie a CLI com SOURCE_VOLTAGE_RANGE_RMS={original}",
+}
+
+
+def comparar_condicao_para_rerun(
+    original: Dict[str, object], atual: Dict[str, object], pasta: Optional[Path] = None,
+) -> List[str]:
+    """Diferenças entre a condição original (``contexto`` de falhas.json ou
+    ``condicao`` de sessao.json) e ``atual`` (``condicao_atual()``), cada uma
+    dizendo o que mudar; lista vazia = pode reproduzir."""
+    diferencas: List[str] = []
+    for chave in CHAVES_CONDICAO_RERUN:
+        if original.get(chave) is None:
+            diferencas.append(f"a sessão de origem não registra {chave} (contexto ausente)")
+            continue
+        antes, agora = original[chave], atual.get(chave)
+        if isinstance(antes, bool) or isinstance(agora, bool) or isinstance(antes, str):
+            igual = str(antes).upper() == str(agora).upper()
+        else:
+            try:
+                igual = abs(float(antes) - float(agora)) <= 1e-6
+            except (TypeError, ValueError):
+                igual = False
+        if igual:
+            continue
+        if chave == "calibracao_extremos_sha256":
+            copia = (Path(pasta) / NOME_CALIBRACAO_NA_SESSAO) if pasta is not None else NOME_CALIBRACAO_NA_SESSAO
+            diferencas.append(
+                f"calibração de extremos mudou (sha256 original {str(antes)[:12]}…, atual {str(agora)[:12]}…): "
+                f"para reproduzir, copie {copia} sobre {CALIBRACAO_EXTREMOS_PATH} (confira com git diff e "
+                "restaure depois do rerun)"
+            )
+            continue
+        dica = _COMO_MUDAR[chave].format(original=antes, valor_env="1" if antes else "0")
+        diferencas.append(f"{chave}: original {antes}, atual {agora} ({dica})")
+    return diferencas
+
+
+def verificar_condicao_para_rerun(
+    original: Dict[str, object], atual: Optional[Dict[str, object]] = None, pasta: Optional[Path] = None,
+) -> None:
+    """Levanta ``RerunRecusadoError`` com todas as diferenças (nada energizado)."""
+    diferencas = comparar_condicao_para_rerun(original, atual or condicao_atual(), pasta)
+    if diferencas:
+        raise RerunRecusadoError("a condição atual difere da sessão de origem — " + "; ".join(diferencas))
+
+
+def selecionar_para_rerun(
+    pasta: Path, alvos: Optional[Sequence[str]] = None,
+) -> Tuple[
+    Dict[str, object], Dict[str, Dict[str, Optional[Tuple[int, ...]]]], List[Dict[str, object]],
+    List[Dict[str, object]],
+]:
+    """Seleção de ``run falhas`` (``alvos`` None: todas as entradas de
+    ``TIPOS_REEXECUTAVEIS``) ou ``rerun <pasta> <id_captura|classe> ...``.
+
+    Devolve ``(contexto, selecao, itens, puladas_retiradas)``: ``selecao[classe][perfil]`` é a
+    tupla de ``indice_global`` a rodar, ou None = a classe inteira naquele
+    perfil (classe_falhou/nao_executada_orcamento sem índice). ``id_captura``
+    que não está em falhas.json é procurado no metadata da sessão (qualquer
+    captura gravada pode ser reproduzida). Levanta ``RerunRecusadoError``."""
+    pasta = Path(pasta)
+    try:
+        documento = ler_falhas(pasta)
+        if not isinstance(documento, dict) or not isinstance(documento.get("itens", []), list):
+            raise ValueError("estrutura inesperada (esperado objeto com lista 'itens')")
+    except (OSError, ValueError) as exc:
+        raise RerunRecusadoError(
+            f"{pasta / NOME_FALHAS_DA_SESSAO} ilegível ou corrompido ({exc}); não dá para saber o que "
+            "reproduzir — confira o arquivo (sessao.log tem as mesmas falhas)"
+        ) from exc
+    itens_falha = list(documento.get("itens", []))
+    contexto = dict(documento.get("contexto") or {})
+    if not contexto:
+        contexto = dict(_ler_json_opcional(pasta / NOME_METADATA_DA_SESSAO).get("condicao") or {})
+    escolhidos: List[Dict[str, object]] = []
+    if alvos is None:
+        escolhidos = [item for item in itens_falha if item.get("tipo") in TIPOS_REEXECUTAVEIS]
+        if not escolhidos:
+            raise RerunRecusadoError(
+                f"nenhuma falha reexecutável em {pasta / NOME_FALHAS_DA_SESSAO} "
+                f"({len(itens_falha)} entrada(s); puladas por capacidade/pré-validação só com 'rerun')"
+            )
+    else:
+        metadados = None
+        for alvo in alvos:
+            alvo = str(alvo).strip()
+            if alvo.isdigit() and len(alvo) <= 2:
+                classe = alvo.zfill(2)
+                da_classe = [item for item in itens_falha if str(item.get("classe")) == classe]
+                if not da_classe:
+                    raise RerunRecusadoError(f"classe {classe}: nenhuma entrada em falhas.json de {pasta}")
+                escolhidos.extend(da_classe)
+                continue
+            da_captura = [item for item in itens_falha if item.get("id_captura") == alvo]
+            if da_captura:
+                escolhidos.extend(da_captura)
+                continue
+            if metadados is None:
+                metadados = sessao_io.carregar_metadados(pasta)
+            registros = [r for r in metadados.registros if r.get("id_captura") == alvo]
+            if not registros:
+                raise RerunRecusadoError(f"captura {alvo!r} não está em falhas.json nem no metadata de {pasta}")
+            for registro in registros:
+                classe = alvo.split("-", 1)[0]
+                base = int(registro.get("base_seed", contexto.get("base_seed", 0)))
+                indice = int(registro["seed"]) - base - int(classe) * 1_000_000
+                escolhidos.append({
+                    "tipo": "captura_gravada", "classe": classe, "perfil": registro.get("perfil"),
+                    "indice_global": indice, "capture_index": registro.get("nivel_indice"),
+                    "seed": registro["seed"], "id_captura": alvo,
+                    "contexto": {**contexto, **{k: registro[k] for k in ("base_seed", "capturas_override") if k in registro}},
+                })
+    # Puladas (capacidade/pré-validação) seriam puladas de novo na mesma
+    # condição: só elas = recusa; mistura = retiradas, com aviso de quem chama.
+    puladas = [item for item in escolhidos if str(item.get("tipo", "")).startswith("pulada_")]
+    if puladas and len(puladas) == len(escolhidos):
+        raise RerunRecusadoError(
+            f"só capturas puladas ({', '.join(str(i.get('id_captura')) for i in puladas)}): a pré-validação "
+            "(capacidade da fonte ou extremo/rms previsto) as pularia de novo na mesma condição"
+        )
+    escolhidos = [item for item in escolhidos if item not in puladas]
+    selecao: Dict[str, Dict[str, Optional[Tuple[int, ...]]]] = {}
+    for item in escolhidos:
+        ctx = item.get("contexto") or {}
+        for chave in ("base_seed", "capturas_override", "sorteio_posicao") + CHAVES_CONDICAO_RERUN:
+            if chave in ctx and chave in contexto and ctx[chave] != contexto[chave]:
+                raise RerunRecusadoError(
+                    f"entradas com contextos diferentes ({chave}: {contexto[chave]!r} x {ctx[chave]!r}); "
+                    "faça um rerun por contexto"
+                )
+            contexto.setdefault(chave, ctx.get(chave))
+        classe = str(item["classe"]).zfill(2)
+        perfil = item.get("perfil") or (contexto.get("perfis_da_rodada") or [perfis.PERFIL_PADRAO])[0]
+        por_perfil = selecao.setdefault(classe, {})
+        indice = item.get("indice_global")
+        if indice is None:
+            por_perfil[perfil] = None
+        elif perfil not in por_perfil or por_perfil[perfil] is not None:
+            por_perfil[perfil] = tuple(sorted(set(por_perfil.get(perfil) or ()) | {int(indice)}))
+    return contexto, selecao, escolhidos, puladas
+
+
+def _ler_json_opcional(caminho: Path) -> Dict[str, object]:
+    try:
+        return json.loads(Path(caminho).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
 
 
 def _build_config() -> Config:
@@ -971,6 +1271,7 @@ def _build_config() -> Config:
         diagnostico_retrieve_espera_s=DIAGNOSTICO_RETRIEVE_ESPERA_S,
         perfil=PERFIL,
         sorteio_posicao=SORTEIO_POSICAO,
+        rerun_de=RERUN_DE,
     )
 
 
@@ -1192,6 +1493,97 @@ class Bancada:
     # intermitente e continua ganhando as 3 tentativas.
     ERROS_DETERMINISTICOS = (ParameterOutOfBoundsError, ValidacaoFisicaError, PicoFisicoExcedidoError)
 
+    # -- registro de falhas (falhas.json) e orçamento de TRACe ---------------
+
+    def contexto_de_reproducao(self) -> Dict[str, object]:
+        """O que ``rerun`` precisa para reproduzir uma captura desta bancada:
+        seed base, ``set capturas``, perfis da rodada, tensão, frequência,
+        braço P-09, sorteio e SHA-256 da calibração em uso."""
+        config = self.config
+        perfis_rodada = getattr(self, "_perfis_rodada_atual", None) or self._perfis_para_bateria(None)
+        try:
+            sha = sha256_do_arquivo(CALIBRACAO_EXTREMOS_PATH)
+        except OSError:
+            sha = None
+        limites = condicao_atual()
+        passo_final_sin = getattr(self.fonte, "passo_final_sin", None)
+        return {
+            # Limites efetivos e passo final SINE da bancada (os do ambiente,
+            # que from_env passa à fonte; o passo, o da fonte quando há).
+            **limites,
+            "passo_final_sin": passo_final_sin if isinstance(passo_final_sin, bool) else limites["passo_final_sin"],
+            "base_seed": int(config.base_seed),
+            "capturas_override": config.capturas_override,
+            "perfil": PERFIL_TODOS_ROTULO if len(perfis_rodada) > 1 else perfis_rodada[0],
+            "perfis_da_rodada": list(perfis_rodada),
+            "tensao_base_rms": float(config.base_voltage_rms),
+            "frequencia_hz": float(config.grid_frequency_hz),
+            "p09_braco": str(getattr(self.fonte, "p09_braco", P09_BRACO)),
+            "sorteio_posicao": bool(getattr(config, "sorteio_posicao", True)),
+            "calibracao_extremos_sha256": sha,
+            "rerun_de": getattr(config, "rerun_de", None),
+        }
+
+    def registrar_falha(self, tipo: str, **campos) -> Optional[Dict[str, object]]:
+        """Acrescenta uma entrada a ``<results_dir>/falhas.json`` (criado na
+        primeira). Nunca levanta por falha de disco (logada)."""
+        try:
+            registro = self.__dict__.get("registro_falhas")
+            if registro is None:
+                pasta = getattr(self.config, "results_dir", None)
+                if pasta is None:
+                    return None
+                registro = RegistroFalhas(Path(pasta), self.contexto_de_reproducao())
+                self.registro_falhas = registro
+            return registro.registrar(tipo, contexto=self.contexto_de_reproducao(), **campos)
+        except (CommunicationError, FalhaFatalDeInstrumento):
+            raise  # infraestrutura nunca é engolida
+        except Exception:  # noqa: BLE001 - registrar nunca vira aborto da bateria
+            logger.exception("Não foi possível registrar a falha (%s) em falhas.json; a bateria continua", tipo)
+            return None
+
+    def _encerrar_conexao_por_orcamento(self) -> None:
+        """Orçamento de TRACe esgotado: ABORt + OUTPUT OFF CONFIRMADO e a
+        conexão fechada. Nenhuma reconexão nem reenergização automática (a
+        próxima exige comando e confirmação digitada nova). Sem a confirmação
+        do OFF, ``FalhaFatalDeInstrumento`` (aborta, como qualquer falha de
+        infraestrutura)."""
+        fonte = self.fonte
+        if fonte is None:
+            logger.warning("Orçamento de TRACe esgotado sem fonte aberta: nada a desligar.")
+            return
+        try:
+            fonte.authorize_output(False)
+        except Exception:  # noqa: BLE001 - só retira a autorização em Python
+            logger.debug("authorize_output(False) falhou", exc_info=True)
+        confirmado = fonte.safe_shutdown()
+        fechar = getattr(fonte, "_close_resource", None)
+        if callable(fechar):
+            fechar()
+        if not confirmado:
+            raise FalhaFatalDeInstrumento(
+                "Orçamento de TRACe esgotado e OUTPUT OFF NÃO confirmado ao encerrar a conexão — "
+                "confira o painel da AMETEK (OUTPUT OFF) e o E-stop."
+            )
+        logger.warning(
+            "Orçamento de TRACe esgotado: OUTPUT OFF confirmado e conexão com a AMETEK encerrada. "
+            "Nada será reconectado nem energizado automaticamente; as classes restantes ficam em "
+            "falhas.json como nao_executada_orcamento ('run falhas' com confirmação nova)."
+        )
+
+    def _perfis_da_selecao(
+        self, class_id: str, lista_perfis: Sequence[str],
+        selecao: Optional[Dict[str, Dict[str, Optional[Tuple[int, ...]]]]],
+    ) -> List[Tuple[str, Optional[Tuple[int, ...]]]]:
+        """(perfil, índices ou None) que a classe rodaria nesta bateria."""
+        if selecao is not None:
+            return list(selecao.get(class_id, {}).items())
+        return [
+            (perfil, None) for perfil, _ in perfis.plano_de_perfis(
+                class_id, lista_perfis, getattr(self.config, "sorteio_posicao", True),
+            )
+        ]
+
     def _perfis_para_bateria(self, perfis_da_rodada_: Optional[Sequence[str]]) -> Tuple[str, ...]:
         """Perfis que ``executar_bateria`` percorre por classe: os pedidos; ou,
         sem pedido, os três com ``set perfil todos``; ou o da própria
@@ -1203,9 +1595,17 @@ class Bancada:
         return (perfis.perfil_da_config(self.config),)
 
     @staticmethod
-    def _config_do_perfil(config_original: "Config", perfil: str, espelhos: Tuple[str, ...]) -> "Config":
+    def _config_do_perfil(
+        config_original: "Config", perfil: str, espelhos: Tuple[str, ...],
+        indices_permitidos: Optional[Tuple[int, ...]] = None,
+    ) -> "Config":
         """``config_original`` com ``perfil`` e ``perfis_espelho`` postos (a
-        mesma instância se nada muda)."""
+        mesma instância se nada muda); ``indices_permitidos`` só no rerun."""
+        if indices_permitidos is not None:
+            return replace(
+                config_original, perfil=perfil, perfis_espelho=tuple(espelhos),
+                indices_permitidos=tuple(int(i) for i in indices_permitidos),
+            )
         if perfis.perfil_da_config(config_original) == perfil \
                 and tuple(getattr(config_original, "perfis_espelho", ())) == tuple(espelhos):
             return config_original
@@ -1241,9 +1641,17 @@ class Bancada:
                 invalidas = getattr(experimento, "_capturas_invalidas_count", 0)
                 puladas = getattr(experimento, "_capturas_puladas_count", 0)
                 break
-            except (CommunicationError, FalhaFatalDeInstrumento, LimiteEscritasTraceError):
+            except (CommunicationError, FalhaFatalDeInstrumento):
                 logger.error(
                     "[%s] Falha de infraestrutura — abortando o restante da bateria", class_id
+                )
+                raise
+            except LimiteEscritasTraceError:
+                # Sem retry nesta conexão: executar_bateria encerra a conexão
+                # com OUTPUT OFF confirmado e registra o restante em falhas.json.
+                logger.error(
+                    "[%s] Orçamento de TRACe da conexão esgotado — encerrando a conexão; o restante "
+                    "vai para falhas.json (nao_executada_orcamento)", class_id,
                 )
                 raise
             except self.ERROS_DETERMINISTICOS as exc:
@@ -1268,6 +1676,7 @@ class Bancada:
 
     def executar_bateria(
         self, scripts: List[Path], perfis_da_rodada_: Optional[Sequence[str]] = None,
+        selecao: Optional[Dict[str, Dict[str, Optional[Tuple[int, ...]]]]] = None,
     ) -> List[ResultadoClasse]:
         """Roda cada classe isoladamente: uma falha de EXPERIMENTO (RMS fora
         de tolerância, timeout de trigger, exceção em ``gerar()``, script
@@ -1285,18 +1694,47 @@ class Bancada:
         por perfil, em sequência, e todos caem no mesmo ``NN_classe.npz``
         (``sessao_io``); o ``ResultadoClasse`` da classe é ``ok`` só se todos
         os perfis foram. Cada perfil é isolado como uma classe: a falha de um
-        não impede os seguintes."""
+        não impede os seguintes.
+
+        ``LimiteEscritasTraceError`` (orçamento operacional de TRACe, não limite
+        do fabricante): encerra a conexão com OUTPUT OFF confirmado
+        (``_encerrar_conexao_por_orcamento``), registra o resto da classe
+        corrente e as classes seguintes em falhas.json como
+        ``nao_executada_orcamento`` e devolve os resultados — sem reconectar.
+
+        ``selecao`` (rerun): ``{classe: {perfil: indices ou None}}``; só essas
+        classes/perfis/capturas rodam. None = caminho normal, sem mudança."""
         resultados: List[ResultadoClasse] = []
         lista_perfis = self._perfis_para_bateria(perfis_da_rodada_)
+        self._perfis_rodada_atual = lista_perfis
         varios = len(lista_perfis) > 1
+        orcamento_esgotado: Optional[str] = None
         for script_path in scripts:
             class_id = script_path.stem
+            if orcamento_esgotado is not None:
+                for perfil, indices in self._perfis_da_selecao(class_id, lista_perfis, selecao):
+                    for indice in (indices if indices is not None else (None,)):
+                        self.registrar_falha(
+                            "nao_executada_orcamento", classe=class_id, perfil=perfil,
+                            indice_global=indice,
+                            id_captura=None if indice is None else f"{class_id}-{int(indice) + 1:04d}",
+                            seed=None if indice is None else (
+                                int(self.config.base_seed) + int(class_id) * 1_000_000 + int(indice)
+                            ),
+                            motivo=f"não executada: {orcamento_esgotado}",
+                        )
+                resultados.append(ResultadoClasse(
+                    class_id, class_id, ok=False, nao_executada_orcamento=True,
+                    motivo=f"nao_executada_orcamento: {orcamento_esgotado}",
+                ))
+                continue
             nome = class_id
             try:
                 experimento_cls = self._carregar_classe_experimento(script_path)
             except Exception as exc:
                 logger.exception("[%s] FALHOU ao carregar — classe abortada, bateria continua", class_id)
                 resultados.append(ResultadoClasse(class_id, nome, ok=False, motivo=str(exc)))
+                self.registrar_falha("classe_falhou", classe=class_id, motivo=f"falha ao carregar: {exc}")
                 if BENCH_MODE:
                     time.sleep(0.5)
                 continue
@@ -1307,27 +1745,57 @@ class Bancada:
             descartadas = invalidas = puladas = 0
             config_original = self.config
             self._manter_arquivos_classe = True
+            plano_perfis = perfis.plano_de_perfis(
+                class_id, lista_perfis, getattr(config_original, "sorteio_posicao", True),
+            )
+            if selecao is not None:
+                escolhidos = selecao.get(class_id, {})
+                plano_perfis = [(p, e) for p, e in plano_perfis if p in escolhidos]
             try:
-                for perfil, espelhos in perfis.plano_de_perfis(
-                    class_id, lista_perfis, getattr(config_original, "sorteio_posicao", True),
-                ):
+                for posicao_perfil, (perfil, espelhos) in enumerate(plano_perfis):
                     rotulo = f" [perfil {perfil}]" if varios else ""
                     if espelhos:
                         logger.info(
                             "[%s] gerar() não depende do perfil: capturada uma vez (perfil %s); %s "
                             "apontam para a mesma captura no metadata.", class_id, perfil, ", ".join(espelhos),
                         )
-                    self.config = self._config_do_perfil(config_original, perfil, espelhos)
+                    indices = selecao[class_id][perfil] if selecao is not None else None
+                    self.config = self._config_do_perfil(config_original, perfil, espelhos, indices)
                     try:
                         sucesso, ultimo_erro, desc, inval, pul, tentativas_feitas = (
                             self._executar_classe_no_perfil(class_id, script_path, experimento_cls, rotulo)
                         )
+                    except LimiteEscritasTraceError as exc:
+                        # O resto do perfil corrente já foi registrado por
+                        # executar() (captura a captura); faltam os perfis
+                        # seguintes desta classe.
+                        orcamento_esgotado = str(exc)
+                        for perfil_restante, _ in plano_perfis[posicao_perfil + 1:]:
+                            self.registrar_falha(
+                                "nao_executada_orcamento", classe=class_id, classe_nome=nome,
+                                perfil=perfil_restante, motivo=f"não executada: {exc}",
+                            )
+                        ok_geral = False
+                        motivos.append(f"nao_executada_orcamento: {exc}")
+                        break
+                    except (CommunicationError, FalhaFatalDeInstrumento) as exc:
+                        # Continua abortando a bateria (limite inegociável);
+                        # só deixa a classe registrada para um rerun manual.
+                        self.registrar_falha(
+                            "classe_falhou", classe=class_id, classe_nome=nome, perfil=perfil,
+                            motivo=f"falha de infraestrutura (bateria abortada): {type(exc).__name__}: {exc}",
+                        )
+                        raise
                     finally:
                         self.config = config_original
                     descartadas += desc
                     invalidas += inval
                     puladas += pul
                     if not sucesso:
+                        self.registrar_falha(
+                            "classe_falhou", classe=class_id, classe_nome=nome, perfil=perfil,
+                            motivo=str(ultimo_erro),
+                        )
                         ok_geral = False
                         motivos.append(
                             f"perfil {perfil}{' (e ' + ', '.join(espelhos) + ', mesma captura)' if espelhos else ''}: "
@@ -1347,6 +1815,15 @@ class Bancada:
                     if arquivo is not None:
                         arquivo.close()
 
+            if orcamento_esgotado is not None:
+                resultados.append(ResultadoClasse(
+                    class_id, nome, ok=False, motivo="; ".join(motivos), nao_executada_orcamento=True,
+                    descartadas=descartadas, invalidas=invalidas, puladas=puladas,
+                ))
+                # Estado seguro ANTES de qualquer outra coisa; sem confirmação
+                # do OFF, FalhaFatalDeInstrumento aborta (infraestrutura).
+                self._encerrar_conexao_por_orcamento()
+                continue
             if ok_geral:
                 resultados.append(ResultadoClasse(
                     class_id, nome, ok=True, descartadas=descartadas, invalidas=invalidas,
@@ -1389,15 +1866,33 @@ class Bancada:
         lista = self._perfis_para_bateria(perfis_da_rodada_)
         config_original = self.config
         executados: List["ExperimentoBase"] = []
+        self._perfis_rodada_atual = lista
         self._manter_arquivos_classe = True
+        class_id = str(getattr(experimento_cls, "id", ""))
+        plano_perfis = perfis.plano_de_perfis(class_id, lista, getattr(config_original, "sorteio_posicao", True))
         try:
-            for perfil, espelhos in perfis.plano_de_perfis(
-                str(getattr(experimento_cls, "id", "")), lista, getattr(config_original, "sorteio_posicao", True),
-            ):
+            for posicao, (perfil, espelhos) in enumerate(plano_perfis):
                 self.config = self._config_do_perfil(config_original, perfil, espelhos)
                 experimento = experimento_cls(self)
                 executados.append(experimento)
-                experimento.executar()
+                try:
+                    experimento.executar()
+                except LimiteEscritasTraceError as exc:
+                    for perfil_restante, _ in plano_perfis[posicao + 1:]:
+                        self.registrar_falha(
+                            "nao_executada_orcamento", classe=class_id,
+                            classe_nome=getattr(experimento_cls, "nome", class_id),
+                            perfil=perfil_restante, motivo=f"não executada: {exc}",
+                        )
+                    self.config = config_original
+                    self._encerrar_conexao_por_orcamento()
+                    raise
+                except Exception as exc:
+                    self.registrar_falha(
+                        "classe_falhou", classe=class_id, classe_nome=getattr(experimento_cls, "nome", class_id),
+                        perfil=perfil, motivo=f"{type(exc).__name__}: {exc}",
+                    )
+                    raise
         finally:
             self.config = config_original
             self._manter_arquivos_classe = False
@@ -1785,10 +2280,17 @@ class ExperimentoBase(ABC):
         da poda de ``_indices_viaveis``. ``indice_global`` entra na seed;
         ``capture_index`` escolhe o nível (``indice // N`` quando agrupado)."""
         por_nivel, capturas_por_nivel, total = self.dimensionar_capturas(simulated)
-        return [
+        plano = [
             (indice, indice // capturas_por_nivel if por_nivel else indice)
             for indice in range(total)
         ]
+        # Rerun: só os índices escolhidos, com o MESMO indice_global (logo a
+        # mesma seed) e o mesmo capture_index do plano original.
+        permitidos = getattr(self.config, "indices_permitidos", None)
+        if permitidos is not None:
+            permitidos = {int(i) for i in permitidos}
+            plano = [item for item in plano if item[0] in permitidos]
+        return plano
 
     def grava_trace(self, capture_index: int) -> bool:
         """Esta captura grava TRACEs na Flash da fonte (``program_capture``)?
@@ -2141,6 +2643,53 @@ class ExperimentoBase(ABC):
         pré-validação não opina). Ver ``_indices_viaveis``."""
         return None
 
+    def exigencias_de_capacidade(
+        self, capture_index: int, forma_pu: np.ndarray, parametros: Dict[str, float],
+    ) -> Dict[str, object]:
+        """O que ESTA captura exige da fonte, nos nomes de
+        ``ametek_orm.CAPACIDADES_MX30``, sem tocar o instrumento. Frequência da
+        rede sempre; captura TRACe/LIST: a ``ProgramacaoCaptura`` que
+        ``program_capture`` montaria (passos de LIST, formas no grupo, dwell,
+        offsets do braço C). Nativas acrescentam as suas (``exigencias_nativas``)."""
+        exigencias: Dict[str, object] = {"frequencia_hz": float(self.config.grid_frequency_hz)}
+        if self.grava_trace(capture_index):
+            # Só atributos de verdade de AmetekMX30 (um substituto de teste
+            # sem eles programa como o padrão: sem SINE final, braço A).
+            passo_final_sin = getattr(self.fonte, "passo_final_sin", False)
+            braco = getattr(self.fonte, "p09_braco", "A")
+            programacao = AmetekMX30.montar_programacao(
+                forma_pu, base_voltage_rms=float(self.config.base_voltage_rms),
+                frequency_hz=float(self.config.grid_frequency_hz),
+                dc_offset_pu=float(parametros.get("dc_offset_pu", 0.0)),
+                passo_final_sin=passo_final_sin if isinstance(passo_final_sin, bool) else False,
+                p09_braco=braco if isinstance(braco, str) else "A",
+            )
+            exigencias.update(programacao.exigencias_de_capacidade())
+        return exigencias
+
+    def _registrar_falha(
+        self, tipo: str, indice_global: Optional[int], capture_index: Optional[int], motivo: str,
+    ) -> None:
+        """Entrada desta classe/perfil em falhas.json (via ``Bancada.registrar_falha``)."""
+        registrar = getattr(getattr(self, "bancada", None), "registrar_falha", None)
+        if not callable(registrar):
+            return
+        try:
+            registrar(
+                tipo, classe=self.id, classe_nome=getattr(self, "nome", self.id),
+                perfil=perfis.perfil_da_config(self.config),
+                indice_global=None if indice_global is None else int(indice_global),
+                capture_index=None if capture_index is None else int(capture_index),
+                nivel_indice=None if capture_index is None else int(capture_index),
+                seed=None if indice_global is None else self.seed_da_captura(int(indice_global)),
+                id_captura=None if indice_global is None else f"{self.id}-{int(indice_global) + 1:04d}",
+                motivo=str(motivo),
+            )
+        except (CommunicationError, FalhaFatalDeInstrumento):
+            raise  # infraestrutura nunca é engolida
+        except Exception:  # noqa: BLE001 - o registro nunca derruba a captura
+            logger.exception("[%s] não foi possível registrar a falha em falhas.json", self.id)
+
     def avaliar_captura_na_bancada(
         self, indice_global: Optional[int], capture_index: int, *,
         t: Optional[np.ndarray] = None, seed: Optional[int] = None,
@@ -2175,6 +2724,23 @@ class ExperimentoBase(ABC):
         try:
             # Ordem importa: a forma primeiro (a 08 calcula a excursão nela).
             forma, parametros = self.forma_e_parametros_para_bancada(capture_index, t, seed)
+        except Exception as exc:  # noqa: BLE001 - sem previsão não há prova de que cabe
+            info["motivo"] = f"extremo previsto incalculável ({type(exc).__name__}: {exc})"
+            return info
+        # Capacidades do manual (CAPACIDADES_MX30) ANTES de qualquer I/O: o que
+        # exceder é pulado com motivo próprio (pulada_capacidade).
+        try:
+            exigencias = self.exigencias_de_capacidade(capture_index, forma, parametros)
+            info["exigencias_capacidade"] = exigencias
+            verificar_exigencias(exigencias)
+        except CapacidadeExcedidaError as exc:
+            info["motivo"] = f"capacidade da fonte excedida: {exc}"
+            info["tipo_recusa"] = "pulada_capacidade"
+            return info
+        except ParameterOutOfBoundsError as exc:
+            info["motivo"] = f"programação recusada antes de I/O: {exc}"
+            return info
+        try:
             pico = self._pico_da_forma_v(forma, capture_index)
             extremo = self._extremo_previsto_da_forma_v(pico, parametros)
         except Exception as exc:  # noqa: BLE001 - sem previsão não há prova de que cabe
@@ -2228,6 +2794,10 @@ class ExperimentoBase(ABC):
             info = self.avaliar_captura_na_bancada(indice_global, capture_index, t=t)
             if not info["cabe"]:
                 recusados[(indice_global, capture_index)] = str(info["motivo"])
+                self._registrar_falha(
+                    str(info.get("tipo_recusa") or "pulada_preflight"), indice_global, capture_index,
+                    str(info["motivo"]),
+                )
                 continue
             self._avaliacoes_bancada[indice_global] = info
             viaveis.append((indice_global, capture_index))
@@ -2709,6 +3279,9 @@ class ExperimentoBase(ABC):
         # de níveis roda ANTES de qualquer comando SCPI e pode encurtar este
         # plano (ver _indices_viaveis).
         plano = self.plano_de_capturas(simulated)
+        # Igual ao total dimensionado no caminho normal; menor num rerun
+        # (``config.indices_permitidos``).
+        total = len(plano)
         self._capturas_puladas_count = 0
         if not simulated:
             planejadas = len(plano)
@@ -2765,6 +3338,7 @@ class ExperimentoBase(ABC):
             # 03 na sessão 2 (relatório 01 §3 P1, caminho #1).
             self._iniciar_gravacao_incremental()
         try:
+            posicao = 0
             for posicao, (indice_global, capture_index) in enumerate(plano):
                 seed = self.seed_da_captura(indice_global)
                 rng = np.random.default_rng(seed)
@@ -2815,6 +3389,9 @@ class ExperimentoBase(ABC):
                             type(exc).__name__, exc,
                         )
                         capturas_descartadas.append((capture_id, capture_index, str(exc)))
+                        self._registrar_falha(
+                            "descartada", indice_global, capture_index, f"{type(exc).__name__}: {exc}",
+                        )
                         continue
                 tempo_ms_eixo = time_s * 1000.0
                 ids.append(capture_id)
@@ -2841,6 +3418,13 @@ class ExperimentoBase(ABC):
                     "nivel_indice": capture_index if (cobertura_por_nivel_ativa or not simulated) else 0,
                 })
                 metadados[-1].update(self._metricas_p09(capture_index))
+                rerun_de = getattr(self.config, "rerun_de", None)
+                if rerun_de:
+                    # Rerun (v1.15, acrescentado): sessão e captura de origem.
+                    metadados[-1]["rerun_de"] = {
+                        "sessao": rerun_de.get("sessao"), "id_captura": capture_id,
+                        "perfil": metadados[-1]["perfil"],
+                    }
                 extremos: Dict[str, object] = {}
                 if not simulated:
                     metadados[-1].update(self._contexto_da_sessao())
@@ -2906,6 +3490,10 @@ class ExperimentoBase(ABC):
                         metadados[-1]["validacao_fisica"] = validacao
                         if not validacao["ok"]:
                             capturas_invalidas.append((capture_id, validacao["motivos"]))
+                            self._registrar_falha(
+                                "invalida", indice_global, capture_index,
+                                "validação física: " + "; ".join(map(str, validacao["motivos"])),
+                            )
                             logger.error(
                                 "[%s] captura %s NÃO corresponde ao que foi programado: %s",
                                 self.id, capture_id, "; ".join(validacao["motivos"]),
@@ -2929,7 +3517,15 @@ class ExperimentoBase(ABC):
                     # Só DEPOIS de gravada: a captura que passou do teto é a evidência.
                     self._conferir_extremos_fisicos(capture_id, extremos)
 
-        except BaseException:
+        except BaseException as exc:
+            if isinstance(exc, LimiteEscritasTraceError):
+                # Orçamento de TRACe esgotado NESTA captura: ela e as seguintes
+                # do plano ficam em falhas.json para ``run falhas``.
+                for indice_restante, capture_restante in plano[posicao:]:
+                    self._registrar_falha(
+                        "nao_executada_orcamento", indice_restante, capture_restante,
+                        f"não executada: {exc}",
+                    )
             # Fecha a gravação incremental PRESERVANDO o que já foi para o
             # disco (metadata parcial promovido, limpeza de órfãos suprimida)
             # antes de deixar a exceção subir para executar_bateria().
@@ -3028,6 +3624,24 @@ class ExperimentoNativo(ExperimentoBase):
 
     def grava_trace(self, capture_index: int) -> bool:
         return bool(self.usar_trace(capture_index))
+
+    def exigencias_nativas(self, capture_index: int, parametros: Dict[str, float]) -> Dict[str, object]:
+        """Exigências do transiente nativo desta captura (nomes de
+        ``CAPACIDADES_MX30``), sem tocar a fonte. Padrão: PULSe (02/03/04) exige
+        ``pulse_width_s`` = duração sorteada por ``gerar()`` (ou a legada,
+        ``DURACAO_S``) — a mesma de ``largura_do_pulso_s``. 18 e 19 sobrescrevem."""
+        if FORMA_NATIVA_POR_CLASSE.get(str(self.id)) == "PULSe":
+            legada = getattr(self, "DURACAO_S", None)
+            largura = parametros.get("duracao_s", legada)
+            if largura is not None:
+                return {"pulse_width_s": float(largura)}
+        return {}
+
+    def exigencias_de_capacidade(self, capture_index, forma_pu, parametros):
+        exigencias = super().exigencias_de_capacidade(capture_index, forma_pu, parametros)
+        if not self.grava_trace(capture_index):
+            exigencias.update(self.exigencias_nativas(capture_index, parametros))
+        return exigencias
 
     def scope_scale_v(self) -> Optional[float]:
         """Override para fixar a escala vertical do osciloscópio antes do
@@ -3356,10 +3970,10 @@ def capturas_efetivas_da_classe(experimento_cls: type, config: Optional[Config] 
     experimento = experimento_cls(Bancada(None, None, config))
     por_nivel, capturas_por_nivel, total = experimento.dimensionar_capturas(False)
     ciclos = int(round(config.duration_s * config.grid_frequency_hz))
-    com_trace = sum(
-        1 for _, capture_index in experimento.plano_de_capturas(False)
-        if experimento.grava_trace(capture_index)
-    )
+    plano = experimento.plano_de_capturas(False)
+    # Igual a ``total`` sem filtro; num rerun, só as capturas escolhidas.
+    total = len(plano)
+    com_trace = sum(1 for _, capture_index in plano if experimento.grava_trace(capture_index))
     return {
         "padrao": int(experimento.capturas_padrao),
         "niveis": experimento.total_niveis() if por_nivel else 1,
