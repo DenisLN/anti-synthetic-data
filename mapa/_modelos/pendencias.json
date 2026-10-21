@@ -138,14 +138,15 @@
  {
   "id": "P-09",
   "titulo": "quantificar perda da média por ciclo e viabilidade física de offset",
-  "status": "aguarda-decisao",
+  "status": "aguarda-bancada",
   "prioridade": "baixa",
   "responsavel": "B",
   "acao": "quantificar perda da média por ciclo e viabilidade física de offset; recomendar aceitar limite até haver evidência",
   "dependencia": "P-17 para eventual compensação ACDC",
   "criterio": "Decisão registrada com erro quantificado; se optar por mudança, demonstração técnica e regressões antes/depois",
-  "falta": "Perda quantificada (`evidencias/2026-10-16/modelo_programado.json`); responsável aprova \"aceitar limite\"",
+  "falta": "Pesquisa feita (21/10): implementar (d) registro modelo→programada + protótipo simulado de offset por passo; na bancada consultar `LIST:VOLT:OFFS?` (sem energizar); se não existir, aceitar como limitação",
   "frentes": [
+   "K",
    "D"
   ],
   "evidencias": [
@@ -333,7 +334,7 @@
   "acao": "preparar congelamento, licença, autoria, citação e Zenodo",
   "dependencia": "Cobertura validada e decisões de direitos/publicação",
   "criterio": "Tag/release verificáveis, metadados aprovados, licença autorizada; DOI somente quando emitido",
-  "falta": "Licença, autoria, citação, tag/Zenodo — só o responsável decide",
+  "falta": "Aguarda o Denis: licença, autoria, citação, tag/Zenodo",
   "frentes": [
    "D"
   ],
@@ -479,14 +480,15 @@
  {
   "id": "P-29",
   "titulo": "obter transcrições reais e selecionar exemplos verificáveis para comandos",
-  "status": "aguarda-decisao",
+  "status": "aguarda-bancada",
   "prioridade": "media",
   "responsavel": "C + responsável",
   "acao": "obter transcrições reais e selecionar exemplos verificáveis para comandos",
   "dependencia": "Logs locais não versionados e definição de publicação",
   "criterio": "Trechos com sessão, condição, contexto e revisão; revisar dados sensíveis antes de publicar; ausência dos logs permanece bloqueio",
-  "falta": "Transcrições reais de sessões (logs locais do PC da bancada)",
+  "falta": "Decisão B (21/10): logs antigos indisponíveis; usar `scpi_transcricao.log` das sessões novas, com revisão de dados sensíveis",
   "frentes": [
+   "R",
    "D"
   ],
   "evidencias": [],
@@ -501,7 +503,7 @@
   "acao": "definir escopo de “piloto” e reconciliar 63 vs 99",
   "dependencia": "Sessões originais e critério de inclusão",
   "criterio": "Tabela por sessão com 36+36+27, justificando subconjuntos; registrar retificação sem apagar histórico",
-  "falta": "Sessões originais para reconciliar 99 (36+36+27) × 63 piloto",
+  "falta": "Dados de 07/10 irrecuperáveis; proposta D (contagens históricas não verificáveis) aguarda confirmação",
   "frentes": [
    "D"
   ],

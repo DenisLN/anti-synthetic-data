@@ -8,7 +8,7 @@ Fonte única de **estado**. Narrativa e critérios completos: `execucao_pendenci
 
 | Concluídas | Software pronto, falta bancada | Falta decisão/dado do responsável | Abertas |
 |---|---|---|---|
-| 10 | 17 | 4 | 0 |
+| 10 | 19 | 2 | 0 |
 
 ## Protocolo para agentes (economia de contexto)
 
@@ -42,7 +42,7 @@ Estados: **✅** concluída · **🔧→🏭** software pronto, falta bancada ·
 | P-06 | 🔧→🏭 | Bug de estado corrigido; falta continuidade de fase 47→53 Hz real | K,R |
 | P-07 | 🔧→🏭 | Recalibrar 07/17 com medidas reais e validar na coleta seguinte | K,R |
 | P-08 | 🔧→🏭 | Pico/vale 10/11/12/16 contra teto previsto, por condição | K,R |
-| P-09 | ❓ | Perda quantificada (`evidencias/2026-10-16/modelo_programado.json`); responsável aprova "aceitar limite" | D |
+| P-09 | 🔧→🏭 | Pesquisa feita (21/10): implementar (d) registro modelo→programada + protótipo simulado de offset por passo; na bancada consultar `LIST:VOLT:OFFS?` (sem energizar); se não existir, aceitar como limitação | K,D |
 | P-10 | 🔧→🏭 | RMS/THD da 05: CSIN 10/15/20%, norma 2%, TRACe 30% | K,R |
 | P-11 | ✅ | — | — |
 | P-12 | ✅ | — | — |
@@ -53,7 +53,7 @@ Estados: **✅** concluída · **🔧→🏭** software pronto, falta bancada ·
 | P-17 | 🔧→🏭 | Diagnóstico ACDC (`scripts/diag_acdc_amplitude.py`) real, só a 127 V (P-26: sem 230 V) | K,R |
 | P-18 | 🔧→🏭 | SINE integrado OFF; validar aceitação LIST/restauração na fonte; responsável confirma padrão OFF | K,R,D |
 | P-19 | 🔧→🏭 | `TRACe:DATA?` real: 1024 finitos ou não suportado | K,R |
-| P-20 | ❓ | Licença, autoria, citação, tag/Zenodo — só o responsável decide | D |
+| P-20 | ❓ | Aguarda o Denis: licença, autoria, citação, tag/Zenodo | D |
 | P-21 | 🔧→🏭 | Calibrar 220 V/60 Hz e 33 V/60 Hz antes da coleta científica (sem tabela; 220 V tem 52/150 capturas recusadas pela previsão conservadora) | K,R |
 | P-22 | 🔧→🏭 | Benchmark com sessões físicas no PC/disco da bancada | K,R |
 | P-23 | 🔧→🏭 | Orçamento 216/conexão aplicado; causa física da trava só com diagnóstico real | K,R |
@@ -62,11 +62,13 @@ Estados: **✅** concluída · **🔧→🏭** software pronto, falta bancada ·
 | P-26 | 🔧→🏭 | Decidida em 21/10: 5 condições, `set perfil todos`, 1 captura/classe, sem ACDC a 230 V. Fecha quando as sessões registrarem essa configuração | K,R |
 | P-27 | ✅ | — | — |
 | P-28 | 🔧→🏭 | Preservação do bruto implementada (`f974954`); falta exportação real + análise | K,R |
-| P-29 | ❓ | Transcrições reais de sessões (logs locais do PC da bancada) | D |
-| P-30 | ❓ | Sessões originais para reconciliar 99 (36+36+27) × 63 piloto | D |
+| P-29 | 🔧→🏭 | Decisão B (21/10): logs antigos indisponíveis; usar `scpi_transcricao.log` das sessões novas, com revisão de dados sensíveis | R,D |
+| P-30 | ❓ | Dados de 07/10 irrecuperáveis; proposta D (contagens históricas não verificáveis) aguarda confirmação | D |
 | P-31 | 🔧→🏭 | Métricas offline publicadas; falta sessões novas + escolha da métrica oficial | K,R,D |
 
 ## Log de rodadas (uma linha por rodada, mais recente no topo)
+
+- 2026-10-21 — P-29: decisão B (logs novos). P-20: aguarda Denis. P-09: alternativas pesquisadas (manual p. 96/126); plano (d)+(b)-simulado+consulta na bancada. P-30: proposta D aguardando confirmação.
 
 - 2026-10-21 — P-26 decidida (todos, padrão, ACDC só a 127 V); passa a aguardar só a conferência nas sessões. Roteiro atualizado.
 

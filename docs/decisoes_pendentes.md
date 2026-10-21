@@ -21,7 +21,12 @@ Branches consultados: `origin/main`, `origin/feat/execucao-pendencias-v1-15`, `u
 - B. Não aceitar; abrir investigação de offset por passo (exige P-17 e bancada).
 - C. Aceitar só para as classes 06 e 15 (perda abaixo de 0,03 pu) e tratar as compostas à parte.
 
-Resposta:
+Resposta (21/10/2026, responsável): aceitar como limitação **somente se** as alternativas não se confirmarem. Resultado da pesquisa:
+  - Mecanismo: a fonte remove o DC de toda TRACe (manual SCPI, p. 126) e `montar_programacao` zera a média de cada ciclo; só existe um `dc_offset_pu` global por captura. A perda é estrutural.
+  - (b) Offset DC por passo de LIST em AC+DC: `LIST:VOLT:OFFS` aparece no manual só como "Related Command" (p. 96), sem definição, então não está confirmado. Em simulação reduz o erro rms de 0,097 para 0,0015 pu (classe 16). Depende da P-17 (déficit de 5–6 % na CA em AC+DC).
+  - (c) TRACe com média embutida: inviável pelo manual (DC removido).
+  - (d) Validar a fidelidade física contra a programada e publicar a distância modelo→programada por captura: viável agora, só software.
+  - Plano: (1) agora, implementar (d) e prototipar (b) em simulação, com testes; (2) na bancada, com a saída desligada, consultar `LIST:VOLT:OFFS?` em AC+DC e ler `SYST:ERR?`; (3) se o comando existir, medir (b) na 16 depois da P-17; senão, fechar a P-09 como limitação aceita com (d).
 
 ## P-18 SINE (passo final) desligado por padrão
 
@@ -56,7 +61,7 @@ Zenodo:
 - A. Publicar só depois da licença e da autoria aprovadas. **[recomendado]**
 - B. Não publicar.
 
-Resposta:
+Resposta: aguardar o Denis (21/10/2026). Nenhuma licença, autoria, citação ou DOI será criada antes da resposta dele.
 
 ## P-23 Orçamento de 216 gravações TRACe por conexão
 
@@ -94,7 +99,7 @@ Resposta (21/10/2026, responsável): 1. perfis = **todos** (`set perfil todos`);
 
 Informar: caminho/máquina dos logs, quem revisa dados sensíveis, e se podem ir ao repositório público.
 
-Resposta:
+Resposta: **B** (21/10/2026, responsável): os dados do PC antigo não podem ser copiados; os exemplos reais virão das `scpi_transcricao.log` das sessões novas da campanha v1.15 (Inspiron 15), revisados antes de publicar.
 
 ## P-30 Definição de "piloto" e reconciliação 99 × 63
 
@@ -106,7 +111,7 @@ Resposta:
 
 Informar: critério de inclusão, se B; e entrega dos metadados das três sessões de 07/10.
 
-Resposta:
+Resposta (21/10/2026): os dados de 07/10 não podem ser recuperados. Proposta D, aguardando confirmação: registrar 63 e 99 como contagens históricas não verificáveis, sem apagar o histórico nem usá-las como resultado, como na P-27.
 
 ## P-31 Métrica oficial de correlação do distúrbio
 
