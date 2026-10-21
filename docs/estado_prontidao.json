@@ -82,8 +82,11 @@
       ]
     },
     "P16": {
-      "status": "aberta",
-      "evidencias": []
+      "status": "concluida",
+      "evidencias": [
+        "evidencias/2026-10-21/pc_bancada.json",
+        "evidencias/2026-10-21/pc_bancada.log"
+      ]
     },
     "P17": {
       "status": "aberta",

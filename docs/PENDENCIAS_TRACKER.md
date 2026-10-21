@@ -8,7 +8,7 @@ Fonte única de **estado**. Narrativa e critérios completos: `execucao_pendenci
 
 | Concluídas | Software pronto, falta bancada | Falta decisão/dado do responsável | Abertas |
 |---|---|---|---|
-| 9 | 17 | 5 | 0 |
+| 10 | 16 | 5 | 0 |
 
 ## Protocolo para agentes (economia de contexto)
 
@@ -48,7 +48,7 @@ Estados: **✅** concluída · **🔧→🏭** software pronto, falta bancada ·
 | P-13 | ✅ | — | — |
 | P-14 | ✅ | — | — |
 | P-15 | ✅ | — | — |
-| P-16 | 🔧→🏭 | Suíte offline no PC Windows da bancada (log, SHA, versões) | K,R |
+| P-16 | ✅ | — (suíte 680/0 falhas/0 skips no PC da bancada DESKTOP-FSEESJI, `21fb300`; `evidencias/2026-10-21/pc_bancada.json`) | — |
 | P-17 | 🔧→🏭 | Diagnóstico ACDC (`scripts/diag_acdc_amplitude.py`) real | K,R |
 | P-18 | 🔧→🏭 | SINE integrado OFF; validar aceitação LIST/restauração na fonte; responsável confirma padrão OFF | K,R,D |
 | P-19 | 🔧→🏭 | `TRACe:DATA?` real: 1024 finitos ou não suportado | K,R |
@@ -66,6 +66,8 @@ Estados: **✅** concluída · **🔧→🏭** software pronto, falta bancada ·
 | P-31 | 🔧→🏭 | Métricas offline publicadas; falta sessões novas + escolha da métrica oficial | K,R,D |
 
 ## Log de rodadas (uma linha por rodada, mais recente no topo)
+
+- 2026-10-21 — Inspiron 15 (DESKTOP-FSEESJI) definido como PC da bancada e preparado (Python 3.11.9, env validado, NI-VISA, energia/USB, atalho START_BENCH). **P-16 concluída** (8/8 critérios do agregador). Falta: driver USB da AMETEK (CD CIC496 ou exportar de outro PC) e COM10.
 
 - 2026-10-21 — Software das P-03 (sobressinal gravado), P-10 (rota + sequência Bloco 8-A), P-22/P-31 (ferramentas sobre sessões reais) e roteiro sem contradições; revisão Opus sem achado alto; 680 OK. Inspiron 15 (DESKTOP-FSEESJI) preparado: Python 3.11.9, env com versões validadas, NI-VISA. Restante destas quatro: só bancada.
 
