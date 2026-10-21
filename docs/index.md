@@ -122,6 +122,9 @@ versionamento
 projeto/estado-validacao
 projeto/pendencias
 execucao_pendencias
+PENDENCIAS_TRACKER
+bancada_pendencias
+decisoes_pendentes
 projeto/passo-final-sin
 projeto/analises-arquivadas
 historico
