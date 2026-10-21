@@ -1,0 +1,57 @@
+filters:
+  and:
+    - 'file.inFolder("mapa/pendencias")'
+    - 'file.hasTag("pendencia")'
+
+formulas:
+  icone: 'if(status == "concluida", "✅", if(status == "aguarda-decisao", "❓", if(status == "aguarda-bancada", "🏭", "⏳")))'
+  n_evidencias: 'evidencias.length'
+
+properties:
+  formula.icone:
+    displayName: ""
+  id:
+    displayName: "ID"
+  titulo:
+    displayName: "Pendência"
+  prioridade:
+    displayName: "Prioridade"
+  responsavel:
+    displayName: "Responsável"
+  formula.n_evidencias:
+    displayName: "Evidências"
+
+views:
+  - type: table
+    name: "Todas por estado"
+    groupBy:
+      property: status
+      direction: ASC
+    order:
+      - formula.icone
+      - id
+      - titulo
+      - prioridade
+      - responsavel
+      - formula.n_evidencias
+    summaries:
+      id: Count
+
+  - type: table
+    name: "Fila da bancada"
+    filters: 'status == "aguarda-bancada"'
+    groupBy:
+      property: prioridade
+      direction: ASC
+    order:
+      - id
+      - titulo
+      - responsavel
+
+  - type: table
+    name: "Decisões do responsável"
+    filters: 'status == "aguarda-decisao"'
+    order:
+      - id
+      - titulo
+      - prioridade

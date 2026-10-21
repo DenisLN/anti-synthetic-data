@@ -9,3 +9,6 @@ backups/
 .DS_Store
 .pytest_cache/
 .claude/
+
+# Configuração local do Obsidian (o vault é a raiz do repositório)
+.obsidian/

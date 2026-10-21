@@ -1,0 +1,487 @@
+{
+	"nodes": [
+		{
+			"id": "ac4ea1c001f5aa38",
+			"type": "group",
+			"x": 0,
+			"y": 200,
+			"width": 300,
+			"height": 250,
+			"label": "Interface",
+			"color": "5"
+		},
+		{
+			"id": "fbd2cb1f02045198",
+			"type": "file",
+			"file": "mapa/codigo/cli.md",
+			"x": 20,
+			"y": 240,
+			"width": 260,
+			"height": 70
+		},
+		{
+			"id": "4d95dcf4f631d8e8",
+			"type": "file",
+			"file": "mapa/codigo/preflight_new.md",
+			"x": 20,
+			"y": 340,
+			"width": 260,
+			"height": 70
+		},
+		{
+			"id": "1b2ac0272709fb39",
+			"type": "group",
+			"x": 380,
+			"y": 200,
+			"width": 300,
+			"height": 350,
+			"label": "Orquestração",
+			"color": "6"
+		},
+		{
+			"id": "48a43580046058e6",
+			"type": "file",
+			"file": "mapa/codigo/mestre.md",
+			"x": 400,
+			"y": 240,
+			"width": 260,
+			"height": 70
+		},
+		{
+			"id": "7a005b32137c6616",
+			"type": "file",
+			"file": "mapa/codigo/perfis.md",
+			"x": 400,
+			"y": 340,
+			"width": 260,
+			"height": 70
+		},
+		{
+			"id": "1e960d83c972441c",
+			"type": "file",
+			"file": "mapa/codigo/politica_traces.md",
+			"x": 400,
+			"y": 440,
+			"width": 260,
+			"height": 70
+		},
+		{
+			"id": "3d678651b55991ee",
+			"type": "group",
+			"x": 760,
+			"y": 200,
+			"width": 300,
+			"height": 350,
+			"label": "Instrumentos",
+			"color": "1"
+		},
+		{
+			"id": "aecf7369c832be3d",
+			"type": "file",
+			"file": "mapa/codigo/ametek_orm.md",
+			"x": 780,
+			"y": 240,
+			"width": 260,
+			"height": 70
+		},
+		{
+			"id": "a8d50480904aed28",
+			"type": "file",
+			"file": "mapa/codigo/oscilloscope_orm.md",
+			"x": 780,
+			"y": 340,
+			"width": 260,
+			"height": 70
+		},
+		{
+			"id": "a975d778be02d47b",
+			"type": "file",
+			"file": "mapa/codigo/modelo_lista_fonte.md",
+			"x": 780,
+			"y": 440,
+			"width": 260,
+			"height": 70
+		},
+		{
+			"id": "157d64700680ee0b",
+			"type": "group",
+			"x": 1140,
+			"y": 200,
+			"width": 300,
+			"height": 250,
+			"label": "Sinais",
+			"color": "3"
+		},
+		{
+			"id": "e15744160caf8230",
+			"type": "file",
+			"file": "mapa/codigo/sinais.md",
+			"x": 1160,
+			"y": 240,
+			"width": 260,
+			"height": 70
+		},
+		{
+			"id": "31024388381dc71a",
+			"type": "file",
+			"file": "mapa/codigo/recortar_margem.md",
+			"x": 1160,
+			"y": 340,
+			"width": 260,
+			"height": 70
+		},
+		{
+			"id": "157814f0a9b04701",
+			"type": "group",
+			"x": 1520,
+			"y": 200,
+			"width": 300,
+			"height": 250,
+			"label": "Persistência",
+			"color": "4"
+		},
+		{
+			"id": "1532881fb0f96876",
+			"type": "file",
+			"file": "mapa/codigo/sessao_io.md",
+			"x": 1540,
+			"y": 240,
+			"width": 260,
+			"height": 70
+		},
+		{
+			"id": "0ff2824899ba181a",
+			"type": "file",
+			"file": "mapa/codigo/bruto_osciloscopio_io.md",
+			"x": 1540,
+			"y": 340,
+			"width": 260,
+			"height": 70
+		},
+		{
+			"id": "9932fe983375ba8f",
+			"type": "group",
+			"x": 1900,
+			"y": 200,
+			"width": 300,
+			"height": 350,
+			"label": "Análise",
+			"color": "2"
+		},
+		{
+			"id": "da1eef7cd2cc68d2",
+			"type": "file",
+			"file": "mapa/codigo/analisar_sessao.md",
+			"x": 1920,
+			"y": 240,
+			"width": 260,
+			"height": 70
+		},
+		{
+			"id": "16b08dbc5e8ade4b",
+			"type": "file",
+			"file": "mapa/codigo/relatorio_html.md",
+			"x": 1920,
+			"y": 340,
+			"width": 260,
+			"height": 70
+		},
+		{
+			"id": "7fbc452fd6e9f8b2",
+			"type": "file",
+			"file": "mapa/codigo/scripts.md",
+			"x": 1920,
+			"y": 440,
+			"width": 260,
+			"height": 70
+		},
+		{
+			"id": "9d3ad8fe5a05bcb2",
+			"type": "file",
+			"file": "mapa/00 Início.md",
+			"x": 0,
+			"y": 0,
+			"width": 300,
+			"height": 120,
+			"color": "5"
+		},
+		{
+			"id": "c31c2dc46e4870cb",
+			"type": "file",
+			"file": "docs/PENDENCIAS_TRACKER.md",
+			"x": 360,
+			"y": 0,
+			"width": 300,
+			"height": 120
+		},
+		{
+			"id": "58fd622607ba7fe4",
+			"type": "file",
+			"file": "mapa/Pendencias.base",
+			"x": 720,
+			"y": 0,
+			"width": 300,
+			"height": 120
+		},
+		{
+			"id": "a9c51a6ae4247164",
+			"type": "file",
+			"file": "docs/bancada_pendencias.md",
+			"x": 1080,
+			"y": 0,
+			"width": 300,
+			"height": 120
+		},
+		{
+			"id": "0436f30a8c26cf84",
+			"type": "file",
+			"file": "docs/decisoes_pendentes.md",
+			"x": 1440,
+			"y": 0,
+			"width": 300,
+			"height": 120
+		},
+		{
+			"id": "622fbe466f51fc16",
+			"type": "group",
+			"x": 0,
+			"y": 660,
+			"width": 1840,
+			"height": 150,
+			"label": "Domínio",
+			"color": "4"
+		},
+		{
+			"id": "b1fe62da3ff8d729",
+			"type": "file",
+			"file": "mapa/dominio/Bancada.md",
+			"x": 20,
+			"y": 700,
+			"width": 260,
+			"height": 90
+		},
+		{
+			"id": "24af5624d5f319ee",
+			"type": "file",
+			"file": "mapa/dominio/Operação na bancada.md",
+			"x": 320,
+			"y": 700,
+			"width": 260,
+			"height": 90
+		},
+		{
+			"id": "70593ede73a7baeb",
+			"type": "file",
+			"file": "mapa/dominio/Classes.md",
+			"x": 620,
+			"y": 700,
+			"width": 260,
+			"height": 90
+		},
+		{
+			"id": "f721e25f841690cd",
+			"type": "file",
+			"file": "mapa/dominio/Fluxo de uma captura.md",
+			"x": 920,
+			"y": 700,
+			"width": 260,
+			"height": 90
+		},
+		{
+			"id": "232e04de3fbbd86e",
+			"type": "file",
+			"file": "mapa/dominio/Dataset e sessões.md",
+			"x": 1220,
+			"y": 700,
+			"width": 260,
+			"height": 90
+		},
+		{
+			"id": "c898ded7eeb0057b",
+			"type": "file",
+			"file": "mapa/dominio/Segurança e limites.md",
+			"x": 1520,
+			"y": 700,
+			"width": 260,
+			"height": 90
+		}
+	],
+	"edges": [
+		{
+			"id": "bf4f87ce2a542f7d",
+			"fromNode": "9d3ad8fe5a05bcb2",
+			"toNode": "c31c2dc46e4870cb",
+			"toEnd": "arrow"
+		},
+		{
+			"id": "ab25185291770e0b",
+			"fromNode": "c31c2dc46e4870cb",
+			"toNode": "58fd622607ba7fe4",
+			"toEnd": "arrow"
+		},
+		{
+			"id": "d2d0074fbd30fe78",
+			"fromNode": "c31c2dc46e4870cb",
+			"toNode": "a9c51a6ae4247164",
+			"toEnd": "arrow"
+		},
+		{
+			"id": "d75028f8c5ca98e4",
+			"fromNode": "c31c2dc46e4870cb",
+			"toNode": "0436f30a8c26cf84",
+			"toEnd": "arrow"
+		},
+		{
+			"id": "2f29cb9eaa994cf3",
+			"fromNode": "c898ded7eeb0057b",
+			"toNode": "aecf7369c832be3d",
+			"toEnd": "arrow",
+			"color": "1"
+		},
+		{
+			"id": "22893f1322b2b7d6",
+			"fromNode": "aecf7369c832be3d",
+			"toNode": "1e960d83c972441c",
+			"toEnd": "arrow"
+		},
+		{
+			"id": "f24f0f33b13e5777",
+			"fromNode": "da1eef7cd2cc68d2",
+			"toNode": "1532881fb0f96876",
+			"toEnd": "arrow"
+		},
+		{
+			"id": "dbc92107e6394179",
+			"fromNode": "da1eef7cd2cc68d2",
+			"toNode": "e15744160caf8230",
+			"toEnd": "arrow"
+		},
+		{
+			"id": "2bdf5fd5a22ea41d",
+			"fromNode": "fbd2cb1f02045198",
+			"toNode": "48a43580046058e6",
+			"toEnd": "arrow"
+		},
+		{
+			"id": "e2b579f1bf2fc01e",
+			"fromNode": "fbd2cb1f02045198",
+			"toNode": "7a005b32137c6616",
+			"toEnd": "arrow"
+		},
+		{
+			"id": "4896de41ae4cba4e",
+			"fromNode": "fbd2cb1f02045198",
+			"toNode": "4d95dcf4f631d8e8",
+			"toEnd": "arrow"
+		},
+		{
+			"id": "728339cad895f5a2",
+			"fromNode": "fbd2cb1f02045198",
+			"toNode": "16b08dbc5e8ade4b",
+			"toEnd": "arrow"
+		},
+		{
+			"id": "931772e41dfcec3d",
+			"fromNode": "fbd2cb1f02045198",
+			"toNode": "1532881fb0f96876",
+			"toEnd": "arrow"
+		},
+		{
+			"id": "ebfe880f084e7f3e",
+			"fromNode": "48a43580046058e6",
+			"toNode": "aecf7369c832be3d",
+			"toEnd": "arrow"
+		},
+		{
+			"id": "8e01410f35e777d7",
+			"fromNode": "48a43580046058e6",
+			"toNode": "0ff2824899ba181a",
+			"toEnd": "arrow"
+		},
+		{
+			"id": "2c6997dd658c8640",
+			"fromNode": "48a43580046058e6",
+			"toNode": "a8d50480904aed28",
+			"toEnd": "arrow"
+		},
+		{
+			"id": "5494cc215ff92a63",
+			"fromNode": "48a43580046058e6",
+			"toNode": "7a005b32137c6616",
+			"toEnd": "arrow"
+		},
+		{
+			"id": "abb2eaa2944bd960",
+			"fromNode": "48a43580046058e6",
+			"toNode": "1e960d83c972441c",
+			"toEnd": "arrow"
+		},
+		{
+			"id": "f39b3469961e336c",
+			"fromNode": "48a43580046058e6",
+			"toNode": "1532881fb0f96876",
+			"toEnd": "arrow"
+		},
+		{
+			"id": "b134b37a8232c7d5",
+			"fromNode": "48a43580046058e6",
+			"toNode": "e15744160caf8230",
+			"toEnd": "arrow"
+		},
+		{
+			"id": "a7294f5e94a28882",
+			"fromNode": "4d95dcf4f631d8e8",
+			"toNode": "48a43580046058e6",
+			"toEnd": "arrow"
+		},
+		{
+			"id": "e556456a87f67a3c",
+			"fromNode": "4d95dcf4f631d8e8",
+			"toNode": "e15744160caf8230",
+			"toEnd": "arrow"
+		},
+		{
+			"id": "e2423969ad54bc3d",
+			"fromNode": "31024388381dc71a",
+			"toNode": "1532881fb0f96876",
+			"toEnd": "arrow"
+		},
+		{
+			"id": "98071ed7faa34c86",
+			"fromNode": "31024388381dc71a",
+			"toNode": "e15744160caf8230",
+			"toEnd": "arrow"
+		},
+		{
+			"id": "0b49f6f3236446e0",
+			"fromNode": "16b08dbc5e8ade4b",
+			"toNode": "da1eef7cd2cc68d2",
+			"toEnd": "arrow"
+		},
+		{
+			"id": "622781e1d96a2583",
+			"fromNode": "16b08dbc5e8ade4b",
+			"toNode": "31024388381dc71a",
+			"toEnd": "arrow"
+		},
+		{
+			"id": "0755a73e0c517494",
+			"fromNode": "16b08dbc5e8ade4b",
+			"toNode": "1532881fb0f96876",
+			"toEnd": "arrow"
+		},
+		{
+			"id": "117a84bca45e9d48",
+			"fromNode": "7fbc452fd6e9f8b2",
+			"toNode": "1532881fb0f96876",
+			"toEnd": "arrow",
+			"label": "lê sessões"
+		},
+		{
+			"id": "1dff3b669a339009",
+			"fromNode": "f721e25f841690cd",
+			"toNode": "fbd2cb1f02045198",
+			"toEnd": "arrow"
+		}
+	]
+}

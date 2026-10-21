@@ -1,0 +1,528 @@
+[
+ {
+  "id": "P-01",
+  "titulo": "executar campanha v1.15 e reconciliar cobertura por classe/perfil/condição",
+  "status": "aguarda-bancada",
+  "prioridade": "alta",
+  "responsavel": "Coordenador + operador",
+  "acao": "executar campanha v1.15 e reconciliar cobertura por classe/perfil/condição",
+  "dependencia": "Etapas 0–3; P-26",
+  "criterio": "Sessões reais com SHA/configuração, análise de cada bloco; lacunas permanecem explícitas",
+  "falta": "Campanha v1.15 real por classe/perfil/condição",
+  "frentes": [
+   "K",
+   "R"
+  ],
+  "evidencias": [],
+  "evidencias_txt": "—"
+ },
+ {
+  "id": "P-02",
+  "titulo": "comparar marcadores, TRACe recuperada e recaptura 08/09",
+  "status": "aguarda-bancada",
+  "prioridade": "alta",
+  "responsavel": "B + operador",
+  "acao": "comparar marcadores, TRACe recuperada e recaptura 08/09; testar hipóteses do evento em 100 ms",
+  "dependencia": "Dados e blocos 4/6 do roteiro; P-19",
+  "criterio": "Diagnóstico discriminando hipóteses; correção, se necessária, seguida de nova captura. Ferramenta existente não fecha mecanismo",
+  "falta": "Marcadores + TRACe recuperada + recaptura 08/09 (evento 100 ms)",
+  "frentes": [
+   "K",
+   "R"
+  ],
+  "evidencias": [],
+  "evidencias_txt": "—"
+ },
+ {
+  "id": "P-03",
+  "titulo": "recapturar 08 a 127 V/50 Hz com evento em 90 ms",
+  "status": "aguarda-bancada",
+  "prioridade": "alta",
+  "responsavel": "B + operador",
+  "acao": "recapturar 08 a 127 V/50 Hz com evento em 90 ms",
+  "dependencia": "Campanha e checagem de segurança",
+  "criterio": "Desvio absoluto ≤10 amostras, pico ≤374,2 V, sobressinal ≤0,55 conforme critério documentado; acima disso registrar achado de segurança",
+  "falta": "Recaptura 08, 127 V/50 Hz, evento 90 ms: ≤10 amostras, pico ≤374,2 V",
+  "frentes": [
+   "K",
+   "R"
+  ],
+  "evidencias": [],
+  "evidencias_txt": "—"
+ },
+ {
+  "id": "P-04",
+  "titulo": "conferir `program_capture`",
+  "status": "concluida",
+  "prioridade": "media",
+  "responsavel": "A",
+  "acao": "conferir `program_capture`; propor recusa de pico excessivo nos caminhos completo e por ciclo",
+  "dependencia": "Baseline e decisão de comportamento",
+  "criterio": "Testes com instrumento falso provando recusa antes de escrita pertinente, fronteiras válidas aceitas e nenhum enfraquecimento de validações",
+  "falta": "— (software)",
+  "frentes": [],
+  "evidencias": [
+   "evidencias/2026-10-17/validacao_software.json",
+   "execucao_pendencias.md"
+  ],
+  "evidencias_txt": "`docs/evidencias/2026-10-17/validacao_software.json`, `docs/execucao_pendencias.md`"
+ },
+ {
+  "id": "P-05",
+  "titulo": "medir fase, posição, largura e pretrigger nas 01–04 com sorteio",
+  "status": "aguarda-bancada",
+  "prioridade": "media",
+  "responsavel": "B + operador",
+  "acao": "medir fase, posição, largura e pretrigger nas 01–04 com sorteio",
+  "dependencia": "Campanha v1.15",
+  "criterio": "Sessões reais e relatório do verificador; registrar desvio >2 amostras como aviso, não inventar tolerância de aprovação",
+  "falta": "Fase/início/largura/pretrigger nas 01–04 com sorteio",
+  "frentes": [
+   "K",
+   "R"
+  ],
+  "evidencias": [],
+  "evidencias_txt": "—"
+ },
+ {
+  "id": "P-06",
+  "titulo": "medir continuidade na rampa 47→53 Hz e restauração da base",
+  "status": "aguarda-bancada",
+  "prioridade": "media",
+  "responsavel": "B + operador",
+  "acao": "medir continuidade na rampa 47→53 Hz e restauração da base",
+  "dependencia": "Classe 18 real",
+  "criterio": "Medição de fase/frequência; limiar de 10° continua proposta até fundamentação e decisão",
+  "falta": "Bug de estado corrigido; falta continuidade de fase 47→53 Hz real",
+  "frentes": [
+   "K",
+   "R"
+  ],
+  "evidencias": [],
+  "evidencias_txt": "—"
+ },
+ {
+  "id": "P-07",
+  "titulo": "recalibrar 07/17 e repetir coleta com tabela revisada",
+  "status": "aguarda-bancada",
+  "prioridade": "alta",
+  "responsavel": "B + operador",
+  "acao": "recalibrar 07/17 e repetir coleta com tabela revisada",
+  "dependencia": "Capturas reais e revisão de diff",
+  "criterio": "Fatores derivados de medições, diff revisado, calibração identificada e validação na execução seguinte",
+  "falta": "Recalibrar 07/17 com medidas reais e validar na coleta seguinte",
+  "frentes": [
+   "K",
+   "R"
+  ],
+  "evidencias": [],
+  "evidencias_txt": "—"
+ },
+ {
+  "id": "P-08",
+  "titulo": "conferir pico/vale das 10/11/12/16 contra previsão corrigida",
+  "status": "aguarda-bancada",
+  "prioridade": "alta",
+  "responsavel": "B + operador",
+  "acao": "conferir pico/vale das 10/11/12/16 contra previsão corrigida",
+  "dependencia": "Campanha v1.15",
+  "criterio": "Extremos medidos compatíveis com teto previsto, por condição; qualquer violação investigada",
+  "falta": "Pico/vale 10/11/12/16 contra teto previsto, por condição",
+  "frentes": [
+   "K",
+   "R"
+  ],
+  "evidencias": [],
+  "evidencias_txt": "—"
+ },
+ {
+  "id": "P-09",
+  "titulo": "quantificar perda da média por ciclo e viabilidade física de offset",
+  "status": "aguarda-decisao",
+  "prioridade": "baixa",
+  "responsavel": "B",
+  "acao": "quantificar perda da média por ciclo e viabilidade física de offset; recomendar aceitar limite até haver evidência",
+  "dependencia": "P-17 para eventual compensação ACDC",
+  "criterio": "Decisão registrada com erro quantificado; se optar por mudança, demonstração técnica e regressões antes/depois",
+  "falta": "Perda quantificada (`evidencias/2026-10-16/modelo_programado.json`); responsável aprova \"aceitar limite\"",
+  "frentes": [
+   "D"
+  ],
+  "evidencias": [
+   "evidencias/2026-10-16/modelo_programado.json"
+  ],
+  "evidencias_txt": "`docs/evidencias/2026-10-16/modelo_programado.json`"
+ },
+ {
+  "id": "P-10",
+  "titulo": "medir RMS/THD da 05 em CSIN 10/15/20%, norma 2% e TRACe 30%",
+  "status": "aguarda-bancada",
+  "prioridade": "media",
+  "responsavel": "B + operador",
+  "acao": "medir RMS/THD da 05 em CSIN 10/15/20%, norma 2% e TRACe 30%",
+  "dependencia": "Campanha",
+  "criterio": "Capturas reais por nível, modelo/rota identificados e comparação contra critérios de validação vigentes",
+  "falta": "RMS/THD da 05: CSIN 10/15/20%, norma 2%, TRACe 30%",
+  "frentes": [
+   "K",
+   "R"
+  ],
+  "evidencias": [],
+  "evidencias_txt": "—"
+ },
+ {
+  "id": "P-11",
+  "titulo": "comparar manter/reverter extensões 10–16",
+  "status": "concluida",
+  "prioridade": "media",
+  "responsavel": "B",
+  "acao": "comparar manter/reverter extensões 10–16; revisar metadata efetiva na redução da classe 15",
+  "dependencia": "Decisão sobre definição do dataset",
+  "criterio": "Escolha registrada, testes/fixtures justificadas; metadata consistente com o sinal efetivamente programado",
+  "falta": "—",
+  "frentes": [],
+  "evidencias": [
+   "evidencias/2026-10-17/validacao_software.json",
+   "execucao_pendencias.md"
+  ],
+  "evidencias_txt": "`docs/evidencias/2026-10-17/validacao_software.json`, `docs/execucao_pendencias.md`"
+ },
+ {
+  "id": "P-12",
+  "titulo": "quantificar efeitos nas 06/11/15",
+  "status": "concluida",
+  "prioridade": "media",
+  "responsavel": "B",
+  "acao": "quantificar efeitos nas 06/11/15; recomendar comparação com programada para preservar modelo",
+  "dependencia": "Decisão científica; P-09",
+  "criterio": "Relatório de comparação e decisão. Alterar `gerar()` só com escopo explicitamente definido e regressões do dataset",
+  "falta": "—",
+  "frentes": [],
+  "evidencias": [
+   "evidencias/2026-10-17/validacao_software.json",
+   "execucao_pendencias.md"
+  ],
+  "evidencias_txt": "`docs/evidencias/2026-10-17/validacao_software.json`, `docs/execucao_pendencias.md`"
+ },
+ {
+  "id": "P-13",
+  "titulo": "avaliar recuperação automática versus comando explícito",
+  "status": "concluida",
+  "prioridade": "baixa",
+  "responsavel": "A",
+  "acao": "avaliar recuperação automática versus comando explícito; recomendar recuperação visível e sem sobrescrita",
+  "dependencia": "Decisão sobre retomada e identidade da sessão",
+  "criterio": "Testes de parcial válido/truncado/corrompido e repetição idempotente; originais preservados e nenhuma energização durante recuperação",
+  "falta": "—",
+  "frentes": [],
+  "evidencias": [
+   "evidencias/2026-10-17/validacao_software.json",
+   "execucao_pendencias.md"
+  ],
+  "evidencias_txt": "`docs/evidencias/2026-10-17/validacao_software.json`, `docs/execucao_pendencias.md`"
+ },
+ {
+  "id": "P-14",
+  "titulo": "rejeitar `run 01 02` ambíguo",
+  "status": "concluida",
+  "prioridade": "baixa",
+  "responsavel": "A",
+  "acao": "rejeitar `run 01 02` ambíguo; preservar exclusões apenas na bateria e listas explícitas como pedido exato",
+  "dependencia": "Decisão documentada",
+  "criterio": "Testes para espaços, vírgulas, intervalos, IDs inválidos/duplicados e exclusões; entrada inválida não executa classe alguma",
+  "falta": "—",
+  "frentes": [],
+  "evidencias": [
+   "evidencias/2026-10-17/validacao_software.json",
+   "execucao_pendencias.md"
+  ],
+  "evidencias_txt": "`docs/evidencias/2026-10-17/validacao_software.json`, `docs/execucao_pendencias.md`"
+ },
+ {
+  "id": "P-15",
+  "titulo": "preferir corrigir texto para comportamento atual",
+  "status": "concluida",
+  "prioridade": "baixa",
+  "responsavel": "A + C",
+  "acao": "preferir corrigir texto para comportamento atual; avaliar limite explícito apenas se necessário",
+  "dependencia": "Confirmar carregamento e renderização",
+  "criterio": "Matriz de formatos 1/2 e origens simulada/física; HTML com contagem esperada; se limitar, avisar truncamento e preservar dados",
+  "falta": "—",
+  "frentes": [],
+  "evidencias": [
+   "evidencias/2026-10-17/validacao_software.json",
+   "execucao_pendencias.md"
+  ],
+  "evidencias_txt": "`docs/evidencias/2026-10-17/validacao_software.json`, `docs/execucao_pendencias.md`"
+ },
+ {
+  "id": "P-16",
+  "titulo": "rodar suíte offline no PC efetivo da bancada com calibração e checkout registrados",
+  "status": "concluida",
+  "prioridade": "media",
+  "responsavel": "D + operador",
+  "acao": "rodar suíte offline no PC efetivo da bancada com calibração e checkout registrados",
+  "dependencia": "Etapa 0 e acesso ao PC",
+  "criterio": "Log completo, versões, SHA, status, resultado e skips. Resultado de outro Windows não fecha este item",
+  "falta": "— (suíte 680/0 falhas/0 skips no PC da bancada DESKTOP-FSEESJI, `21fb300`; `evidencias/2026-10-21/pc_bancada.json`)",
+  "frentes": [],
+  "evidencias": [
+   "evidencias/2026-10-21/pc_bancada.json",
+   "evidencias/2026-10-21/pc_bancada.log"
+  ],
+  "evidencias_txt": "`docs/evidencias/2026-10-21/pc_bancada.json`, `docs/evidencias/2026-10-21/pc_bancada.log`"
+ },
+ {
+  "id": "P-17",
+  "titulo": "executar diagnóstico de amplitude ACDC, separar CA e RMS total",
+  "status": "aguarda-bancada",
+  "prioridade": "media",
+  "responsavel": "B + operador",
+  "acao": "executar diagnóstico de amplitude ACDC, separar CA e RMS total",
+  "dependencia": "Escolha de tensão P-26",
+  "criterio": "Medições e análise do déficit de 5–6%; compensação V/g apenas após caracterização e nova validação",
+  "falta": "Diagnóstico ACDC (`scripts/diag_acdc_amplitude.py`) real",
+  "frentes": [
+   "K",
+   "R"
+  ],
+  "evidencias": [],
+  "evidencias_txt": "—"
+ },
+ {
+  "id": "P-18",
+  "titulo": "integração experimental do passo SINE e validação física",
+  "status": "aguarda-bancada",
+  "prioridade": "media",
+  "responsavel": "Coordenador + D + operador",
+  "acao": "integração experimental do passo SINE e validação física",
+  "dependencia": "PR #3; decisão do padrão; campanha",
+  "criterio": "Suíte do merge e teste real da aceitação LIST/forma/restauração; manter aberto se faltar bancada",
+  "falta": "SINE integrado OFF; validar aceitação LIST/restauração na fonte; responsável confirma padrão OFF",
+  "frentes": [
+   "K",
+   "R",
+   "D"
+  ],
+  "evidencias": [],
+  "evidencias_txt": "—"
+ },
+ {
+  "id": "P-19",
+  "titulo": "verificar `TRACe:DATA?` na revisão real do equipamento",
+  "status": "aguarda-bancada",
+  "prioridade": "media",
+  "responsavel": "B + operador",
+  "acao": "verificar `TRACe:DATA?` na revisão real do equipamento",
+  "dependencia": "Roteiro e observação do painel",
+  "criterio": "Resposta real com 1024 valores finitos ou registro explícito de comando não suportado; interromper diante de falha de infraestrutura",
+  "falta": "`TRACe:DATA?` real: 1024 finitos ou não suportado",
+  "frentes": [
+   "K",
+   "R"
+  ],
+  "evidencias": [],
+  "evidencias_txt": "—"
+ },
+ {
+  "id": "P-20",
+  "titulo": "preparar congelamento, licença, autoria, citação e Zenodo",
+  "status": "aguarda-decisao",
+  "prioridade": "media",
+  "responsavel": "Coordenador + responsável",
+  "acao": "preparar congelamento, licença, autoria, citação e Zenodo",
+  "dependencia": "Cobertura validada e decisões de direitos/publicação",
+  "criterio": "Tag/release verificáveis, metadados aprovados, licença autorizada; DOI somente quando emitido",
+  "falta": "Licença, autoria, citação, tag/Zenodo — só o responsável decide",
+  "frentes": [
+   "D"
+  ],
+  "evidencias": [],
+  "evidencias_txt": "—"
+ },
+ {
+  "id": "P-21",
+  "titulo": "calibrar novas condições antes de coleta científica nelas",
+  "status": "aguarda-bancada",
+  "prioridade": "media",
+  "responsavel": "B + operador",
+  "acao": "calibrar novas condições antes de coleta científica nelas",
+  "dependencia": "Segurança e campanha por condição",
+  "criterio": "Tabela por tensão/frequência com origem real e validação; não subir limite para fazer classe caber",
+  "falta": "Calibração por condição nova antes de coleta",
+  "frentes": [
+   "K",
+   "R"
+  ],
+  "evidencias": [],
+  "evidencias_txt": "—"
+ },
+ {
+  "id": "P-22",
+  "titulo": "medir tamanho/tempo/memória da consolidação com ruído e amostras físicas",
+  "status": "aguarda-bancada",
+  "prioridade": "baixa",
+  "responsavel": "A + B",
+  "acao": "medir tamanho/tempo/memória da consolidação com ruído e amostras físicas",
+  "dependencia": "Sessões reais; sintético apenas preliminar",
+  "criterio": "Benchmark reprodutível e integridade por leitura de retorno; perfis espelhados identificados como aliases da mesma captura, sem duplicar arrays nem tratá-los como medições independentes",
+  "falta": "Benchmark com sessões físicas no PC/disco da bancada",
+  "frentes": [
+   "K",
+   "R"
+  ],
+  "evidencias": [],
+  "evidencias_txt": "—"
+ },
+ {
+  "id": "P-23",
+  "titulo": "alinhar orientação a grupos de classes",
+  "status": "aguarda-bancada",
+  "prioridade": "media",
+  "responsavel": "C + A",
+  "acao": "alinhar orientação a grupos de classes; B investiga trava separadamente",
+  "dependencia": "Orçamento TRACe e roteiro",
+  "criterio": "Docs coerentes com grupos <250 gravações/conexão; causa da trava só encerrada com diagnóstico real, sem ensaio cego até travar",
+  "falta": "Orçamento 216/conexão aplicado; causa física da trava só com diagnóstico real",
+  "frentes": [
+   "K",
+   "R"
+  ],
+  "evidencias": [],
+  "evidencias_txt": "—"
+ },
+ {
+  "id": "P-24",
+  "titulo": "substituir linhas frágeis por símbolos/links estáveis, revisar carimbos, contagens, quirk B8 e tabelas do site",
+  "status": "concluida",
+  "prioridade": "media",
+  "responsavel": "C",
+  "acao": "substituir linhas frágeis por símbolos/links estáveis, revisar carimbos, contagens, quirk B8 e tabelas do site",
+  "dependencia": "Código e branch do site disponíveis",
+  "criterio": "Build conforme configuração real, links/âncoras conferidos e auditoria das referências; corrigir tabela P-03 e tabela de decisões renderizadas incorretamente",
+  "falta": "—",
+  "frentes": [],
+  "evidencias": [
+   "evidencias/2026-10-17/validacao_software.json",
+   "execucao_pendencias.md"
+  ],
+  "evidencias_txt": "`docs/evidencias/2026-10-17/validacao_software.json`, `docs/execucao_pendencias.md`"
+ },
+ {
+  "id": "P-25",
+  "titulo": "tratar ajustes editoriais um a um, preservando changelogs fechados",
+  "status": "concluida",
+  "prioridade": "baixa",
+  "responsavel": "C + coordenador",
+  "acao": "tratar ajustes editoriais um a um, preservando changelogs fechados",
+  "dependencia": "Decisão de escopo; checksum da calibração",
+  "criterio": "Diff limitado e justificativa de qualquer mudança de hash; não alterar calibração só por estética",
+  "falta": "—",
+  "frentes": [],
+  "evidencias": [
+   "evidencias/2026-10-17/validacao_software.json",
+   "execucao_pendencias.md"
+  ],
+  "evidencias_txt": "`docs/evidencias/2026-10-17/validacao_software.json`, `docs/execucao_pendencias.md`"
+ },
+ {
+  "id": "P-26",
+  "titulo": "registrar perfis, frequências e eventual ACDC 230 V antes da coleta",
+  "status": "aguarda-decisao",
+  "prioridade": "media",
+  "responsavel": "Coordenador + operador",
+  "acao": "registrar perfis, frequências e eventual ACDC 230 V antes da coleta",
+  "dependencia": "Disponibilidade da bancada",
+  "criterio": "Configuração prévia documentada e igual à sessão coletada",
+  "falta": "Responsável fixa perfis/frequências/tensões e decide ACDC 230 V",
+  "frentes": [
+   "D"
+  ],
+  "evidencias": [],
+  "evidencias_txt": "—"
+ },
+ {
+  "id": "P-27",
+  "titulo": "localizar `validacao_gerador_v1.14.md` ou tornar explícita a ausência da fonte das correlações",
+  "status": "concluida",
+  "prioridade": "baixa",
+  "responsavel": "C + B",
+  "acao": "localizar `validacao_gerador_v1.14.md` ou tornar explícita a ausência da fonte das correlações",
+  "dependencia": "Material do responsável/origem verificável",
+  "criterio": "Fonte recuperada e verificável ou alegações sem lastro removidas/reclassificadas com justificativa; não fabricar referência",
+  "falta": "—",
+  "frentes": [],
+  "evidencias": [
+   "evidencias/2026-10-17/validacao_software.json",
+   "execucao_pendencias.md"
+  ],
+  "evidencias_txt": "`docs/evidencias/2026-10-17/validacao_software.json`, `docs/execucao_pendencias.md`"
+ },
+ {
+  "id": "P-28",
+  "titulo": "comparar interpolação atual com sinal bruto e alternativa com anti-aliasing",
+  "status": "aguarda-bancada",
+  "prioridade": "baixa",
+  "responsavel": "B",
+  "acao": "comparar interpolação atual com sinal bruto e alternativa com anti-aliasing",
+  "dependencia": "Taxa bruta real; offline preliminar",
+  "criterio": "Erro temporal, espectral, pico, THD e correlação quantificados; decisão com efeito sobre compatibilidade e dataset",
+  "falta": "Preservação do bruto implementada (`f974954`); falta exportação real + análise",
+  "frentes": [
+   "K",
+   "R"
+  ],
+  "evidencias": [],
+  "evidencias_txt": "—"
+ },
+ {
+  "id": "P-29",
+  "titulo": "obter transcrições reais e selecionar exemplos verificáveis para comandos",
+  "status": "aguarda-decisao",
+  "prioridade": "media",
+  "responsavel": "C + responsável",
+  "acao": "obter transcrições reais e selecionar exemplos verificáveis para comandos",
+  "dependencia": "Logs locais não versionados e definição de publicação",
+  "criterio": "Trechos com sessão, condição, contexto e revisão; revisar dados sensíveis antes de publicar; ausência dos logs permanece bloqueio",
+  "falta": "Transcrições reais de sessões (logs locais do PC da bancada)",
+  "frentes": [
+   "D"
+  ],
+  "evidencias": [],
+  "evidencias_txt": "—"
+ },
+ {
+  "id": "P-30",
+  "titulo": "definir escopo de “piloto” e reconciliar 63 vs 99",
+  "status": "aguarda-decisao",
+  "prioridade": "baixa",
+  "responsavel": "C + B",
+  "acao": "definir escopo de “piloto” e reconciliar 63 vs 99",
+  "dependencia": "Sessões originais e critério de inclusão",
+  "criterio": "Tabela por sessão com 36+36+27, justificando subconjuntos; registrar retificação sem apagar histórico",
+  "falta": "Sessões originais para reconciliar 99 (36+36+27) × 63 piloto",
+  "frentes": [
+   "D"
+  ],
+  "evidencias": [],
+  "evidencias_txt": "—"
+ },
+ {
+  "id": "P-31",
+  "titulo": "publicar análise comparativa nominal/fundamental ajustada e recomendar ambas com nomes explícitos",
+  "status": "aguarda-bancada",
+  "prioridade": "baixa",
+  "responsavel": "B",
+  "acao": "publicar análise comparativa nominal/fundamental ajustada e recomendar ambas com nomes explícitos",
+  "dependencia": "Novas sessões v1.15; decisão de métrica",
+  "criterio": "Cálculo reprodutível nas sessões novas e definição de métrica oficial; baixas correlações não ocultadas pela escolha da métrica",
+  "falta": "Métricas offline publicadas; falta sessões novas + escolha da métrica oficial",
+  "frentes": [
+   "K",
+   "R",
+   "D"
+  ],
+  "evidencias": [],
+  "evidencias_txt": "—"
+ }
+]
