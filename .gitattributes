@@ -1,3 +1,4 @@
 # Normaliza terminação de linha pra LF no repositório, independente do SO
 # que fez o checkout — evita "modificado" fantasma entre Windows e Linux.
 * text=auto eol=lf
+docs/evidencias/** -text
