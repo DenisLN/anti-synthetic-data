@@ -22,6 +22,24 @@ Independente de `on|off` acima; desligado por padrão (`mestre.DIAGNOSTICO_RETRI
 - **Custo de tempo (estimativa, NÃO VERIFICADA na bancada)**: cada TRACe devolve ~10 kB (1024 valores `%.8g`) a 115200 baud, ~1 s de linha por TRACe, ou ~12 s para os 12 ciclos de 60 Hz (10 a 50 Hz), mais a espera mínima de 2 s quando a captura gravou TRACEs agora (o cache de TRACe, que não regrava, não paga a espera). Com o sorteio ligado toda captura regrava, então cerca de +14 s por captura (~15 min a mais em 63 capturas). O que o dado diz é só o que foi medido; use para auditar uma sessão curta, não a campanha inteira.
 - **Interpretação**: o manual diz que a fonte remove a componente DC e escala a TRACe a um formato interno e devolve valores normalizados (±1) (p. 126 e 147); `desvio_max` ≠ 0 pode ser essa normalização/quantização, não erro. Se a escala devolvida for outra, só a bancada diz.
 
+### 1.2 `set diagnostico bruto [on|off]`: preservar antes da interpolação
+
+Desligado por padrão. `set diagnostico bruto on` (ou `SALVAR_BRUTO_OSCILOSCOPIO=1`) preserva a exportação BYTE/NORMal da mesma aquisição usada pelo dataset, antes de interpolar para 30 kSa/s. Não faz outra consulta ao osciloscópio. O sinal do dataset e sua interpolação permanecem os mesmos.
+
+Cada canal gera um arquivo exclusivo em `<sessao>/bruto_osciloscopio/<perfil>/`. O NPZ pode ser lido com `allow_pickle=False`: contém códigos BYTE, preamble completa, `tempo_s` iniciado em zero, `tempo_trigger_s` relativo ao trigger e valores físicos (`tensao_v` no CH1; `corrente_a` no CH2). O `metadata_json` registra canal, captura, perfil, aquisição, seed, configuração e hash float64 little-endian do sinal correspondente em pu. O metadata da captura contém os caminhos e erros em `bruto_osciloscopio`.
+
+O arquivo é salvo logo após a leitura de cada canal: CH1 sobrevive se CH2 falhar. Pode existir bruto de uma captura depois descartada; o hash permite procurar sua correspondência, mas não prova que a captura foi validada ou persistida no dataset. Falhas do diagnóstico aparecem no log e no metadata da captura quando disponível, sem eliminar a medida principal. Uma repetição nunca sobrescreve o arquivo anterior.
+
+Para comparar uma exportação CH1, substitua o caminho e informe a frequência da sessão:
+
+```powershell
+.\env\Scripts\python.exe scripts\analisar_reamostragem.py --entrada <bruto_CH1.npz> --f0-hz 50 --harmonicos 10 --saida <analise_nova.json>
+```
+
+O analisador usa a taxa e o número de pontos registrados no NPZ para reproduzir a grade salva; `--fs-salvo` e `--pontos-salvos` permitem uma comparação alternativa explícita. Publica RMS, pico, erro temporal, energia espectral acima do Nyquist e THD ajustada conjuntamente com DC/seno/cosseno. A THD fica indisponível com justificativa quando faltam ciclos, fundamental ou condições numéricas suficientes. Hashes do arquivo, dos sinais e da configuração identificam a entrada usada.
+
+**Escopo:** BYTE/NORMal é a exportação selecionada pelo driver (até 60000 pontos), não a memória interna completa nem a taxa do ADC. O FIR é referência de análise, sujeito a transição, bordas e suavização de transientes. O resultado não aprova substituir o interpolador nem demonstra a resposta do hardware sem uma captura real.
+
 ## 2. Roteiro de investigação
 
 1. Reproduza **offline** quando possível: `tests.test_offline` (instrumentos simulados e `ScriptedVisaConnection`), ou um script em `arquivo/analises:docs/analise-AAAA-MM-DD/` que importe `mestre`/`ametek_orm`/`sinais` com `sys.path.insert(0, "logica")` (exemplos: `scripts/diag_fonte_vs_osciloscopio.py`; os diagnósticos temporários de 2026-10-12 estão em `arquivo/analises:docs/analise-2026-10-12/scripts/`).

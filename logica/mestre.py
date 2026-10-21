@@ -11,6 +11,7 @@ import os
 import shutil
 import sys
 import time
+from uuid import uuid4
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -25,6 +26,7 @@ from ametek_orm import (
 from politica_traces import LIMITE_ESCRITAS_TRACE_CONEXAO, LimiteEscritasTraceError
 import perfis
 import sessao_io
+import bruto_osciloscopio_io
 from sinais import (
     FORMA_NATIVA_POR_CLASSE, comparar_fisicamente, forma_programada_nativa, janela_nominal,
     ruido_na_janela, tempo,
@@ -358,6 +360,7 @@ DIAGNOSTICO_MODE: bool = False
 # TRACEs gravadas na fonte (``TRACe:DATA?``), num ponto seguro do fluxo, e grava
 # em ``<sessao>/diagnostico_trace/``. Desligado por padrão.
 DIAGNOSTICO_RETRIEVE: bool = False
+SALVAR_BRUTO_OSCILOSCOPIO: bool = env_bool("SALVAR_BRUTO_OSCILOSCOPIO", default=False)
 # Espera mínima (s) entre a última escrita de TRACe e a leitura (quirk A2).
 DIAGNOSTICO_RETRIEVE_ESPERA_S: float = env_float("DIAGNOSTICO_RETRIEVE_ESPERA_S", 2.0)
 PASTA_DIAGNOSTICO_TRACE = "diagnostico_trace"
@@ -787,6 +790,7 @@ class Config:
     # posições fixas anteriores à v1.15.
     sorteio_posicao: bool = True
     # Leitura de volta das TRACEs gravadas (``set diagnostico retrieve``).
+    preservar_bruto_osciloscopio: bool = False
     diagnostico_retrieve: bool = False
     diagnostico_retrieve_espera_s: float = 2.0
 
@@ -959,6 +963,7 @@ def _build_config() -> Config:
         disturbance_start_s=DISTURBANCE_START_S,
         capturas_override=CAPTURAS_OVERRIDE,
         diagnostico_mode=DIAGNOSTICO_MODE,
+        preservar_bruto_osciloscopio=SALVAR_BRUTO_OSCILOSCOPIO,
         diagnostico_retrieve=DIAGNOSTICO_RETRIEVE,
         diagnostico_retrieve_espera_s=DIAGNOSTICO_RETRIEVE_ESPERA_S,
         perfil=PERFIL,
@@ -2290,18 +2295,57 @@ class ExperimentoBase(ABC):
             info["arquivo"] = None
         metadado["diagnostico_trace"] = info
 
+    def _preservar_bruto_lido(self, canal: int, sinal_salvo: np.ndarray) -> None:
+        """Produto diagnóstico independente; falha fica explícita sem perder a captura."""
+        info = {"canal": canal, "arquivo": None, "erro": None}
+        if not hasattr(self, "_brutos_atuais"):
+            self._brutos_atuais = []
+        self._brutos_atuais.append(info)
+        try:
+            bruto = self.osc.consumir_waveform_bruto(canal)
+            if bruto is None:
+                raise ValueError("osciloscópio não forneceu snapshot bruto desta leitura")
+            contexto = {
+                **self._contexto_da_sessao(),
+                "aquisicao_id": self._aquisicao_id_atual,
+                "classe_id": self.id,
+                "seed": self._seed_captura_atual,
+                "simulado": False,
+                "estado_dataset": "pendente_validacao_e_gravacao",
+                "unidade_sinal_salvo": "pu_tensao" if canal == 1 else "pu_corrente",
+                "base_sinal_salvo": (self.config.base_voltage_rms * math.sqrt(2.)
+                                     if canal == 1 else self.config.current_base_a),
+                "parametros": self._parametros_bruto_atuais,
+            }
+            relativo = bruto_osciloscopio_io.salvar_bruto(
+                self.config.results_dir, perfis.perfil_da_config(self.config),
+                self._capture_id_atual, canal, bruto, sinal_salvo, metadata_extra=contexto,
+            )
+            info["arquivo"] = relativo.as_posix()
+            info["sinal_salvo_sha256"] = bruto_osciloscopio_io.sha256_array(sinal_salvo)
+        except Exception as exc:
+            info["erro"] = f"{type(exc).__name__}: {exc}"
+            logger.error("[%s] exportação bruta CH%d não preservada: %s", self.id, canal, exc)
+
     def _ler_captura(
         self, parametros: Dict[str, float]
     ) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray], Dict[str, float]]:
         pontos_efetivos = self._pontos_efetivos_captura_atual
-        time_s, voltage_v = self.osc.get_waveform(1, expected_points=pontos_efetivos)
+        preservar = self.config.preservar_bruto_osciloscopio
+        extras = {"preservar_bruto": True} if preservar else {}
+        self._parametros_bruto_atuais = dict(parametros)
+        time_s, voltage_v = self.osc.get_waveform(1, expected_points=pontos_efetivos, **extras)
         voltage_pu = voltage_v / (self.config.base_voltage_rms * math.sqrt(2.0))
+        if preservar:
+            self._preservar_bruto_lido(1, voltage_pu)
         current_values = None
         if self.config.capture_current:
-            current_time, current_a = self.osc.get_waveform(2, expected_points=pontos_efetivos)
+            current_time, current_a = self.osc.get_waveform(2, expected_points=pontos_efetivos, **extras)
+            current_values = current_a / float(self.config.current_base_a)
+            if preservar:
+                self._preservar_bruto_lido(2, current_values)
             if not np.allclose(current_time, time_s, rtol=0, atol=1e-9):
                 raise RuntimeError("CH1 e CH2 possuem eixos temporais diferentes")
-            current_values = current_a / float(self.config.current_base_a)
         return time_s, voltage_pu, current_values, parametros
 
     def _validar_captura(
@@ -2680,6 +2724,10 @@ class ExperimentoBase(ABC):
                 seed = self.seed_da_captura(indice_global)
                 rng = np.random.default_rng(seed)
                 capture_id = f"{self.id}-{indice_global + 1:04d}"
+                self._capture_id_atual = capture_id
+                self._seed_captura_atual = seed
+                self._aquisicao_id_atual = uuid4().hex if not simulated and self.config.preservar_bruto_osciloscopio else None
+                self._brutos_atuais = []
                 self._pre_trigger_atual_s = None
                 self._versoes_atuais = None
 
@@ -2751,6 +2799,12 @@ class ExperimentoBase(ABC):
                 if not simulated:
                     metadados[-1].update(self._contexto_da_sessao())
                     self._gravar_diagnostico_trace(capture_id, metadados[-1])
+                    if self.config.preservar_bruto_osciloscopio:
+                        metadados[-1]["bruto_osciloscopio"] = {
+                            "aquisicao_id": self._aquisicao_id_atual,
+                            "arquivos": list(self._brutos_atuais),
+                            "escopo": "exportação BYTE/NORMal antes de interpolar, não memória interna completa",
+                        }
                     # Logo depois da aquisição, antes de qualquer outro comando
                     # ao osciloscópio: a medida é sobre o registro que ele tem.
                     extremos = self._medir_extremos_fisicos()

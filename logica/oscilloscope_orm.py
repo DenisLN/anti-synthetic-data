@@ -74,6 +74,7 @@ class KeysightDSOX4034A(SCPIMixin, Instrument):
         super().__init__(adapter, name, **kwargs)
         self.channels = {index: OscChannel(self, index) for index in range(1, 5)}
         self.idn = ""
+        self._waveforms_brutos = {}
 
     def verify_identity(self, expected_model: str = "DSOX4034A") -> str:
         self.idn = self.ask("*IDN?").strip()
@@ -444,7 +445,22 @@ class KeysightDSOX4034A(SCPIMixin, Instrument):
     def sample_rate(self) -> float:
         return float(self.ask(":ACQuire:SRATe:ANALog?"))
 
-    def get_waveform(self, channel: int, *, expected_points: int = 6000) -> Tuple[np.ndarray, np.ndarray]:
+    def consumir_waveform_bruto(self, channel: int):
+        """Retira o snapshot da última leitura deste canal, sem consultar hardware.
+
+        Trata-se dos pontos BYTE exportados em modo NORMal, não da memória
+        inteira nem da taxa interna de aquisição do osciloscópio.
+        """
+        if channel not in self.channels:
+            raise ValueError(f"Canal inválido: {channel}")
+        return self._waveforms_brutos.pop(channel, None)
+
+    def get_waveform(
+        self, channel: int, *, expected_points: int = 6000, preservar_bruto: bool = False,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        # Nunca oferecer a captura anterior depois de uma leitura desativada
+        # ou malsucedida. O snapshot só é publicado ao concluir esta leitura.
+        self._waveforms_brutos.pop(channel, None)
         if channel not in self.channels:
             raise ValueError(f"Canal inválido: {channel}")
         for command in (
@@ -519,6 +535,7 @@ class KeysightDSOX4034A(SCPIMixin, Instrument):
         # mudar nem o formato do .npz nem _validar_captura().
         self.ultimo_x_origin = float(x_origin)
         self.ultimo_x_increment = float(x_increment)
+        tempo_trigger_s = time_axis.copy() if preservar_bruto else None
         time_axis -= time_axis[0]
         target_time = np.arange(expected_points, dtype=np.float64) / 30_000.0
         # Índice na grade de 30 kSa/s DEVOLVIDA (target_time, que começa na
@@ -534,6 +551,20 @@ class KeysightDSOX4034A(SCPIMixin, Instrument):
                 f"esperado {cobertura_minima:.9f} s ({expected_points} pontos a 30 kSa/s)"
             )
         target_values = np.interp(target_time, time_axis, values)
+        if preservar_bruto:
+            self._waveforms_brutos[channel] = {
+                "canal": int(channel),
+                "codigos_byte": raw.astype(np.uint8, copy=True),
+                "preamble_texto": preamble_text,
+                "preamble": np.asarray(preamble, dtype=np.float64).copy(),
+                "tempo_s": time_axis.copy(),
+                "tempo_trigger_s": tempo_trigger_s,
+                "valores": values.copy(),
+                "fs_destino_hz": 30_000.0,
+                "pontos_destino": int(expected_points),
+                "instrumento_idn": self.idn,
+                "origem": "BYTE exportado NORMal da mesma leitura de WAVeform:DATA?",
+            }
         return target_time, target_values
 
     def safe_stop(self) -> None:

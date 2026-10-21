@@ -44,6 +44,7 @@ Valores booleanos aceitos: `1/true/yes/on` e `0/false/no/off` (`env_bool`, `mest
 | `VALIDACAO_FISICA` | `1` | liga a validação pós-captura |
 | `VALIDACAO_TOL_ENVELOPE`, `VALIDACAO_TOL_THD` | `0.15`, `0.20` | tolerâncias da validação |
 | `BATERIA_EXCLUIR` | vazio | ids separados por vírgula que `run all` e `run <lista>` físicos excluem antes da confirmação (ex.: `08`); `run <NN>` isolado ainda roda |
+| `SALVAR_BRUTO_OSCILOSCOPIO` | `0` | preserva a exportação BYTE/NORMal antes da interpolação em arquivos separados; também controlado por `set diagnostico bruto on\|off`; não faz aquisição extra |
 | `DIAGNOSTICO_RETRIEVE_ESPERA_S` | `2.0` | espera mínima (s) entre a última escrita de TRACe e a leitura de `set diagnostico retrieve`; abaixo de 2 s avisa (quirk A2; `docs/diagnostico.md` §1.1). O liga/desliga é o comando `set diagnostico retrieve`, desligado por padrão |
 | `DIAGNOSTICO_ABRIR_TERMINAL` | `1` | `0`/`false`/`off`/`no` impede `set diagnostico on` de abrir a janela de `tail -f` |
 

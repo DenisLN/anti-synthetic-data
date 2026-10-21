@@ -115,6 +115,10 @@ Comandos disponíveis (nenhum energiza a saída sem pedir confirmação própria
                        de TRACe, e grava <sessao>/diagnostico_trace/<id>.npz
                        (enviado x lido) + desvio máximo no metadata. Soma
                        alguns segundos por captura (docs/diagnostico.md).   [OFF]
+  set diagnostico bruto [on|off]
+                       Preserva a exportação BYTE/NORMal dos canais antes da
+                       interpolação, sem nova aquisição, em bruto_osciloscopio/.
+                       Arquivos independentes com preamble, tempos e hash.  [OFF]
   set capturas <N>    Mínimo de capturas por classe na bancada real: cada
                        classe roda max(N, padrão da classe) — ver "list".
                        Em classes com níveis discretos (SAG/SWELL/
@@ -403,6 +407,7 @@ class SessaoCLI:
             f"não é mais opt-in)   "
             f"diagnostico: {'ON' if mestre.DIAGNOSTICO_MODE else 'OFF'}   "
             f"diagnostico retrieve: {'ON' if mestre.DIAGNOSTICO_RETRIEVE else 'OFF'}   "
+            f"diagnostico bruto: {'ON' if mestre.SALVAR_BRUTO_OSCILOSCOPIO else 'OFF'}   "
             f"set capturas: "
             f"{mestre.CAPTURAS_OVERRIDE if mestre.CAPTURAS_OVERRIDE is not None else 'não (padrão das classes)'}"
         )
@@ -561,7 +566,7 @@ class SessaoCLI:
 
     def cmd_set(self, args: List[str]) -> int:
         if len(args) < 2:
-            print("Uso: set diagnostico on|off|retrieve   |   set capturas <N>|padrao   |   set seed <N>|padrao   |   "
+            print("Uso: set diagnostico on|off|retrieve|bruto   |   set capturas <N>|padrao   |   set seed <N>|padrao   |   "
                 "set perfil norma|literatura|fronteira|todos   |   set sorteio on|off   |   "
                 "set recalibracao on|off   |   set html on|off")
             return 1
@@ -576,6 +581,15 @@ class SessaoCLI:
             )
             return 0
         if chave == "diagnostico":
+            if valor == "bruto":
+                estado = args[2].lower() if len(args) > 2 else "on"
+                if estado not in ("on", "off") or len(args) > 3:
+                    print("Uso: set diagnostico bruto [on|off]")
+                    return 1
+                mestre.SALVAR_BRUTO_OSCILOSCOPIO = estado == "on"
+                print(f"diagnostico bruto: {'ON' if mestre.SALVAR_BRUTO_OSCILOSCOPIO else 'OFF'} "
+                      "(exportação BYTE/NORMal em arquivos separados; sem consulta adicional)")
+                return 0
             if valor == "retrieve":
                 # set diagnostico retrieve [on|off]: independente do log (on/off).
                 estado = args[2].lower() if len(args) > 2 else "on"
@@ -593,7 +607,7 @@ class SessaoCLI:
                 )
                 return 0
             if valor not in ("on", "off"):
-                print("Uso: set diagnostico on|off|retrieve [on|off]")
+                print("Uso: set diagnostico on|off|retrieve|bruto [on|off]")
                 return 1
             mestre.DIAGNOSTICO_MODE = valor == "on"
             print(f"diagnostico: {'ON' if mestre.DIAGNOSTICO_MODE else 'OFF'}")
