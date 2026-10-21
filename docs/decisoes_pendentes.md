@@ -111,7 +111,7 @@ Resposta: **B** (21/10/2026, responsável): os dados do PC antigo não podem ser
 
 Informar: critério de inclusão, se B; e entrega dos metadados das três sessões de 07/10.
 
-Resposta (21/10/2026): os dados de 07/10 não podem ser recuperados. Proposta D, aguardando confirmação: registrar 63 e 99 como contagens históricas não verificáveis, sem apagar o histórico nem usá-las como resultado, como na P-27.
+Resposta (21/10/2026): os dados de 07/10 não podem ser recuperados. **Decisão D, confirmada pelo responsável:** registrar 63 e 99 como contagens históricas não verificáveis, sem apagar o histórico nem usá-las como resultado, como na P-27.
 
 ## P-31 Métrica oficial de correlação do distúrbio
 

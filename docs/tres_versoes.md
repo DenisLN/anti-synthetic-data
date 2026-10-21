@@ -64,3 +64,5 @@ Só para sessões do formato 1 (um `.npz` por captura): numa sessão do formato 
 ## Escopo das contagens históricas (P-30)
 
 O agregado reportado de 99 capturas (36 + 36 + 27) não identifica automaticamente o subconjunto chamado de **piloto de 63 capturas** em decisões anteriores. Sem os arquivos das três sessões e a relação de IDs incluídos, não é possível comprovar quais 63 integram esse piloto. Os resultados acima são relato histórico, não uma reanálise realizada neste checkout. P-30 permanece aberta até produzir tabela por sessão/ID/condição e critério de inclusão, preservando os registros anteriores.
+
+> **Retificação (21/10/2026, P-30).** As sessões de 07/10 não podem ser recuperadas. As contagens de 63 ("piloto") e 99 (36 + 36 + 27) ficam registradas como **históricas e não verificáveis**. Nenhum resultado científico do projeto depende delas; a validação física vem das sessões da campanha v1.15 (P-01). O texto acima é preservado como registro.

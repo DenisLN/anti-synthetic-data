@@ -76,7 +76,7 @@ O coordenador integra código, registra baseline e revisa critérios de aceite. 
 | P-27 | Concluída — comparações sem fonte retiradas | Removidas faixas de referência e coluna “bate?” que dependiam do arquivo ausente. Valores históricos permanecem identificados como reportados e não são critérios de aceite; não se fabricou a fonte. |
 | P-28 | Parcial — preservação e análise implementadas | `set diagnostico bruto on` preserva BYTE/preamble/tempos antes de interpolar, sem nova aquisição, em arquivos independentes com vínculo por hash. Analisador compara RMS/pico/THD/erro temporal/espectro na grade salva, com rastreabilidade de entrada/configuração. Faltam exportações reais e revisão dos resultados físicos; FIR não substitui o interpolador do dataset. |
 | P-29 | Bloqueada por logs reais | Transcrições locais das sessões não disponíveis no checkout; obter trechos com sessão/condição/SHA. A tabela SCPI descreve código/manual, não prova medição. |
-| P-30 | Bloqueada por sessões/escopo | Distinguir 99 capturas reportadas (36+36+27) de 63 chamadas piloto. Produzir relação por sessão/ID/critério quando os dados existirem; não supor que são o mesmo conjunto. |
+| P-30 | Concluída — retificação | Sessões de 07/10 irrecuperáveis (decisão de 21/10/2026). As contagens 63 ("piloto") e 99 (36+36+27) ficam como históricas e não verificáveis, com nota de retificação em `AGENTS.md` e `docs/tres_versoes.md`, sem apagar o histórico. Nenhum resultado depende delas. Mesmo critério da P-27: não se fabricou a tabela por sessão. |
 | P-31 | Parcial — métricas offline publicadas | Relatório modelo/programada publica nominal e fundamental ajustada com limitações; falta comparar novas sessões físicas e justificar a métrica oficial. |
 
 ## Verificação e registro de evidência

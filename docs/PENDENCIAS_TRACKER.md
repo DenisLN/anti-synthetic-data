@@ -8,7 +8,7 @@ Fonte única de **estado**. Narrativa e critérios completos: `execucao_pendenci
 
 | Concluídas | Software pronto, falta bancada | Falta decisão/dado do responsável | Abertas |
 |---|---|---|---|
-| 10 | 19 | 2 | 0 |
+| 11 | 19 | 1 | 0 |
 
 ## Protocolo para agentes (economia de contexto)
 
@@ -63,10 +63,12 @@ Estados: **✅** concluída · **🔧→🏭** software pronto, falta bancada ·
 | P-27 | ✅ | — | — |
 | P-28 | 🔧→🏭 | Preservação do bruto implementada (`f974954`); falta exportação real + análise | K,R |
 | P-29 | 🔧→🏭 | Decisão B (21/10): logs antigos indisponíveis; usar `scpi_transcricao.log` das sessões novas, com revisão de dados sensíveis | R,D |
-| P-30 | ❓ | Dados de 07/10 irrecuperáveis; proposta D (contagens históricas não verificáveis) aguarda confirmação | D |
+| P-30 | ✅ | — (retificação: 63/99 históricos não verificáveis; `tres_versoes.md`, `AGENTS.md`) | — |
 | P-31 | 🔧→🏭 | Métricas offline publicadas; falta sessões novas + escolha da métrica oficial | K,R,D |
 
 ## Log de rodadas (uma linha por rodada, mais recente no topo)
+
+- 2026-10-21 — **P-30 concluída** (decisão D: contagens históricas não verificáveis). P-09: implementação do experimento A/B/C (OFF por padrão) em andamento.
 
 - 2026-10-21 — P-29: decisão B (logs novos). P-20: aguarda Denis. P-09: alternativas pesquisadas (manual p. 96/126); plano (d)+(b)-simulado+consulta na bancada. P-30: proposta D aguardando confirmação.
 

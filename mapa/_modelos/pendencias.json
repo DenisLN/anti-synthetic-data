@@ -497,18 +497,20 @@
  {
   "id": "P-30",
   "titulo": "definir escopo de “piloto” e reconciliar 63 vs 99",
-  "status": "aguarda-decisao",
+  "status": "concluida",
   "prioridade": "baixa",
   "responsavel": "C + B",
   "acao": "definir escopo de “piloto” e reconciliar 63 vs 99",
   "dependencia": "Sessões originais e critério de inclusão",
   "criterio": "Tabela por sessão com 36+36+27, justificando subconjuntos; registrar retificação sem apagar histórico",
-  "falta": "Dados de 07/10 irrecuperáveis; proposta D (contagens históricas não verificáveis) aguarda confirmação",
-  "frentes": [
-   "D"
+  "falta": "— (retificação: 63/99 históricos não verificáveis; `tres_versoes.md`, `AGENTS.md`)",
+  "frentes": [],
+  "evidencias": [
+   "decisoes_pendentes.md",
+   "tres_versoes.md",
+   "execucao_pendencias.md"
   ],
-  "evidencias": [],
-  "evidencias_txt": "—"
+  "evidencias_txt": "`docs/decisoes_pendentes.md`, `docs/tres_versoes.md`, `docs/execucao_pendencias.md`"
  },
  {
   "id": "P-31",

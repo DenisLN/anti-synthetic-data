@@ -150,8 +150,12 @@
       "evidencias": []
     },
     "P30": {
-      "status": "aberta",
-      "evidencias": []
+      "status": "concluida",
+      "evidencias": [
+        "decisoes_pendentes.md",
+        "tres_versoes.md",
+        "execucao_pendencias.md"
+      ]
     },
     "P31": {
       "status": "aberta",

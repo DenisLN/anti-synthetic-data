@@ -122,7 +122,9 @@ implementar os perfis `norma`, `literatura` e `fronteira` (`set perfil`):
 Condições: o perfil `literatura` (padrão) continua reproduzindo byte a byte o
 `gerar()` do commit 34a0d82 (teste em `tests/test_offline.py`,
 `PerfisDeFaixasTests`); as mudanças entram juntas numa versão congelada antes
-da próxima campanha; as 63 capturas de 07/10 ficam como piloto. Início,
+da próxima campanha; as 63 capturas de 07/10 ficam como piloto
+(retificação de 21/10/2026, P-30: contagem histórica não verificável; as sessões de
+07/10 não estão disponíveis e o número não é usado como resultado). Início,
 duração, fase e forma das classes não mudam. Os limites inegociáveis abaixo
 continuam valendo integralmente (`max_voltage_rms`, `max_peak_v`,
 `max_current_a`, pré-validação de pico).
