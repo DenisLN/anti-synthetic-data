@@ -349,7 +349,7 @@
   "acao": "calibrar novas condições antes de coleta científica nelas",
   "dependencia": "Segurança e campanha por condição",
   "criterio": "Tabela por tensão/frequência com origem real e validação; não subir limite para fazer classe caber",
-  "falta": "Calibração por condição nova antes de coleta",
+  "falta": "Calibrar 220 V/60 Hz e 33 V/60 Hz antes da coleta científica (sem tabela; 220 V tem 52/150 capturas recusadas pela previsão conservadora)",
   "frentes": [
    "K",
    "R"
@@ -434,7 +434,7 @@
   "acao": "registrar perfis, frequências e eventual ACDC 230 V antes da coleta",
   "dependencia": "Disponibilidade da bancada",
   "criterio": "Configuração prévia documentada e igual à sessão coletada",
-  "falta": "Responsável fixa perfis/frequências/tensões e decide ACDC 230 V",
+  "falta": "Condições fixadas em 21/10 (127/60, 127/50, 230/50, 220/60, 33/60); faltam perfil, capturas por célula e ACDC 230 V",
   "frentes": [
    "D"
   ],

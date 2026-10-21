@@ -31,9 +31,9 @@ Nenhum passo abaixo encerra pendência por si. A visita **gera evidência**; o f
 | Decisão | Situação | Efeito se não decidida |
 |---|---|---|
 | Perfil da campanha: `literatura` (um perfil, 468 gravações em 3 conexões) ou `set perfil todos` (1116 gravações em 6 conexões) | pendente (responsável) | Bloco 8 não pode começar; escolher antes (roteiro, Bloco 8 e seção 5) |
-| Frequência da campanha: 60 Hz (padrão do roteiro) ou 50 Hz (seção 5.3) | pendente | Muda o Bloco 7 e as colunas da seção 5 |
-| Tensão: o roteiro fixa **127 V** (seção 0). | decidida no roteiro | Sem 220/380 V neste dia; a única exceção em análise é a ACDC 230 V, abaixo |
-| **Exceção ACDC 230 V / 50 Hz (3.ª execução do Bloco 5)** | **pendente (P-26); não autorizada** | O roteiro a marca como NÃO AUTORIZADA (seção 0 e Bloco 5); se pulada, anota-se que `g` não foi medido a 230 V. Enquanto o responsável não decidir por escrito, **não executar**; P-17 fecha só para as condições de 127 V |
+| Condições da campanha | **decidida em 21/10/2026**: 127 V/60 Hz, 127 V/50 Hz, 230 V/50 Hz, 220 V/60 Hz e 33 V/60 Hz | Ver a seção "Campanhas por condição (P-26)" abaixo |
+| Tensão do dia dos Blocos 1–10 | 127 V (roteiro, seção 0) | As demais condições vêm depois, em sessões próprias (seção abaixo) |
+| **Exceção ACDC 230 V / 50 Hz (3.ª execução do Bloco 5)** | **pendente; não autorizada** (a campanha CA a 230 V/50 Hz foi decidida; este diagnóstico ACDC é decisão à parte) | O roteiro a marca como NÃO AUTORIZADA (seção 0 e Bloco 5); se pulada, anota-se que `g` não foi medido a 230 V. Enquanto o responsável não decidir por escrito, **não executar**; P-17 fecha só para as condições de 127 V |
 | Padrão do passo final SINE (P-18) | pendente (responsável), depois do teste do Bloco 10-A | Padrão continua OFF |
 
 ## Tempo
@@ -205,6 +205,28 @@ Fora do `ROTEIRO_BANCADA.md`: vem de {doc}`projeto/passo-final-sin` (seção 4).
 |---|---|---|---|---|
 | 10A.1 | `env\Scripts\python.exe scripts\teste_passo_final_sin.py --classe 06 --repeticoes 1` | P-18 | `resultados\passo_final_sin_<data>\registros.npz` e `resultado.json`; `logs\` do script | Código de saída 0. rms por ciclo da margem final com o passo = 1,00 +- 0,01 pu; janela rotulada com e sem o passo: correlação >= 0,999 e diferença máxima de rms por ciclo <= 0,01 pu; nenhum erro SCPI. Limiares são escolha do autor do script, sem dado de bancada |
 | 10A.2 | Se aprovado: `run 06` pela CLI e conferir as três versões ({doc}`tres_versoes`) | P-18 | sessão | Restauração na fonte e aceitação LIST observadas; critério numérico não definido. O **padrão do passo continua OFF** até o responsável decidir (P-26/D) |
+
+## Campanhas por condição (P-26)
+
+Decisão do responsável em 21/10/2026: a campanha roda em **cinco condições**. Elas coincidem com `CONDICOES` em `scripts/verificar_prontidao.py`. Planejamento offline com `--perfis todos`, 150 capturas por condição: `docs/evidencias/2026-10-21/plano_campanhas_5_condicoes.json`. É planejamento, não sessão.
+
+| Condição | Calibração em `logica/calibracao_extremos.json` | Recusadas pelo preflight | Antes da coleta científica |
+|---|---|---|---|
+| 127 V / 60 Hz | sim | 0 | — (Blocos 7–9) |
+| 127 V / 50 Hz | sim | 0 | — |
+| 230 V / 50 Hz | sim | 13 (swells 03, 13, 14: pico previsto 416–435 V > teto 415,8 V) | Recusas esperadas; não subir limites |
+| 220 V / 60 Hz | **não** | 52 (previsão conservadora sem tabela, até 505 V) | **Calibrar a condição** (P-21) e refazer o plano |
+| 33 V / 60 Hz | **não** | 0 | **Calibrar a condição** (P-21) |
+
+Sequência para cada condição (uma sessão por condição; operador presente digitando as confirmações):
+
+1. `START_BENCH.cmd`: informar o fator da probe, a tensão e a frequência da condição. O processo fixa a condição, então trocar de condição exige reiniciar a CLI.
+2. **Só 220 V/60 Hz e 33 V/60 Hz:** rodada de calibração. Rodar a bateria na condição; o aviso de "condição sem tabela" é esperado. Depois `.\env\Scripts\python.exe scripts\recalibrar_extremos.py resultados\<sessao>` (mostra o que mudaria), conferir e repetir com `--gravar`. Nunca `--substituir`. Em seguida `git diff`, suíte offline e commit; o novo SHA vale para as sessões seguintes. Reiniciar a CLI. Detalhes: `docs/limites_e_calibracao.md` §5.
+3. Refazer o plano offline da condição: `scripts\planejar_campanhas.py --perfis <perfil> --saida <novo.json>`. As recusas restantes são limite físico e ficam registradas.
+4. Coleta em grupos de até 216 gravações TRACe por conexão (um `run` por grupo, como no Bloco 9), com `set diagnostico bruto on` nas classes de interesse (P-28).
+5. Entrega e fechamento como nos Blocos 10 e "Fechamento offline".
+
+Ainda pendente para a P-26: perfil (`literatura` ou `todos`), capturas por célula e o diagnóstico ACDC a 230 V.
 
 ## Fechamento offline (computador de análise)
 

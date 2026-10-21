@@ -54,12 +54,12 @@ Estados: **✅** concluída · **🔧→🏭** software pronto, falta bancada ·
 | P-18 | 🔧→🏭 | SINE integrado OFF; validar aceitação LIST/restauração na fonte; responsável confirma padrão OFF | K,R,D |
 | P-19 | 🔧→🏭 | `TRACe:DATA?` real: 1024 finitos ou não suportado | K,R |
 | P-20 | ❓ | Licença, autoria, citação, tag/Zenodo — só o responsável decide | D |
-| P-21 | 🔧→🏭 | Calibração por condição nova antes de coleta | K,R |
+| P-21 | 🔧→🏭 | Calibrar 220 V/60 Hz e 33 V/60 Hz antes da coleta científica (sem tabela; 220 V tem 52/150 capturas recusadas pela previsão conservadora) | K,R |
 | P-22 | 🔧→🏭 | Benchmark com sessões físicas no PC/disco da bancada | K,R |
 | P-23 | 🔧→🏭 | Orçamento 216/conexão aplicado; causa física da trava só com diagnóstico real | K,R |
 | P-24 | ✅ | — | — |
 | P-25 | ✅ | — | — |
-| P-26 | ❓ | Responsável fixa perfis/frequências/tensões e decide ACDC 230 V | D |
+| P-26 | ❓ | Condições fixadas em 21/10 (127/60, 127/50, 230/50, 220/60, 33/60); faltam perfil, capturas por célula e ACDC 230 V | D |
 | P-27 | ✅ | — | — |
 | P-28 | 🔧→🏭 | Preservação do bruto implementada (`f974954`); falta exportação real + análise | K,R |
 | P-29 | ❓ | Transcrições reais de sessões (logs locais do PC da bancada) | D |
@@ -67,6 +67,8 @@ Estados: **✅** concluída · **🔧→🏭** software pronto, falta bancada ·
 | P-31 | 🔧→🏭 | Métricas offline publicadas; falta sessões novas + escolha da métrica oficial | K,R,D |
 
 ## Log de rodadas (uma linha por rodada, mais recente no topo)
+
+- 2026-10-21 — P-26 parcial: responsável fixou as cinco condições. Plano offline (`evidencias/2026-10-21/plano_campanhas_5_condicoes.json`): 230/50 com 13 recusas (swells), 220/60 sem calibração e 52 recusas, 33/60 sem calibração. `bancada_pendencias.md` ganhou "Campanhas por condição".
 
 - 2026-10-21 — Mapa Obsidian (skills oficiais kepano/obsidian-skills `3ccff53`): `mapa/` com 31 notas P-NN geradas por Knap, 15 cartões de módulo (dependências do grafo real de imports), 6 hubs de domínio, `Pendencias.base`, `Mapa.canvas`; `CLAUDE.md` na raiz aponta para o mapa.
 
