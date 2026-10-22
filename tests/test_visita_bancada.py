@@ -232,6 +232,31 @@ class FluxoDaVisita(unittest.TestCase):
         self.assertEqual(reg["status"], "ok")
         self.assertEqual(len(reg["sessoes"]), 1)
 
+    def _diag_grava(self, conteudo):
+        def diag(_v, _et, script, args):
+            pasta = Path(args[args.index("--saida") + 1])
+            self.assertEqual(pasta, self.v.pasta)
+            pasta.mkdir(parents=True, exist_ok=True)
+            if conteudo is not None:
+                (pasta / "diag_list_offset-20261022-152743.json").write_text(json.dumps(conteudo), encoding="utf-8")
+            return 0
+        return mock.patch.object(vb.Visita, "diag", diag)
+
+    def test_diag_list_offset_le_o_json_dentro_da_pasta(self):
+        et = next(e for e in vb.ETAPAS if e.id == "10B-diag")
+        with self._diag_grava({"resultado": {"suportado": False}}):
+            self.assertEqual(et.executar(self.v, et), "ok")
+        self.assertIs(self.v.estado["p09_c_suportado"], False)
+        with self._diag_grava({"resultado": {"suportado": True}}):
+            et.executar(self.v, et)
+        self.assertIs(self.v.estado["p09_c_suportado"], True)
+
+    def test_diag_list_offset_sem_resultado_para_em_vez_de_ok(self):
+        et = next(e for e in vb.ETAPAS if e.id == "10B-diag")
+        with self._diag_grava(None), self.assertRaises(vb.VisitaParada):
+            et.executar(self.v, et)
+        self.assertNotIn("p09_c_suportado", self.v.estado)
+
     def test_calibracao_de_50hz_usa_as_sessoes_da_campanha_de_127v(self):
         sessao = self.resultados / "sessao_c127_50"
         sessao.mkdir()

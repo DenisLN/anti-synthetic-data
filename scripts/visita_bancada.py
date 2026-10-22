@@ -542,14 +542,18 @@ def e_parte9(lista: str) -> Callable[[Visita, Etapa], str]:
 
 
 def e_diag_list_offset(v: Visita, et: Etapa) -> str:
-    saida = v.pasta / "diag_list_offset.json"
-    v.diag(et, "diag_list_offset.py", ["--saida", str(saida)])
+    # --saida é a PASTA; o script grava diag_list_offset-<data>.json dentro dela.
+    v.diag(et, "diag_list_offset.py", ["--saida", str(v.pasta)])
+    gravados = sorted(v.pasta.glob("diag_list_offset-*.json"))
     try:
-        suportado = json.loads(saida.read_text(encoding="utf-8")).get("suportado")
-    except (OSError, ValueError):
+        suportado = json.loads(gravados[-1].read_text(encoding="utf-8"))["resultado"].get("suportado")
+    except (IndexError, OSError, ValueError, KeyError, AttributeError):
         suportado = None
+    if suportado is None:
+        raise VisitaParada("diag_list_offset.py sem resultado legível em "
+                           f"{v.pasta}: braço C indefinido. Entregue a saída.")
     v.estado["p09_c_suportado"] = suportado is True
-    v.log(f"SOURce:LIST:VOLTage:OFFSet aceito pela fonte: {suportado}")
+    v.log(f"SOURce:LIST:VOLTage:OFFSet aceito pela fonte: {suportado} ({gravados[-1].name})")
     return "ok"
 
 
