@@ -4266,15 +4266,18 @@ class LimiteDeBancada220VTests(unittest.TestCase):
                     self.assertAlmostEqual(info["extremo_previsto_v"], esperado, places=9, msg=classe_id)
 
     def test_220v_reduz_09_10_11_14_16_17_e_tudo_cabe_no_padrao(self):
+        # Capturas recusadas a 220 V desde as recalibrações de 2026-10-22 (127 V/60 Hz):
+        # 17 (1,575) nem com a redução mínima; 14 (1,200) idem; 05 (1,255), 18 (1,264)
+        # e uma da 19 (1,119) são nativas, puladas por passar do teto (sem redução).
+        recusadas_esperadas = {"05": 1, "14": 3, "17": 3, "18": 1, "19": 1}
         reduzidas = set()
+        recusadas = {}
         for indice in range(1, 21):
             classe_id = f"{indice:02d}"
             for info in self._avaliar_classe(classe_id):
-                if classe_id == "17":
-                    # Recalibração de 2026-10-22 (fator 1,575 a 127 V): nem a
-                    # redução mínima cabe no teto, a 17 é recusada a 220 V.
-                    self.assertFalse(info["cabe"], classe_id)
-                    self.assertIn("mínimo aceito", info["motivo"])
+                if not info["cabe"]:
+                    recusadas[classe_id] = recusadas.get(classe_id, 0) + 1
+                    self.assertIn("teto", info["motivo"], classe_id)
                     continue
                 self.assertTrue(info["cabe"], (classe_id, info.get("motivo")))
                 self.assertLessEqual(info["extremo_previsto_v"], self.TETO + 1e-6, classe_id)
@@ -4288,7 +4291,9 @@ class LimiteDeBancada220VTests(unittest.TestCase):
         # 17: só na seed padrão (pico de 368 V × 1,031 × 1,10 = 417 V, 1 V acima).
         # 09: desde a recalibração de 2026-10-07 (fator 1,002 -> 1,036 a 127 V).
         # 07: desde a recalibração de 2026-10-22 (fator 1,186 -> 1,615 a 127 V).
-        self.assertEqual(reduzidas, {"07", "09", "10", "11", "14", "16"})
+        # 06, 12, 13: desde a recalibração com a campanha de 2026-10-22 (1,232; 1,47; 1,292).
+        self.assertEqual(recusadas, recusadas_esperadas)
+        self.assertEqual(reduzidas, {"06", "07", "09", "10", "11", "12", "13", "16"})
 
     def test_reducao_mantem_a_senoide_fora_do_disturbio_e_nao_muda_gerar(self):
         experimento = self._instancia("16")
@@ -5471,6 +5476,10 @@ class SorteioInicioDuracaoFaseTests(unittest.TestCase):
         np.testing.assert_allclose(forma, senoide + fracao * (modelo - senoide), atol=1e-12)
 
     def test_todas_as_classes_cabem_a_220v_com_sorteio(self):
+        # Exceções desde as recalibrações de 2026-10-22 (127 V/60 Hz): capturas
+        # recusadas pelo teto, mesmas classes do teste de 220 V sem sorteio.
+        recusadas_esperadas = {"13": 1, "14": 3, "17": 3, "18": 1, "19": 1}
+        recusadas = {}
         for classe_id in self.CLASSES:
             if classe_id == "03":
                 continue  # 03 a 220 V já pulava níveis (1,4 pu > 300 Vrms)
@@ -5479,10 +5488,10 @@ class SorteioInicioDuracaoFaseTests(unittest.TestCase):
             experimento = _carregar_classe(classe_id)(mestre.Bancada(fonte, mock.Mock(), config))
             for indice_global, capture_index in experimento.plano_de_capturas(False):
                 info = experimento.avaliar_captura_na_bancada(indice_global, capture_index)
-                if classe_id == "17":  # recusada a 220 V desde a recalibração de 2026-10-22
-                    self.assertFalse(info["cabe"], (classe_id, indice_global))
-                    continue
-                self.assertTrue(info["cabe"], (classe_id, indice_global, info.get("motivo")))
+                if not info["cabe"]:
+                    recusadas[classe_id] = recusadas.get(classe_id, 0) + 1
+                    self.assertIn("teto", info["motivo"], (classe_id, indice_global))
+        self.assertEqual(recusadas, recusadas_esperadas)
 
     def test_analisar_sessao_reconstroi_a_forma_com_sorteio(self):
         import analisar_sessao
