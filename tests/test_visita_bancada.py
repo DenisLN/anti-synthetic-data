@@ -163,8 +163,13 @@ class SegurancaDoOrquestrador(unittest.TestCase):
         ids = [e.id for e in vb.ETAPAS]
         self.assertEqual(len(ids), len(set(ids)))
         ordem = ["01-suite", "02-infra", "04-marcadores", "05-acdc-60", "06-classe08", "07-rodada1",
-                 "07-commit", "08-parte1", "09-parte2", "10B-diag", "10A-passo-sine", "C-127V_50Hz", "11-entrega"]
+                 "07-commit", "08-parte1", "09-parte2", "10B-diag", "10A-passo-sine", "C-127V_50Hz",
+                 "C-127V_50Hz-calibrar", "C-230V_50Hz", "11-entrega"]
         self.assertEqual([i for i in ids if i in ordem], ordem)
+        # Toda campanha acima de 127 V vem depois da calibração da própria frequência.
+        for antes, depois in (("C-127V_50Hz-calibrar", "C-230V_50Hz"),
+                              ("C-220V_60Hz-calibrar", "C-220V_60Hz"), ("C-33V_60Hz-calibrar", "C-33V_60Hz")):
+            self.assertLess(ids.index(antes), ids.index(depois))
         condicoes = {vb.chave(*e.condicao) for e in vb.ETAPAS if e.condicao}
         self.assertEqual(condicoes, {"127V_60Hz", "127V_50Hz", "230V_50Hz", "220V_60Hz", "33V_60Hz"})
         for e in vb.ETAPAS:
@@ -226,6 +231,22 @@ class FluxoDaVisita(unittest.TestCase):
         reg = self.v.estado["etapas"]["09-parte2"]
         self.assertEqual(reg["status"], "ok")
         self.assertEqual(len(reg["sessoes"]), 1)
+
+    def test_calibracao_de_50hz_usa_as_sessoes_da_campanha_de_127v(self):
+        sessao = self.resultados / "sessao_c127_50"
+        sessao.mkdir()
+        self.v.estado["etapas"] = {"C-127V_50Hz": {"sessoes": [str(sessao)]}}
+        et = next(e for e in vb.ETAPAS if e.id == "C-127V_50Hz-calibrar")
+        with mock.patch.object(vb.Visita, "offline", return_value=0) as offline, \
+             mock.patch.object(vb, "commit_calibracao", return_value="ok") as commit:
+            self.respostas = ["P"]
+            with self.assertRaises(vb.VisitaParada):
+                et.executar(self.v, et)
+            commit.assert_not_called()
+            self.respostas = ["GRAVAR"]
+            self.assertEqual(et.executar(self.v, et), "ok")
+        self.assertEqual(offline.call_args_list[-1].args[1], [str(sessao), "--gravar"])
+        self.assertIn("127V_50Hz", commit.call_args.args[1])
 
     def test_sessao_gravada_em_outro_pc_e_achada_pelo_nome(self):
         (self.resultados / "sessao_2026-10-22_15-19-56").mkdir()

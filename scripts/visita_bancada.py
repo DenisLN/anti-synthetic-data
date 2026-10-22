@@ -640,20 +640,23 @@ def e_campanha(perfil: str, bruto: bool) -> Callable[[Visita, Etapa], str]:
     return executar
 
 
-def e_calibrar(v: Visita, et: Etapa) -> str:
-    sessoes = v.sessoes_de(et.id.replace("calibrar", "rodada-calibracao"))
-    if not sessoes:
-        raise VisitaParada("Sem sessões da rodada de calibração: nada a calibrar.")
-    args = [str(p) for p in sessoes]
-    v.offline(SCRIPTS / "recalibrar_extremos.py", args)
-    cond = chave(*et.condicao)
-    resp = v.entrada(f"Acima, o que mudaria na calibração de {cond} (nunca diminui fator). "
-                     f"Digite GRAVAR para gravar, ou P para parar: ").strip()
-    if resp != "GRAVAR":
-        raise VisitaParada("Calibração não gravada (decisão do operador). Retome quando decidir.")
-    if v.offline(SCRIPTS / "recalibrar_extremos.py", args + ["--gravar"]) != 0:
-        raise VisitaParada("recalibrar_extremos.py --gravar falhou. Entregue a saída.")
-    return commit_calibracao(v, f"chore: calibra fatores de extremo em {cond} (P-21)")
+def e_calibrar(origem: str) -> Callable[[Visita, Etapa], str]:
+    """Grava e commita a calibração da condição com as sessões da etapa ``origem``."""
+    def executar(v: Visita, et: Etapa) -> str:
+        sessoes = [p for p in v.sessoes_de(origem) if p.is_dir()]
+        if not sessoes:
+            raise VisitaParada(f"Sem sessões de {origem}: nada a calibrar.")
+        args = [str(p) for p in sessoes]
+        v.offline(SCRIPTS / "recalibrar_extremos.py", args)
+        cond = chave(*et.condicao)
+        resp = v.entrada(f"Acima, o que mudaria na calibração de {cond} (nunca diminui fator). "
+                         f"Digite GRAVAR para gravar, ou P para parar: ").strip()
+        if resp != "GRAVAR":
+            raise VisitaParada("Calibração não gravada (decisão do operador). Retome quando decidir.")
+        if v.offline(SCRIPTS / "recalibrar_extremos.py", args + ["--gravar"]) != 0:
+            raise VisitaParada("recalibrar_extremos.py --gravar falhou. Entregue a saída.")
+        return commit_calibracao(v, f"chore: calibra fatores de extremo em {cond} (P-21)")
+    return executar
 
 
 def e_entrega(v: Visita, et: Etapa) -> str:
@@ -743,18 +746,22 @@ ETAPAS: List[Etapa] = [
     Etapa("10B-analise", "10-B", "P-09 análise A/B/C", False, e_p09_analise),
     Etapa("10A-passo-sine", "10-A", "Passo final SINE (P-18)", True, e_passo_sine, C127_60),
     Etapa("C-127V_50Hz", "P-26", "Campanha 127 V/50 Hz (perfil todos)", True, e_campanha("todos", True), C127_50),
+    # A 230 V o limite de bancada leva o previsto até o teto: antes dela, os
+    # fatores de 50 Hz saem da campanha de 127 V (regra por frequência).
+    Etapa("C-127V_50Hz-calibrar", "P-21", "50 Hz: gravar e commitar calibração (campanha de 127 V)", False,
+          e_calibrar("C-127V_50Hz"), C127_50),
     Etapa("C-230V_50Hz", "P-26", "Campanha 230 V/50 Hz (perfil todos)", True, e_campanha("todos", True),
           (230.0, 50.0)),
     Etapa("C-220V_60Hz-rodada-calibracao", "P-21", "220 V/60 Hz: rodada de calibração (literatura)", True,
           e_campanha("literatura", False), (220.0, 60.0)),
-    Etapa("C-220V_60Hz-calibrar", "P-21", "220 V/60 Hz: gravar e commitar calibração", False, e_calibrar,
-          (220.0, 60.0)),
+    Etapa("C-220V_60Hz-calibrar", "P-21", "220 V/60 Hz: gravar e commitar calibração", False,
+          e_calibrar("C-220V_60Hz-rodada-calibracao"), (220.0, 60.0)),
     Etapa("C-220V_60Hz", "P-26", "Campanha 220 V/60 Hz (perfil todos)", True, e_campanha("todos", True),
           (220.0, 60.0)),
     Etapa("C-33V_60Hz-rodada-calibracao", "P-21", "33 V/60 Hz: rodada de calibração (literatura)", True,
           e_campanha("literatura", False), (33.0, 60.0)),
-    Etapa("C-33V_60Hz-calibrar", "P-21", "33 V/60 Hz: gravar e commitar calibração", False, e_calibrar,
-          (33.0, 60.0)),
+    Etapa("C-33V_60Hz-calibrar", "P-21", "33 V/60 Hz: gravar e commitar calibração", False,
+          e_calibrar("C-33V_60Hz-rodada-calibracao"), (33.0, 60.0)),
     Etapa("C-33V_60Hz", "P-26", "Campanha 33 V/60 Hz (perfil todos)", True, e_campanha("todos", True),
           (33.0, 60.0)),
     Etapa("11-entrega", "10", "Análises offline, fechamento e commit das evidências", False, e_entrega),
