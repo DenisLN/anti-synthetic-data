@@ -73,6 +73,16 @@ Resposta: aguardar o Denis (21/10/2026). Nenhuma licença, autoria, citação ou
 
 Resposta:
 
+## P-21 Fatores de extremo a 220 V/60 Hz (condição sem tabela)
+
+**Contexto.** `carregar_fatores_extremo` trata 220 V/60 Hz como condição sem tabela: toda classe usa o maior fator já medido (1,615 desde 2026-10-22), menos a 01. Na rodada de calibração de 220 V só cabem 07, 10, 11, 15 e 16 (e parte da 12 e da 20). A regra foi decidida na v1.14 (`CHANGELOG/v1.14.md`, "Condição sem tabela"): a v1.13 rodava 220 V com a tabela de 127 V, "o mesmo raciocínio que deixou passar os 444 V" (17 a 230 V/50 Hz com a tabela de 127 V/60 Hz, acima dos 425 Vp do hardware). A mesma v1.14 concluiu depois que o sobressinal depende da frequência, não da tensão; mas essa evidência vem de 127 × 230 V a 50 Hz com capturas reduzidas, que só dão limite inferior do fator. A 220 V o limite de bancada leva o previsto até o teto, com só a margem de 1,10 de folga.
+
+- A. Manter a regra atual; a rodada de 220 V calibra só as classes que cabem. **[recomendado em 2026-10-22, escolhido pelo operador]**
+- B. Condição com tabela de mesma frequência (127 V/60 Hz) usa o fator da própria classe nessas tabelas, como a condição calibrada. A 220 V caberiam todas menos 05, 14, 17, 18, parte de 13/19 e a 03 no perfil norma.
+- C. Decidir B depois das campanhas de 127 V/50 Hz e 230 V/50 Hz, que medem se o fator muda com a tensão na mesma frequência (sem redução nas capturas comparadas).
+
+Resposta (2026-10-22, operador na bancada): A por enquanto; decisão final do responsável. Análise: `evidencias/2026-10-22/LEIA-ME.md`.
+
 ## P-26 Campanha: perfis, frequências, tensões, ACDC 230 V
 
 **Contexto.** As condições devem ser fixadas antes de energizar (ver [](roteiro-bancada.md)). O roteiro vigente é de 127 V; a execução ACDC a 230 V seria exceção a ele e precisa ser decidida antes. Em 07/10 a 230 V/50 Hz só 15 das 20 classes tinham metadata (faltam 02, 03, 04, 08, 16).

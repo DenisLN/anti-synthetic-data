@@ -36,7 +36,7 @@ Hoje `carregar_fatores_extremo` trata 220 V/60 Hz como condição sem tabela: to
 | B. Mesma frequência basta | condição sem tabela própria, mas com tabela de mesma frequência (127 V/60 Hz), usa o fator da própria classe nessas tabelas, como a regra de condição calibrada | coerente com o achado da v1.14 (o sobressinal depende da frequência, não da tensão: 127 V e 230 V a 50 Hz deram fatores próximos); a 220 V cabem todas menos 05, 14, 17, 18, parte de 13/19 e a 03 no perfil norma (os testes já supõem isso) | a dependência com a tensão a 60 Hz nunca foi medida; a margem de 1,10 é a única folga até a rodada de calibração medir |
 | C. B com folga extra só na rodada | como B, mas a rodada de calibração de 220 V usa margem maior (por exemplo, perfil literatura e fração reduzida) | mede antes de chegar ao teto | exige definir a folga, que não existe em nenhuma fonte (não inventar) |
 
-Recomendação: B, depois de conferir no código e no `CHANGELOG/v1.14.md` que a regra de condição sem tabela não protege contra outro efeito além do da frequência. É mudança em regra de segurança (`logica/mestre.py`): só com decisão do responsável.
+Conferido depois: a regra atual foi decisão explícita da v1.14 para 220 V, por causa do incidente dos 444 V (que foi entre frequências, 230 V/50 Hz com tabela de 60 Hz). A evidência de que a tensão não influi é fraca (capturas reduzidas, só limite inferior). **Decisão do operador em 2026-10-22: manter a regra atual (A)** até o responsável decidir; opções registradas em `docs/decisoes_pendentes.md`, seção P-21. Um dado que ajudaria (opção C): comparar 127 V/50 Hz com 230 V/50 Hz nas campanhas da próxima visita.
 
 ## Retomar
 
