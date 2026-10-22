@@ -2,13 +2,13 @@
 
 Fonte única de **estado**. Narrativa e critérios completos: `execucao_pendencias.md`. Estado de máquina: `estado_prontidao.json` (manter coerente com esta tabela). Visita à bancada: `bancada_pendencias.md`. Decisões do responsável: `decisoes_pendentes.md`. Fechamento: `python scripts/fechar_pendencias.py --sessao <dir> ... --pc-bancada <json> --saida <json>`.
 
-**Atualizado:** 2026-10-20 · branch `feat/execucao-pendencias-v1-15` · suíte offline 726 OK / 2 skips (macOS, Python 3.11.15, `/tmp/asd-exec-venv`).
+**Atualizado:** 2026-10-22 · branch `feat/execucao-pendencias-v1-15` · suíte offline 759 OK / 0 skips no PC da bancada (`evidencias/2026-10-22/pc_bancada.json`).
 
 ## Placar
 
 | Concluídas | Software pronto, falta bancada | Falta decisão/dado do responsável | Abertas |
 |---|---|---|---|
-| 11 | 19 | 1 | 0 |
+| 13 | 11 | 7 | 0 |
 
 ## Protocolo para agentes (economia de contexto)
 
@@ -35,38 +35,40 @@ Estados: **✅** concluída · **🔧→🏭** software pronto, falta bancada ·
 | ID | Estado | O que falta para fechar | Frente |
 |---|---|---|---|
 | P-01 | 🔧→🏭 | Campanha v1.15 real por classe/perfil/condição | K,R |
-| P-02 | 🔧→🏭 | Marcadores + TRACe recuperada + recaptura 08/09 (evento 100 ms) | K,R |
-| P-03 | 🔧→🏭 | Recaptura 08, 127 V/50 Hz, evento 90 ms: ≤10 amostras, pico ≤374,2 V | K,R |
+| P-02 | 🔧→🏭 | Reprovada em 2026-10-22 (`evidencias/2026-10-22/fechamento.json`): marcadores 30/30 sem espúrios, recapturas 08/09 a 50 e 60 Hz presentes, mas posição da 08 a 127 V/60 Hz desvia −16 amostras (limite 10) em uma captura por perfil (`sessao_2026-10-22_15-19-56`); hipótese da cópia de 100 ms sem critério definido | K,R |
+| P-03 | ✅ | — (2026-10-22: 3/3 capturas a 127 V/50 Hz com evento 90 ms, desvio 2 amostras, pico 339 V ≤ 374,2 V, sobressinal 0,295 pu ≤ 0,55; `evidencias/2026-10-22/fechamento.json`) | — |
 | P-04 | ✅ | — (software) | — |
-| P-05 | 🔧→🏭 | Fase/início/largura/pretrigger nas 01–04 com sorteio | K,R |
+| P-05 | ❓ | Evidência suficiente (2026-10-22), falta revisão humana: largura ≤ 1,1 ms (limite 2); pre-trigger determinístico até ±6 amostras (aviso, limite 2 nunca validado; ver `evidencias/2026-10-22/LEIA-ME.md`); critério de fase/início não definido | K,R,D |
 | P-06 | 🔧→🏭 | Bug de estado corrigido; falta continuidade de fase 47→53 Hz real | K,R |
-| P-07 | 🔧→🏭 | Recalibrar 07/17 com medidas reais e validar na coleta seguinte | K,R |
-| P-08 | 🔧→🏭 | Pico/vale 10/11/12/16 contra teto previsto, por condição | K,R |
-| P-09 | 🔧→🏭 | Experimento A/B/C implementado (OFF=A; `set p09`); na bancada: `diag_list_offset.py` sem energizar e Bloco 10-B; se C não for aceito/não ganhar, aceitar limitação com métricas (d) | K,R |
-| P-10 | 🔧→🏭 | RMS/THD da 05: CSIN 10/15/20%, norma 2%, TRACe 30% | K,R |
+| P-07 | ❓ | Evidência suficiente (2026-10-22), falta revisão humana do diff e decisão: 07 1,186 → 1,615 e 17 1,031 → 1,575 (`022bb5c`, `a22fba9`); na Parte 6 a 07 rodou sem alerta de extremo; 17 recusada a 220 V | K,R,D |
+| P-08 | 🔧→🏭 | Reprovada em 2026-10-22: extremos até 1,30× o previsto (12: 264 V contra 203,5 V), abaixo do teto. Recalibrado (`13b9bdb`); validar na próxima coleta e nas outras condições | K,R |
+| P-09 | 🔧→🏭 | `diag_list_offset.py` real (2026-10-22): **sem suporte** a `SOURce:LIST:VOLTage:OFFSet` (`-113`), braço C não roda. Falta braço A (refazer, parado no alerta), braço B e análise A/B; depois aceitar a limitação com métricas (d) | K,R |
+| P-10 | ✅ | — (2026-10-22: níveis 2/5/10/15/20/30 % com validação física ok; rota CSIN para 2–20 % e TRACe para 30 %; `evidencias/2026-10-22/fechamento.json`) | — |
 | P-11 | ✅ | — | — |
 | P-12 | ✅ | — | — |
 | P-13 | ✅ | — | — |
 | P-14 | ✅ | — | — |
 | P-15 | ✅ | — | — |
-| P-16 | ✅ | — (suíte 680/0 falhas/0 skips no PC da bancada DESKTOP-FSEESJI, `21fb300`; `evidencias/2026-10-21/pc_bancada.json`) | — |
-| P-17 | 🔧→🏭 | Diagnóstico ACDC (`scripts/diag_acdc_amplitude.py`) real, só a 127 V (P-26: sem 230 V) | K,R |
+| P-16 | ✅ | — (suíte 680/0 falhas/0 skips no PC da bancada DESKTOP-FSEESJI, `21fb300`; `evidencias/2026-10-21/pc_bancada.json`; repetida em 2026-10-22 com 759/0, `evidencias/2026-10-22/pc_bancada.json`) | — |
+| P-17 | ❓ | Evidência suficiente (2026-10-22, 50 e 60 Hz, AC / ACDC offset 0 / ACDC com offset): falta decidir se o déficit em ACDC é aceitável (critério não definido) | K,R,D |
 | P-18 | 🔧→🏭 | SINE integrado OFF; validar aceitação LIST/restauração na fonte; responsável confirma padrão OFF | K,R,D |
-| P-19 | 🔧→🏭 | `TRACe:DATA?` real: 1024 finitos ou não suportado | K,R |
+| P-19 | 🔧→🏭 | 2026-10-22: `TRACe:DATA? TCC00` devolve 10 valores (9 leituras, classes 08/09), nem 1024 finitos nem erro de comando não suportado: investigar o formato da resposta | K,R |
 | P-20 | ❓ | Aguarda o Denis: licença, autoria, citação, tag/Zenodo | D |
-| P-21 | 🔧→🏭 | Calibrar 220 V/60 Hz e 33 V/60 Hz antes da coleta científica (sem tabela; 220 V tem 52/150 capturas recusadas pela previsão conservadora) | K,R |
-| P-22 | 🔧→🏭 | Benchmark com sessões físicas no PC/disco da bancada | K,R |
+| P-21 | 🔧→🏭 | Calibrar 220 V/60 Hz e 33 V/60 Hz antes da coleta científica. 50 Hz: calibração pela campanha de 127 V antes da de 230 V (`aac725b`). 220 V/60 Hz: decisão sobre a regra de condição sem tabela (`evidencias/2026-10-22/LEIA-ME.md`) | K,R,D |
+| P-22 | ❓ | Evidência suficiente (2026-10-22: 14 sessões físicas lidas sem erro no DESKTOP-FSEESJI, benchmark com hashes iguais): falta definir tempo/tamanho aceitáveis | K,R,D |
 | P-23 | 🔧→🏭 | Orçamento 216/conexão aplicado; causa física da trava só com diagnóstico real | K,R |
 | P-24 | ✅ | — | — |
 | P-25 | ✅ | — | — |
 | P-26 | 🔧→🏭 | Decidida em 21/10: 5 condições, `set perfil todos`, 1 captura/classe, sem ACDC a 230 V. Fecha quando as sessões registrarem essa configuração | K,R |
 | P-27 | ✅ | — | — |
-| P-28 | 🔧→🏭 | Preservação do bruto implementada (`f974954`); falta exportação real + análise | K,R |
+| P-28 | ❓ | Evidência suficiente (2026-10-22: 135 exportações brutas íntegras, reamostragem casada por SHA-256): falta decidir se o FIR substitui o interpolador | K,R,D |
 | P-29 | 🔧→🏭 | Decisão B (21/10): logs antigos indisponíveis; usar `scpi_transcricao.log` das sessões novas, com revisão de dados sensíveis | R,D |
 | P-30 | ✅ | — (retificação: 63/99 históricos não verificáveis; `tres_versoes.md`, `AGENTS.md`) | — |
-| P-31 | 🔧→🏭 | Métricas offline publicadas; falta sessões novas + escolha da métrica oficial | K,R,D |
+| P-31 | ❓ | Evidência suficiente (2026-10-22: capturas físicas das 06/10/11/12/15/16 com três versões, correlações publicadas): falta escolher a métrica oficial | K,R,D |
 
 ## Log de rodadas (uma linha por rodada, mais recente no topo)
+
+- 2026-10-22 — Visita à bancada (Inspiron, COM10): Blocos 1–9 e 8-A completos a 127 V/60 Hz, parada no braço A da P-09. Fechamento parcial (`evidencias/2026-10-22/fechamento.json`): **P-03 e P-10 concluídas**; P-05, P-07, P-17, P-22, P-28 e P-31 com evidência suficiente aguardando revisão; P-02 e P-08 reprovadas; P-09 sem suporte a offset por passo. Correções: recalibração 127 V/60 Hz, forma volta à senoide depois de classe waveform (THD de 18/19), visita (P-09, Bloco 7, 50 Hz). 759 OK.
 
 - 2026-10-21 — Visita num comando: `scripts\VISITA_BANCADA.cmd` conduz os Blocos 1–10, 8-A, 10-A, 10-B, as cinco condições da P-26 (com calibração P-21 de 220/33 V) e o fechamento; CLI ganhou modo roteiro (`--comando`), as confirmações seguem com o operador. 754 OK.
 

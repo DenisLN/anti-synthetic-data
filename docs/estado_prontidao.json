@@ -10,8 +10,10 @@
       "evidencias": []
     },
     "P03": {
-      "status": "aberta",
-      "evidencias": []
+      "status": "concluida",
+      "evidencias": [
+        "evidencias/2026-10-22/fechamento.json"
+      ]
     },
     "P04": {
       "status": "concluida",
@@ -43,8 +45,10 @@
       ]
     },
     "P10": {
-      "status": "aberta",
-      "evidencias": []
+      "status": "concluida",
+      "evidencias": [
+        "evidencias/2026-10-22/fechamento.json"
+      ]
     },
     "P11": {
       "status": "concluida",

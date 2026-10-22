@@ -1,0 +1,28 @@
+{
+    "esquema":  1,
+    "gerado_em":  "2026-10-22T17:33:39.5888824-03:00",
+    "ferramenta":  "scripts/validar_pc_bancada.ps1",
+    "hostname":  "DESKTOP-FSEESJI",
+    "usuario":  "Ricardo Marin Israel",
+    "sistema":  "Windows",
+    "plataforma":  "Windows-10-10.0.26200-SP0",
+    "python":  "3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]",
+    "python_executavel":  "C:\\Users\\Ricardo Marin Israel\\anti-synthetic-data\\env\\Scripts\\python.exe",
+    "numpy":  "2.4.6",
+    "pymeasure":  "0.16.0",
+    "pyvisa":  "1.14.1",
+    "git_commit":  "6885e7ceafedf096cfb343169aceb92ff98432ee",
+    "git_status_short":  [
+
+                         ],
+    "git_sujo":  false,
+    "comando":  ".\\env\\Scripts\\python.exe -m unittest discover -s tests -p \"test*.py\" -v",
+    "codigo_saida":  0,
+    "testes_executados":  759,
+    "falhas":  0,
+    "erros":  0,
+    "skips":  0,
+    "duracao_s":  156.473,
+    "log":  "pc_bancada.log",
+    "log_sha256":  "25b460a756b93b7a265d2f1e39b7c67218327201e32335c051801d7ad32f964f"
+}

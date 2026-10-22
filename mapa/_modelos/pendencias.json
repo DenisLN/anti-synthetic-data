@@ -25,7 +25,7 @@
   "acao": "comparar marcadores, TRACe recuperada e recaptura 08/09; testar hipóteses do evento em 100 ms",
   "dependencia": "Dados e blocos 4/6 do roteiro; P-19",
   "criterio": "Diagnóstico discriminando hipóteses; correção, se necessária, seguida de nova captura. Ferramenta existente não fecha mecanismo",
-  "falta": "Marcadores + TRACe recuperada + recaptura 08/09 (evento 100 ms)",
+  "falta": "Reprovada em 2026-10-22 (`evidencias/2026-10-22/fechamento.json`): marcadores 30/30 sem espúrios, recapturas 08/09 a 50 e 60 Hz presentes, mas posição da 08 a 127 V/60 Hz desvia −16 amostras (limite 10) em uma captura por perfil (`sessao_2026-10-22_15-19-56`); hipótese da cópia de 100 ms sem critério definido",
   "frentes": [
    "K",
    "R"
@@ -36,19 +36,21 @@
  {
   "id": "P-03",
   "titulo": "recapturar 08 a 127 V/50 Hz com evento em 90 ms",
-  "status": "aguarda-bancada",
+  "status": "concluida",
   "prioridade": "alta",
   "responsavel": "B + operador",
   "acao": "recapturar 08 a 127 V/50 Hz com evento em 90 ms",
   "dependencia": "Campanha e checagem de segurança",
   "criterio": "Desvio absoluto ≤10 amostras, pico ≤374,2 V, sobressinal ≤0,55 conforme critério documentado; acima disso registrar achado de segurança",
-  "falta": "Recaptura 08, 127 V/50 Hz, evento 90 ms: ≤10 amostras, pico ≤374,2 V",
+  "falta": "— (2026-10-22: 3/3 capturas a 127 V/50 Hz com evento 90 ms, desvio 2 amostras, pico 339 V ≤ 374,2 V, sobressinal 0,295 pu ≤ 0,55; `evidencias/2026-10-22/fechamento.json`)",
   "frentes": [
    "K",
    "R"
   ],
-  "evidencias": [],
-  "evidencias_txt": "—"
+  "evidencias": [
+   "evidencias/2026-10-22/fechamento.json"
+  ],
+  "evidencias_txt": "`docs/evidencias/2026-10-22/fechamento.json`"
  },
  {
   "id": "P-04",
@@ -70,13 +72,13 @@
  {
   "id": "P-05",
   "titulo": "medir fase, posição, largura e pretrigger nas 01–04 com sorteio",
-  "status": "aguarda-bancada",
+  "status": "aguarda-decisao",
   "prioridade": "media",
   "responsavel": "B + operador",
   "acao": "medir fase, posição, largura e pretrigger nas 01–04 com sorteio",
   "dependencia": "Campanha v1.15",
   "criterio": "Sessões reais e relatório do verificador; registrar desvio >2 amostras como aviso, não inventar tolerância de aprovação",
-  "falta": "Fase/início/largura/pretrigger nas 01–04 com sorteio",
+  "falta": "Evidência suficiente (2026-10-22), falta revisão humana: largura ≤ 1,1 ms (limite 2); pre-trigger determinístico até ±6 amostras (aviso, limite 2 nunca validado; ver `evidencias/2026-10-22/LEIA-ME.md`); critério de fase/início não definido",
   "frentes": [
    "K",
    "R"
@@ -104,13 +106,13 @@
  {
   "id": "P-07",
   "titulo": "recalibrar 07/17 e repetir coleta com tabela revisada",
-  "status": "aguarda-bancada",
+  "status": "aguarda-decisao",
   "prioridade": "alta",
   "responsavel": "B + operador",
   "acao": "recalibrar 07/17 e repetir coleta com tabela revisada",
   "dependencia": "Capturas reais e revisão de diff",
   "criterio": "Fatores derivados de medições, diff revisado, calibração identificada e validação na execução seguinte",
-  "falta": "Recalibrar 07/17 com medidas reais e validar na coleta seguinte",
+  "falta": "Evidência suficiente (2026-10-22), falta revisão humana do diff e decisão: 07 1,186 → 1,615 e 17 1,031 → 1,575 (`022bb5c`, `a22fba9`); na Parte 6 a 07 rodou sem alerta de extremo; 17 recusada a 220 V",
   "frentes": [
    "K",
    "R"
@@ -127,7 +129,7 @@
   "acao": "conferir pico/vale das 10/11/12/16 contra previsão corrigida",
   "dependencia": "Campanha v1.15",
   "criterio": "Extremos medidos compatíveis com teto previsto, por condição; qualquer violação investigada",
-  "falta": "Pico/vale 10/11/12/16 contra teto previsto, por condição",
+  "falta": "Reprovada em 2026-10-22: extremos até 1,30× o previsto (12: 264 V contra 203,5 V), abaixo do teto. Recalibrado (`13b9bdb`); validar na próxima coleta e nas outras condições",
   "frentes": [
    "K",
    "R"
@@ -144,7 +146,7 @@
   "acao": "quantificar perda da média por ciclo e viabilidade física de offset; recomendar aceitar limite até haver evidência",
   "dependencia": "P-17 para eventual compensação ACDC",
   "criterio": "Decisão registrada com erro quantificado; se optar por mudança, demonstração técnica e regressões antes/depois",
-  "falta": "Experimento A/B/C implementado (OFF=A; `set p09`); na bancada: `diag_list_offset.py` sem energizar e Bloco 10-B; se C não for aceito/não ganhar, aceitar limitação com métricas (d)",
+  "falta": "`diag_list_offset.py` real (2026-10-22): **sem suporte** a `SOURce:LIST:VOLTage:OFFSet` (`-113`), braço C não roda. Falta braço A (refazer, parado no alerta), braço B e análise A/B; depois aceitar a limitação com métricas (d)",
   "frentes": [
    "K",
    "R"
@@ -157,19 +159,21 @@
  {
   "id": "P-10",
   "titulo": "medir RMS/THD da 05 em CSIN 10/15/20%, norma 2% e TRACe 30%",
-  "status": "aguarda-bancada",
+  "status": "concluida",
   "prioridade": "media",
   "responsavel": "B + operador",
   "acao": "medir RMS/THD da 05 em CSIN 10/15/20%, norma 2% e TRACe 30%",
   "dependencia": "Campanha",
   "criterio": "Capturas reais por nível, modelo/rota identificados e comparação contra critérios de validação vigentes",
-  "falta": "RMS/THD da 05: CSIN 10/15/20%, norma 2%, TRACe 30%",
+  "falta": "— (2026-10-22: níveis 2/5/10/15/20/30 % com validação física ok; rota CSIN para 2–20 % e TRACe para 30 %; `evidencias/2026-10-22/fechamento.json`)",
   "frentes": [
    "K",
    "R"
   ],
-  "evidencias": [],
-  "evidencias_txt": "—"
+  "evidencias": [
+   "evidencias/2026-10-22/fechamento.json"
+  ],
+  "evidencias_txt": "`docs/evidencias/2026-10-22/fechamento.json`"
  },
  {
   "id": "P-11",
@@ -265,7 +269,7 @@
   "acao": "rodar suíte offline no PC efetivo da bancada com calibração e checkout registrados",
   "dependencia": "Etapa 0 e acesso ao PC",
   "criterio": "Log completo, versões, SHA, status, resultado e skips. Resultado de outro Windows não fecha este item",
-  "falta": "— (suíte 680/0 falhas/0 skips no PC da bancada DESKTOP-FSEESJI, `21fb300`; `evidencias/2026-10-21/pc_bancada.json`)",
+  "falta": "— (suíte 680/0 falhas/0 skips no PC da bancada DESKTOP-FSEESJI, `21fb300`; `evidencias/2026-10-21/pc_bancada.json`; repetida em 2026-10-22 com 759/0, `evidencias/2026-10-22/pc_bancada.json`)",
   "frentes": [],
   "evidencias": [
    "evidencias/2026-10-21/pc_bancada.json",
@@ -276,13 +280,13 @@
  {
   "id": "P-17",
   "titulo": "executar diagnóstico de amplitude ACDC, separar CA e RMS total",
-  "status": "aguarda-bancada",
+  "status": "aguarda-decisao",
   "prioridade": "media",
   "responsavel": "B + operador",
   "acao": "executar diagnóstico de amplitude ACDC, separar CA e RMS total",
   "dependencia": "Escolha de tensão P-26",
   "criterio": "Medições e análise do déficit de 5–6%; compensação V/g apenas após caracterização e nova validação",
-  "falta": "Diagnóstico ACDC (`scripts/diag_acdc_amplitude.py`) real, só a 127 V (P-26: sem 230 V)",
+  "falta": "Evidência suficiente (2026-10-22, 50 e 60 Hz, AC / ACDC offset 0 / ACDC com offset): falta decidir se o déficit em ACDC é aceitável (critério não definido)",
   "frentes": [
    "K",
    "R"
@@ -317,7 +321,7 @@
   "acao": "verificar `TRACe:DATA?` na revisão real do equipamento",
   "dependencia": "Roteiro e observação do painel",
   "criterio": "Resposta real com 1024 valores finitos ou registro explícito de comando não suportado; interromper diante de falha de infraestrutura",
-  "falta": "`TRACe:DATA?` real: 1024 finitos ou não suportado",
+  "falta": "2026-10-22: `TRACe:DATA? TCC00` devolve 10 valores (9 leituras, classes 08/09), nem 1024 finitos nem erro de comando não suportado: investigar o formato da resposta",
   "frentes": [
    "K",
    "R"
@@ -350,7 +354,7 @@
   "acao": "calibrar novas condições antes de coleta científica nelas",
   "dependencia": "Segurança e campanha por condição",
   "criterio": "Tabela por tensão/frequência com origem real e validação; não subir limite para fazer classe caber",
-  "falta": "Calibrar 220 V/60 Hz e 33 V/60 Hz antes da coleta científica (sem tabela; 220 V tem 52/150 capturas recusadas pela previsão conservadora)",
+  "falta": "Calibrar 220 V/60 Hz e 33 V/60 Hz antes da coleta científica. 50 Hz: calibração pela campanha de 127 V antes da de 230 V (`aac725b`). 220 V/60 Hz: decisão sobre a regra de condição sem tabela (`evidencias/2026-10-22/LEIA-ME.md`)",
   "frentes": [
    "K",
    "R"
@@ -361,13 +365,13 @@
  {
   "id": "P-22",
   "titulo": "medir tamanho/tempo/memória da consolidação com ruído e amostras físicas",
-  "status": "aguarda-bancada",
+  "status": "aguarda-decisao",
   "prioridade": "baixa",
   "responsavel": "A + B",
   "acao": "medir tamanho/tempo/memória da consolidação com ruído e amostras físicas",
   "dependencia": "Sessões reais; sintético apenas preliminar",
   "criterio": "Benchmark reprodutível e integridade por leitura de retorno; perfis espelhados identificados como aliases da mesma captura, sem duplicar arrays nem tratá-los como medições independentes",
-  "falta": "Benchmark com sessões físicas no PC/disco da bancada",
+  "falta": "Evidência suficiente (2026-10-22: 14 sessões físicas lidas sem erro no DESKTOP-FSEESJI, benchmark com hashes iguais): falta definir tempo/tamanho aceitáveis",
   "frentes": [
    "K",
    "R"
@@ -463,13 +467,13 @@
  {
   "id": "P-28",
   "titulo": "comparar interpolação atual com sinal bruto e alternativa com anti-aliasing",
-  "status": "aguarda-bancada",
+  "status": "aguarda-decisao",
   "prioridade": "baixa",
   "responsavel": "B",
   "acao": "comparar interpolação atual com sinal bruto e alternativa com anti-aliasing",
   "dependencia": "Taxa bruta real; offline preliminar",
   "criterio": "Erro temporal, espectral, pico, THD e correlação quantificados; decisão com efeito sobre compatibilidade e dataset",
-  "falta": "Preservação do bruto implementada (`f974954`); falta exportação real + análise",
+  "falta": "Evidência suficiente (2026-10-22: 135 exportações brutas íntegras, reamostragem casada por SHA-256): falta decidir se o FIR substitui o interpolador",
   "frentes": [
    "K",
    "R"
@@ -515,13 +519,13 @@
  {
   "id": "P-31",
   "titulo": "publicar análise comparativa nominal/fundamental ajustada e recomendar ambas com nomes explícitos",
-  "status": "aguarda-bancada",
+  "status": "aguarda-decisao",
   "prioridade": "baixa",
   "responsavel": "B",
   "acao": "publicar análise comparativa nominal/fundamental ajustada e recomendar ambas com nomes explícitos",
   "dependencia": "Novas sessões v1.15; decisão de métrica",
   "criterio": "Cálculo reprodutível nas sessões novas e definição de métrica oficial; baixas correlações não ocultadas pela escolha da métrica",
-  "falta": "Métricas offline publicadas; falta sessões novas + escolha da métrica oficial",
+  "falta": "Evidência suficiente (2026-10-22: capturas físicas das 06/10/11/12/15/16 com três versões, correlações publicadas): falta escolher a métrica oficial",
   "frentes": [
    "K",
    "R",
