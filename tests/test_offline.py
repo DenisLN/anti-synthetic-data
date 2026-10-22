@@ -634,6 +634,21 @@ class AmetekTests(unittest.TestCase):
         source.restaurar_forma_e_modo_padrao()
         self.assertEqual(source.command_log, [])
 
+    def test_forma_volta_a_senoide_depois_de_classe_waveform(self):
+        """Regressão de bancada (2026-10-22): depois da LIST de TRACEs de uma
+        classe waveform (17), restaurar_forma_e_modo_padrao() não mandava
+        FUNCtion:SHAPe SINusoid, e as nativas seguintes (18, 19) tocaram a
+        forma entalhada da 17."""
+        source = AmetekMX30(simulated=True, max_voltage_rms=10.0, max_peak_v=100.0, max_current_a=0.5)
+        t = np.arange(6000, dtype=np.float64) / 30000.0
+        source.program_capture(np.sin(2.0 * np.pi * 50.0 * t), base_voltage_rms=5.0, frequency_hz=50.0)
+        source.command_log.clear()
+        source.restaurar_forma_e_modo_padrao()
+        self.assertEqual(source.command_log[:3], ["SOURce:FUNCtion:SHAPe SINusoid", "*WAI", "SYSTem:ERRor?"])
+        source.command_log.clear()
+        source.restaurar_forma_e_modo_padrao()
+        self.assertEqual(source.command_log, [])
+
     def test_disable_dc_offset_roda_de_verdade_quando_modo_e_acdc(self):
         source = AmetekMX30(simulated=True, max_voltage_rms=10.0, max_peak_v=100.0, max_current_a=0.5)
         source.enable_dc_offset(1.0, ac_peak_v=7.0)

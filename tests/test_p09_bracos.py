@@ -28,9 +28,12 @@ from ametek_orm import (  # noqa: E402
 # sha256 da sequência de comandos SCPI simulados de _sequencia() (sem as linhas
 # TRACe:DATA e SOURce:LIST:VOLTage, cujos números dependem do arredondamento
 # de ponto flutuante da plataforma), gravada com o código ANTES da P-09
-# (árvore em ef3d49d). 156 comandos.
-SHA_SEQUENCIA_A_ANTES = "948394cd4c87293ef1967d07e8d8a8f2b4dee1f7a50a885f15e43c751aac4868"
-N_SEQUENCIA_A_ANTES = 156
+# (árvore em ef3d49d): 156 comandos, 948394cd... Desde 2026-10-22 cada
+# restaurar_forma_e_modo_padrao() depois de uma LIST de TRACEs manda também
+# FUNCtion:SHAPe SINusoid, *WAI, SYSTem:ERRor? (2 trios aqui); sem os trios a
+# sequência é a de ef3d49d, byte a byte.
+SHA_SEQUENCIA_A_ANTES = "755ce5d5d92de5f82d4dddff0bcbd1af9d3a11a04857cddaed09d95ce5f340c8"
+N_SEQUENCIA_A_ANTES = 162
 
 
 def forma_classe16(f0=50.0, seed=2, perfil="fronteira"):

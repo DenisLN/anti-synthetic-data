@@ -2265,6 +2265,12 @@ class AmetekMX30:
                 raise InstrumentHardwareError(
                     f"{points_query} retornou {actual} logo após {command!r}; esperado {expected}"
                 )
+        # Ao fim da LIST a forma FIXA fica na última TRACE da lista: sem isto,
+        # select_sine_shape() achava que ainda era SINusoid e não restaurava.
+        # Sessão 2026-10-22 14:41: a 18 e a 19 rodaram depois da 17 com a
+        # forma entalhada dela (THD ~4,7%, ímpares de 2-3%) e reprovaram; no
+        # rerun sem a 17 antes, passaram.
+        self._forma_atual = "LIST"
         if self._p09_braco == "C":
             self._programar_offsets_lista(programacao, expected)
         elif self._p09_braco == "B":
