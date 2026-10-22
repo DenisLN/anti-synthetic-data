@@ -21,9 +21,10 @@ Arquivos: `visita_estado.json` e `visita.log` (cópia de `logs/visita_2026-10-22
 
 ## Antes de energizar de novo (obrigatório)
 
-1. **Fatores de extremo baixos (achado de segurança).** Hoje os extremos medidos passaram do previsto em 1-30%; a 13-0002 chegou a 378 V (teto 415,8 V). A proposta sem `--gravar` está em `recalibracao_proposta_127V_60Hz.md` (12: 1,03 → 1,47; 10: 1,24 → 1,42; 13: 1,03 → 1,29; 05: 1,00 → 1,26; e outras). A 220/230 V o limite de bancada reduz cada classe até o previsto encostar no teto, então previsão baixa ali passa do teto. Decidir e commitar a recalibração antes das campanhas (`docs/limites_e_calibracao.md` §4 e §5).
+1. **Fatores de extremo baixos (achado de segurança).** Hoje os extremos medidos passaram do previsto em 1-30%; a 13-0002 chegou a 378 V (teto 415,8 V). **Resolvido a 60 Hz:** recalibração de 127 V/60 Hz commitada (`13b9bdb`, proposta em `recalibracao_proposta_127V_60Hz.md`); a 220 V, 05 e 18 saem e 13, 14 e 19 perdem capturas (decisão do responsável). **50 Hz:** a visita agora grava a calibração de 50 Hz com a campanha de 127 V/50 Hz (etapa `C-127V_50Hz-calibrar`) antes da campanha de 230 V/50 Hz.
 2. **17 fora de 220 V** pelo fator 1,575 (commit `a22fba9`). A medida de hoje dá no máximo 1,408 para a 17; conferir por que a CLI gravou 1,575 antes de aceitar a exclusão.
 3. **P-09 (10B-diag)**: entender o erro de `SOURce:MODE AC` antes de confiar no braço C pulado.
+4. **220 V/60 Hz sem tabela**: a regra de condição sem tabela usa o maior fator já medido (1,615) em toda classe, e quase nada cabe na rodada de calibração de 220 V. Decisão de projeto antes dessa rodada.
 
 ## Retomar
 
