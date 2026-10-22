@@ -10,10 +10,10 @@ Visita `2026-10-22_13-31-58`, Inspiron 15 (DESKTOP-FSEESJI), commits `022bb5c` e
 | 03 (ciclos de 07/10) | pulada: sessões de 07/10 não estão no PC |
 | 04, 05, 06 (marcadores, ACDC 50/60, 08 e 09) | ok |
 | 07 (07 e 17, duas rodadas) | ok; calibração commitada (`022bb5c`, `a22fba9`) |
-| 08-parte1 | falhas: 02 (crista 1,83 > 1,81), 18 (THD 3,4%), 19 (THD ~9,7%) |
+| 08-parte1 | falhas: 02 (crista 1,83 > 1,81; fator 1,164 baixo, hoje 1,192), 18 (THD 3,4%) e 19 (THD ~9,7%) por bug de software (`72bbcd6`); no `run falhas` (`14-42-21`) 18 e 19 passaram |
 | 08-A (05 norma e literatura) | ok |
 | 09 partes 2 a 6 | ok |
-| 10B-diag | marcada ok, mas **inconclusiva**: `*ESR?=32` logo após `SOURce:MODE AC`, offset nunca testado (`diag_list_offset.*`) |
+| 10B-diag | ok: **sem suporte** a `SOURce:LIST:VOLTage:OFFSet` (`-113 Undefined header`, `diag_list_offset.json`); o "None" do log era a visita lendo o caminho errado (`192791e`); braço C pulado com razão |
 | 10B-braco-A | parada pelo operador; capturas em `sessao_2026-10-22_15-27-50`; roda de novo na retomada |
 | 10B-braco-C/B, 10B-analise, 10A, campanhas, 11 | não rodaram |
 
@@ -22,9 +22,21 @@ Arquivos: `visita_estado.json` e `visita.log` (cópia de `logs/visita_2026-10-22
 ## Antes de energizar de novo (obrigatório)
 
 1. **Fatores de extremo baixos (achado de segurança).** Hoje os extremos medidos passaram do previsto em 1-30%; a 13-0002 chegou a 378 V (teto 415,8 V). **Resolvido a 60 Hz:** recalibração de 127 V/60 Hz commitada (`13b9bdb`, proposta em `recalibracao_proposta_127V_60Hz.md`); a 220 V, 05 e 18 saem e 13, 14 e 19 perdem capturas (decisão do responsável). **50 Hz:** a visita agora grava a calibração de 50 Hz com a campanha de 127 V/50 Hz (etapa `C-127V_50Hz-calibrar`) antes da campanha de 230 V/50 Hz.
-2. **17 fora de 220 V** pelo fator 1,575 (commit `a22fba9`). A medida de hoje dá no máximo 1,408 para a 17; conferir por que a CLI gravou 1,575 antes de aceitar a exclusão.
-3. **P-09 (10B-diag)**: entender o erro de `SOURce:MODE AC` antes de confiar no braço C pulado.
-4. **220 V/60 Hz sem tabela**: a regra de condição sem tabela usa o maior fator já medido (1,615) em toda classe, e quase nada cabe na rodada de calibração de 220 V. Decisão de projeto antes dessa rodada.
+2. ~~17 fora de 220 V pelo fator 1,575~~ Conferido: 1,575 é o máximo medido na 2.ª rodada do Bloco 7 (`sessao_2026-10-22_14-27-02`: mín. 1,369, mediana 1,423). A exclusão vale.
+3. ~~P-09 (10B-diag)~~ Resolvido: a fonte não aceita offset por passo; o `*ESR?=32` depois de `SOURce:MODE AC` é o mesmo `-113` da consulta, lido pela primeira vez ali. Modo AC restaurado.
+4. **220 V/60 Hz sem tabela (decisão pendente, antes de `C-220V_60Hz-rodada-calibracao`).** Ver a seção abaixo.
+
+## Decisão pendente: fatores a 220 V/60 Hz
+
+Hoje `carregar_fatores_extremo` trata 220 V/60 Hz como condição sem tabela: toda classe usa o maior fator já medido (1,615, da 07), menos a 01. Com isso, na rodada de calibração de 220 V só cabem 07, 10, 11, 15 e 16 (e parte da 12 e da 20); 01-06, 09, 13, 14, 17, 18 e 19 seriam puladas, e a rodada não calibra essas classes. Já era assim antes de 2026-10-22 (máximo 1,475).
+
+| Opção | O que muda | Prós | Contras |
+|---|---|---|---|
+| A. Manter | nada | regra mais conservadora | a campanha de 220 V fica sem a maioria das classes, sem caminho para calibrá-las |
+| B. Mesma frequência basta | condição sem tabela própria, mas com tabela de mesma frequência (127 V/60 Hz), usa o fator da própria classe nessas tabelas, como a regra de condição calibrada | coerente com o achado da v1.14 (o sobressinal depende da frequência, não da tensão: 127 V e 230 V a 50 Hz deram fatores próximos); a 220 V cabem todas menos 05, 14, 17, 18, parte de 13/19 e a 03 no perfil norma (os testes já supõem isso) | a dependência com a tensão a 60 Hz nunca foi medida; a margem de 1,10 é a única folga até a rodada de calibração medir |
+| C. B com folga extra só na rodada | como B, mas a rodada de calibração de 220 V usa margem maior (por exemplo, perfil literatura e fração reduzida) | mede antes de chegar ao teto | exige definir a folga, que não existe em nenhuma fonte (não inventar) |
+
+Recomendação: B, depois de conferir no código e no `CHANGELOG/v1.14.md` que a regra de condição sem tabela não protege contra outro efeito além do da frequência. É mudança em regra de segurança (`logica/mestre.py`): só com decisão do responsável.
 
 ## Retomar
 
@@ -37,7 +49,7 @@ Outro PC:
 
 ## Para o fechamento
 
-- Pre-trigger de 5 a 6 amostras (limite 2) em 02-0001 e 04-0001/0002.
-- 18: frequências estimadas no triplo das programadas (171/189 Hz para 57/63 Hz), junto com a THD alta de 18 e 19.
+- **Pre-trigger (primeira medida em bancada)**: desvio determinístico, função do instante programado do evento, igual nos três perfis e no rerun: 02 (início 19,07 ms) +5 amostras em 5/5; 03 (58,07 ms) −1; 04 (110,8 / 114,8 / 132,1 ms) −2 / −6 / +6. Até ±0,2 ms a 30 kHz. O limite de 2 amostras do verificador nunca foi validado; não foi mudado (sem fonte para outro valor). Decidir se vira compensação do rótulo de início ou limite novo.
+- **18 e 19 (THD)**: causa encontrada e corrigida (`72bbcd6`): depois da 17 a forma fixa ficava na última TRACE entalhada (ímpares de 2-3%, THD ≈ 4,7%, igual ao fim da 17; a 01 sai com 0,19%). As frequências da 18 no triplo (171/189 Hz) são provavelmente o mesmo efeito (cruzamentos de zero extras dos entalhes): não verificado.
 - 08: `TRACe:DATA?` devolve 10 valores em vez de 1024 (evidência para a P-19).
-- Visita: ordem da 2.ª rodada do Bloco 7 contra a checagem de árvore suja; `--saida` do `diag_list_offset.py` virou pasta; 10B-diag com resultado `None` marcada como ok.
+- Visita, corrigido: leitura do diagnóstico da P-09 (`192791e`), commit da calibração entre as rodadas do Bloco 7 (`e7c87c0`), calibração de 50 Hz antes de 230 V (`aac725b`), retomada em outro PC (`9730cd4`).
