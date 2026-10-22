@@ -163,7 +163,7 @@ class SegurancaDoOrquestrador(unittest.TestCase):
         ids = [e.id for e in vb.ETAPAS]
         self.assertEqual(len(ids), len(set(ids)))
         ordem = ["01-suite", "02-infra", "04-marcadores", "05-acdc-60", "06-classe08", "07-rodada1",
-                 "07-commit", "08-parte1", "09-parte2", "10B-diag", "10A-passo-sine", "C-127V_50Hz",
+                 "07-commit1", "07-rodada2", "07-commit", "08-parte1", "09-parte2", "10B-diag", "10A-passo-sine", "C-127V_50Hz",
                  "C-127V_50Hz-calibrar", "C-230V_50Hz", "11-entrega"]
         self.assertEqual([i for i in ids if i in ordem], ordem)
         # Toda campanha acima de 127 V vem depois da calibração da própria frequência.

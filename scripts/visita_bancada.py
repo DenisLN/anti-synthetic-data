@@ -511,7 +511,8 @@ def commit_calibracao(v: Visita, mensagem: str) -> str:
 
 
 def e_commit07(v: Visita, et: Etapa) -> str:
-    return commit_calibracao(v, "chore: recalibra fatores de extremo 07 e 17 a 127 V/60 Hz")
+    rodada = " (1.ª rodada)" if et.id.endswith("1") else ""
+    return commit_calibracao(v, f"chore: recalibra fatores de extremo 07 e 17 a 127 V/60 Hz{rodada}")
 
 
 def e_parte1(v: Visita, et: Etapa) -> str:
@@ -735,6 +736,8 @@ ETAPAS: List[Etapa] = [
     Etapa("06-classe09", "6", "09 com 6 capturas", True, e_classe09, C127_50),
     Etapa("06-ciclos", "6", "Ciclos offline das novas 08/09", False, e_ciclos_novos),
     Etapa("07-rodada1", "7", "07 e 17 com recalibração, 1.ª rodada", True, e_rodada07, C127_60),
+    # A 1.ª rodada grava a calibração; a 2.ª energiza e recusa árvore suja.
+    Etapa("07-commit1", "7", "Suíte e commit da calibração da 1.ª rodada", False, e_commit07),
     Etapa("07-rodada2", "7", "07 e 17, 2.ª rodada", True, e_rodada07, C127_60),
     Etapa("07-commit", "7", "Suíte e commit da calibração", False, e_commit07),
     Etapa("08-parte1", "8", "Parte 1 (perfil todos) e verificador", True, e_parte1, C127_60),
