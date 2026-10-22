@@ -5,7 +5,7 @@
     "127V_60Hz": {
       "tensao_rms": 127.0,
       "frequencia_hz": 60.0,
-      "origem": "scripts/recalibrar_extremos.py sobre: resultados\\sessao_2026-10-07_15-15-25, resultados\\sessao_2026-10-07_14-59-54_run02 (nenhum fator diminuiu); antes: scripts/recalibrar_extremos.py sobre: docs/analise-2026-09-30/dados/sessao_2026-09-30_15-26-05, docs/analise-2026-09-30/dados/sessao_2026-09-30_15-58-51 (nenhum fator diminuiu); antes: resultados/sessao_2026-09-30_15-26-05 (run all, 20/20 OK, 127 Vrms, 60 Hz, 1 captura por classe); docs/analise-2026-09-30/ANALISE.md",
+      "origem": "scripts/recalibrar_extremos.py sobre: C:\\Users\\Ricardo Marin Israel\\anti-synthetic-data\\resultados\\sessao_2026-10-22_14-15-42 (nenhum fator diminuiu) [automático, CLI]; antes: scripts/recalibrar_extremos.py sobre: resultados\\sessao_2026-10-07_15-15-25, resultados\\sessao_2026-10-07_14-59-54_run02 (nenhum fator diminuiu); antes: scripts/recalibrar_extremos.py sobre: docs/analise-2026-09-30/dados/sessao_2026-09-30_15-26-05, docs/analise-2026-09-30/dados/sessao_2026-09-30_15-58-51 (nenhum fator diminuiu); antes: resultados/sessao_2026-09-30_15-26-05 (run all, 20/20 OK, 127 Vrms, 60 Hz, 1 captura por classe); docs/analise-2026-09-30/ANALISE.md",
       "fatores": {
         "01": 1.063,
         "02": 1.164,
@@ -13,7 +13,7 @@
         "04": 1.192,
         "05": 0.998,
         "06": 1.034,
-        "07": 1.186,
+        "07": 1.57,
         "09": 1.036,
         "10": 1.242,
         "11": 1.258,
@@ -22,7 +22,7 @@
         "14": 0.977,
         "15": 1.017,
         "16": 1.475,
-        "17": 1.031,
+        "17": 1.393,
         "18": 1.036,
         "19": 0.988,
         "20": 1.041

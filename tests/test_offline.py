@@ -4281,7 +4281,8 @@ class LimiteDeBancada220VTests(unittest.TestCase):
                     self.assertGreater(info["extremo_previsto_v"], self.TETO - 1.0, classe_id)
         # 17: só na seed padrão (pico de 368 V × 1,031 × 1,10 = 417 V, 1 V acima).
         # 09: desde a recalibração de 2026-10-07 (fator 1,002 -> 1,036 a 127 V).
-        self.assertEqual(reduzidas, {"09", "10", "11", "14", "16", "17"})
+        # 07: desde a recalibração de 2026-10-22 (fator 1,186 -> 1,57 a 127 V).
+        self.assertEqual(reduzidas, {"07", "09", "10", "11", "14", "16", "17"})
 
     def test_reducao_mantem_a_senoide_fora_do_disturbio_e_nao_muda_gerar(self):
         experimento = self._instancia("16")
