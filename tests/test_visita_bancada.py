@@ -178,6 +178,23 @@ class SegurancaDoOrquestrador(unittest.TestCase):
         # Sem ACDC a 230 V (P-26, opção A).
         self.assertFalse([e for e in vb.ETAPAS if "acdc" in e.id and e.condicao[0] != 127])
 
+    def test_reexecucoes_de_2026_10_22_depois_do_10a_e_antes_de_50hz(self):
+        ids = [e.id for e in vb.ETAPAS]
+        reexec = [e for e in vb.ETAPAS if e.bloco == "R"]
+        self.assertEqual([e.id for e in reexec], ["R-02-17-18-19", "R-p08-10-11", "R-p08-12-16"])
+        for e in reexec:
+            self.assertTrue(e.energiza)
+            self.assertEqual(e.condicao, (127.0, 60.0))
+            self.assertLess(ids.index("10A-passo-sine"), ids.index(e.id))
+            self.assertLess(ids.index(e.id), ids.index("C-127V_50Hz"))
+        # A 17 vai junto e antes da 18 (a correção da forma só se prova assim).
+        classes = vb.REEXECUCOES_2026_10_22[0][1].split(",")
+        self.assertLess(classes.index("17"), classes.index("18"))
+        # P-08: 10/11/12/16 custam 108 gravações cada; dois por conexão (216).
+        self.assertEqual(sorted(c for _, l in vb.REEXECUCOES_2026_10_22[1:] for c in l.split(",")),
+                         ["10", "11", "12", "16"])
+        self.assertTrue(all(len(l.split(",")) == 2 for _, l in vb.REEXECUCOES_2026_10_22[1:]))
+
     def test_empacotar_respeita_orcamento(self):
         grupos, fora = vb.empacotar_grupos([("01", 0), ("06", 108), ("10", 108), ("11", 108), ("99", 300)], 216)
         self.assertEqual(grupos, [["01", "06", "10"], ["11"]])

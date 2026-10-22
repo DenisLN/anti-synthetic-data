@@ -67,6 +67,11 @@ CLI_OK, CLI_COM_FALHAS, CLI_INFRA, CLI_NAO_CONFIRMADO, CLI_INVALIDO = 0, 1, 2, 3
 PARTES_9_TODOS = ("06,10", "11,12", "13,14", "15,16", "07,08,09,20")
 PARTE_1_TODOS = "01,02,03,04,05,17,18,19"  # passo 8.1 com set perfil todos
 CLASSES_P09 = "10,11,12,16"  # Bloco 10-B
+# Reexecução, a 127 V/60 Hz, do que reprovou em 2026-10-22 e foi corrigido depois:
+# 02 (crista; fator recalibrado em 13b9bdb), 18/19 (THD; forma da 17 herdada,
+# 72bbcd6: a 17 vai junto, antes delas) e 10/11/12/16 (P-08; recalibração
+# 13b9bdb), estas em dois grupos de 216 gravações TRACe.
+REEXECUCOES_2026_10_22 = (("R-02-17-18-19", "02,17,18,19"), ("R-p08-10-11", "10,11"), ("R-p08-12-16", "12,16"))
 # = mestre.TIPOS_REEXECUTAVEIS (o teste confere): o que ``run falhas`` reexecuta.
 TIPOS_REEXECUTAVEIS = ("descartada", "invalida", "classe_falhou", "nao_executada_orcamento")
 
@@ -752,6 +757,8 @@ ETAPAS: List[Etapa] = [
     Etapa("10B-braco-B", "10-B", "P-09 braço B", True, e_p09("B"), C127_60),
     Etapa("10B-analise", "10-B", "P-09 análise A/B/C", False, e_p09_analise),
     Etapa("10A-passo-sine", "10-A", "Passo final SINE (P-18)", True, e_passo_sine, C127_60),
+    *[Etapa(eid, "R", f"Reexecução do que reprovou em 2026-10-22: run {lista}", True, e_parte9(lista), C127_60)
+      for eid, lista in REEXECUCOES_2026_10_22],
     Etapa("C-127V_50Hz", "P-26", "Campanha 127 V/50 Hz (perfil todos)", True, e_campanha("todos", True), C127_50),
     # A 230 V o limite de bancada leva o previsto até o teto: antes dela, os
     # fatores de 50 Hz saem da campanha de 127 V (regra por frequência).

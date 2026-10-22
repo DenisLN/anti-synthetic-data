@@ -40,7 +40,7 @@ Conferido depois: a regra atual foi decisão explícita da v1.14 para 220 V, por
 
 ## Retomar
 
-Mesmo PC: `scripts\VISITA_BANCADA.cmd`. Retoma no braço A da P-09.
+Mesmo PC: `scripts\VISITA_BANCADA.cmd`. Retoma no braço A da P-09. Depois do 10-A, antes das campanhas, a visita reexecuta o que reprovou hoje e foi corrigido (bloco R): `run 02,17,18,19`, `run 10,11` e `run 12,16` a 127 V/60 Hz.
 
 Outro PC:
 1. `git pull` do branch `feat/execucao-pendencias-v1-15` (fork `rmlinxic/anti-synthetic-data`).
