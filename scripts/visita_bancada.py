@@ -43,7 +43,7 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 RAIZ = Path(__file__).resolve().parents[1]
@@ -253,6 +253,17 @@ def falhas_da_sessao(pasta: Path, so_reexecutaveis: bool = False) -> List[dict]:
 
 # ------------------------------------------------------------------ a visita
 
+def sessao_local(caminho: str) -> Path:
+    """Sessão registrada no estado com o caminho absoluto do PC onde rodou.
+    Retomada em outro PC (resultados/ copiado para outra pasta): se o caminho
+    gravado não existe aqui, procura a sessão pelo nome em ``RESULTADOS``."""
+    gravado = Path(caminho)
+    if gravado.is_dir():
+        return gravado
+    local = RESULTADOS / PureWindowsPath(caminho).name
+    return local if local.is_dir() else gravado
+
+
 @dataclass
 class Etapa:
     id: str
@@ -293,7 +304,8 @@ class Visita:
         return self.estado.setdefault("etapas", {}).setdefault(etapa_id, {})
 
     def sessoes_de(self, *etapas: str) -> List[Path]:
-        return [Path(p) for e in etapas for p in self.estado.get("etapas", {}).get(e, {}).get("sessoes", [])]
+        return [sessao_local(p) for e in etapas
+                for p in self.estado.get("etapas", {}).get(e, {}).get("sessoes", [])]
 
     def todas_as_sessoes(self) -> List[Path]:
         vistas, saida = set(), []
@@ -301,7 +313,7 @@ class Visita:
             for p in reg.get("sessoes", []):
                 if p not in vistas:
                     vistas.add(p)
-                    saida.append(Path(p))
+                    saida.append(sessao_local(p))
         return saida
 
     @property

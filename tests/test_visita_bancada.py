@@ -227,6 +227,16 @@ class FluxoDaVisita(unittest.TestCase):
         self.assertEqual(reg["status"], "ok")
         self.assertEqual(len(reg["sessoes"]), 1)
 
+    def test_sessao_gravada_em_outro_pc_e_achada_pelo_nome(self):
+        (self.resultados / "sessao_2026-10-22_15-19-56").mkdir()
+        outro_pc = r"C:\Users\Outra Pessoa\anti-synthetic-data\resultados\sessao_2026-10-22_15-19-56"
+        sumida = r"C:\Users\Outra Pessoa\anti-synthetic-data\resultados\sessao_inexistente"
+        self.v.estado["etapas"] = {"a": {"sessoes": [outro_pc]}, "b": {"sessoes": [sumida, outro_pc]}}
+        local = self.resultados / "sessao_2026-10-22_15-19-56"
+        self.assertEqual(self.v.sessoes_de("a"), [local])
+        self.assertEqual(self.v.todas_as_sessoes(), [local, Path(sumida)])
+        self.assertFalse(Path(sumida).is_dir())  # inexistente continua inexistente: quem usa filtra
+
     def test_nao_confirmado_para_e_retoma_da_mesma_etapa(self):
         a = self.etapa(vb.e_parte9("06,10"), eid="a")
         b = self.etapa(vb.e_parte9("11,12"), eid="b")
