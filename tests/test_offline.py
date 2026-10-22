@@ -4270,6 +4270,12 @@ class LimiteDeBancada220VTests(unittest.TestCase):
         for indice in range(1, 21):
             classe_id = f"{indice:02d}"
             for info in self._avaliar_classe(classe_id):
+                if classe_id == "17":
+                    # Recalibração de 2026-10-22 (fator 1,575 a 127 V): nem a
+                    # redução mínima cabe no teto, a 17 é recusada a 220 V.
+                    self.assertFalse(info["cabe"], classe_id)
+                    self.assertIn("mínimo aceito", info["motivo"])
+                    continue
                 self.assertTrue(info["cabe"], (classe_id, info.get("motivo")))
                 self.assertLessEqual(info["extremo_previsto_v"], self.TETO + 1e-6, classe_id)
                 if "fator_disturbio_bancada" in info:
@@ -4281,8 +4287,8 @@ class LimiteDeBancada220VTests(unittest.TestCase):
                     self.assertGreater(info["extremo_previsto_v"], self.TETO - 1.0, classe_id)
         # 17: só na seed padrão (pico de 368 V × 1,031 × 1,10 = 417 V, 1 V acima).
         # 09: desde a recalibração de 2026-10-07 (fator 1,002 -> 1,036 a 127 V).
-        # 07: desde a recalibração de 2026-10-22 (fator 1,186 -> 1,57 a 127 V).
-        self.assertEqual(reduzidas, {"07", "09", "10", "11", "14", "16", "17"})
+        # 07: desde a recalibração de 2026-10-22 (fator 1,186 -> 1,615 a 127 V).
+        self.assertEqual(reduzidas, {"07", "09", "10", "11", "14", "16"})
 
     def test_reducao_mantem_a_senoide_fora_do_disturbio_e_nao_muda_gerar(self):
         experimento = self._instancia("16")
@@ -5473,6 +5479,9 @@ class SorteioInicioDuracaoFaseTests(unittest.TestCase):
             experimento = _carregar_classe(classe_id)(mestre.Bancada(fonte, mock.Mock(), config))
             for indice_global, capture_index in experimento.plano_de_capturas(False):
                 info = experimento.avaliar_captura_na_bancada(indice_global, capture_index)
+                if classe_id == "17":  # recusada a 220 V desde a recalibração de 2026-10-22
+                    self.assertFalse(info["cabe"], (classe_id, indice_global))
+                    continue
                 self.assertTrue(info["cabe"], (classe_id, indice_global, info.get("motivo")))
 
     def test_analisar_sessao_reconstroi_a_forma_com_sorteio(self):
