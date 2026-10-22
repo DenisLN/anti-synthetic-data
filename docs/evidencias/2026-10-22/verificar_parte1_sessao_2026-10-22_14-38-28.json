@@ -1,0 +1,173 @@
+[
+  {
+    "verificacao": "largura_pulse",
+    "id_captura": "02-0001 [norma]",
+    "ok": true,
+    "valor": -1.066666666666688,
+    "limite": 2.0,
+    "unidade": "ms",
+    "nota": "programada 155.90 ms, medida 154.83 ms"
+  },
+  {
+    "verificacao": "pre_trigger",
+    "id_captura": "02-0001 [norma]",
+    "ok": false,
+    "valor": 5.0,
+    "limite": 2,
+    "unidade": "amostras",
+    "nota": "campo"
+  },
+  {
+    "verificacao": "largura_pulse",
+    "id_captura": "02-0001 [literatura]",
+    "ok": true,
+    "valor": -1.1000000000000176,
+    "limite": 2.0,
+    "unidade": "ms",
+    "nota": "programada 155.90 ms, medida 154.80 ms"
+  },
+  {
+    "verificacao": "pre_trigger",
+    "id_captura": "02-0001 [literatura]",
+    "ok": false,
+    "valor": 5.0,
+    "limite": 2,
+    "unidade": "amostras",
+    "nota": "campo"
+  },
+  {
+    "verificacao": "largura_pulse",
+    "id_captura": "02-0001 [fronteira]",
+    "ok": true,
+    "valor": -1.066666666666688,
+    "limite": 2.0,
+    "unidade": "ms",
+    "nota": "programada 155.90 ms, medida 154.83 ms"
+  },
+  {
+    "verificacao": "pre_trigger",
+    "id_captura": "02-0001 [fronteira]",
+    "ok": false,
+    "valor": 5.0,
+    "limite": 2,
+    "unidade": "amostras",
+    "nota": "campo"
+  },
+  {
+    "verificacao": "largura_pulse",
+    "id_captura": "03-0001 [norma]",
+    "ok": true,
+    "valor": -0.1666666666666622,
+    "limite": 2.0,
+    "unidade": "ms",
+    "nota": "programada 77.27 ms, medida 77.10 ms"
+  },
+  {
+    "verificacao": "pre_trigger",
+    "id_captura": "03-0001 [norma]",
+    "ok": true,
+    "valor": -1.0,
+    "limite": 2,
+    "unidade": "amostras",
+    "nota": "campo"
+  },
+  {
+    "verificacao": "largura_pulse",
+    "id_captura": "03-0001 [literatura]",
+    "ok": true,
+    "valor": -0.3666666666666679,
+    "limite": 2.0,
+    "unidade": "ms",
+    "nota": "programada 77.27 ms, medida 76.90 ms"
+  },
+  {
+    "verificacao": "pre_trigger",
+    "id_captura": "03-0001 [literatura]",
+    "ok": true,
+    "valor": -1.0,
+    "limite": 2,
+    "unidade": "amostras",
+    "nota": "campo"
+  },
+  {
+    "verificacao": "largura_pulse",
+    "id_captura": "03-0001 [fronteira]",
+    "ok": true,
+    "valor": -0.2333333333333354,
+    "limite": 2.0,
+    "unidade": "ms",
+    "nota": "programada 77.27 ms, medida 77.03 ms"
+  },
+  {
+    "verificacao": "pre_trigger",
+    "id_captura": "03-0001 [fronteira]",
+    "ok": true,
+    "valor": -1.0,
+    "limite": 2,
+    "unidade": "amostras",
+    "nota": "campo"
+  },
+  {
+    "verificacao": "largura_pulse",
+    "id_captura": "04-0001 [literatura]",
+    "ok": true,
+    "valor": 0.06666666666665932,
+    "limite": 2.0,
+    "unidade": "ms",
+    "nota": "programada 67.00 ms, medida 67.07 ms"
+  },
+  {
+    "verificacao": "pre_trigger",
+    "id_captura": "04-0001 [literatura]",
+    "ok": false,
+    "valor": -6.0,
+    "limite": 2,
+    "unidade": "amostras",
+    "nota": "campo"
+  },
+  {
+    "verificacao": "largura_pulse",
+    "id_captura": "04-0002 [literatura]",
+    "ok": true,
+    "valor": -0.10000000000000286,
+    "limite": 2.0,
+    "unidade": "ms",
+    "nota": "programada 44.17 ms, medida 44.07 ms"
+  },
+  {
+    "verificacao": "pre_trigger",
+    "id_captura": "04-0002 [literatura]",
+    "ok": false,
+    "valor": 6.0,
+    "limite": 2,
+    "unidade": "amostras",
+    "nota": "campo"
+  },
+  {
+    "verificacao": "largura_pulse",
+    "id_captura": "04-0003 [literatura]",
+    "ok": true,
+    "valor": -1.0000000000000009,
+    "limite": 2.0,
+    "unidade": "ms",
+    "nota": "programada 56.40 ms, medida 55.40 ms"
+  },
+  {
+    "verificacao": "pre_trigger",
+    "id_captura": "04-0003 [literatura]",
+    "ok": true,
+    "valor": -2.0,
+    "limite": 2,
+    "unidade": "amostras",
+    "nota": "campo"
+  },
+  {
+    "verificacao": "fase_18",
+    "id_captura": "18-0001 [literatura]",
+    "ok": true,
+    "valor": -9.48923723345249,
+    "limite": 10.0,
+    "unidade": "graus",
+    "nota": "f1 171.39 Hz (prog. 57.0), f2 189.28 Hz (prog. 63.0), retas se cruzam a +1.5 ms do meio da janela"
+  }
+]

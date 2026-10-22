@@ -1,0 +1,52 @@
+{
+ "tipo": "diag_list_offset",
+ "pendencia": "P-09",
+ "modo": "bancada",
+ "simulado": false,
+ "sim_list_offset_suportado": null,
+ "git_commit": "a22fba9d2a0a40888a60ee9de2beea55c0186794",
+ "git_sujo": false,
+ "idn_fonte": "\"CALIFORNIA INSTRUMENTS,MX30-3Pi,1921A03213,Rev 5.53\"",
+ "modo_anterior_informado": "AC",
+ "energizou": false,
+ "manual": "SOURce:LIST:VOLTage:OFFSet só como Related Command (manual SCPI p. 96): não confirmado",
+ "resultado": {
+  "consulta": "SOURce:LIST:VOLTage:OFFSet?",
+  "resposta": null,
+  "valores": null,
+  "falha_consulta": "Falha consultando 'SOURce:LIST:VOLTage:OFFSet?': VI_ERROR_TMO (-1073807339): Timeout expired before operation completed.",
+  "erros_scpi": [
+   [
+    -113,
+    "Undefined header"
+   ]
+  ],
+  "suportado": false,
+  "modo_restaurado": "AC",
+  "output_off_confirmado_depois": true
+ },
+ "comandos_scpi": [
+  "OUTPut:STATe OFF",
+  "*IDN?",
+  "OUTPut:STATe?",
+  "OUTPut:STATe?",
+  "*CLS",
+  "*ESR?",
+  "SOURce:MODE ACDC",
+  "*ESR?",
+  "*WAI",
+  "*ESR?",
+  "SYSTem:ERRor?",
+  "SOURce:LIST:VOLTage:OFFSet?",
+  "*IDN?",
+  "SYSTem:ERRor?",
+  "SYSTem:ERRor?",
+  "OUTPut:STATe?",
+  "SOURce:MODE AC",
+  "*ESR?",
+  "*WAI",
+  "*ESR?",
+  "SYSTem:ERRor?",
+  "OUTPut:STATe?"
+ ]
+}

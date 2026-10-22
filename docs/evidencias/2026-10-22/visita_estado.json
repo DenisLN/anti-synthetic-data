@@ -1,0 +1,253 @@
+{
+ "id": "2026-10-22_13-31-58",
+ "inicio": "2026-10-22T13:31:58",
+ "etapas": {
+  "01-suite": {
+   "inicio": "2026-10-22T13:32:11",
+   "status": "ok",
+   "motivo": null,
+   "fim": "2026-10-22T13:34:09"
+  },
+  "02-infra": {
+   "condicao": [
+    127.0,
+    50.0
+   ],
+   "inicio": "2026-10-22T14:02:34",
+   "sessoes": [],
+   "status": "ok",
+   "motivo": null,
+   "fim": "2026-10-22T14:03:45"
+  },
+  "03-ciclos-antigos": {
+   "inicio": "2026-10-22T14:03:45",
+   "status": "pulada",
+   "motivo": "sessões de 07/10 não estão neste PC",
+   "fim": "2026-10-22T14:03:45"
+  },
+  "04-marcadores": {
+   "condicao": [
+    127.0,
+    50.0
+   ],
+   "inicio": "2026-10-22T14:03:45",
+   "status": "ok",
+   "motivo": null,
+   "fim": "2026-10-22T14:08:10"
+  },
+  "05-acdc-60": {
+   "condicao": [
+    127.0,
+    60.0
+   ],
+   "inicio": "2026-10-22T14:08:10",
+   "status": "ok",
+   "motivo": null,
+   "fim": "2026-10-22T14:09:53"
+  },
+  "05-acdc-50": {
+   "condicao": [
+    127.0,
+    50.0
+   ],
+   "inicio": "2026-10-22T14:09:53",
+   "status": "ok",
+   "motivo": null,
+   "fim": "2026-10-22T14:10:50"
+  },
+  "06-classe08": {
+   "condicao": [
+    127.0,
+    50.0
+   ],
+   "inicio": "2026-10-22T14:10:50",
+   "sessoes": [
+    "C:\\Users\\Ricardo Marin Israel\\anti-synthetic-data\\resultados\\sessao_2026-10-22_14-10-50"
+   ],
+   "status": "ok",
+   "motivo": null,
+   "fim": "2026-10-22T14:12:17"
+  },
+  "06-classe09": {
+   "condicao": [
+    127.0,
+    50.0
+   ],
+   "inicio": "2026-10-22T14:12:17",
+   "sessoes": [
+    "C:\\Users\\Ricardo Marin Israel\\anti-synthetic-data\\resultados\\sessao_2026-10-22_14-12-17"
+   ],
+   "status": "ok",
+   "motivo": null,
+   "fim": "2026-10-22T14:15:41"
+  },
+  "06-ciclos": {
+   "inicio": "2026-10-22T14:15:41",
+   "status": "ok",
+   "motivo": null,
+   "fim": "2026-10-22T14:15:41"
+  },
+  "07-rodada1": {
+   "condicao": [
+    127.0,
+    60.0
+   ],
+   "inicio": "2026-10-22T14:15:41",
+   "sessoes": [
+    "C:\\Users\\Ricardo Marin Israel\\anti-synthetic-data\\resultados\\sessao_2026-10-22_14-15-42"
+   ],
+   "status": "ok",
+   "motivo": null,
+   "fim": "2026-10-22T14:19:56"
+  },
+  "07-rodada2": {
+   "condicao": [
+    127.0,
+    60.0
+   ],
+   "inicio": "2026-10-22T14:27:02",
+   "sessoes": [
+    "C:\\Users\\Ricardo Marin Israel\\anti-synthetic-data\\resultados\\sessao_2026-10-22_14-27-02"
+   ],
+   "status": "ok",
+   "motivo": null,
+   "fim": "2026-10-22T14:30:59"
+  },
+  "07-commit": {
+   "inicio": "2026-10-22T14:38:27",
+   "status": "ok",
+   "motivo": "calibração não mudou",
+   "fim": "2026-10-22T14:38:27"
+  },
+  "08-parte1": {
+   "condicao": [
+    127.0,
+    60.0
+   ],
+   "inicio": "2026-10-22T14:38:27",
+   "sessoes": [
+    "C:\\Users\\Ricardo Marin Israel\\anti-synthetic-data\\resultados\\sessao_2026-10-22_14-38-28",
+    "C:\\Users\\Ricardo Marin Israel\\anti-synthetic-data\\resultados\\sessao_2026-10-22_14-42-21"
+   ],
+   "status": "falhas",
+   "motivo": null,
+   "fim": "2026-10-22T14:43:14"
+  },
+  "08A-norma": {
+   "condicao": [
+    127.0,
+    60.0
+   ],
+   "inicio": "2026-10-22T14:43:14",
+   "sessoes": [
+    "C:\\Users\\Ricardo Marin Israel\\anti-synthetic-data\\resultados\\sessao_2026-10-22_14-43-14"
+   ],
+   "status": "ok",
+   "motivo": null,
+   "fim": "2026-10-22T14:44:04"
+  },
+  "08A-literatura": {
+   "condicao": [
+    127.0,
+    60.0
+   ],
+   "inicio": "2026-10-22T14:44:04",
+   "sessoes": [
+    "C:\\Users\\Ricardo Marin Israel\\anti-synthetic-data\\resultados\\sessao_2026-10-22_14-44-05"
+   ],
+   "status": "ok",
+   "motivo": null,
+   "fim": "2026-10-22T14:45:50"
+  },
+  "09-parte2": {
+   "condicao": [
+    127.0,
+    60.0
+   ],
+   "inicio": "2026-10-22T14:45:50",
+   "sessoes": [
+    "C:\\Users\\Ricardo Marin Israel\\anti-synthetic-data\\resultados\\sessao_2026-10-22_14-45-51"
+   ],
+   "status": "ok",
+   "motivo": null,
+   "fim": "2026-10-22T14:54:17"
+  },
+  "09-parte3": {
+   "condicao": [
+    127.0,
+    60.0
+   ],
+   "inicio": "2026-10-22T14:54:17",
+   "sessoes": [
+    "C:\\Users\\Ricardo Marin Israel\\anti-synthetic-data\\resultados\\sessao_2026-10-22_14-54-17"
+   ],
+   "status": "ok",
+   "motivo": null,
+   "fim": "2026-10-22T15:02:41"
+  },
+  "09-parte4": {
+   "condicao": [
+    127.0,
+    60.0
+   ],
+   "inicio": "2026-10-22T15:02:41",
+   "sessoes": [
+    "C:\\Users\\Ricardo Marin Israel\\anti-synthetic-data\\resultados\\sessao_2026-10-22_15-02-41"
+   ],
+   "status": "ok",
+   "motivo": null,
+   "fim": "2026-10-22T15:11:14"
+  },
+  "09-parte5": {
+   "condicao": [
+    127.0,
+    60.0
+   ],
+   "inicio": "2026-10-22T15:11:14",
+   "sessoes": [
+    "C:\\Users\\Ricardo Marin Israel\\anti-synthetic-data\\resultados\\sessao_2026-10-22_15-11-15"
+   ],
+   "status": "ok",
+   "motivo": null,
+   "fim": "2026-10-22T15:19:56"
+  },
+  "09-parte6": {
+   "condicao": [
+    127.0,
+    60.0
+   ],
+   "inicio": "2026-10-22T15:19:56",
+   "sessoes": [
+    "C:\\Users\\Ricardo Marin Israel\\anti-synthetic-data\\resultados\\sessao_2026-10-22_15-19-56"
+   ],
+   "status": "ok",
+   "motivo": null,
+   "fim": "2026-10-22T15:27:43"
+  },
+  "10B-diag": {
+   "condicao": [
+    127.0,
+    60.0
+   ],
+   "inicio": "2026-10-22T15:27:43",
+   "status": "ok",
+   "motivo": null,
+   "fim": "2026-10-22T15:27:50"
+  },
+  "10B-braco-A": {
+   "condicao": [
+    127.0,
+    60.0
+   ],
+   "inicio": "2026-10-22T15:27:50",
+   "sessoes": [
+    "C:\\Users\\Ricardo Marin Israel\\anti-synthetic-data\\resultados\\sessao_2026-10-22_15-27-50"
+   ],
+   "status": "parada",
+   "motivo": "Parada pelo operador depois do alerta de extremo.",
+   "fim": "2026-10-22T15:35:01"
+  }
+ },
+ "excluidas_127V_60Hz": [],
+ "p09_c_suportado": false
+}

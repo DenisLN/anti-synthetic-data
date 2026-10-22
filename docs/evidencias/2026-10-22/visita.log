@@ -1,0 +1,141 @@
+2026-10-22T13:32:11 [01-suite] Bloco 1: Suíte offline
+2026-10-22T13:32:11 c690a49 feat: visita à bancada num comando (VISITA_BANCADA.cmd) e modo roteiro da CLI
+2026-10-22T13:32:11 $ python -m unittest tests.test_offline
+2026-10-22T13:34:09 [01-suite] ok
+2026-10-22T13:34:09 [02-infra] Bloco 2: comm, trigger e native (127 V/50 Hz) — 127V_50Hz — ENERGIZA (você digita a confirmação)
+2026-10-22T13:34:09 CLI [127V_50Hz]: status ; comm ; trigger ; native
+2026-10-22T13:35:18 
+VISITA PARADA: Falha de infraestrutura (código 2). Confira OUTPUT OFF no painel, preserve os logs e não repita sem entender a causa.
+2026-10-22T13:37:35 [02-infra] Bloco 2: comm, trigger e native (127 V/50 Hz) — 127V_50Hz — ENERGIZA (você digita a confirmação)
+2026-10-22T13:37:35 CLI [127V_50Hz]: status ; comm ; trigger ; native
+2026-10-22T13:38:41 
+VISITA PARADA: Falha de infraestrutura (código 2). Confira OUTPUT OFF no painel, preserve os logs e não repita sem entender a causa.
+2026-10-22T13:41:18 [02-infra] Bloco 2: comm, trigger e native (127 V/50 Hz) — 127V_50Hz — ENERGIZA (você digita a confirmação)
+2026-10-22T13:41:18 CLI [127V_50Hz]: status ; comm ; trigger ; native
+2026-10-22T13:41:54 
+VISITA PARADA: Falha de infraestrutura (código 2). Confira OUTPUT OFF no painel, preserve os logs e não repita sem entender a causa.
+2026-10-22T13:42:15 [02-infra] Bloco 2: comm, trigger e native (127 V/50 Hz) — 127V_50Hz — ENERGIZA (você digita a confirmação)
+2026-10-22T13:42:15 CLI [127V_50Hz]: status ; comm ; trigger ; native
+2026-10-22T13:43:17 
+VISITA PARADA: Falha de infraestrutura (código 2). Confira OUTPUT OFF no painel, preserve os logs e não repita sem entender a causa.
+2026-10-22T13:48:02 [02-infra] Bloco 2: comm, trigger e native (127 V/50 Hz) — 127V_50Hz — ENERGIZA (você digita a confirmação)
+2026-10-22T13:48:02 CLI [127V_50Hz]: status ; comm ; trigger ; native
+2026-10-22T13:49:08 
+VISITA PARADA: Falha de infraestrutura (código 2). Confira OUTPUT OFF no painel, preserve os logs e não repita sem entender a causa.
+2026-10-22T14:02:34 [02-infra] Bloco 2: comm, trigger e native (127 V/50 Hz) — 127V_50Hz — ENERGIZA (você digita a confirmação)
+2026-10-22T14:02:34 CLI [127V_50Hz]: status ; comm ; trigger ; native
+2026-10-22T14:03:45 [02-infra] ok
+2026-10-22T14:03:45 [03-ciclos-antigos] Bloco 3: Ciclos offline das sessões de 07/10
+2026-10-22T14:03:45 [03-ciclos-antigos] pulada: sessões de 07/10 não estão neste PC
+2026-10-22T14:03:45 [04-marcadores] Bloco 4: Marcadores por ciclo (50 e 60 Hz) — 127V_50Hz — ENERGIZA (você digita a confirmação)
+2026-10-22T14:03:45 $ C:\Users\Ricardo Marin Israel\anti-synthetic-data\scripts\diag_marcadores_trace.py --probe 500 --vrms 127   [127V_50Hz]
+2026-10-22T14:08:10 [04-marcadores] ok
+2026-10-22T14:08:10 [05-acdc-60] Bloco 5: ACDC 127 V/60 Hz — 127V_60Hz — ENERGIZA (você digita a confirmação)
+2026-10-22T14:08:10 $ C:\Users\Ricardo Marin Israel\anti-synthetic-data\scripts\diag_acdc_amplitude.py --probe 500 --vrms 127 --hz 60 --testar-compensacao   [127V_60Hz]
+2026-10-22T14:09:53 [05-acdc-60] ok
+2026-10-22T14:09:53 [05-acdc-50] Bloco 5: ACDC 127 V/50 Hz — 127V_50Hz — ENERGIZA (você digita a confirmação)
+2026-10-22T14:09:53 $ C:\Users\Ricardo Marin Israel\anti-synthetic-data\scripts\diag_acdc_amplitude.py --probe 500 --vrms 127 --hz 50 --testar-compensacao   [127V_50Hz]
+2026-10-22T14:10:50 [05-acdc-50] ok
+2026-10-22T14:10:50 [06-classe08] Bloco 6: Recaptura da 08 (P-03, P-19) — 127V_50Hz — ENERGIZA (você digita a confirmação)
+2026-10-22T14:10:50 CLI [127V_50Hz]: status ; set diagnostico bruto on ; set diagnostico retrieve on ; run 08
+2026-10-22T14:12:17 [06-classe08] ok
+2026-10-22T14:12:17 [06-classe09] Bloco 6: 09 com 6 capturas — 127V_50Hz — ENERGIZA (você digita a confirmação)
+2026-10-22T14:12:17 CLI [127V_50Hz]: set diagnostico bruto on ; set diagnostico retrieve on ; set capturas 6 ; run 09
+2026-10-22T14:15:41 [06-classe09] ok
+2026-10-22T14:15:41 [06-ciclos] Bloco 6: Ciclos offline das novas 08/09
+2026-10-22T14:15:41 $ C:\Users\Ricardo Marin Israel\anti-synthetic-data\scripts\diag_ciclos_trace.py C:\Users\Ricardo Marin Israel\anti-synthetic-data\resultados\sessao_2026-10-22_14-10-50 --classes 08,09
+2026-10-22T14:15:41 $ C:\Users\Ricardo Marin Israel\anti-synthetic-data\scripts\diag_ciclos_trace.py C:\Users\Ricardo Marin Israel\anti-synthetic-data\resultados\sessao_2026-10-22_14-12-17 --classes 08,09
+2026-10-22T14:15:41 [06-ciclos] ok
+2026-10-22T14:15:41 [07-rodada1] Bloco 7: 07 e 17 com recalibração, 1.ª rodada — 127V_60Hz — ENERGIZA (você digita a confirmação)
+2026-10-22T14:15:41 CLI [127V_60Hz]: status ; comm ; set recalibracao on ; run 07,17
+2026-10-22T14:19:37 ALERTA: 07-0001: extremo medido 280.0 V > previsto 234.3 V (teto do equipamento 415.8 V)
+2026-10-22T14:19:37 ALERTA: 07-0002: extremo medido 282.0 V > previsto 234.3 V (teto do equipamento 415.8 V)
+2026-10-22T14:19:37 ALERTA: 07-0003: extremo medido 280.0 V > previsto 234.3 V (teto do equipamento 415.8 V)
+2026-10-22T14:19:37 ALERTA: 17-0001: extremo medido 255.0 V > previsto 230.4 V (teto do equipamento 415.8 V)
+2026-10-22T14:19:37 ALERTA: 17-0002: extremo medido 275.0 V > previsto 230.4 V (teto do equipamento 415.8 V)
+2026-10-22T14:19:37 ALERTA: 17-0003: extremo medido 283.0 V > previsto 230.4 V (teto do equipamento 415.8 V)
+2026-10-22T14:19:37 Extremo acima do previsto (bancada_pendencias.md, passo 9.5): registrar; perto de 415.8 V é achado de segurança.
+2026-10-22T14:19:56 [07-rodada1] ok
+2026-10-22T14:19:56 [07-rodada2] Bloco 7: 07 e 17, 2.ª rodada — 127V_60Hz — ENERGIZA (você digita a confirmação)
+2026-10-22T14:19:56 
+VISITA PARADA: Árvore do git suja antes de coletar (as sessões gravariam git_sujo):  M logica/calibracao_extremos.json
+2026-10-22T14:27:02 [07-rodada2] Bloco 7: 07 e 17, 2.ª rodada — 127V_60Hz — ENERGIZA (você digita a confirmação)
+2026-10-22T14:27:02 CLI [127V_60Hz]: set recalibracao on ; run 07,17
+2026-10-22T14:30:37 ALERTA: 17-0001: extremo medido 320.0 V > previsto 311.2 V (teto do equipamento 415.8 V)
+2026-10-22T14:30:37 Extremo acima do previsto (bancada_pendencias.md, passo 9.5): registrar; perto de 415.8 V é achado de segurança.
+2026-10-22T14:30:59 [07-rodada2] ok
+2026-10-22T14:30:59 [07-commit] Bloco 7: Suíte e commit da calibração
+2026-10-22T14:31:00 $ python -m unittest tests.test_offline
+2026-10-22T14:32:53 
+VISITA PARADA: Suíte offline falhou com a calibração nova: nada commitado. Entregue o diff.
+2026-10-22T14:38:27 [07-commit] Bloco 7: Suíte e commit da calibração
+2026-10-22T14:38:27 [07-commit] ok: calibração não mudou
+2026-10-22T14:38:27 [08-parte1] Bloco 8: Parte 1 (perfil todos) e verificador — 127V_60Hz — ENERGIZA (você digita a confirmação)
+2026-10-22T14:38:27 CLI [127V_60Hz]: set perfil todos ; set diagnostico bruto on ; run 01,02,03,04,05,17,18,19
+2026-10-22T14:41:31 ALERTA: 18-0001: extremo medido 227.0 V > previsto 204.7 V (teto do equipamento 415.8 V)
+2026-10-22T14:41:31 ALERTA: 19-0001: extremo medido 204.0 V > previsto 203.7 V (teto do equipamento 415.8 V)
+2026-10-22T14:41:31 ALERTA: 19-0002: extremo medido 211.0 V > previsto 207.6 V (teto do equipamento 415.8 V)
+2026-10-22T14:41:31 ALERTA: 19-0003: extremo medido 219.0 V > previsto 215.3 V (teto do equipamento 415.8 V)
+2026-10-22T14:41:31 Extremo acima do previsto (bancada_pendencias.md, passo 9.5): registrar; perto de 415.8 V é achado de segurança.
+2026-10-22T14:42:21 CLI [127V_60Hz]: set perfil todos ; set diagnostico bruto on ; run falhas C:\Users\Ricardo Marin Israel\anti-synthetic-data\resultados\sessao_2026-10-22_14-38-28
+2026-10-22T14:43:13 $ C:\Users\Ricardo Marin Israel\anti-synthetic-data\scripts\verificar_sessao_bancada.py C:\Users\Ricardo Marin Israel\anti-synthetic-data\resultados\sessao_2026-10-22_14-38-28 --json C:\Users\Ricardo Marin Israel\anti-synthetic-data\logs\visita_2026-10-22_13-31-58\verificar_parte1_sessao_2026-10-22_14-38-28.json
+2026-10-22T14:43:13 $ C:\Users\Ricardo Marin Israel\anti-synthetic-data\logica\analisar_sessao.py C:\Users\Ricardo Marin Israel\anti-synthetic-data\resultados\sessao_2026-10-22_14-38-28
+2026-10-22T14:43:14 [08-parte1] falhas
+2026-10-22T14:43:14 [08A-norma] Bloco 8-A: 05 por nível, perfil norma — 127V_60Hz — ENERGIZA (você digita a confirmação)
+2026-10-22T14:43:14 CLI [127V_60Hz]: set diagnostico bruto on ; set perfil norma ; set capturas 1 ; run 05
+2026-10-22T14:43:54 ALERTA: 05-0002: extremo medido 198.0 V > previsto 182.9 V (teto do equipamento 415.8 V)
+2026-10-22T14:43:54 ALERTA: 05-0003: extremo medido 183.0 V > previsto 174.1 V (teto do equipamento 415.8 V)
+2026-10-22T14:43:54 ALERTA: 05-0005: extremo medido 177.0 V > previsto 161.3 V (teto do equipamento 415.8 V)
+2026-10-22T14:43:54 Extremo acima do previsto (bancada_pendencias.md, passo 9.5): registrar; perto de 415.8 V é achado de segurança.
+2026-10-22T14:44:04 [08A-norma] ok
+2026-10-22T14:44:04 [08A-literatura] Bloco 8-A: 05 por nível, perfil literatura — 127V_60Hz — ENERGIZA (você digita a confirmação)
+2026-10-22T14:44:04 CLI [127V_60Hz]: set diagnostico bruto on ; set perfil literatura ; set capturas 1 ; run 05
+2026-10-22T14:45:42 ALERTA: 05-0002: extremo medido 192.0 V > previsto 174.1 V (teto do equipamento 415.8 V)
+2026-10-22T14:45:42 ALERTA: 05-0003: extremo medido 183.0 V > previsto 167.2 V (teto do equipamento 415.8 V)
+2026-10-22T14:45:42 ALERTA: 05-0005: extremo medido 186.0 V > previsto 163.0 V (teto do equipamento 415.8 V)
+2026-10-22T14:45:42 Extremo acima do previsto (bancada_pendencias.md, passo 9.5): registrar; perto de 415.8 V é achado de segurança.
+2026-10-22T14:45:50 [08A-literatura] ok
+2026-10-22T14:45:50 [09-parte2] Bloco 9: Parte 2: run 06,10 — 127V_60Hz — ENERGIZA (você digita a confirmação)
+2026-10-22T14:45:50 CLI [127V_60Hz]: set perfil todos ; set diagnostico bruto on ; run 06,10
+2026-10-22T14:54:04 ALERTA: 06-0002: extremo medido 234.0 V > previsto 216.1 V (teto do equipamento 415.8 V)
+2026-10-22T14:54:04 ALERTA: 06-0002: extremo medido 235.0 V > previsto 230.0 V (teto do equipamento 415.8 V)
+2026-10-22T14:54:04 ALERTA: 06-0002: extremo medido 235.0 V > previsto 230.0 V (teto do equipamento 415.8 V)
+2026-10-22T14:54:04 ALERTA: 10-0001: extremo medido 255.0 V > previsto 245.4 V (teto do equipamento 415.8 V)
+2026-10-22T14:54:04 Extremo acima do previsto (bancada_pendencias.md, passo 9.5): registrar; perto de 415.8 V é achado de segurança.
+2026-10-22T14:54:17 [09-parte2] ok
+2026-10-22T14:54:17 [09-parte3] Bloco 9: Parte 3: run 11,12 — 127V_60Hz — ENERGIZA (você digita a confirmação)
+2026-10-22T14:54:17 CLI [127V_60Hz]: set perfil todos ; set diagnostico bruto on ; run 11,12
+2026-10-22T15:02:28 ALERTA: 12-0001: extremo medido 240.0 V > previsto 203.5 V (teto do equipamento 415.8 V)
+2026-10-22T15:02:28 ALERTA: 12-0001: extremo medido 241.0 V > previsto 203.5 V (teto do equipamento 415.8 V)
+2026-10-22T15:02:28 ALERTA: 12-0001: extremo medido 264.0 V > previsto 203.5 V (teto do equipamento 415.8 V)
+2026-10-22T15:02:28 Extremo acima do previsto (bancada_pendencias.md, passo 9.5): registrar; perto de 415.8 V é achado de segurança.
+2026-10-22T15:02:41 [09-parte3] ok
+2026-10-22T15:02:41 [09-parte4] Bloco 9: Parte 4: run 13,14 — 127V_60Hz — ENERGIZA (você digita a confirmação)
+2026-10-22T15:02:41 CLI [127V_60Hz]: set perfil todos ; set diagnostico bruto on ; run 13,14
+2026-10-22T15:10:52 ALERTA: 13-0003: extremo medido 308.0 V > previsto 295.2 V (teto do equipamento 415.8 V)
+2026-10-22T15:10:52 ALERTA: 13-0002: extremo medido 378.0 V > previsto 348.3 V (teto do equipamento 415.8 V)
+2026-10-22T15:10:52 ALERTA: 13-0003: extremo medido 232.0 V > previsto 204.3 V (teto do equipamento 415.8 V)
+2026-10-22T15:10:52 ALERTA: 14-0003: extremo medido 350.0 V > previsto 324.2 V (teto do equipamento 415.8 V)
+2026-10-22T15:10:52 ALERTA: 14-0003: extremo medido 354.0 V > previsto 324.5 V (teto do equipamento 415.8 V)
+2026-10-22T15:10:52 Extremo acima do previsto (bancada_pendencias.md, passo 9.5): registrar; perto de 415.8 V é achado de segurança.
+2026-10-22T15:11:14 [09-parte4] ok
+2026-10-22T15:11:14 [09-parte5] Bloco 9: Parte 5: run 15,16 — 127V_60Hz — ENERGIZA (você digita a confirmação)
+2026-10-22T15:11:14 CLI [127V_60Hz]: set perfil todos ; set diagnostico bruto on ; run 15,16
+2026-10-22T15:19:25 ALERTA: 15-0001: extremo medido 208.0 V > previsto 187.2 V (teto do equipamento 415.8 V)
+2026-10-22T15:19:25 ALERTA: 15-0001: extremo medido 208.0 V > previsto 194.4 V (teto do equipamento 415.8 V)
+2026-10-22T15:19:25 ALERTA: 15-0001: extremo medido 199.0 V > previsto 194.4 V (teto do equipamento 415.8 V)
+2026-10-22T15:19:25 Extremo acima do previsto (bancada_pendencias.md, passo 9.5): registrar; perto de 415.8 V é achado de segurança.
+2026-10-22T15:19:56 [09-parte5] ok
+2026-10-22T15:19:56 [09-parte6] Bloco 9: Parte 6: run 07,08,09,20 — 127V_60Hz — ENERGIZA (você digita a confirmação)
+2026-10-22T15:19:56 CLI [127V_60Hz]: set perfil todos ; set diagnostico bruto on ; run 07,08,09,20
+2026-10-22T15:27:43 [09-parte6] ok
+2026-10-22T15:27:43 [10B-diag] Bloco 10-B: P-09: a fonte aceita offset por passo? (não energiza) — 127V_60Hz
+2026-10-22T15:27:43 $ C:\Users\Ricardo Marin Israel\anti-synthetic-data\scripts\diag_list_offset.py --saida C:\Users\Ricardo Marin Israel\anti-synthetic-data\logs\visita_2026-10-22_13-31-58\diag_list_offset.json   [127V_60Hz]
+2026-10-22T15:27:50 SOURce:LIST:VOLTage:OFFSet aceito pela fonte: None
+2026-10-22T15:27:50 [10B-diag] ok
+2026-10-22T15:27:50 [10B-braco-A] Bloco 10-B: P-09 braço A — 127V_60Hz — ENERGIZA (você digita a confirmação)
+2026-10-22T15:27:50 CLI [127V_60Hz]: set p09 A ; run 10,11,12,16
+2026-10-22T15:33:55 ALERTA: 12-0001: extremo medido 241.0 V > previsto 203.5 V (teto do equipamento 415.8 V)
+2026-10-22T15:33:55 Extremo acima do previsto (bancada_pendencias.md, passo 9.5): registrar; perto de 415.8 V é achado de segurança.
+2026-10-22T15:35:01 
+VISITA PARADA: Parada pelo operador depois do alerta de extremo.
