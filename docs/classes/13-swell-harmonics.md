@@ -1,11 +1,10 @@
 # Classe 13: SWELL_HARMONICS
 
-:::{note} Revisão e procedência
-Texto de referência importado do levantamento de 16/10/2026, baseado em [fa82f496](https://github.com/DenisLN/anti-synthetic-data/tree/fa82f49600543456adf78e22485ab6de5dd032b9). Citações numéricas apontam para esse snapshot e não acompanham linhas atuais. Trechos `literalinclude` são extraídos do checkout atual por símbolo; consulte {doc}`../execucao_pendencias` para implementação e evidências vigentes. Relatos de sessões e transcrições são históricos, não medições repetidas nesta revisão.
-:::
+```{include} /_includes/aviso-base.md
+```
 
 
-{bdg-success}`VERIFICADO NA BANCADA` pré-v1.15 com parâmetros fixos (swell 1,3 e THD 20 %; 127 V/60 Hz, 127 V/50 Hz e 230 V/50 Hz, 1 captura cada, 07/10/2026) {bdg-info}`OFFLINE` {bdg-warning}`NÃO VERIFICADO` parâmetros sorteados; 230 V/50 Hz com swell alto {bdg-danger}`PENDENTE P-01` {bdg-danger}`PENDENTE P-11` {bdg-danger}`PENDENTE P-18` {bdg-danger}`PENDENTE P-19`
+{bdg-success}`VERIFICADO NA BANCADA` pré-v1.15 com parâmetros fixos (swell 1,3 e THD 20 %; 127 V/60 Hz, 127 V/50 Hz e 230 V/50 Hz, 1 captura cada, 07/10/2026) {bdg-info}`OFFLINE` {bdg-warning}`NÃO VERIFICADO` parâmetros sorteados; 230 V/50 Hz com swell alto {bdg-ref-warning}`P-01 Software pronto, falta bancada <estado-p-01>` {bdg-ref-success}`P-11 Concluída, dono ainda não confirmou <estado-p-11>` {bdg-ref-warning}`P-18 Software pronto, falta bancada <estado-p-18>` {bdg-ref-primary}`P-19 Insuficiente na bancada <estado-p-19>`
 
 | Campo | Valor |
 |---|---|
@@ -87,12 +86,12 @@ O gancho `parametros_com_disturbio_reduzido` ([13.py:33-40](https://github.com/D
 
 *Fonte:* `CHANGELOG/v1.15.md`, "RMS por ciclo da TRACE" (`gerar()` com sorteio ligado, seed 32, simulação offline, sem hardware).
 
-:::{warning} Decisão em aberto P-04
-`AmetekMX30.program_capture` só **avisa** quando o pico reconstruído passa de `max_peak_v` ("prosseguindo sem carga", [ametek_orm.py:1522-1527](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/ametek_orm.py#L1522-L1527)); quem recusa é a pré-validação do `mestre.py` (`ExperimentoBase._indices_viaveis`, antes de qualquer SCPI, e `_conferir_extremos_fisicos`, depois da captura já gravada). Pergunta ao responsável pelo projeto: o ORM também deve recusar? Opções: manter como está, ou recusar no ORM (um limite de segurança mais restritivo). Este site não decide ({ref}`P-04 <p-04>`, prioridade MÉDIA).
+:::{note} Pendência P-04 (Concluída, dono ainda não confirmou)
+{ref}`P-04 <estado-p-04>`: Concluída, dono ainda não confirmou; prioridade média. Opção (a): o ORM recusa com `ParameterOutOfBoundsError` o pico acima de `max_peak_v` (`logica/ametek_orm.py:1427-1428` e `:2105-2106`). No baseline `fa82f49` o ORM só avisava. Situação: Concluída — software. Escolha tomada no fork; o dono ainda não a confirmou. Falta. **Decisão do dono:** Confirmar a opção (a) (ou pedir a (b), ver a ressalva em Pergunta ao dono).
 :::
 
-:::{warning} Decisão em aberto P-23
-A fonte travou na ~280.ª gravação de TRACe de uma mesma conexão (quirk A3; causa {bdg-warning}`NÃO VERIFICADO`), e cada captura desta classe grava 12 TRACes a 60 Hz (10 a 50 Hz). `README.md` e `AGENTS.md` ainda recomendam `run all` (468 gravações a 60 Hz; 1116 com `set perfil todos`), enquanto o roteiro de bancada usa listas de classes (menos de 250 por conexão). Pergunta: qual texto os documentos devem adotar? Opção recomendada pelo roteiro: listas (`run 01-07`, depois `run 09-20`). Decisão do responsável pelo projeto ({ref}`P-23 <p-23>`, prioridade MÉDIA).
+:::{important} Pendência P-23 (Software pronto, falta bancada)
+{ref}`P-23 <estado-p-23>`: Software pronto, falta bancada; prioridade média. Orçamento operacional de 216 gravações de TRACe por conexão (`LIMITE_ESCRITAS_TRACE_CONEXAO`, `logica/politica_traces.py:3`); 216 é regra operacional, não limite do fabricante, e a causa física da trava (quirk A3) continua NÃO VERIFICADA. Situação: Parcial: proteção implementada. Falta. **Bancada:** Diagnóstico real com a saída OFF (`diag/diag_nativo_output_off.py`) para esclarecer a causa da trava. **Decisão do dono:** Confirmar o valor 216 como regra operacional, ou mudá-lo.
 :::
 
 ## 5. Parâmetros por perfil
@@ -108,16 +107,16 @@ O perfil `fronteira` alterna 1,1 e 1,8 pu por `capture_index` (sem sorteio cont�
 
 ## 6. Limites físicos e fator de extremo
 
-Fatores medidos: 1,034 a 127 V/60 Hz, 1,063 a 127 V/50 Hz e 1,047 a 230 V/50 Hz. O pico programado cresce com o swell: 198 a 263 V a 127 V nas três capturas do relatório offline (de 1,10 a 1,46 pu).
+Fatores medidos: 1,292 a 127 V/60 Hz (era 1,034 até a recalibração de 22/10/2026), 1,063 a 127 V/50 Hz e 1,047 a 230 V/50 Hz. O pico programado cresce com o swell: 198 a 263 V a 127 V nas três capturas do relatório offline (de 1,10 a 1,46 pu).
 
 | Condição | Fator medido na tabela da condição | Capturas do plano | Pico programado (V) | Extremo previsto (V) | Teto (V) | Distúrbio aplicado (k) | Resultado |
 |---|---|---|---|---|---|---|---|
-| 127 V/60 Hz | 1,034 | 3 | 198,2–262,8 | 225,4–298,9 | 415,8 | 100 % | 3/3 rodam |
+| 127 V/60 Hz | 1,292 | 3 | 198,2–262,8 | 281,7–373,5 | 415,8 | 100 % | 3/3 rodam |
 | 127 V/50 Hz | 1,063 | 3 | 198,2–262,8 | 231,8–307,3 | 415,8 | 100 % | 3/3 rodam |
 | 230 V/50 Hz | 1,047 | 3 | 355,6–476,0 | 415,8–556,6 | 415,8 | 50–100 % | 2/3 rodam, 1 pulada(s) |
-| 220 V/60 Hz (sem tabela) | 1,475 (maior fator de todas as tabelas; regra sem tabela) | 3 | 319,8–455,3 | 415,8–738,7 | 415,8 | 27–100 % | 1/3 rodam, 2 pulada(s) |
+| 220 V/60 Hz (sem tabela) | 1,615 (maior fator de todas as tabelas; regra sem tabela) | 3 | 343,3–455,3 | 609,9–808,8 | 415,8 | 100 % | 0/3 rodam, 3 pulada(s) |
 
-*Fonte:* `logica/calibracao_extremos.json` e `scripts/relatorio_limites_bancada.py`, 2026-10-16 (perfil `literatura`, 3 capturas padrão, seed 20260827, sorteio ligado). A 230 V/50 Hz a 13 roda **2 de 3**: a primeira com $k$ = 90 %, a segunda com 50 % e a terceira é **pulada** (swell sorteado mais alto: extremo previsto 556,6 V, e o limite de bancada precisaria reduzir o distúrbio a 20 %, abaixo do mínimo de 25 %). A 220 V/60 Hz (sem tabela) só 1 das 3 roda, a 27 %. Em 07/10 (swell 1,3 fixo) a 13 rodou a 230 V/50 Hz com $k$ = 75 % e fator 1,030 medido.
+*Fonte:* `logica/calibracao_extremos.json` e `scripts/relatorio_limites_bancada.py`, 2026-10-16 (perfil `literatura`, 3 capturas padrão, seed 20260827, sorteio ligado). (`scripts/relatorio_limites_bancada.py` refeito em 2026-10-27 sobre a `main`, mesmos parâmetros: as linhas de 127 V/60 Hz e de 220 V/60 Hz mudaram com a recalibração de 22/10; as de 50 Hz não). A 230 V/50 Hz a 13 roda **2 de 3**: a primeira com $k$ = 90 %, a segunda com 50 % e a terceira é **pulada** (swell sorteado mais alto: extremo previsto 556,6 V, e o limite de bancada precisaria reduzir o distúrbio a 20 %, abaixo do mínimo de 25 %). A 220 V/60 Hz (sem tabela) nenhuma das 3 roda com o fator conservador de 1,615 (era 1 de 3, a 27 %, com 1,475). Em 07/10 (swell 1,3 fixo) a 13 rodou a 230 V/50 Hz com $k$ = 75 % e fator 1,030 medido.
 
 ## 7. Validação física
 
@@ -154,7 +153,7 @@ Tolerâncias: {ref}`as sondas e as tolerâncias <validacao-fisica-tolerancias>`.
 | programada × medida | 0,996 / 0,996 | 0,997 / 0,998 | 0,997 / 0,997 |
 | modelo × medida | 0,996 / 0,996 | 0,976 / 0,972 | 0,997 / 0,997 |
 
-Causa de a classe ficar abaixo de 0,90, quando fica: idem 10 (P-09)
+Causa de a classe ficar abaixo de 0,90, quando fica: idem 10 ({ref}`P-09 <estado-p-09>`)
 
 O modelo × programada de 0,950–0,999 e programada × medida de 0,996–0,997 mostram que a perda é pequena nesta classe.
 
@@ -179,20 +178,20 @@ O modelo × programada de 0,950–0,999 e programada × medida de 0,996–0,997 
 | Parâmetros sorteados; 230 V/50 Hz com swell alto | {bdg-warning}`NÃO VERIFICADO` | nenhuma sessão com o código da v1.15; 2 de 3 rodam por conta offline |
 | `gerar()` e programada de hoje | {bdg-info}`OFFLINE` | modelo × programada 0,950–0,999 |
 
-:::{important} Pendência P-01
-Nenhum dado de bancada existe com o código da v1.15. Fecha com: bancada. Prioridade ALTA.
+:::{important} Pendência P-01 (Software pronto, falta bancada)
+{ref}`P-01 <estado-p-01>`: Software pronto, falta bancada; prioridade alta. A visita de 22/10/2026 cobriu 2 de 5 condições (127 V/60 Hz e 127 V/50 Hz) com as 20 classes e os 3 perfis: 159 capturas físicas, 19 com validação física reprovada (`docs/evidencias/2026-10-22/fechamento.json`). Os resultados por classe estão nas sessões do PC da bancada, fora do repositório: o desempenho desta classe nelas é NÃO VERIFICADO aqui. Decisão do dono confirmada em 2026-10-21. Falta. **Bancada:** Campanhas de 230 V/50 Hz, 220 V/60 Hz e 33 V/60 Hz (as duas últimas dependem de calibração, P-21); reexecutar `run 02,17,18,19`, `run 10,11` e `run 12,16` a 127 V/60 Hz, que a visita já agenda depois do bloco 10-A; retomar a visita no braço A da P-09. **Código:** O critério `quantidade_de_capturas_por_classe_perfil_condicao` do agregador está sem limite (`criterio_nao_definido`, 159 capturas medidas); o dono já respondeu 'padrão, 1 captura por classe' na P-26, mas isso ainda não foi codificado no agregador.
 :::
 
-:::{warning} Decisão em aberto P-11
-Manter ou reverter as extensões das compostas, entre elas o swell em 13 e 14 e o THD em 13, 15 e 16. Decisão do responsável pelo projeto ({ref}`P-11 <p-11>`, prioridade MÉDIA).
+:::{note} Pendência P-11 (Concluída, dono ainda não confirmou)
+{ref}`P-11 <estado-p-11>`: Concluída, dono ainda não confirmou; prioridade média. Swell em 13 e 14 e THD em 13, 15 e 16 ficam sorteados. Situação: Concluída — decisão e metadata. Escolha tomada no fork; o dono ainda não a confirmou. Falta. **Decisão do dono:** Confirmar manter as extensões das compostas 10 a 16.
 :::
 
-:::{important} Pendência P-18
-Passo final `SINE` no `LIST`: existe só no branch `feat/passo-final-sin`, **fora da `main`** ({doc}`../projeto/passo-final-sin`). Fecha com: bancada e decisão do responsável pelo projeto. Prioridade MÉDIA.
+:::{important} Pendência P-18 (Software pronto, falta bancada)
+{ref}`P-18 <estado-p-18>`: Software pronto, falta bancada; prioridade média. Situação: Parcial: integrado experimental, desligado. Falta. **Bancada:** Rodar `diag/teste_passo_final_sin.py` com a confirmação `ENERGIZAR-PASSO-SIN` digitada pelo operador: aceitação de `SINE` em `LIST:FUNCtion:SHAPe` e restauração da fonte. **Decisão do dono:** Confirmar o padrão desligado até a validação.
 :::
 
-:::{important} Pendência P-19
-`TRACe:DATA?` (`set diagnostico retrieve`) nunca foi executado na fonte real. Fecha com: bancada, com o painel à vista. Prioridade MÉDIA.
+:::{important} Pendência P-19 (Insuficiente na bancada)
+{ref}`P-19 <estado-p-19>`: Insuficiente na bancada; prioridade média. Situação: Insuficiente em 2026-10-22. Falta. **Bancada:** Repetir a leitura com `set diagnostico retrieve on` e o painel à vista até obter 1024 valores finitos ou um erro SCPI de comando não suportado. Respeitar `AGENTS.md`: nunca consultar a fonte logo após `TRACe:DATA` (achado de segurança da v1.12). **Código:** Examinar como a leitura do `retrieve` recebe e decodifica a resposta, para descartar truncamento no próprio código antes de concluir algo sobre o firmware (proposta de investigação, não achado).
 :::
 
 ## 12. Como o código da classe funciona

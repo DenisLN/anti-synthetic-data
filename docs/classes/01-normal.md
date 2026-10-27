@@ -1,11 +1,10 @@
 # Classe 01: NORMAL
 
-:::{note} Revisão e procedência
-Texto de referência importado do levantamento de 16/10/2026, baseado em [fa82f496](https://github.com/DenisLN/anti-synthetic-data/tree/fa82f49600543456adf78e22485ab6de5dd032b9). Citações numéricas apontam para esse snapshot e não acompanham linhas atuais. Trechos `literalinclude` são extraídos do checkout atual por símbolo; consulte {doc}`../execucao_pendencias` para implementação e evidências vigentes. Relatos de sessões e transcrições são históricos, não medições repetidas nesta revisão.
-:::
+```{include} /_includes/aviso-base.md
+```
 
 
-{bdg-success}`VERIFICADO NA BANCADA` pré-v1.15 (127 V/60 Hz, 127 V/50 Hz e 230 V/50 Hz, 07/10/2026) {bdg-info}`OFFLINE` {bdg-warning}`NÃO VERIFICADO` fase sorteada e disparo na fase sorteada {bdg-danger}`PENDENTE P-01` {bdg-danger}`PENDENTE P-05`
+{bdg-success}`VERIFICADO NA BANCADA` pré-v1.15 (127 V/60 Hz, 127 V/50 Hz e 230 V/50 Hz, 07/10/2026) {bdg-info}`OFFLINE` {bdg-warning}`NÃO VERIFICADO` critério de fase e início do sorteio e destino do desvio de pre-trigger (medidos em 22/10/2026, revisão humana pendente) {bdg-ref-warning}`P-01 Software pronto, falta bancada <estado-p-01>` {bdg-ref-info}`P-05 Falta decisão ou dado do responsável <estado-p-05>`
 
 | Campo | Valor |
 |---|---|
@@ -21,7 +20,7 @@ Texto de referência importado do levantamento de 16/10/2026, baseado em [fa82f4
 
 **Pergunta:** o que é a classe 01 e para que o dataset a tem? **Resposta:** é a **senoide limpa dos 200 ms inteiros, sem anomalia**; serve de exemplo "normal" para o classificador e de controle da bancada (se a 01 sai errada, nenhuma das outras 19 classes é confiável). Na fonte ela não programa distúrbio nenhum: manda um STEP de {scpi}`VOLTage:TRIGgered` para o mesmo valor que a saída já tem, apenas para a fonte emitir o pulso de trigger.
 
-Estado: a classe rodou na bancada com o código anterior à v1.15; o que a v1.15 mudou (fase sorteada e disparo nessa fase) nunca foi medido ({ref}`P-01 <p-01>`, {ref}`P-05 <p-05>`).
+Estado: a classe rodou na bancada com o código anterior à v1.15 (07/10/2026). Em 22/10/2026 mediu-se o sorteio de fase e de posição nas classes 01 a 04, com evidência suficiente e revisão humana pendente ({ref}`P-05 <estado-p-05>`); a cobertura das 20 classes é de 2 das 5 condições previstas ({ref}`P-01 <estado-p-01>`).
 
 ## 2. O fenômeno e a norma
 
@@ -64,7 +63,7 @@ Ordem dos comandos de uma captura (`ExperimentoNativo._capturar_real`, [mestre.p
 7. Espera dos dois lados e leitura do osciloscópio ({scpik}`:WAVeform:PREamble?`, {scpik}`:WAVeform:DATA?`); ao fim da classe, `restaurar_forma_e_modo_padrao` ([ametek_orm.py:1035-1048](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/ametek_orm.py#L1035-L1048)).
 
 :::{note} Nota de verificação
-Conferido offline em 2026-10-16: a ordem acima foi lida em `mestre.py` e `ametek_orm.py` (`main` em `fa82f49`). Em bancada, a ordem foi observada com o código da v1.13/v1.14 em 07/10/2026 (127 V/50 Hz); com o código da v1.15 {bdg-warning}`NÃO VERIFICADO` (P-01).
+Conferido offline em 2026-10-16: a ordem acima foi lida em `mestre.py` e `ametek_orm.py` (`main` em `fa82f49`). Em bancada, a ordem foi observada com o código da v1.13/v1.14 em 07/10/2026 (127 V/50 Hz); com o código da v1.15 {bdg-warning}`NÃO VERIFICADO` neste texto ({ref}`P-01 <estado-p-01>`: as sessões de 22/10 não estão no repositório).
 :::
 
 **Janela e margem.** A 01 não tem pré-trigger próprio (`pre_trigger_s` = 0): o trigger cai no início da janela e o registro físico tem 20 ms antes e 50 ms depois (8100 amostras; {doc}`../medicao`). Quem diz onde o trigger caiu é a preamble, não a classe.
@@ -157,12 +156,12 @@ A correlação do distúrbio da 01 é **`n/a` por definição**: o resíduo do m
 | STEP a 127 V/60 Hz, 127 V/50 Hz e 230 V/50 Hz | {bdg-success}`VERIFICADO NA BANCADA` | sessões de 07/10/2026, 1 captura em cada, validação física aprovada |
 | Fase sorteada e disparo na fase sorteada | {bdg-warning}`NÃO VERIFICADO` | nenhuma sessão com o código da v1.15; `TRIGger:SYNChronize:PHASe` não tem readback |
 
-:::{important} Pendência P-01
-Nenhum dado de bancada existe com o código da v1.15 ({doc}`../projeto/pendencias`). Fecha com: bancada (roteiro de 10 blocos). Prioridade ALTA.
+:::{important} Pendência P-01 (Software pronto, falta bancada)
+{ref}`P-01 <estado-p-01>`: Software pronto, falta bancada; prioridade alta. A visita de 22/10/2026 cobriu 2 de 5 condições (127 V/60 Hz e 127 V/50 Hz) com as 20 classes e os 3 perfis: 159 capturas físicas, 19 com validação física reprovada (`docs/evidencias/2026-10-22/fechamento.json`). Os resultados por classe estão nas sessões do PC da bancada, fora do repositório: o desempenho desta classe nelas é NÃO VERIFICADO aqui. Decisão do dono confirmada em 2026-10-21. Falta. **Bancada:** Campanhas de 230 V/50 Hz, 220 V/60 Hz e 33 V/60 Hz (as duas últimas dependem de calibração, P-21); reexecutar `run 02,17,18,19`, `run 10,11` e `run 12,16` a 127 V/60 Hz, que a visita já agenda depois do bloco 10-A; retomar a visita no braço A da P-09. **Código:** O critério `quantidade_de_capturas_por_classe_perfil_condicao` do agregador está sem limite (`criterio_nao_definido`, 159 capturas medidas); o dono já respondeu 'padrão, 1 captura por classe' na P-26, mas isso ainda não foi codificado no agregador.
 :::
 
-:::{important} Pendência P-05
-O sorteio de posição nas nativas (disparo na fase sorteada em passos de 0,1°, `:TIMebase:POSition` por captura, `pre_trigger_desvio_amostras`) nunca foi medido. Para a 01 só a fase importa. Fecha com: bancada (`scripts/verificar_sessao_bancada.py`). Prioridade MÉDIA.
+:::{important} Pendência P-05 (Falta decisão ou dado do responsável)
+{ref}`P-05 <estado-p-05>`: Falta decisão ou dado do responsável; prioridade média. A 01 só depende da fase sorteada (sem evento a posicionar). Situação: Evidência suficiente, revisão humana pendente. Falta. **Decisão do dono:** Decidir o destino do desvio de pre-trigger e definir o critério de fase e início. O limite de 2 amostras nunca foi validado e não há fonte para outro valor; não foi alterado.
 :::
 
 ## 12. Como o código da classe funciona

@@ -1,11 +1,10 @@
 # Classe 04: INTERRUPTION
 
-:::{note} Revisão e procedência
-Texto de referência importado do levantamento de 16/10/2026, baseado em [fa82f496](https://github.com/DenisLN/anti-synthetic-data/tree/fa82f49600543456adf78e22485ab6de5dd032b9). Citações numéricas apontam para esse snapshot e não acompanham linhas atuais. Trechos `literalinclude` são extraídos do checkout atual por símbolo; consulte {doc}`../execucao_pendencias` para implementação e evidências vigentes. Relatos de sessões e transcrições são históricos, não medições repetidas nesta revisão.
-:::
+```{include} /_includes/aviso-base.md
+```
 
 
-{bdg-success}`VERIFICADO NA BANCADA` pré-v1.15 (127 V/60 Hz e 127 V/50 Hz, 3 capturas, 07/10/2026) {bdg-info}`OFFLINE` {bdg-warning}`NÃO VERIFICADO` sorteio de início, duração e fase; 230 V/50 Hz {bdg-danger}`PENDENTE P-01` {bdg-danger}`PENDENTE P-05`
+{bdg-success}`VERIFICADO NA BANCADA` pré-v1.15 (127 V/60 Hz e 127 V/50 Hz, 3 capturas, 07/10/2026) {bdg-info}`OFFLINE` {bdg-warning}`NÃO VERIFICADO` critério de fase e início do sorteio e destino do desvio de pre-trigger (medidos em 22/10/2026, revisão humana pendente); 230 V/50 Hz {bdg-ref-warning}`P-01 Software pronto, falta bancada <estado-p-01>` {bdg-ref-info}`P-05 Falta decisão ou dado do responsável <estado-p-05>`
 
 | Campo | Valor |
 |---|---|
@@ -21,7 +20,7 @@ Texto de referência importado do levantamento de 16/10/2026, baseado em [fa82f4
 
 **Pergunta:** o que a classe 04 produz? **Resposta:** uma senoide que **cai a um nível $\ell \in [0;\,0{,}09]$ pu por um trecho sorteado dos 200 ms e volta ao normal**, ou seja, uma interrupção (quase zero) em vez de um afundamento; é um PULSe nativo como o da 02, com o nível sorteado em vez de tabelado.
 
-Estado: o PULSe com nível próximo de zero foi medido em 07/10/2026; o sorteio de posição nunca ({ref}`P-05 <p-05>`) e nenhum dado existe com o código da v1.15 ({ref}`P-01 <p-01>`).
+Estado: o PULSe com nível próximo de zero foi medido em 07/10/2026. Em 22/10/2026 mediu-se o sorteio de posição (inícios em 110,8, 114,8 e 132,1 ms, com desvios de pre-trigger de −2, −6 e +6 amostras), com evidência suficiente e revisão humana pendente ({ref}`P-05 <estado-p-05>`); a cobertura é de 2 das 5 condições ({ref}`P-01 <estado-p-01>`).
 
 ## 2. O fenômeno e a norma
 
@@ -83,9 +82,9 @@ Como na 02, o que limita é a **volta** da interrupção (quirk A20): o pico pro
 | 127 V/60 Hz | 1,192 | 3 | 179,6 | 235,5 | 415,8 | 100 % | 3/3 rodam |
 | 127 V/50 Hz | 1,063 | 3 | 179,6 | 210,0 | 415,8 | 100 % | 3/3 rodam |
 | 230 V/50 Hz | sem entrada | 3 | 325,3 | 380,3 | 415,8 | 100 % | 3/3 rodam |
-| 220 V/60 Hz (sem tabela) | 1,475 (maior fator de todas as tabelas; regra sem tabela) | 3 | 311,1 | 504,8 | 415,8 | 100 % | 0/3 rodam, 3 pulada(s) |
+| 220 V/60 Hz (sem tabela) | 1,615 (maior fator de todas as tabelas; regra sem tabela) | 3 | 311,1 | 552,7 | 415,8 | 100 % | 0/3 rodam, 3 pulada(s) |
 
-*Fonte:* `logica/calibracao_extremos.json` e `scripts/relatorio_limites_bancada.py`, 2026-10-16 (perfil `literatura`, 3 capturas padrão, seed 20260827, sorteio ligado). A 230 V/50 Hz a 04 roda desde a v1.15 (regra por frequência: 325,3 V × 1,063 × 1,10 = 380,3 V); em 07/10 foi pulada. A 220 V/60 Hz (sem tabela) é pulada nas três capturas: 311,1 V × 1,475 × 1,10 = 504,8 V ({ref}`P-21 <p-21>`). Nativas não reduzem o distúrbio.
+*Fonte:* `logica/calibracao_extremos.json` e `scripts/relatorio_limites_bancada.py`, 2026-10-16 (perfil `literatura`, 3 capturas padrão, seed 20260827, sorteio ligado). (`scripts/relatorio_limites_bancada.py` refeito em 2026-10-27 sobre a `main`, mesmos parâmetros: as linhas de 127 V/60 Hz e de 220 V/60 Hz mudaram com a recalibração de 22/10; as de 50 Hz não). A 230 V/50 Hz a 04 roda desde a v1.15 (regra por frequência: 325,3 V × 1,063 × 1,10 = 380,3 V); em 07/10 foi pulada. A 220 V/60 Hz (sem tabela) é pulada nas três capturas: 311,1 V × 1,615 × 1,10 = 552,7 V ({ref}`P-21 <estado-p-21>`). Nativas não reduzem o distúrbio.
 
 ## 7. Validação física
 
@@ -131,7 +130,7 @@ A 04 é uma das classes mais bem correlacionadas (0,996–0,999 em 07/10): o eve
 
 - **A12:** `VOLTage:TRIGgered` truncado a 0,1 V (a origem do N3 e do readback recusado).
 - **A14, A18, A1, K1:** como na {doc}`02-sag`.
-- **A20:** o sobressinal da volta: fator 1,164 a 127 V/60 Hz e 1,063 a 127 V/50 Hz.
+- **A20:** o sobressinal da volta: fator 1,192 a 127 V/60 Hz (1,164 até a recalibração de 22/10) e 1,063 a 127 V/50 Hz.
 - **Acoplamento 04/19 com `seed_da_captura`:** `configurar()` repete a conta da seed à mão (`base_seed + 4_000_000 + capture_index`, [04.py:37](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/experimentos_nativos/04.py#L37)) porque não recebe o `rng`. Só concorda com `gerar()` enquanto `capture_index == indice_global`, que é verdade na 04 (ela não tem `NIVEIS`). Mudar `seed_da_captura` ([mestre.py:1703-1707](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/mestre.py#L1703-L1707)) ou o id da classe desacopla os dois sem erro ({doc}`../codigo/acoplamentos`).
 - **Cobertura e `analisar_sessao`:** a reconstrução offline ([analisar_sessao.py:129-187](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/analisar_sessao.py#L129-L187)) instancia o experimento sem osciloscópio e sempre cai no ramo do sorteio de `valor_para_captura`, mesmo quando a captura real usou a cobertura; o efeito na correlação da 04 {bdg-warning}`NÃO VERIFICADO` ({doc}`../medicao/correlacao` §8).
 
@@ -153,12 +152,12 @@ A 04 é uma das classes mais bem correlacionadas (0,996–0,999 em 07/10): o eve
 | Sorteio de início, duração e fase; `PULSe:WIDTh` sorteada | {bdg-warning}`NÃO VERIFICADO` | nenhuma sessão com o código da v1.15 |
 | 230 V/50 Hz | {bdg-warning}`NÃO VERIFICADO` | pulada em 07/10; hoje o previsto é 380,3 V e roda |
 
-:::{important} Pendência P-01
-Nenhum dado de bancada existe com o código da v1.15. Fecha com: bancada. Prioridade ALTA.
+:::{important} Pendência P-01 (Software pronto, falta bancada)
+{ref}`P-01 <estado-p-01>`: Software pronto, falta bancada; prioridade alta. A visita de 22/10/2026 cobriu 2 de 5 condições (127 V/60 Hz e 127 V/50 Hz) com as 20 classes e os 3 perfis: 159 capturas físicas, 19 com validação física reprovada (`docs/evidencias/2026-10-22/fechamento.json`). Os resultados por classe estão nas sessões do PC da bancada, fora do repositório: o desempenho desta classe nelas é NÃO VERIFICADO aqui. Decisão do dono confirmada em 2026-10-21. Falta. **Bancada:** Campanhas de 230 V/50 Hz, 220 V/60 Hz e 33 V/60 Hz (as duas últimas dependem de calibração, P-21); reexecutar `run 02,17,18,19`, `run 10,11` e `run 12,16` a 127 V/60 Hz, que a visita já agenda depois do bloco 10-A; retomar a visita no braço A da P-09. **Código:** O critério `quantidade_de_capturas_por_classe_perfil_condicao` do agregador está sem limite (`criterio_nao_definido`, 159 capturas medidas); o dono já respondeu 'padrão, 1 captura por classe' na P-26, mas isso ainda não foi codificado no agregador.
 :::
 
-:::{important} Pendência P-05
-Sorteio de posição nas nativas (fase de disparo sem readback, pré-trigger por captura, `PULSe:WIDTh` sorteada) nunca medido. Fecha com: bancada. Prioridade MÉDIA.
+:::{important} Pendência P-05 (Falta decisão ou dado do responsável)
+{ref}`P-05 <estado-p-05>`: Falta decisão ou dado do responsável; prioridade média. 04 (inícios em 110,8, 114,8 e 132,1 ms): desvios de −2, −6 e +6 amostras. Situação: Evidência suficiente, revisão humana pendente. Falta. **Decisão do dono:** Decidir o destino do desvio de pre-trigger e definir o critério de fase e início. O limite de 2 amostras nunca foi validado e não há fonte para outro valor; não foi alterado.
 :::
 
 ## 12. Como o código da classe funciona

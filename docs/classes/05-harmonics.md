@@ -1,11 +1,10 @@
 # Classe 05: HARMONICS
 
-:::{note} Revisão e procedência
-Texto de referência importado do levantamento de 16/10/2026, baseado em [fa82f496](https://github.com/DenisLN/anti-synthetic-data/tree/fa82f49600543456adf78e22485ab6de5dd032b9). Citações numéricas apontam para esse snapshot e não acompanham linhas atuais. Trechos `literalinclude` são extraídos do checkout atual por símbolo; consulte {doc}`../execucao_pendencias` para implementação e evidências vigentes. Relatos de sessões e transcrições são históricos, não medições repetidas nesta revisão.
-:::
+```{include} /_includes/aviso-base.md
+```
 
 
-{bdg-success}`VERIFICADO NA BANCADA` pré-v1.15 (THD de 5 %; 127 V/60 Hz, 127 V/50 Hz e 230 V/50 Hz, 07/10/2026) {bdg-info}`OFFLINE` {bdg-warning}`NÃO VERIFICADO` CSINusoid a 10, 15 e 20 %; nível de 2 %; nível de 30 % por TRACe {bdg-danger}`PENDENTE P-01` {bdg-danger}`PENDENTE P-10` {bdg-danger}`PENDENTE P-18` {bdg-danger}`PENDENTE P-19`
+{bdg-success}`VERIFICADO NA BANCADA` pré-v1.15 (THD de 5 %; 127 V/60 Hz, 127 V/50 Hz e 230 V/50 Hz, 07/10/2026) {bdg-info}`OFFLINE` {bdg-success}`VERIFICADO NA BANCADA` 22/10/2026: THD de 2, 10, 15 e 20 % por CSINusoid e de 30 % por TRACe, com validação física ok (sessão fora do repositório; `docs/evidencias/2026-10-22/fechamento.json`) {bdg-warning}`NÃO VERIFICADO` modelo clipado contra a medida {bdg-ref-warning}`P-01 Software pronto, falta bancada <estado-p-01>` {bdg-ref-success}`P-10 Concluída, dono ainda não confirmou <estado-p-10>` {bdg-ref-warning}`P-18 Software pronto, falta bancada <estado-p-18>` {bdg-ref-primary}`P-19 Insuficiente na bancada <estado-p-19>`
 
 | Campo | Valor |
 |---|---|
@@ -21,7 +20,7 @@ Texto de referência importado do levantamento de 16/10/2026, baseado em [fa82f4
 
 **Pergunta:** como a bancada produz uma senoide com 5, 10, 15, 20 ou 30 % de THD? **Resposta:** até **20 %** pela senoide clipada interna da AMETEK (CSINusoid), que a fonte aplica sozinha; o nível de **30 %** passa do teto dessa função e é programado como forma de onda arbitrária (TRACe/LIST) calculada em Python. O modelo `gerar()` acompanha a bancada: senoide clipada nos níveis nativos e soma de 3.ª, 5.ª e 7.ª harmônicas no nível por TRACe.
 
-Estado: o THD de 5 % foi medido e bateu (5,0 % esperado e medido, em três condições); os níveis de 10, 15, 20 e 2 % e o de 30 % por TRACe nunca foram capturados, e o modelo clipado (v1.15) nunca foi comparado com a bancada ({ref}`P-10 <p-10>`).
+Estado: o THD de 5 % foi medido e bateu em 07/10/2026 (5,0 % esperado e medido, em três condições). Em 22/10/2026 (sessão `2026-10-22_14-38-28`, commit `a22fba9`, fora do repositório) as 13 medidas do fechamento cobriram os níveis 0,02, 0,05, 0,10, 0,15, 0,20 e 0,30, todas com validação física ok, pela CSINusoid até 20 % e por TRACe a 30 % (`docs/evidencias/2026-10-22/fechamento.json`, {ref}`P-10 <estado-p-10>`, concluída; o dono ainda não confirmou). O modelo clipado (v1.15) contra a medida é NÃO VERIFICADO: o fechamento comparou THD e envelope medidos com os esperados, não a correlação do distúrbio.
 
 ## 2. O fenômeno e a norma
 
@@ -71,7 +70,7 @@ Os cinco níveis, o mecanismo de cada um e o que `gerar()` produz (cálculo offl
 
 - **Parâmetros no metadata:** `thd` (fração) e `fase_graus`.
 - **Seed:** `base_seed + 5 · 1 000 000 + indice_global`. A classe não consome o `rng`.
-- **Capturas e níveis:** `capturas_padrao` = 1: o plano padrão é uma captura no nível 0 (5 % na `literatura`, 2 % na `norma`). Para cobrir os cinco níveis é preciso `set capturas N`. **Só com `set capturas N` digitado (qualquer N, inclusive 1) o nível de 30 % entra no plano**, e ele custa gravações de TRACe (12 a 60 Hz, 10 a 50 Hz por captura), que contam na estimativa de 280 por conexão ({ref}`P-23 <p-23>`).
+- **Capturas e níveis:** `capturas_padrao` = 1: o plano padrão é uma captura no nível 0 (5 % na `literatura`, 2 % na `norma`). Para cobrir os cinco níveis é preciso `set capturas N`. **Só com `set capturas N` digitado (qualquer N, inclusive 1) o nível de 30 % entra no plano**, e ele custa gravações de TRACe (12 a 60 Hz, 10 a 50 Hz por captura), que contam no orçamento de 216 gravações de TRACe por conexão (`LIMITE_ESCRITAS_TRACE_CONEXAO`, `logica/politica_traces.py:3`; {ref}`P-23 <estado-p-23>`).
 
 `gerar()` é chamado nas linhas [mestre.py:2654](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/mestre.py#L2654) (dataset simulado, em `ExperimentoBase.executar`); [mestre.py:2957](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/mestre.py#L2957) (ramo nativo) e [mestre.py:2938](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/mestre.py#L2938) (ramo TRACe), em `ExperimentoNativo._capturar_real`; [mestre.py:3127](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/mestre.py#L3127) (bancada), em `ExperimentoWaveform._capturar_real`; [mestre.py:1819](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/mestre.py#L1819), [mestre.py:1988](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/mestre.py#L1988) e [mestre.py:3113](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/mestre.py#L3113) (pré-validação e validação física: forma esperada e forma para a bancada, sempre com `default_rng(seed)`); e, fora do `mestre`, em [analisar_sessao.py:178](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/analisar_sessao.py#L178) (`_reconstruir_esperado`) e [scripts/gerar_tres_versoes.py:131](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/scripts/gerar_tres_versoes.py#L131). Em todos os casos o `rng` é o da seed da captura.
 
@@ -101,16 +100,16 @@ O perfil `fronteira` usa os mesmos níveis da `literatura` (THD não tem frontei
 
 ## 6. Limites físicos e fator de extremo
 
-Os níveis de THD têm pico **menor** que o da senoide pura (a clipagem reduz o pico: 0,82 a 0,96 pu nos níveis nativos), então o limite que importa é o do nível de 30 % por TRACe e o das condições de tensão alta. O fator de extremo da 05 é 0,998 a 127 V (< 1, e o código nunca prevê abaixo do programado: `fator_extremo_da_classe`, [mestre.py:626-630](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/mestre.py#L626-L630)).
+Os níveis de THD têm pico **menor** que o da senoide pura (a clipagem reduz o pico: 0,82 a 0,96 pu nos níveis nativos), então o limite que importa é o do nível de 30 % por TRACe e o das condições de tensão alta. O fator de extremo da 05 é 1,255 a 127 V/60 Hz (`logica/calibracao_extremos.json`, recalibrado em 22/10/2026; era 0,998), 0,998 a 127 V/50 Hz (< 1, e o código nunca prevê abaixo do programado: `fator_extremo_da_classe`, [mestre.py:626-630](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/mestre.py#L626-L630)).
 
 | Condição | Fator medido na tabela da condição | Capturas do plano | Pico programado (V) | Extremo previsto (V) | Teto (V) | Distúrbio aplicado (k) | Resultado |
 |---|---|---|---|---|---|---|---|
-| 127 V/60 Hz | 0,998 | 1 | 166,3 | 182,9 | 415,8 | 100 % | 1/1 rodam |
+| 127 V/60 Hz | 1,255 | 1 | 166,3 | 229,5 | 415,8 | 100 % | 1/1 rodam |
 | 127 V/50 Hz | 0,998 | 1 | 166,3 | 183,1 | 415,8 | 100 % | 1/1 rodam |
 | 230 V/50 Hz | 1,001 | 1 | 301,1 | 331,6 | 415,8 | 100 % | 1/1 rodam |
-| 220 V/60 Hz (sem tabela) | 1,475 (maior fator de todas as tabelas; regra sem tabela) | 1 | 288,0 | 467,3 | 415,8 | 100 % | 0/1 rodam, 1 pulada(s) |
+| 220 V/60 Hz (sem tabela) | 1,615 (maior fator de todas as tabelas; regra sem tabela) | 1 | 288,0 | 511,7 | 415,8 | 100 % | 0/1 rodam, 1 pulada(s) |
 
-*Fonte:* `logica/calibracao_extremos.json` e `scripts/relatorio_limites_bancada.py`, 2026-10-16 (perfil `literatura`, nível 0 = 5 %, sorteio ligado). O nível de 30 % por TRACe não tem fator medido; o pico a 127 V é 148,2 V. A 220 V/60 Hz (sem tabela) a 05 é pulada: 288,0 V × 1,475 × 1,10 = 467,3 V ({ref}`P-21 <p-21>`). A 380 V, o pico do nível de 30 % seria 443,5 V por conta, acima dos 425 Vp do hardware; o `START_BENCH` recusa 380 V (tensão de linha) e a combinação não foi simulada com a bancada falsa.
+*Fonte:* `logica/calibracao_extremos.json` e `scripts/relatorio_limites_bancada.py`, 2026-10-16 (perfil `literatura`, nível 0 = 5 %, sorteio ligado). (`scripts/relatorio_limites_bancada.py` refeito em 2026-10-27 sobre a `main`, mesmos parâmetros: as linhas de 127 V/60 Hz e de 220 V/60 Hz mudaram com a recalibração de 22/10; as de 50 Hz não). O nível de 30 % por TRACe não tem fator medido; o pico a 127 V é 148,2 V. A 220 V/60 Hz (sem tabela) a 05 é pulada: 288,0 V × 1,615 × 1,10 = 511,7 V ({ref}`P-21 <estado-p-21>`). A 380 V, o pico do nível de 30 % seria 443,5 V por conta, acima dos 425 Vp do hardware; o `START_BENCH` recusa 380 V (tensão de linha) e a combinação não foi simulada com a bancada falsa.
 
 ## 7. Validação física
 
@@ -151,7 +150,7 @@ A `programada` da 05 depende do nível: nos níveis ≤ 20 % é a senoide clipad
 
 Causa de a classe ficar abaixo de 0,90, quando fica: modelo × medida 0,50 em 07/10: sem sorteio (`SORTEIO=0`, como em 07/10) o modelo é a soma 1 + 3.ª/5.ª/7.ª harmônicas e a fonte emite a CSINusoid (senoide clipada): modelo × programada 0,518; programada × medida 0,96–0,97. Com sorteio (padrão da v1.15) o modelo é a senoide clipada e o modelo × programada vai a 1,000 (simulação); modelo × medida nesse modo {bdg-warning}`NÃO VERIFICADO`
 
-A queda de **0,50** em modelo × medida em 07/10 não era da fonte: com `SORTEIO=0`, como as sessões foram gravadas, o modelo era a soma de harmônicas e a fonte emite a senoide clipada. Medido contra a programada (a clipada) dava 0,96–0,97, e modelo × programada é 0,518. Na v1.15 o modelo passou a ser a clipada nos níveis nativos e modelo × programada vai a 1,000. O modelo × medida **com o modelo novo** é {bdg-warning}`NÃO VERIFICADO` (nenhuma sessão com o código da v1.15; o rms e o THD da CSINusoid interna a 10, 15 e 20 % nunca foram medidos, {ref}`P-10 <p-10>`).
+A queda de **0,50** em modelo × medida em 07/10 não era da fonte: com `SORTEIO=0`, como as sessões foram gravadas, o modelo era a soma de harmônicas e a fonte emite a senoide clipada. Medido contra a programada (a clipada) dava 0,96–0,97, e modelo × programada é 0,518. Na v1.15 o modelo passou a ser a clipada nos níveis nativos e modelo × programada vai a 1,000. O modelo × medida **com o modelo novo** é {bdg-warning}`NÃO VERIFICADO` (o fechamento de 22/10 confirmou THD e envelope da CSINusoid a 2, 10, 15 e 20 % e da TRACe a 30 % contra o esperado, {ref}`P-10 <estado-p-10>`, mas não calculou a correlação do distúrbio, e as sessões não estão no repositório).
 
 ## 9. Quirks e armadilhas
 
@@ -179,24 +178,24 @@ A queda de **0,50** em modelo × medida em 07/10 não era da fonte: com `SORTEIO
 |---|---|---|
 | CSINusoid de 5 % aplica THD de 5,0 % | {bdg-success}`VERIFICADO NA BANCADA` | 127 V/60 Hz, 127 V/50 Hz e 230 V/50 Hz, 07/10/2026, validação 1/1 |
 | `gerar()` clipado: THD, rms, fase e teto do CSINe | {bdg-info}`OFFLINE` | tabela da seção 3 e testes `Classes05_07_18Tests` |
-| CSINusoid a 10, 15 e 20 %; nível de 2 % | {bdg-warning}`NÃO VERIFICADO` | nunca capturados; rms da CSINusoid interna desconhecido |
-| Nível de 30 % por TRACe na bancada | {bdg-warning}`NÃO VERIFICADO` | nunca capturado; pico a 380 V não simulado |
-| Modelo clipado contra a medida | {bdg-warning}`NÃO VERIFICADO` | nenhuma sessão com o código da v1.15 |
+| CSINusoid a 2, 10, 15 e 20 % | {bdg-success}`VERIFICADO NA BANCADA` | 22/10/2026, validação física ok em todas as capturas desses níveis (`fechamento.json`, {ref}`P-10 <estado-p-10>`); sessão fora do repositório |
+| Nível de 30 % por TRACe na bancada | {bdg-success}`VERIFICADO NA BANCADA` | 22/10/2026, 1 captura com validação física ok e rota `TRACe` gravada; pico a 380 V não simulado |
+| Modelo clipado contra a medida | {bdg-warning}`NÃO VERIFICADO` | correlação do distúrbio não calculada nas sessões de 22/10 (fora do repositório) |
 
-:::{important} Pendência P-01
-Nenhum dado de bancada existe com o código da v1.15. Fecha com: bancada. Prioridade ALTA.
+:::{important} Pendência P-01 (Software pronto, falta bancada)
+{ref}`P-01 <estado-p-01>`: Software pronto, falta bancada; prioridade alta. A visita de 22/10/2026 cobriu 2 de 5 condições (127 V/60 Hz e 127 V/50 Hz) com as 20 classes e os 3 perfis: 159 capturas físicas, 19 com validação física reprovada (`docs/evidencias/2026-10-22/fechamento.json`). Os resultados por classe estão nas sessões do PC da bancada, fora do repositório: o desempenho desta classe nelas é NÃO VERIFICADO aqui. Decisão do dono confirmada em 2026-10-21. Falta. **Bancada:** Campanhas de 230 V/50 Hz, 220 V/60 Hz e 33 V/60 Hz (as duas últimas dependem de calibração, P-21); reexecutar `run 02,17,18,19`, `run 10,11` e `run 12,16` a 127 V/60 Hz, que a visita já agenda depois do bloco 10-A; retomar a visita no braço A da P-09. **Código:** O critério `quantidade_de_capturas_por_classe_perfil_condicao` do agregador está sem limite (`criterio_nao_definido`, 159 capturas medidas); o dono já respondeu 'padrão, 1 captura por classe' na P-26, mas isso ainda não foi codificado no agregador.
 :::
 
-:::{important} Pendência P-10
-Nunca medidos: rms e THD da CSINusoid interna a 10, 15 e 20 %, o nível de 2 % (perfil `norma`), o nível de 30 % por TRACe e o modelo novo contra a bancada. Fecha com: bancada. Prioridade MÉDIA.
+:::{note} Pendência P-10 (Concluída, dono ainda não confirmou)
+{ref}`P-10 <estado-p-10>`: Concluída, dono ainda não confirmou; prioridade média. Níveis de THD medidos em 22/10: 0,02, 0,05, 0,10, 0,15, 0,20 e 0,30, com a rota gravada por captura em `rota_programacao` (`experimentos_nativos/05.py:72`): CSINusoid até 20 %, TRACe a 30 %. Exemplo: 2 % (perfil `norma`) medido em 0,02006 contra 0,01999 esperado. Situação: Concluída — bancada 2026-10-22. Escolha tomada no fork; o dono ainda não a confirmou. Falta. **Decisão do dono:** Confirmar o encerramento (o fechamento diz que evidência suficiente não é encerramento).
 :::
 
-:::{important} Pendência P-18
-Passo final `SINE` no `LIST`: existe só no branch `feat/passo-final-sin`, **fora da `main`** ({doc}`../projeto/passo-final-sin`); na 05 afetaria só o nível de 30 %, que usa TRACe/LIST. Fecha com: bancada e decisão do responsável pelo projeto. Prioridade MÉDIA.
+:::{important} Pendência P-18 (Software pronto, falta bancada)
+{ref}`P-18 <estado-p-18>`: Software pronto, falta bancada; prioridade média. Na 05 afetaria só o nível de 30 %, que usa TRACe/LIST. Padrão desligado (`AMETEK_PASSO_FINAL_SIN`, `logica/mestre.py:417`). Situação: Parcial: integrado experimental, desligado. Falta. **Bancada:** Rodar `diag/teste_passo_final_sin.py` com a confirmação `ENERGIZAR-PASSO-SIN` digitada pelo operador: aceitação de `SINE` em `LIST:FUNCtion:SHAPe` e restauração da fonte. **Decisão do dono:** Confirmar o padrão desligado até a validação.
 :::
 
-:::{important} Pendência P-19
-`TRACe:DATA?` (`set diagnostico retrieve`) nunca foi executado na fonte real; vale para o nível de 30 % da 05. Fecha com: bancada, com o painel à vista. Prioridade MÉDIA.
+:::{important} Pendência P-19 (Insuficiente na bancada)
+{ref}`P-19 <estado-p-19>`: Insuficiente na bancada; prioridade média. Vale para o nível de 30 % da 05 (TRACe). As leituras de 22/10 foram nas capturas das classes 08 e 09. Situação: Insuficiente em 2026-10-22. Falta. **Bancada:** Repetir a leitura com `set diagnostico retrieve on` e o painel à vista até obter 1024 valores finitos ou um erro SCPI de comando não suportado. Respeitar `AGENTS.md`: nunca consultar a fonte logo após `TRACe:DATA` (achado de segurança da v1.12). **Código:** Examinar como a leitura do `retrieve` recebe e decodifica a resposta, para descartar truncamento no próprio código antes de concluir algo sobre o firmware (proposta de investigação, não achado).
 :::
 
 ## 12. Como o código da classe funciona
@@ -215,6 +214,13 @@ Passo final `SINE` no `LIST`: existe só no branch `feat/passo-final-sin`, **for
 - `configurar` só é chamado para os níveis nativos: `usar_trace` desvia o nível de 30 % para o caminho TRACe **antes** de `configurar` (o comentário do arquivo diz que "os 4 níveis" cabem na CSINusoid, mas com o perfil `norma` são cinco; a lógica depende só de `usar_trace`).
 - A classe **não** define `NIVEIS`; por isso `ExperimentoNativo.tensao_rms_programada` ([mestre.py:2903-2911](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/mestre.py#L2903-L2911)) devolve `None` (o rms da 05 não é informado à pré-validação, que usa o pico da forma).
 - Contrato, ganchos e acoplamentos: {doc}`../codigo/classes_contrato` §3 e §4; o módulo de sinais em {doc}`../codigo/sinais`.
+
+### Mudanças no código desde `fa82f49` (conferidas em 2026-10-27, `main` em `7efd26e`)
+
+- `Experimento.rota_programacao` (`experimentos_nativos/05.py:72-74`, novo): devolve `"TRACe"` quando `usar_trace(capture_index)` é verdadeiro (nível acima de `TETO_CSINE`, ou seja, o de 30 %) e `"CSIN"` nos demais. Sobrescreve `ExperimentoBase.rota_programacao` (`logica/mestre.py:2300`), que só distingue `"TRACe"` de `"nativa"`. O valor é gravado em `rota_programacao` apenas nas capturas físicas (`logica/mestre.py:3431`; campo descrito em {doc}`../metadata`). É diagnóstico: não muda `gerar()` nem o que vai à fonte. A conferência da {ref}`P-10 <estado-p-10>` usa esse campo.
+- Por causa das 4 linhas novas, os números de linha de `scope_scale_v` e posteriores citados na tabela acima (de `fa82f49`) deslocaram-se: hoje `scope_scale_v` começa em `05.py:76`.
+
+O que `gerar()` produz para uma seed **não mudou**: a comparação de saída entre `fa82f49` e a `main` (20 classes, 720 chamadas de `gerar()`, sorteio ligado e desligado, 60 e 50 Hz, três índices e três seeds) deu hash idêntico por classe, e `tests.test_offline.PerfisDeFaixasTests` (fixtures byte a byte em `tests/fixtures/`) passa. Detalhe no `CHANGELOG/v1.15.md`.
 
 ## 13. Referências
 

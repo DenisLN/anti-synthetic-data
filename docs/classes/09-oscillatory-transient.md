@@ -1,11 +1,10 @@
 # Classe 09: OSCILLATORY_TRANSIENT
 
-:::{note} Revisão e procedência
-Texto de referência importado do levantamento de 16/10/2026, baseado em [fa82f496](https://github.com/DenisLN/anti-synthetic-data/tree/fa82f49600543456adf78e22485ab6de5dd032b9). Citações numéricas apontam para esse snapshot e não acompanham linhas atuais. Trechos `literalinclude` são extraídos do checkout atual por símbolo; consulte {doc}`../execucao_pendencias` para implementação e evidências vigentes. Relatos de sessões e transcrições são históricos, não medições repetidas nesta revisão.
-:::
+```{include} /_includes/aviso-base.md
+```
 
 
-{bdg-success}`VERIFICADO NA BANCADA` pré-v1.15 **com defeito de dado conhecido** (A25; 127 V/60 Hz, 127 V/50 Hz e 230 V/50 Hz, 3 capturas cada, 07/10/2026) {bdg-info}`OFFLINE` {bdg-warning}`NÃO VERIFICADO` mecanismo da cópia em 100 ms {bdg-danger}`PENDENTE P-01` {bdg-danger}`PENDENTE P-02` {bdg-danger}`PENDENTE P-18` {bdg-danger}`PENDENTE P-19`
+{bdg-success}`VERIFICADO NA BANCADA` pré-v1.15 **com defeito de dado conhecido** (A25; 127 V/60 Hz, 127 V/50 Hz e 230 V/50 Hz, 3 capturas cada, 07/10/2026) {bdg-info}`OFFLINE` {bdg-warning}`NÃO VERIFICADO` mecanismo da cópia em 100 ms {bdg-ref-warning}`P-01 Software pronto, falta bancada <estado-p-01>` {bdg-ref-danger}`P-02 Reprovada na bancada <estado-p-02>` {bdg-ref-warning}`P-18 Software pronto, falta bancada <estado-p-18>` {bdg-ref-primary}`P-19 Insuficiente na bancada <estado-p-19>`
 
 | Campo | Valor |
 |---|---|
@@ -88,16 +87,16 @@ Ferramentas e o que se sabe:
 
 **Recomendação para a campanha** (juízo, não medida): rodar a 09 logo depois da 08, com 6 a 9 capturas (`set capturas`) se houver tempo, e na mesma sessão `diag/diag_ciclos_trace.py <sessão> --classes 08,09`. Para a captura entrar no dataset sem ressalva: nenhum ciclo trocado e resíduo máximo perto de 100 ms abaixo de ~0,05 pu (o piso de ruído da 09 é 0,008–0,017 pu rms). Acima disso, manter a captura, marcá-la como suspeita e não usá-la para treino até o mecanismo ser conhecido: a cópia fora da janela rotulada é um rótulo errado. Não apagar nem refazer sozinho; é defeito de dado, não de infraestrutura.
 
-:::{important} Pendência P-02
-Mecanismo da cópia ou deslocamento do evento em 100,0 ms (quirks A22 e A25). Fecha com: bancada (Blocos 4 e 6 do roteiro). Prioridade ALTA.
+:::{warning} Pendência P-02 (Reprovada na bancada)
+{ref}`P-02 <estado-p-02>`: Reprovada na bancada; prioridade alta. Recapturas da 09 existem a 50 Hz (6) e a 60 Hz (3); nenhuma das cinco hipóteses da cópia em 100 ms foi confirmada nem descartada. Situação: Reprovada em 2026-10-22. Falta. **Bancada:** Diagnóstico dirigido que distinga as hipóteses (marcadores, TRACe recuperada, recaptura da 08 e da 09 a 50 e 60 Hz) e nova recaptura da 08 a 127 V/60 Hz com desvio ≤ 10 amostras. **Código:** Definir no agregador o critério da hipótese da cópia (hoje sem critério). Qualquer correção da posição só depois de distinguir as hipóteses; se mudar o que `gerar()` produz, exige autorização do dono registrada em `AGENTS.md`.
 :::
 
-:::{warning} Decisão em aberto P-04
-`AmetekMX30.program_capture` só **avisa** quando o pico reconstruído passa de `max_peak_v` ("prosseguindo sem carga", [ametek_orm.py:1522-1527](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/ametek_orm.py#L1522-L1527)); quem recusa é a pré-validação do `mestre.py` (`ExperimentoBase._indices_viaveis`, antes de qualquer SCPI, e `_conferir_extremos_fisicos`, depois da captura já gravada). Pergunta ao responsável pelo projeto: o ORM também deve recusar? Opções: manter como está, ou recusar no ORM (um limite de segurança mais restritivo). Este site não decide ({ref}`P-04 <p-04>`, prioridade MÉDIA).
+:::{note} Pendência P-04 (Concluída, dono ainda não confirmou)
+{ref}`P-04 <estado-p-04>`: Concluída, dono ainda não confirmou; prioridade média. Opção (a): o ORM recusa com `ParameterOutOfBoundsError` o pico acima de `max_peak_v` (`logica/ametek_orm.py:1427-1428` e `:2105-2106`). No baseline `fa82f49` o ORM só avisava. Situação: Concluída — software. Escolha tomada no fork; o dono ainda não a confirmou. Falta. **Decisão do dono:** Confirmar a opção (a) (ou pedir a (b), ver a ressalva em Pergunta ao dono).
 :::
 
-:::{warning} Decisão em aberto P-23
-A fonte travou na ~280.ª gravação de TRACe de uma mesma conexão (quirk A3; causa {bdg-warning}`NÃO VERIFICADO`), e cada captura desta classe grava 12 TRACes a 60 Hz (10 a 50 Hz). `README.md` e `AGENTS.md` ainda recomendam `run all` (468 gravações a 60 Hz; 1116 com `set perfil todos`), enquanto o roteiro de bancada usa listas de classes (menos de 250 por conexão). Pergunta: qual texto os documentos devem adotar? Opção recomendada pelo roteiro: listas (`run 01-07`, depois `run 09-20`). Decisão do responsável pelo projeto ({ref}`P-23 <p-23>`, prioridade MÉDIA).
+:::{important} Pendência P-23 (Software pronto, falta bancada)
+{ref}`P-23 <estado-p-23>`: Software pronto, falta bancada; prioridade média. Orçamento operacional de 216 gravações de TRACe por conexão (`LIMITE_ESCRITAS_TRACE_CONEXAO`, `logica/politica_traces.py:3`); 216 é regra operacional, não limite do fabricante, e a causa física da trava (quirk A3) continua NÃO VERIFICADA. Situação: Parcial: proteção implementada. Falta. **Bancada:** Diagnóstico real com a saída OFF (`diag/diag_nativo_output_off.py`) para esclarecer a causa da trava. **Decisão do dono:** Confirmar o valor 216 como regra operacional, ou mudá-lo.
 :::
 
 ## 5. Parâmetros por perfil
@@ -112,12 +111,12 @@ O pico programado é a senoide mais a oscilação (até ~1,3 pu quando a oscila�
 
 | Condição | Fator medido na tabela da condição | Capturas do plano | Pico programado (V) | Extremo previsto (V) | Teto (V) | Distúrbio aplicado (k) | Resultado |
 |---|---|---|---|---|---|---|---|
-| 127 V/60 Hz | 1,036 | 3 | 192,9–210,8 | 219,8–240,2 | 415,8 | 100 % | 3/3 rodam |
+| 127 V/60 Hz | 1,037 | 3 | 192,9–210,8 | 220,0–240,5 | 415,8 | 100 % | 3/3 rodam |
 | 127 V/50 Hz | 1,051 | 3 | 184,1–212,0 | 212,9–245,1 | 415,8 | 100 % | 3/3 rodam |
 | 230 V/50 Hz | 1,017 | 3 | 333,4–359,7 | 385,5–415,8 | 415,8 | 59–100 % | 3/3 rodam |
-| 220 V/60 Hz (sem tabela) | 1,475 (maior fator de todas as tabelas; regra sem tabela) | 3 | 317,5–365,2 | 415,8–592,5 | 415,8 | 26–100 % | 2/3 rodam, 1 pulada(s) |
+| 220 V/60 Hz (sem tabela) | 1,615 (maior fator de todas as tabelas; regra sem tabela) | 3 | 334,2–365,2 | 593,7–648,7 | 415,8 | 100 % | 0/3 rodam, 3 pulada(s) |
 
-*Fonte:* `logica/calibracao_extremos.json` e `scripts/relatorio_limites_bancada.py`, 2026-10-16 (perfil `literatura`, 3 capturas padrão, seed 20260827, sorteio ligado). A 230 V/50 Hz uma das três capturas roda com a amplitude da oscilação reduzida a 59 %; a 220 V/60 Hz (sem tabela) duas rodam reduzidas a 26 % e 29 % e uma é pulada. Fatores medidos: 1,036 (127 V/60 Hz), 1,051 (127 V/50 Hz) e 1,017 (230 V/50 Hz).
+*Fonte:* `logica/calibracao_extremos.json` e `scripts/relatorio_limites_bancada.py`, 2026-10-16 (perfil `literatura`, 3 capturas padrão, seed 20260827, sorteio ligado). (`scripts/relatorio_limites_bancada.py` refeito em 2026-10-27 sobre a `main`, mesmos parâmetros: as linhas de 127 V/60 Hz e de 220 V/60 Hz mudaram com a recalibração de 22/10; as de 50 Hz não). A 230 V/50 Hz uma das três capturas roda com a amplitude da oscilação reduzida a 59 %; a 220 V/60 Hz (sem tabela) duas rodavam reduzidas a 26 % e 29 % e uma era pulada, e hoje as três são **puladas** (fator conservador de 1,615; extremo previsto de 594 a 649 V). Fatores medidos: 1,037 (127 V/60 Hz; 1,036 até a recalibração de 22/10/2026), 1,051 (127 V/50 Hz) e 1,017 (230 V/50 Hz).
 
 ## 7. Validação física
 
@@ -156,9 +155,9 @@ A `programada` da 09 é a reconstrução da TRACe (sem a média de cada ciclo). 
 | programada × medida | 0,750–0,798 / 0,800–0,855 | 0,885–0,911 / 0,932–0,940 | 0,850–0,927 / 0,857–0,937 |
 | modelo × medida | 0,749–0,797 / 0,799–0,854 | 0,883–0,910 / 0,932–0,938 | 0,850–0,925 / 0,857–0,934 |
 
-Causa de a classe ficar abaixo de 0,90, quando fica: a 127 V/50 Hz a medida tem um impulso de 0,12–0,27 pu em 100,0–100,2 ms que a programada não tem (A25, P-02)
+Causa de a classe ficar abaixo de 0,90, quando fica: a 127 V/50 Hz a medida tem um impulso de 0,12–0,27 pu em 100,0–100,2 ms que a programada não tem (A25, {ref}`P-02 <estado-p-02>`)
 
-A queda abaixo de 0,90 a **127 V/50 Hz** (0,75–0,80 nominal; 0,80–0,86 ajustada) vem da cópia em 100 ms (A25, P-02): a medida tem o impulso extra que a programada não tem. A correlação com a fundamental ajustada **sobe** na 09 (distúrbio pequeno): 0,749–0,797 para 0,799–0,854 a 127 V/50 Hz. A 60 Hz o par fica em 0,88–0,91.
+A queda abaixo de 0,90 a **127 V/50 Hz** (0,75–0,80 nominal; 0,80–0,86 ajustada) vem da cópia em 100 ms (A25, {ref}`P-02 <estado-p-02>`): a medida tem o impulso extra que a programada não tem. A correlação com a fundamental ajustada **sobe** na 09 (distúrbio pequeno): 0,749–0,797 para 0,799–0,854 a 127 V/50 Hz. A 60 Hz o par fica em 0,88–0,91.
 
 ## 9. Quirks e armadilhas
 
@@ -183,16 +182,16 @@ A queda abaixo de 0,90 a **127 V/50 Hz** (0,75–0,80 nominal; 0,80–0,86 ajust
 | Mecanismo do impulso extra | {bdg-warning}`NÃO VERIFICADO` | `modelo_lista_fonte.py` sem confronto com dado real |
 | `gerar()` e programada de hoje | {bdg-info}`OFFLINE` | modelo × programada 0,996–1,000 |
 
-:::{important} Pendência P-01
-Nenhum dado de bancada existe com o código da v1.15. Fecha com: bancada. Prioridade ALTA.
+:::{important} Pendência P-01 (Software pronto, falta bancada)
+{ref}`P-01 <estado-p-01>`: Software pronto, falta bancada; prioridade alta. A visita de 22/10/2026 cobriu 2 de 5 condições (127 V/60 Hz e 127 V/50 Hz) com as 20 classes e os 3 perfis: 159 capturas físicas, 19 com validação física reprovada (`docs/evidencias/2026-10-22/fechamento.json`). Os resultados por classe estão nas sessões do PC da bancada, fora do repositório: o desempenho desta classe nelas é NÃO VERIFICADO aqui. Decisão do dono confirmada em 2026-10-21. Falta. **Bancada:** Campanhas de 230 V/50 Hz, 220 V/60 Hz e 33 V/60 Hz (as duas últimas dependem de calibração, P-21); reexecutar `run 02,17,18,19`, `run 10,11` e `run 12,16` a 127 V/60 Hz, que a visita já agenda depois do bloco 10-A; retomar a visita no braço A da P-09. **Código:** O critério `quantidade_de_capturas_por_classe_perfil_condicao` do agregador está sem limite (`criterio_nao_definido`, 159 capturas medidas); o dono já respondeu 'padrão, 1 captura por classe' na P-26, mas isso ainda não foi codificado no agregador.
 :::
 
-:::{important} Pendência P-18
-Passo final `SINE` no `LIST`: existe só no branch `feat/passo-final-sin`, **fora da `main`** ({doc}`../projeto/passo-final-sin`). Fecha com: bancada e decisão do responsável pelo projeto. Prioridade MÉDIA.
+:::{important} Pendência P-18 (Software pronto, falta bancada)
+{ref}`P-18 <estado-p-18>`: Software pronto, falta bancada; prioridade média. Situação: Parcial: integrado experimental, desligado. Falta. **Bancada:** Rodar `diag/teste_passo_final_sin.py` com a confirmação `ENERGIZAR-PASSO-SIN` digitada pelo operador: aceitação de `SINE` em `LIST:FUNCtion:SHAPe` e restauração da fonte. **Decisão do dono:** Confirmar o padrão desligado até a validação.
 :::
 
-:::{important} Pendência P-19
-`TRACe:DATA?` (`set diagnostico retrieve`) nunca foi executado na fonte real. Fecha com: bancada, com o painel à vista. Prioridade MÉDIA.
+:::{important} Pendência P-19 (Insuficiente na bancada)
+{ref}`P-19 <estado-p-19>`: Insuficiente na bancada; prioridade média. Situação: Insuficiente em 2026-10-22. Falta. **Bancada:** Repetir a leitura com `set diagnostico retrieve on` e o painel à vista até obter 1024 valores finitos ou um erro SCPI de comando não suportado. Respeitar `AGENTS.md`: nunca consultar a fonte logo após `TRACe:DATA` (achado de segurança da v1.12). **Código:** Examinar como a leitura do `retrieve` recebe e decodifica a resposta, para descartar truncamento no próprio código antes de concluir algo sobre o firmware (proposta de investigação, não achado).
 :::
 
 ## 12. Como o código da classe funciona

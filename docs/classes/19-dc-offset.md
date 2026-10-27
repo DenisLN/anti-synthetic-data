@@ -1,11 +1,10 @@
 # Classe 19: DC_OFFSET
 
-:::{note} Revisão e procedência
-Texto de referência importado do levantamento de 16/10/2026, baseado em [fa82f496](https://github.com/DenisLN/anti-synthetic-data/tree/fa82f49600543456adf78e22485ab6de5dd032b9). Citações numéricas apontam para esse snapshot e não acompanham linhas atuais. Trechos `literalinclude` são extraídos do checkout atual por símbolo; consulte {doc}`../execucao_pendencias` para implementação e evidências vigentes. Relatos de sessões e transcrições são históricos, não medições repetidas nesta revisão.
-:::
+```{include} /_includes/aviso-base.md
+```
 
 
-{bdg-success}`VERIFICADO NA BANCADA` pré-v1.15 com defeito conhecido (CA 5 a 6 % abaixo em ACDC; 127 V/60 Hz, 127 V/50 Hz e 230 V/50 Hz, 07/10/2026) {bdg-info}`OFFLINE` {bdg-warning}`NÃO VERIFICADO` causa do déficit de CA {bdg-danger}`PENDENTE P-01` {bdg-danger}`PENDENTE P-17`
+{bdg-success}`VERIFICADO NA BANCADA` pré-v1.15 com defeito conhecido (CA 5 a 6 % abaixo em ACDC; 127 V/60 Hz, 127 V/50 Hz e 230 V/50 Hz, 07/10/2026) {bdg-info}`OFFLINE` {bdg-warning}`NÃO VERIFICADO` causa do déficit de CA {bdg-ref-warning}`P-01 Software pronto, falta bancada <estado-p-01>` {bdg-ref-info}`P-17 Falta decisão ou dado do responsável <estado-p-17>`
 
 | Campo | Valor |
 |---|---|
@@ -21,7 +20,7 @@ Texto de referência importado do levantamento de 16/10/2026, baseado em [fa82f4
 
 **Pergunta:** como a bancada soma um nível contínuo à senoide? **Resposta:** pelo modo `ACDC` da fonte: liga-se `SOURce:MODE ACDC` e programa-se `SOURce:VOLTage:OFFSet` com $\delta \cdot \sqrt{2} V_\text{base}$ volts, com $\delta \in [0{,}02;\,0{,}10]$ pu sorteado; o offset é **imediato** e permanente na janela inteira, não um transiente disparado. O defeito conhecido: **no modo `ACDC` a amplitude CA sai 5 a 6 % menor** que a programada (0,938 a 0,951 pu), enquanto o CC sai como pedido.
 
-Estado: rodou nas três condições; o déficit de CA é medido e a causa é {bdg-warning}`NÃO VERIFICADO` ({ref}`P-17 <p-17>`); nenhum dado existe com o código da v1.15 ({ref}`P-01 <p-01>`).
+Estado: rodou nas três condições de 07/10/2026; o déficit de CA é medido e a causa é {bdg-warning}`NÃO VERIFICADO`. Em 22/10/2026 o `diag_acdc_amplitude.py` rodou (razão da CA do CH1 sobre o alvo: 1,007 em AC e 0,945 em ACDC, déficit de cerca de 5,5 %, igual com offset 0, 2 % e 10 %) e o critério de déficit aceitável segue sem definição ({ref}`P-17 <estado-p-17>`); a cobertura geral é de 2 das 5 condições ({ref}`P-01 <estado-p-01>`).
 
 ## 2. O fenômeno e a norma
 
@@ -76,16 +75,16 @@ A 19 é **independente do perfil**: $\delta$ não vem de `perfis.py` e a forma n
 
 ## 6. Limites físicos e fator de extremo
 
-O limite novo da 19 é a soma de pico: a saída é senoide + CC, e o pico físico é $(1+\delta)\sqrt{2}V_\text{base}$ (`enable_dc_offset` recusa passar de `max_peak_v`). A 127 V o pico programado vai de 185,2 V ($\delta pprox 0{,}031$) a 195,7 V; o fator da 19 é 0,988 a 127 V/60 Hz (< 1, tratado como 1).
+O limite novo da 19 é a soma de pico: a saída é senoide + CC, e o pico físico é $(1+\delta)\sqrt{2}V_\text{base}$ (`enable_dc_offset` recusa passar de `max_peak_v`). A 127 V o pico programado vai de 185,2 V ($\delta pprox 0{,}031$) a 195,7 V; o fator da 19 é 1,119 a 127 V/60 Hz (`logica/calibracao_extremos.json`; era 0,988, < 1 e tratado como 1, até a recalibração de 22/10/2026).
 
 | Condição | Fator medido na tabela da condição | Capturas do plano | Pico programado (V) | Extremo previsto (V) | Teto (V) | Distúrbio aplicado (k) | Resultado |
 |---|---|---|---|---|---|---|---|
-| 127 V/60 Hz | 0,988 | 3 | 185,2–195,7 | 203,7–215,3 | 415,8 | 100 % | 3/3 rodam |
+| 127 V/60 Hz | 1,119 | 3 | 185,2–195,7 | 227,9–240,9 | 415,8 | 100 % | 3/3 rodam |
 | 127 V/50 Hz | 1,007 | 3 | 185,2–195,7 | 205,1–216,8 | 415,8 | 100 % | 3/3 rodam |
 | 230 V/50 Hz | 0,971 | 3 | 335,4–354,4 | 371,5–392,6 | 415,8 | 100 % | 3/3 rodam |
-| 220 V/60 Hz (sem tabela) | 1,475 (maior fator de todas as tabelas; regra sem tabela) | 3 | 320,8–339,0 | 520,5–550,0 | 415,8 | 100 % | 0/3 rodam, 3 pulada(s) |
+| 220 V/60 Hz (sem tabela) | 1,615 (maior fator de todas as tabelas; regra sem tabela) | 3 | 320,8–339,0 | 569,9–602,2 | 415,8 | 100 % | 0/3 rodam, 3 pulada(s) |
 
-*Fonte:* `logica/calibracao_extremos.json` e `scripts/relatorio_limites_bancada.py`, 2026-10-16 (perfil `literatura`, 3 capturas padrão, seed 20260827, sorteio ligado). A 220 V/60 Hz (sem tabela) a 19 é pulada com o fator conservador ({ref}`P-21 <p-21>`); a decisão de rodar ACDC a 230 V é do dia de bancada ({ref}`P-26 <p-26>`).
+*Fonte:* `logica/calibracao_extremos.json` e `scripts/relatorio_limites_bancada.py`, 2026-10-16 (perfil `literatura`, 3 capturas padrão, seed 20260827, sorteio ligado). (`scripts/relatorio_limites_bancada.py` refeito em 2026-10-27 sobre a `main`, mesmos parâmetros: as linhas de 127 V/60 Hz e de 220 V/60 Hz mudaram com a recalibração de 22/10; as de 50 Hz não). A 220 V/60 Hz (sem tabela) a 19 é pulada com o fator conservador ({ref}`P-21 <estado-p-21>`); o dono respondeu em 21/10/2026 que o ACDC vale só a 127 V ({ref}`P-26 <estado-p-26>`).
 
 ## 7. Validação física
 
@@ -110,7 +109,7 @@ Tolerâncias: {ref}`as sondas e as tolerâncias <validacao-fisica-tolerancias>`.
 Duas leituras. **O CC passa:** a média medida acompanha o programado com inclinação 1,0 entre os três níveis (o degrau de 0,0585 pu programado entre o menor e o maior nível sai com 0,0585, 0,0588 e 0,0583 pu medidos), e o desvio é **constante dentro de cada sessão** (+1,97 V, −1,3 V, −1,6 V), da ordem de 1 LSB do osciloscópio (escala vertical de 89,7, 107 e 139 V/div do metadata, 8 bits): é erro de zero do canal (B5, K10), não da fonte. **O CA não passa:** a amplitude (raiz de dois vezes o desvio padrão da janela) é 0,938 a 0,951 pu, **5 a 6 % abaixo** do 1 pu programado, igual nos três níveis de offset de cada sessão. O déficit **não depende de $\delta$**.
 
 :::{caution} Limitação
-A causa do déficit de CA em ACDC é {bdg-warning}`NÃO VERIFICADO`: o mecanismo nunca foi isolado. A correção proposta (compensar a tensão base por $V/g$) também é {bdg-warning}`NÃO VERIFICADO`. O script de diagnóstico `diag/diag_acdc_amplitude.py` está pronto e nunca rodou na bancada ({ref}`P-17 <p-17>`). Quem usa o dataset físico da 19 deve contar com CA 5 a 6 % abaixo do modelo.
+A causa do déficit de CA em ACDC é {bdg-warning}`NÃO VERIFICADO`: o mecanismo nunca foi isolado. A correção proposta (compensar a tensão base por $V/g$) também é {bdg-warning}`NÃO VERIFICADO`. O script de diagnóstico `diag/diag_acdc_amplitude.py` rodou na bancada em 22/10/2026 e confirmou o déficit sem isolar o mecanismo ({ref}`P-17 <estado-p-17>`). Quem usa o dataset físico da 19 deve contar com CA 5 a 6 % abaixo do modelo.
 :::
 
 ## 8. As três versões e a correlação esperada
@@ -170,12 +169,12 @@ A correlação do distúrbio da 19 é **`n/a` por definição**: o resíduo do m
 | `gerar()` e programada de hoje | {bdg-info}`OFFLINE` | fixtures; correlação n/a por definição |
 | Fase sorteada com ACDC | {bdg-warning}`NÃO VERIFICADO` | nenhuma sessão com o código da v1.15 |
 
-:::{important} Pendência P-01
-Nenhum dado de bancada existe com o código da v1.15. Fecha com: bancada. Prioridade ALTA.
+:::{important} Pendência P-01 (Software pronto, falta bancada)
+{ref}`P-01 <estado-p-01>`: Software pronto, falta bancada; prioridade alta. A visita de 22/10/2026 cobriu 2 de 5 condições (127 V/60 Hz e 127 V/50 Hz) com as 20 classes e os 3 perfis: 159 capturas físicas, 19 com validação física reprovada (`docs/evidencias/2026-10-22/fechamento.json`). Os resultados por classe estão nas sessões do PC da bancada, fora do repositório: o desempenho desta classe nelas é NÃO VERIFICADO aqui. Decisão do dono confirmada em 2026-10-21. Falta. **Bancada:** Campanhas de 230 V/50 Hz, 220 V/60 Hz e 33 V/60 Hz (as duas últimas dependem de calibração, P-21); reexecutar `run 02,17,18,19`, `run 10,11` e `run 12,16` a 127 V/60 Hz, que a visita já agenda depois do bloco 10-A; retomar a visita no braço A da P-09. **Código:** O critério `quantidade_de_capturas_por_classe_perfil_condicao` do agregador está sem limite (`criterio_nao_definido`, 159 capturas medidas); o dono já respondeu 'padrão, 1 captura por classe' na P-26, mas isso ainda não foi codificado no agregador.
 :::
 
-:::{important} Pendência P-17
-Déficit de 5 a 6 % de CA em ACDC; `diag_acdc_amplitude.py` pronto e nunca rodado; a compensação $V/g$ é proposta; rodar ACDC a 230 V é escolha do dia. Fecha com: bancada. Prioridade MÉDIA.
+:::{important} Pendência P-17 (Falta decisão ou dado do responsável)
+{ref}`P-17 <estado-p-17>`: Falta decisão ou dado do responsável; prioridade média. Razão da CA do CH1 sobre o alvo: 1,007 em AC e 0,945 em ACDC (déficit de cerca de 5,5 %); programando 134,4 V em vez de 127 V a razão em ACDC sobe a 0,9994 (`diag_acdc_amplitude.py`, 22/10). Situação: Evidência suficiente, revisão humana pendente. Falta. **Decisão do dono:** Decidir o critério do déficit aceitável e se a compensação V/g entra; sem isso a P-09, que depende de ACDC, também não avança.
 :::
 
 ## 12. Como o código da classe funciona
@@ -189,6 +188,15 @@ Déficit de 5 a 6 % de CA em ACDC; `diag_acdc_amplitude.py` pronto e nunca rodad
 - `configurar` **não recebe o `rng`**: constrói `default_rng(base_seed + 19_000_000 + capture_index)`, repete `valor_para_captura` (com `total = self.config.capturas(False)`) e chama `self.fonte.enable_dc_offset(offset_v, ac_peak_v=ac_peak_v)` seguido de `self.fonte.trigger_step(base)`.
 - Atributos: `capturas_padrao` = 3 ([19.py:21](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/experimentos_nativos/19.py#L21)); `pre_trigger_s` herdado; sem ganchos de redução (nativa não reduz).
 - Contrato e acoplamentos: {doc}`../codigo/classes_contrato` §4 ("04, 19: `seed_da_captura`").
+
+### Mudanças no código desde `fa82f49` (conferidas em 2026-10-27, `main` em `7efd26e`)
+
+- `Experimento._offset_da_captura` (`experimentos_nativos/19.py:32-41`, novo): refatoração do que `configurar()` calculava em linha. Devolve `(dc_offset_pu, offset_v, ac_peak_v)`: a mesma seed à mão `base_seed + 19_000_000 + capture_index`, o mesmo `sinais.valor_para_captura(rng, 0.02, 0.10, ...)` e `offset_v = dc_offset_pu × ac_peak_v` com `ac_peak_v = base_voltage_rms·√2`.
+- `Experimento.exigencias_nativas` (`19.py:43-45`, novo): devolve `{"dc_offset_v": offset_v}` para a checagem contra `ametek_orm.CAPACIDADES_MX30` antes de programar a fonte (mesmo mecanismo da 18).
+- `configurar` (`19.py:47-52`) agora usa `_offset_da_captura` e mantém as chamadas `enable_dc_offset(offset_v, ac_peak_v=ac_peak_v)` e `trigger_step(base_voltage_rms)`; devolve `{"dc_offset_pu": dc_offset}`.
+- **Equivalência verificada em 2026-10-27:** (1) comparação com `fa82f49` de 24 chamadas de `configurar()` (4 configurações de tensão/semente/`capturas_override`, índices 0 a 5): as chamadas à fonte e o retorno são idênticos; (2) teste novo `tests/test_classe19_offset.py` compara `configurar()` e `exigencias_nativas()` com a fórmula em linha de `fa82f49` (cinco configurações, todos os índices).
+
+O que `gerar()` produz para uma seed **não mudou**: a comparação de saída entre `fa82f49` e a `main` (20 classes, 720 chamadas de `gerar()`, sorteio ligado e desligado, 60 e 50 Hz, três índices e três seeds) deu hash idêntico por classe, e `tests.test_offline.PerfisDeFaixasTests` (fixtures byte a byte em `tests/fixtures/`) passa. Detalhe no `CHANGELOG/v1.15.md`.
 
 ## 13. Referências
 

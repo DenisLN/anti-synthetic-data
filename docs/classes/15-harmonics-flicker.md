@@ -1,11 +1,10 @@
 # Classe 15: HARMONICS_FLICKER
 
-:::{note} Revisão e procedência
-Texto de referência importado do levantamento de 16/10/2026, baseado em [fa82f496](https://github.com/DenisLN/anti-synthetic-data/tree/fa82f49600543456adf78e22485ab6de5dd032b9). Citações numéricas apontam para esse snapshot e não acompanham linhas atuais. Trechos `literalinclude` são extraídos do checkout atual por símbolo; consulte {doc}`../execucao_pendencias` para implementação e evidências vigentes. Relatos de sessões e transcrições são históricos, não medições repetidas nesta revisão.
-:::
+```{include} /_includes/aviso-base.md
+```
 
 
-{bdg-success}`VERIFICADO NA BANCADA` pré-v1.15 com parâmetros fixos (THD 20 % e flicker de 15 Hz a ±10 %; 127 V/60 Hz, 127 V/50 Hz e 230 V/50 Hz, 1 captura cada, 07/10/2026) {bdg-info}`OFFLINE` {bdg-warning}`NÃO VERIFICADO` parâmetros sorteados; flicker de 25 Hz e a média por ciclo {bdg-danger}`PENDENTE P-01` {bdg-danger}`PENDENTE P-11` {bdg-danger}`PENDENTE P-12` {bdg-danger}`PENDENTE P-18` {bdg-danger}`PENDENTE P-19`
+{bdg-success}`VERIFICADO NA BANCADA` pré-v1.15 com parâmetros fixos (THD 20 % e flicker de 15 Hz a ±10 %; 127 V/60 Hz, 127 V/50 Hz e 230 V/50 Hz, 1 captura cada, 07/10/2026) {bdg-info}`OFFLINE` {bdg-warning}`NÃO VERIFICADO` parâmetros sorteados; flicker de 25 Hz e a média por ciclo {bdg-ref-warning}`P-01 Software pronto, falta bancada <estado-p-01>` {bdg-ref-success}`P-11 Concluída, dono ainda não confirmou <estado-p-11>` {bdg-ref-success}`P-12 Concluída, dono ainda não confirmou <estado-p-12>` {bdg-ref-warning}`P-18 Software pronto, falta bancada <estado-p-18>` {bdg-ref-primary}`P-19 Insuficiente na bancada <estado-p-19>`
 
 | Campo | Valor |
 |---|---|
@@ -71,7 +70,7 @@ Ordem dos comandos de uma captura (`ExperimentoWaveform._capturar_real`, [mestre
 7. `AmetekMX30.trigger` ([ametek_orm.py:1910-1922](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/ametek_orm.py#L1910-L1922)): {scpi}`TRIGger:STATe?` e {scpi}`*TRG`; a lista toca e o BOT segue pelo BNC ao EXT Trigger.
 8. Espera dos dois lados e leitura: {scpik}`:WAVeform:PREamble?` e {scpik}`:WAVeform:DATA?` (o `indice_trigger` sai da preamble), depois {scpik}`:MEASURE:VMAX?` e {scpik}`:MEASURE:VMIN?` sobre o registro bruto (extremos de segurança).
 
-Sem evento localizado não há ciclos de borda; o que resta é a **média por ciclo do flicker** ({doc}`06-flicker`), cujo efeito nesta classe e na 11 não foi calculado ({bdg-warning}`NÃO VERIFICADO`, {ref}`P-12 <p-12>`).
+Sem evento localizado não há ciclos de borda; o que resta é a **média por ciclo do flicker** ({doc}`06-flicker`), cujo efeito nesta classe e na 11 não foi calculado ({bdg-warning}`NÃO VERIFICADO`, {ref}`P-12 <estado-p-12>`).
 
 Representação por ciclo medida na revisão das compostas (`programada_pu` contra `gerar()`, flicker de 25 Hz, 60 capturas; `CHANGELOG/v1.15.md`):
 
@@ -86,18 +85,18 @@ Representação por ciclo medida na revisão das compostas (`programada_pu` cont
 
 *Fonte:* `CHANGELOG/v1.15.md`, "RMS por ciclo da TRACE" (`gerar()` com sorteio ligado, seed 32, simulação offline, sem hardware).
 
-:::{warning} Decisão em aberto P-12
-Para a 06, comparar contra a forma programada ou redefinir o flicker com média nula por ciclo; as classes 11 e 15 herdam o efeito, ainda não calculado. Decisão do responsável pelo projeto ({ref}`P-12 <p-12>`, prioridade MÉDIA; detalhes na {doc}`06-flicker`).
+:::{note} Pendência P-12 (Concluída, dono ainda não confirmou)
+{ref}`P-12 <estado-p-12>`: Concluída, dono ainda não confirmou; prioridade média. O efeito da média por ciclo do flicker na 15 está quantificado offline em `modelo_programado.json`. Situação: Concluída — software e decisão. Escolha tomada no fork; o dono ainda não a confirmou. Falta. **Decisão do dono:** Confirmar comparar a 06 com a programada, sem redefinir o flicker.
 :::
 
 **Janela e margem.** `pre_trigger_s` herdado (0); os 200 ms distorcidos; registro de 20 ms antes e 50 ms depois ({doc}`../medicao`).
 
-:::{warning} Decisão em aberto P-04
-`AmetekMX30.program_capture` só **avisa** quando o pico reconstruído passa de `max_peak_v` ("prosseguindo sem carga", [ametek_orm.py:1522-1527](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/ametek_orm.py#L1522-L1527)); quem recusa é a pré-validação do `mestre.py` (`ExperimentoBase._indices_viaveis`, antes de qualquer SCPI, e `_conferir_extremos_fisicos`, depois da captura já gravada). Pergunta ao responsável pelo projeto: o ORM também deve recusar? Opções: manter como está, ou recusar no ORM (um limite de segurança mais restritivo). Este site não decide ({ref}`P-04 <p-04>`, prioridade MÉDIA).
+:::{note} Pendência P-04 (Concluída, dono ainda não confirmou)
+{ref}`P-04 <estado-p-04>`: Concluída, dono ainda não confirmou; prioridade média. Opção (a): o ORM recusa com `ParameterOutOfBoundsError` o pico acima de `max_peak_v` (`logica/ametek_orm.py:1427-1428` e `:2105-2106`). No baseline `fa82f49` o ORM só avisava. Situação: Concluída — software. Escolha tomada no fork; o dono ainda não a confirmou. Falta. **Decisão do dono:** Confirmar a opção (a) (ou pedir a (b), ver a ressalva em Pergunta ao dono).
 :::
 
-:::{warning} Decisão em aberto P-23
-A fonte travou na ~280.ª gravação de TRACe de uma mesma conexão (quirk A3; causa {bdg-warning}`NÃO VERIFICADO`), e cada captura desta classe grava 12 TRACes a 60 Hz (10 a 50 Hz). `README.md` e `AGENTS.md` ainda recomendam `run all` (468 gravações a 60 Hz; 1116 com `set perfil todos`), enquanto o roteiro de bancada usa listas de classes (menos de 250 por conexão). Pergunta: qual texto os documentos devem adotar? Opção recomendada pelo roteiro: listas (`run 01-07`, depois `run 09-20`). Decisão do responsável pelo projeto ({ref}`P-23 <p-23>`, prioridade MÉDIA).
+:::{important} Pendência P-23 (Software pronto, falta bancada)
+{ref}`P-23 <estado-p-23>`: Software pronto, falta bancada; prioridade média. Orçamento operacional de 216 gravações de TRACe por conexão (`LIMITE_ESCRITAS_TRACE_CONEXAO`, `logica/politica_traces.py:3`); 216 é regra operacional, não limite do fabricante, e a causa física da trava (quirk A3) continua NÃO VERIFICADA. Situação: Parcial: proteção implementada. Falta. **Bancada:** Diagnóstico real com a saída OFF (`diag/diag_nativo_output_off.py`) para esclarecer a causa da trava. **Decisão do dono:** Confirmar o valor 216 como regra operacional, ou mudá-lo.
 :::
 
 ## 5. Parâmetros por perfil
@@ -114,16 +113,16 @@ O perfil `fronteira` usa os componentes da literatura. Os valores com `set sorte
 
 ## 6. Limites físicos e fator de extremo
 
-A forma não tem degrau de evento: o pico programado é o da soma harmônica modulada (167 a 174 V a 127 V nas capturas do relatório offline, ~0,93 a 0,97 pu) e o fator de extremo é próximo de 1 (1,017 a 127 V/60 Hz, 1,034 a 127 V/50 Hz e 1,028 a 230 V/50 Hz).
+A forma não tem degrau de evento: o pico programado é o da soma harmônica modulada (167 a 174 V a 127 V nas capturas do relatório offline, ~0,93 a 0,97 pu) e o fator de extremo é de 1,243 a 127 V/60 Hz (`logica/calibracao_extremos.json`; era 1,017 até a recalibração de 22/10/2026), 1,034 a 127 V/50 Hz e 1,028 a 230 V/50 Hz.
 
 | Condição | Fator medido na tabela da condição | Capturas do plano | Pico programado (V) | Extremo previsto (V) | Teto (V) | Distúrbio aplicado (k) | Resultado |
 |---|---|---|---|---|---|---|---|
-| 127 V/60 Hz | 1,017 | 3 | 167,5–173,7 | 187,4–194,4 | 415,8 | 100 % | 3/3 rodam |
+| 127 V/60 Hz | 1,243 | 3 | 167,5–173,7 | 229,0–237,6 | 415,8 | 100 % | 3/3 rodam |
 | 127 V/50 Hz | 1,034 | 3 | 167,4–173,7 | 190,4–197,6 | 415,8 | 100 % | 3/3 rodam |
 | 230 V/50 Hz | 1,028 | 3 | 303,2–314,6 | 344,8–357,8 | 415,8 | 100 % | 3/3 rodam |
-| 220 V/60 Hz (sem tabela) | 1,475 (maior fator de todas as tabelas; regra sem tabela) | 3 | 301,0–306,9 | 415,8 | 415,8 | 42–49 % | 3/3 rodam |
+| 220 V/60 Hz (sem tabela) | 1,615 (maior fator de todas as tabelas; regra sem tabela) | 3 | 304,0–308,0 | 415,8 | 415,8 | 30–34 % | 3/3 rodam |
 
-*Fonte:* `logica/calibracao_extremos.json` e `scripts/relatorio_limites_bancada.py`, 2026-10-16 (perfil `literatura`, 3 capturas padrão, seed 20260827, sorteio ligado). A 230 V/50 Hz as três rodam inteiras; a 220 V/60 Hz (sem tabela) rodam reduzidas a 42–49 %, e aí falta o gancho: o metadata registra o `fator_disturbio_bancada` mas não os parâmetros físicos aplicados.
+*Fonte:* `logica/calibracao_extremos.json` e `scripts/relatorio_limites_bancada.py`, 2026-10-16 (perfil `literatura`, 3 capturas padrão, seed 20260827, sorteio ligado). (`scripts/relatorio_limites_bancada.py` refeito em 2026-10-27 sobre a `main`, mesmos parâmetros: as linhas de 127 V/60 Hz e de 220 V/60 Hz mudaram com a recalibração de 22/10; as de 50 Hz não). A 230 V/50 Hz as três rodam inteiras; a 220 V/60 Hz (sem tabela) rodam reduzidas a 30–34 % (42–49 % com o fator antigo). O gancho `parametros_com_disturbio_reduzido` (`experimentos_waveform/15.py:26-53`) agora grava os parâmetros físicos aplicados; veja a seção "Atualização do código" desta página.
 
 ## 7. Validação física
 
@@ -167,13 +166,13 @@ A 15 fica **sempre acima de 0,95** em modelo × programada com o sorteio ligado 
 ## 9. Quirks e armadilhas
 
 - **A2, A3, A4, A5, A16, K7:** como na {doc}`06-flicker`.
-- **Sem gancho de bancada:** `Experimento` não define `parametros_com_disturbio_reduzido` (a única composta sem ele); com redução (220 V), `thd_bancada` e `flicker_depth_bancada` não vão ao metadata (`CHANGELOG/v1.15.md`, "Revisão das compostas sorteadas"). A forma física segue sendo `senoide + k·(gerar() − senoide)`, e `analisar_sessao` a reconstrói a partir de `fator_disturbio_bancada`.
+- **Gancho de bancada:** `Experimento.parametros_com_disturbio_reduzido` (`experimentos_waveform/15.py:26-53`) grava `flicker_depth_bancada`, `thd_bancada_centro`, `thd_bancada_min`, `thd_bancada_max` e os dois coeficientes de envelope quando o distúrbio é reduzido (220 V); a forma física segue sendo `senoide + k·(gerar() − senoide)`, e `analisar_sessao` a reconstrói a partir de `fator_disturbio_bancada`. Até `fa82f49` a 15 não tinha o gancho.
 - **Acoplamento:** a ordem das três chamadas a `perfis.composto` define o `rng`.
 
 ## 10. Histórico por versão
 
 - **v1.12 a v1.14:** a 15 rodava com parâmetros fixos (THD 20 %, flicker de 15 Hz a ±10 %) e sem sorteio de posição; `capturas_padrao` = 1.
-- **v1.15:** `capturas_padrao` = 3; THD (extensão (f)), profundidade e frequência sorteados, fase sorteada (formas distintas em 2000 capturas: de 1543 a 2000); a revisão contra a proposta registra a ausência do gancho de bancada.
+- **v1.15:** `capturas_padrao` = 3; THD (extensão (f)), profundidade e frequência sorteados, fase sorteada (formas distintas em 2000 capturas: de 1543 a 2000); a revisão contra a proposta registrou a ausência do gancho de bancada, acrescentado depois (`experimentos_waveform/15.py:26-53`, ver "Mudanças no código" abaixo).
 
 ## 11. Estado de verificação e pendências
 
@@ -183,20 +182,20 @@ A 15 fica **sempre acima de 0,95** em modelo × programada com o sorteio ligado 
 | Parâmetros sorteados; flicker de 25 Hz e a média por ciclo | {bdg-warning}`NÃO VERIFICADO` | nenhuma sessão com o código da v1.15 |
 | `gerar()` e programada de hoje | {bdg-info}`OFFLINE` | modelo × programada 0,966–0,995 |
 
-:::{important} Pendência P-01
-Nenhum dado de bancada existe com o código da v1.15. Fecha com: bancada. Prioridade ALTA.
+:::{important} Pendência P-01 (Software pronto, falta bancada)
+{ref}`P-01 <estado-p-01>`: Software pronto, falta bancada; prioridade alta. A visita de 22/10/2026 cobriu 2 de 5 condições (127 V/60 Hz e 127 V/50 Hz) com as 20 classes e os 3 perfis: 159 capturas físicas, 19 com validação física reprovada (`docs/evidencias/2026-10-22/fechamento.json`). Os resultados por classe estão nas sessões do PC da bancada, fora do repositório: o desempenho desta classe nelas é NÃO VERIFICADO aqui. Decisão do dono confirmada em 2026-10-21. Falta. **Bancada:** Campanhas de 230 V/50 Hz, 220 V/60 Hz e 33 V/60 Hz (as duas últimas dependem de calibração, P-21); reexecutar `run 02,17,18,19`, `run 10,11` e `run 12,16` a 127 V/60 Hz, que a visita já agenda depois do bloco 10-A; retomar a visita no braço A da P-09. **Código:** O critério `quantidade_de_capturas_por_classe_perfil_condicao` do agregador está sem limite (`criterio_nao_definido`, 159 capturas medidas); o dono já respondeu 'padrão, 1 captura por classe' na P-26, mas isso ainda não foi codificado no agregador.
 :::
 
-:::{warning} Decisão em aberto P-11
-Manter ou reverter as extensões das compostas (THD sorteado em 13, 15 e 16, faixas da `norma`, ...) e acrescentar ou não o gancho `parametros_com_disturbio_reduzido` à 15. Decisão do responsável pelo projeto ({ref}`P-11 <p-11>`, prioridade MÉDIA).
+:::{note} Pendência P-11 (Concluída, dono ainda não confirmou)
+{ref}`P-11 <estado-p-11>`: Concluída, dono ainda não confirmou; prioridade média. THD sorteado em 13, 15 e 16 e faixas da `norma` ficam; a 15 ganhou o gancho `parametros_com_disturbio_reduzido` (`experimentos_waveform/15.py:26-53`). Situação: Concluída — decisão e metadata. Escolha tomada no fork; o dono ainda não a confirmou. Falta. **Decisão do dono:** Confirmar manter as extensões das compostas 10 a 16.
 :::
 
-:::{important} Pendência P-18
-Passo final `SINE` no `LIST`: existe só no branch `feat/passo-final-sin`, **fora da `main`** ({doc}`../projeto/passo-final-sin`). Fecha com: bancada e decisão do responsável pelo projeto. Prioridade MÉDIA.
+:::{important} Pendência P-18 (Software pronto, falta bancada)
+{ref}`P-18 <estado-p-18>`: Software pronto, falta bancada; prioridade média. Situação: Parcial: integrado experimental, desligado. Falta. **Bancada:** Rodar `diag/teste_passo_final_sin.py` com a confirmação `ENERGIZAR-PASSO-SIN` digitada pelo operador: aceitação de `SINE` em `LIST:FUNCtion:SHAPe` e restauração da fonte. **Decisão do dono:** Confirmar o padrão desligado até a validação.
 :::
 
-:::{important} Pendência P-19
-`TRACe:DATA?` (`set diagnostico retrieve`) nunca foi executado na fonte real. Fecha com: bancada, com o painel à vista. Prioridade MÉDIA.
+:::{important} Pendência P-19 (Insuficiente na bancada)
+{ref}`P-19 <estado-p-19>`: Insuficiente na bancada; prioridade média. Situação: Insuficiente em 2026-10-22. Falta. **Bancada:** Repetir a leitura com `set diagnostico retrieve on` e o painel à vista até obter 1024 valores finitos ou um erro SCPI de comando não suportado. Respeitar `AGENTS.md`: nunca consultar a fonte logo após `TRACe:DATA` (achado de segurança da v1.12). **Código:** Examinar como a leitura do `retrieve` recebe e decodifica a resposta, para descartar truncamento no próprio código antes de concluir algo sobre o firmware (proposta de investigação, não achado).
 :::
 
 ## 12. Como o código da classe funciona
@@ -206,8 +205,19 @@ Passo final `SINE` no `LIST`: existe só no branch `feat/passo-final-sin`, **for
 | `Experimento.gerar` ([experimentos_waveform/15.py:17-24](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/experimentos_waveform/15.py#L17-L24)) | `t`, `f0`, `capture_index`, `rng` | `(voltage, {"thd", "flicker_hz", "flicker_depth", "fase_graus"})` | os chamadores da seção 3 |
 
 - `gerar` chama `perfis.composto` três vezes (`thd_composto`, `flicker_composto`, `flicker_composto_hz`), monta `flicker = 1 + profundidade * sin(2π f t)`, chama `self.sortear(rng, f0)` (só fase) e devolve `flicker * sinais.onda_com_harmonicos(t + sorteio.deslocamento_s, thd, frequencia_hz=f0)` ([sinais.py:52-62](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/sinais.py#L52-L62)).
-- Atributos: `capturas_padrao` = 3 ([15.py:14](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/experimentos_waveform/15.py#L14)). **Sem** `parametros_com_disturbio_reduzido` (a base devolve `{}`; `ExperimentoWaveform.parametros_com_disturbio_reduzido`, [mestre.py:3042-3050](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/mestre.py#L3042-L3050)). `pre_trigger_s` herdado.
-- Contrato e acoplamentos: {doc}`../codigo/classes_contrato` §3 (a tabela dos ganchos lista a 15 como a exceção).
+- Atributos: `capturas_padrao` = 3 ([15.py:14](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/experimentos_waveform/15.py#L14)). Em `fa82f49` **sem** `parametros_com_disturbio_reduzido` (a base devolvia `{}`; [mestre.py:3042-3050](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/mestre.py#L3042-L3050)); hoje o gancho existe em `15.py:26-53`. `pre_trigger_s` herdado.
+- Contrato e acoplamentos: {doc}`../codigo/classes_contrato` §3 (a tabela dos ganchos já inclui a 15 entre quem sobrescreve `parametros_com_disturbio_reduzido`).
+
+### Mudanças no código desde `fa82f49` (conferidas em 2026-10-27, `main` em `7efd26e`)
+
+- `Experimento.parametros_com_disturbio_reduzido` (`experimentos_waveform/15.py:26-53`, novo): a 15 deixa de ser a única composta sem o gancho. Recebe `fracao` f (limite de bancada), lê `flicker_depth` d e `thd` dos parâmetros e valida `0 ≤ f ≤ 1`, `0 ≤ d < 1` e THD finita e não negativa (senão `ValueError`, `15.py:38-43`). Devolve:
+  - `flicker_depth_bancada` = f·d;
+  - `thd_bancada_centro` = f·thd; `thd_bancada_min` = f·thd·(1 − d)/(1 − f·d); `thd_bancada_max` = f·thd·(1 + d)/(1 + f·d);
+  - `harmonicos_envelope_centro_bancada` = f; `harmonicos_envelope_modulacao_bancada` = f·d.
+  O motivo (docstring, `15.py:27-34`): no modelo o flicker multiplica a fundamental **e** os harmônicos; após a redução a fundamental tem envelope 1 + f·d·m e os harmônicos f·(1 + d·m), com m = sin(2π·flicker_hz·t). A THD local não é a constante f·thd; os extremos acima cobrem m em [−1, 1] sem depender da janela. O gancho é chamado por `_limitar_disturbio_para_bancada` (`logica/mestre.py:3857`) quando o distúrbio é reduzido; os campos vão para o metadata ({doc}`../metadata`).
+- Consequência para esta página: as menções antigas a "sem gancho de bancada" valiam só para `fa82f49`; a forma física continua `senoide + k·(gerar() − senoide)`.
+
+O que `gerar()` produz para uma seed **não mudou**: a comparação de saída entre `fa82f49` e a `main` (20 classes, 720 chamadas de `gerar()`, sorteio ligado e desligado, 60 e 50 Hz, três índices e três seeds) deu hash idêntico por classe, e `tests.test_offline.PerfisDeFaixasTests` (fixtures byte a byte em `tests/fixtures/`) passa. Detalhe no `CHANGELOG/v1.15.md`.
 
 ## 13. Referências
 
@@ -215,6 +225,3 @@ Passo final `SINE` no `LIST`: existe só no branch `feat/passo-final-sin`, **for
 - Site: {doc}`../classes`, {doc}`../perfis`, {doc}`06-flicker`, {doc}`10-sag-harmonics`, {doc}`../medicao/correlacao`, {doc}`../projeto/pendencias`.
 - Histórico: `CHANGELOG/v1.15.md` (seções "Parâmetros das compostas 10 a 16 sorteados" e "Revisão das compostas sorteadas"). Norma: IEEE Std 1159-2019, Tabela 2, itens 5.2 e 6.0.
 
-## Atualização de metadata P-11
-
-O hook `Experimento.parametros_com_disturbio_reduzido` registra os parâmetros efetivos quando o limite da bancada reduz o distúrbio, incluindo envelopes THD mínimo/máximo. O modelo de `gerar()` foi preservado. Os campos efetivos não devem ser interpretados como novo valor de THD constante: a redução conserva a composição harmônicos/flicker e é dependente do tempo. Estado e regressões em {doc}`../execucao_pendencias`.

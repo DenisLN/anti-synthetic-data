@@ -1,11 +1,10 @@
 # Classe 03: SWELL
 
-:::{note} Revisão e procedência
-Texto de referência importado do levantamento de 16/10/2026, baseado em [fa82f496](https://github.com/DenisLN/anti-synthetic-data/tree/fa82f49600543456adf78e22485ab6de5dd032b9). Citações numéricas apontam para esse snapshot e não acompanham linhas atuais. Trechos `literalinclude` são extraídos do checkout atual por símbolo; consulte {doc}`../execucao_pendencias` para implementação e evidências vigentes. Relatos de sessões e transcrições são históricos, não medições repetidas nesta revisão.
-:::
+```{include} /_includes/aviso-base.md
+```
 
 
-{bdg-success}`VERIFICADO NA BANCADA` pré-v1.15 (127 V/60 Hz e 127 V/50 Hz, 07/10/2026) {bdg-info}`OFFLINE` {bdg-warning}`NÃO VERIFICADO` sorteio de início, duração e fase; 230 V/50 Hz inviável {bdg-danger}`PENDENTE P-01` {bdg-danger}`PENDENTE P-05`
+{bdg-success}`VERIFICADO NA BANCADA` pré-v1.15 (127 V/60 Hz e 127 V/50 Hz, 07/10/2026) {bdg-info}`OFFLINE` {bdg-warning}`NÃO VERIFICADO` critério de fase e início do sorteio e destino do desvio de pre-trigger (medidos em 22/10/2026, revisão humana pendente); 230 V/50 Hz inviável {bdg-ref-warning}`P-01 Software pronto, falta bancada <estado-p-01>` {bdg-ref-info}`P-05 Falta decisão ou dado do responsável <estado-p-05>`
 
 | Campo | Valor |
 |---|---|
@@ -21,7 +20,7 @@ Texto de referência importado do levantamento de 16/10/2026, baseado em [fa82f4
 
 **Pergunta:** o que a classe 03 produz? **Resposta:** uma senoide que **sobe a um nível $\ell$ entre 1,1 e 1,8 pu por um trecho sorteado dos 200 ms e volta ao normal**; é a 02 com o nível acima de 1, e o que muda na bancada é o limite: 1,8 pu a 127 V já pede 228,6 Vrms, e a 230 V só o nível 1,1 cabe nos 300 Vrms da fonte.
 
-Estado: o PULSe foi medido em 07/10/2026 com o nível 1,1 pu; o sorteio de posição e a largura do pulso sorteada nunca foram medidos ({ref}`P-05 <p-05>`), e nenhum dado existe com o código da v1.15 ({ref}`P-01 <p-01>`).
+Estado: o PULSe foi medido em 07/10/2026 com o nível 1,1 pu. Em 22/10/2026 mediram-se o sorteio de posição e a largura do pulso (início em 58,07 ms, desvio de pre-trigger de −1 amostra), com evidência suficiente e revisão humana pendente ({ref}`P-05 <estado-p-05>`); a cobertura é de 2 das 5 condições ({ref}`P-01 <estado-p-01>`).
 
 ## 2. O fenômeno e a norma
 
@@ -94,12 +93,12 @@ Aqui os dois limites da fonte se encontram: o **rms** do nível ($\ell V_\text{b
 
 | Condição | Fator medido na tabela da condição | Capturas do plano | Pico programado (V) | Extremo previsto (V) | Teto (V) | Distúrbio aplicado (k) | Resultado |
 |---|---|---|---|---|---|---|---|
-| 127 V/60 Hz | 1,058 | 1 | 197,6 | 229,9 | 415,8 | 100 % | 1/1 rodam |
+| 127 V/60 Hz | 1,060 | 1 | 197,6 | 230,4 | 415,8 | 100 % | 1/1 rodam |
 | 127 V/50 Hz | 1,058 | 1 | 197,6 | 229,9 | 415,8 | 100 % | 1/1 rodam |
 | 230 V/50 Hz | sem entrada | 1 | 357,8 | 416,4 | 415,8 | 100 % | 0/1 rodam, 1 pulada(s) |
-| 220 V/60 Hz (sem tabela) | 1,475 (maior fator de todas as tabelas; regra sem tabela) | 1 | 342,2 | 555,3 | 415,8 | 100 % | 0/1 rodam, 1 pulada(s) |
+| 220 V/60 Hz (sem tabela) | 1,615 (maior fator de todas as tabelas; regra sem tabela) | 1 | 342,2 | 608,0 | 415,8 | 100 % | 0/1 rodam, 1 pulada(s) |
 
-*Fonte:* `logica/calibracao_extremos.json` e `scripts/relatorio_limites_bancada.py`, 2026-10-16 (perfil `literatura`, nível 0 apenas, sorteio ligado). A 230 V/50 Hz a 03 **fica de fora**: 357,8 V × 1,058 × 1,10 = 416,4 V > 415,8 V, por 0,6 V; a regra não tem exceção na margem e a decisão de projeto (v1.15) foi mantê-la. A 220 V/60 Hz (sem tabela) também é pulada: 342,2 V × 1,475 × 1,10 = 555,3 V ({ref}`P-21 <p-21>`). Nativas **não reduzem** o distúrbio: reduzir 1,2, 1,4, 1,6 e 1,8 pu "para caber" produziria capturas iguais com rótulos diferentes (decisão da v1.13).
+*Fonte:* `logica/calibracao_extremos.json` e `scripts/relatorio_limites_bancada.py`, 2026-10-16 (perfil `literatura`, nível 0 apenas, sorteio ligado). (`scripts/relatorio_limites_bancada.py` refeito em 2026-10-27 sobre a `main`, mesmos parâmetros: as linhas de 127 V/60 Hz e de 220 V/60 Hz mudaram com a recalibração de 22/10; as de 50 Hz não). A 230 V/50 Hz a 03 **fica de fora**: 357,8 V × 1,058 × 1,10 = 416,4 V > 415,8 V, por 0,6 V; a regra não tem exceção na margem e a decisão de projeto (v1.15) foi mantê-la. A 220 V/60 Hz (sem tabela) também é pulada: 342,2 V × 1,615 × 1,10 = 608,0 V ({ref}`P-21 <estado-p-21>`). Nativas **não reduzem** o distúrbio: reduzir 1,2, 1,4, 1,6 e 1,8 pu "para caber" produziria capturas iguais com rótulos diferentes (decisão da v1.13).
 
 ## 7. Validação física
 
@@ -144,7 +143,7 @@ Entre as classes de degrau por PULSe (02, 03 e 04), a 03 é a única que fica **
 ## 9. Quirks e armadilhas
 
 - **A14, A12, A18, A1, K1:** como na {doc}`02-sag` (escrita durante transiente, truncamento a 0,1 V, fase de disparo, rajada, referência horizontal).
-- **A20:** a volta de um patamar acima da base também toca: fator 1,058 a 127 V/60 Hz e a 127 V/50 Hz.
+- **A20:** a volta de um patamar acima da base também toca: fator 1,060 a 127 V/60 Hz (1,058 até a recalibração de 22/10) e 1,058 a 127 V/50 Hz.
 - **Limite de rms:** o `ParameterOutOfBoundsError` de `trigger_pulse` é determinístico e não é retentado; o plano pula o nível antes de qualquer SCPI (v1.11, P04).
 - **Acoplamento:** os mesmos de `INICIO_S`/`DURACAO_S`/`pre_trigger_s` da 02 ({doc}`../codigo/acoplamentos`).
 
@@ -166,12 +165,12 @@ Entre as classes de degrau por PULSe (02, 03 e 04), a 03 é a única que fica **
 | Níveis 1,2 a 1,8 pu na bancada | {bdg-warning}`NÃO VERIFICADO` | as sessões de 07/10 capturaram só o nível 0; os outros exigem `set capturas N` |
 | 230 V/50 Hz | {bdg-info}`OFFLINE` | inviável por conta (416,4 V > 415,8 V) |
 
-:::{important} Pendência P-01
-Nenhum dado de bancada existe com o código da v1.15. Fecha com: bancada. Prioridade ALTA.
+:::{important} Pendência P-01 (Software pronto, falta bancada)
+{ref}`P-01 <estado-p-01>`: Software pronto, falta bancada; prioridade alta. A visita de 22/10/2026 cobriu 2 de 5 condições (127 V/60 Hz e 127 V/50 Hz) com as 20 classes e os 3 perfis: 159 capturas físicas, 19 com validação física reprovada (`docs/evidencias/2026-10-22/fechamento.json`). Os resultados por classe estão nas sessões do PC da bancada, fora do repositório: o desempenho desta classe nelas é NÃO VERIFICADO aqui. Decisão do dono confirmada em 2026-10-21. Falta. **Bancada:** Campanhas de 230 V/50 Hz, 220 V/60 Hz e 33 V/60 Hz (as duas últimas dependem de calibração, P-21); reexecutar `run 02,17,18,19`, `run 10,11` e `run 12,16` a 127 V/60 Hz, que a visita já agenda depois do bloco 10-A; retomar a visita no braço A da P-09. **Código:** O critério `quantidade_de_capturas_por_classe_perfil_condicao` do agregador está sem limite (`criterio_nao_definido`, 159 capturas medidas); o dono já respondeu 'padrão, 1 captura por classe' na P-26, mas isso ainda não foi codificado no agregador.
 :::
 
-:::{important} Pendência P-05
-Sorteio de posição nas nativas (fase de disparo sem readback, pré-trigger por captura, `PULSe:WIDTh` sorteada) nunca medido. Fecha com: bancada. Prioridade MÉDIA.
+:::{important} Pendência P-05 (Falta decisão ou dado do responsável)
+{ref}`P-05 <estado-p-05>`: Falta decisão ou dado do responsável; prioridade média. 03 (início em 58,07 ms): desvio de pre-trigger de −1 amostra. Situação: Evidência suficiente, revisão humana pendente. Falta. **Decisão do dono:** Decidir o destino do desvio de pre-trigger e definir o critério de fase e início. O limite de 2 amostras nunca foi validado e não há fonte para outro valor; não foi alterado.
 :::
 
 ## 12. Como o código da classe funciona

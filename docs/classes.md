@@ -76,6 +76,21 @@ Na TRACe/LIST cada ciclo é uma TRACe de média zero (a fonte remove o component
 
 `diag_ciclos_trace.py` e `modelo_lista_fonte.py` aceitam a 09 sorteada (teste sintético `PendentesCorrelacaoDisturbioTests`). Com início sorteado, 100 ms cai dentro do evento rotulado em ~18 % das capturas. Mecanismo da cópia: **NÃO VERIFICADO** (`docs/quirks.md` A25).
 
+## 7. Ganchos acrescentados desde `fa82f49`
+
+{bdg-info}`OFFLINE` Conferido em 2026-10-27 com `git diff fa82f49 main -- experimentos_nativos experimentos_waveform`: só seis arquivos de classe mudaram. Nenhuma das mudanças altera o que `gerar()` produz para uma seed (hash idêntico entre `fa82f49` e a `main` nas 20 classes; fixtures de `tests/fixtures/` intactas). Cada ficha tem a subseção "Mudanças no código desde `fa82f49`".
+
+| Classe | Gancho ou constante (arquivo:linha na `main`) | Efeito | Ficha |
+|---|---|---|---|
+| 05 | `rota_programacao` (`experimentos_nativos/05.py:72-74`) | grava `"CSIN"` ou `"TRACe"` em `rota_programacao` (metadata); só diagnóstico | {doc}`classes/05-harmonics` |
+| 06 | `forma_esperada_para_validacao` (`experimentos_waveform/06.py:19-44`) | a validação física compara com a forma programada reconstruída | {doc}`classes/06-flicker` |
+| 08 | `SOBRESSINAL_ACHADO_DE_SEGURANCA` (`experimentos_waveform/08.py:61-64`) e a métrica em `conferir_posicao_do_evento` (`08.py:206-228`) | grava `sobressinal_medido`, `sobressinal_limite`, `sobressinal_acima_do_limite` (e `sobressinal_invalido`); não reprova a captura; pode subestimar o pico por amostragem a 30 kSa/s | {doc}`classes/08-transient` |
+| 15 | `parametros_com_disturbio_reduzido` (`experimentos_waveform/15.py:26-53`) | grava profundidade, THD central/mínima/máxima e coeficientes de envelope quando o distúrbio é reduzido | {doc}`classes/15-harmonics-flicker` |
+| 18 | `exigencias_nativas` (`experimentos_nativos/18.py:45-53`) | `LIST` de 2 pontos conferido contra `CAPACIDADES_MX30` antes de programar | {doc}`classes/18-frequency-drift` |
+| 19 | `_offset_da_captura` (`experimentos_nativos/19.py:32-41`) e `exigencias_nativas` (`19.py:43-45`) | `configurar()` refatorado (mesma conta da seed à mão, equivalência testada); offset DC conferido contra `CAPACIDADES_MX30` | {doc}`classes/19-dc-offset` |
+
+A seção 2 acima diz que 04 e 19 repetem a conta da seed em `configurar()`: na 19 ela fica hoje em `_offset_da_captura`, chamada por `configurar()` e por `exigencias_nativas()`. Estado das pendências relacionadas: {doc}`projeto/pendencias`.
+
 ```{toctree}
 :hidden:
 

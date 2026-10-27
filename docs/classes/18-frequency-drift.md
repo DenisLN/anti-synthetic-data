@@ -1,11 +1,10 @@
 # Classe 18: FREQUENCY_DRIFT
 
-:::{note} Revisão e procedência
-Texto de referência importado do levantamento de 16/10/2026, baseado em [fa82f496](https://github.com/DenisLN/anti-synthetic-data/tree/fa82f49600543456adf78e22485ab6de5dd032b9). Citações numéricas apontam para esse snapshot e não acompanham linhas atuais. Trechos `literalinclude` são extraídos do checkout atual por símbolo; consulte {doc}`../execucao_pendencias` para implementação e evidências vigentes. Relatos de sessões e transcrições são históricos, não medições repetidas nesta revisão.
-:::
+```{include} /_includes/aviso-base.md
+```
 
 
-{bdg-success}`VERIFICADO NA BANCADA` pré-v1.15 (rampa de 57 a 63 Hz; 127 V/60 Hz, 127 V/50 Hz e 230 V/50 Hz, 07/10/2026) {bdg-info}`OFFLINE` {bdg-warning}`NÃO VERIFICADO` rampa f0 ± 3 Hz, continuidade de fase na troca {bdg-danger}`PENDENTE P-01` {bdg-danger}`PENDENTE P-06`
+{bdg-success}`VERIFICADO NA BANCADA` pré-v1.15 (rampa de 57 a 63 Hz; 127 V/60 Hz, 127 V/50 Hz e 230 V/50 Hz, 07/10/2026) {bdg-info}`OFFLINE` {bdg-warning}`NÃO VERIFICADO` rampa f0 ± 3 Hz, continuidade de fase na troca {bdg-ref-warning}`P-01 Software pronto, falta bancada <estado-p-01>` {bdg-ref-warning}`P-06 Software pronto, falta bancada <estado-p-06>`
 
 | Campo | Valor |
 |---|---|
@@ -21,7 +20,7 @@ Texto de referência importado do levantamento de 16/10/2026, baseado em [fa82f4
 
 **Pergunta:** a frequência da rede varia durante a captura; como a bancada reproduz isso? **Resposta:** o modelo é uma **rampa linear de $f_0-3$ a $f_0+3$ Hz em 200 ms** (e a inversa nas capturas ímpares); a fonte recebe só **dois pontos** de frequência, o inicial na primeira metade da janela e o final na segunda, de modo que a bancada toca um degrau de 6 Hz no meio, não a rampa. Por isso modelo × programada fica em 0,95 (nominal).
 
-Estado: a rampa de 57 a 63 Hz foi medida em 07/10/2026; a rampa f0 ± 3 Hz (47 a 53 Hz a 50 Hz), a continuidade de fase na troca de ponto e a restauração da frequência depois dela nunca foram medidas com o código da v1.15 ({ref}`P-06 <p-06>`, {ref}`P-01 <p-01>`).
+Estado: a rampa de 57 a 63 Hz foi medida em 07/10/2026; a rampa f0 ± 3 Hz (47 a 53 Hz a 50 Hz), a continuidade de fase na troca de ponto e a restauração da frequência depois dela seguem sem medida: o fechamento de 22/10 registra 0 capturas da rampa 47→53 Hz ({ref}`P-06 <estado-p-06>`); a cobertura geral é de 2 das 5 condições ({ref}`P-01 <estado-p-01>`). A 18 e a 19 reprovaram em 22/10 por THD, bug de software corrigido em `72bbcd6` (a forma fixa ficava na última TRACE entalhada da 17); no `run falhas` passaram.
 
 ## 2. O fenômeno e a norma
 
@@ -101,12 +100,12 @@ A rampa não muda a amplitude: o pico programado é o da senoide base, e a fonte
 
 | Condição | Fator medido na tabela da condição | Capturas do plano | Pico programado (V) | Extremo previsto (V) | Teto (V) | Distúrbio aplicado (k) | Resultado |
 |---|---|---|---|---|---|---|---|
-| 127 V/60 Hz | 1,036 | 1 | 179,6 | 204,7 | 415,8 | 100 % | 1/1 rodam |
+| 127 V/60 Hz | 1,264 | 1 | 179,6 | 249,7 | 415,8 | 100 % | 1/1 rodam |
 | 127 V/50 Hz | 1,075 | 1 | 179,6 | 212,4 | 415,8 | 100 % | 1/1 rodam |
 | 230 V/50 Hz | 1,042 | 1 | 325,3 | 384,6 | 415,8 | 100 % | 1/1 rodam |
-| 220 V/60 Hz (sem tabela) | 1,475 (maior fator de todas as tabelas; regra sem tabela) | 1 | 311,1 | 504,8 | 415,8 | 100 % | 0/1 rodam, 1 pulada(s) |
+| 220 V/60 Hz (sem tabela) | 1,615 (maior fator de todas as tabelas; regra sem tabela) | 1 | 311,1 | 552,7 | 415,8 | 100 % | 0/1 rodam, 1 pulada(s) |
 
-*Fonte:* `logica/calibracao_extremos.json` e `scripts/relatorio_limites_bancada.py`, 2026-10-16 (perfil `literatura`, 1 captura, sorteio ligado). A 220 V/60 Hz (sem tabela) a 18 é pulada: o fator conservador de 1,475 leva o extremo previsto acima de 415,8 V ({ref}`P-21 <p-21>`). Nativas não reduzem o distúrbio.
+*Fonte:* `logica/calibracao_extremos.json` e `scripts/relatorio_limites_bancada.py`, 2026-10-16 (perfil `literatura`, 1 captura, sorteio ligado). (`scripts/relatorio_limites_bancada.py` refeito em 2026-10-27 sobre a `main`, mesmos parâmetros: as linhas de 127 V/60 Hz e de 220 V/60 Hz mudaram com a recalibração de 22/10; as de 50 Hz não). A 220 V/60 Hz (sem tabela) a 18 é pulada: o fator conservador de 1,615 (era 1,475) leva o extremo previsto acima de 415,8 V ({ref}`P-21 <estado-p-21>`). Nativas não reduzem o distúrbio.
 
 ## 7. Validação física
 
@@ -122,7 +121,7 @@ Tolerâncias: {ref}`as sondas e as tolerâncias <validacao-fisica-tolerancias>`.
 
 ## 8. As três versões e a correlação esperada
 
-O `modelo` é a rampa linear; a `programada` (`sinais.forma_programada_nativa`, [sinais.py:624-683](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/sinais.py#L624-L683)) é o degrau: `start_hz` na primeira metade da janela, `end_hz` na segunda, com fase contínua e a fase inicial do metadata. A continuidade da fase na troca de ponto da lista é {bdg-warning}`NÃO VERIFICADO` (P-06).
+O `modelo` é a rampa linear; a `programada` (`sinais.forma_programada_nativa`, [sinais.py:624-683](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/sinais.py#L624-L683)) é o degrau: `start_hz` na primeira metade da janela, `end_hz` na segunda, com fase contínua e a fase inicial do metadata. A continuidade da fase na troca de ponto da lista é {bdg-warning}`NÃO VERIFICADO` ({ref}`P-06 <estado-p-06>`).
 
 **Resumo por par** (correlação do distúrbio com a senoide nominal; faixa quando há várias capturas):
 
@@ -145,7 +144,7 @@ O `modelo` é a rampa linear; a `programada` (`sinais.forma_programada_nativa`, 
 | programada × medida | 1,000 / 1,000 | 1,000 / 1,000 | 1,000 / 1,000 |
 | modelo × medida | 0,982 / 0,964 | 0,939 / 0,960 | 0,982 / 0,964 |
 
-Causa de a classe ficar abaixo de 0,90, quando fica: a programada troca de frequência em degrau (`start_hz` na 1.ª metade, `end_hz` na 2.ª) e o modelo é uma rampa linear: modelo × programada 0,95 (nominal) e 0,91 (ajustada); a fase na troca nunca foi medida (P-06)
+Causa de a classe ficar abaixo de 0,90, quando fica: a programada troca de frequência em degrau (`start_hz` na 1.ª metade, `end_hz` na 2.ª) e o modelo é uma rampa linear: modelo × programada 0,95 (nominal) e 0,91 (ajustada); a fase na troca nunca foi medida ({ref}`P-06 <estado-p-06>`)
 
 O modelo × programada de 0,95 (nominal) e 0,91 (ajustada) vem inteiro da diferença rampa × degrau, não de erro da fonte; a fonte reproduz o degrau (programada × medida 1,000 em 07/10). O modelo × medida de 07/10 (0,939 a 60 Hz, 0,982 a 50 Hz) usa a rampa de 57 a 63 Hz a 50 Hz.
 
@@ -176,12 +175,12 @@ O modelo × programada de 0,95 (nominal) e 0,91 (ajustada) vem inteiro da difere
 | Continuidade de fase na troca `start_hz` → `end_hz` | {bdg-warning}`NÃO VERIFICADO` | nunca medida (o verificador só foi testado com sinal sintético) |
 | Frequência base restaurada depois da rampa nova | {bdg-warning}`NÃO VERIFICADO` | conferida em teste, não em bancada |
 
-:::{important} Pendência P-01
-Nenhum dado de bancada existe com o código da v1.15. Fecha com: bancada. Prioridade ALTA.
+:::{important} Pendência P-01 (Software pronto, falta bancada)
+{ref}`P-01 <estado-p-01>`: Software pronto, falta bancada; prioridade alta. A visita de 22/10/2026 cobriu 2 de 5 condições (127 V/60 Hz e 127 V/50 Hz) com as 20 classes e os 3 perfis: 159 capturas físicas, 19 com validação física reprovada (`docs/evidencias/2026-10-22/fechamento.json`). Os resultados por classe estão nas sessões do PC da bancada, fora do repositório: o desempenho desta classe nelas é NÃO VERIFICADO aqui. Decisão do dono confirmada em 2026-10-21. Falta. **Bancada:** Campanhas de 230 V/50 Hz, 220 V/60 Hz e 33 V/60 Hz (as duas últimas dependem de calibração, P-21); reexecutar `run 02,17,18,19`, `run 10,11` e `run 12,16` a 127 V/60 Hz, que a visita já agenda depois do bloco 10-A; retomar a visita no braço A da P-09. **Código:** O critério `quantidade_de_capturas_por_classe_perfil_condicao` do agregador está sem limite (`criterio_nao_definido`, 159 capturas medidas); o dono já respondeu 'padrão, 1 captura por classe' na P-26, mas isso ainda não foi codificado no agregador.
 :::
 
-:::{important} Pendência P-06
-Continuidade de fase na troca de ponto do `LIST:FREQuency`, rampa 47 → 53 Hz a 50 Hz e `restaurar_frequencia_base` depois da rampa nova; o limiar de 10° do verificador é proposta sem dado. Fecha com: bancada. Prioridade MÉDIA.
+:::{important} Pendência P-06 (Software pronto, falta bancada)
+{ref}`P-06 <estado-p-06>`: Software pronto, falta bancada; prioridade média. Nenhuma captura da rampa 47→53 Hz foi feita (0 capturas no fechamento de 22/10). Situação: Parcial: bug de estado corrigido, sem medida. Falta. **Bancada:** Capturar a classe 18 (rampa 47→53 Hz a 50 Hz), medir o salto de fase na troca `start_hz → end_hz` do `LIST:FREQuency` e conferir `restaurar_frequencia_base` na fonte real. O limiar de 10° só vale depois da medida.
 :::
 
 ## 12. Como o código da classe funciona
@@ -197,6 +196,13 @@ Continuidade de fase na troca de ponto do `LIST:FREQuency`, rampa 47 → 53 Hz a
 - `configurar` lê `self.config.grid_frequency_hz` (não o `f0` de `gerar`, que é o mesmo valor) e `duration_s / 2` para o `dwell`; chama `self.fonte.frequency_drift_list(start_hz, end_hz, voltage_rms=base, dwell_s=meio_s)`. Como `gerar` e `configurar` chamam `extremos_hz` com o mesmo `capture_index` e a mesma configuração, o programado e o modelo concordam por construção.
 - Atributos: `capturas_padrao` e `pre_trigger_s` herdados; sem `NIVEIS`, `usar_trace` nem ganchos de redução.
 - Contrato e acoplamentos: {doc}`../codigo/classes_contrato` §4 ("18: `DESVIO_HZ`").
+
+### Mudanças no código desde `fa82f49` (conferidas em 2026-10-27, `main` em `7efd26e`)
+
+- `Experimento.exigencias_nativas` (`experimentos_nativos/18.py:45-53`, novo): devolve `{"frequencia_hz": [start_hz, end_hz], "dwell_s": duration_s / 2, "passos_list": 2}`, com os extremos de `extremos_hz` (o mesmo que `gerar()` e `configurar()` usam). A pré-validação compara essas exigências com `ametek_orm.CAPACIDADES_MX30` **antes de programar a fonte** (`logica/mestre.py:3628` define o gancho; `:3643` o chama para capturas nativas sem TRACe; `:2730-2738` aplica a checagem antes de qualquer I/O). Uma exigência acima da capacidade documentada pula a captura (`pulada_capacidade`, `mestre.py:988`).
+- `configurar` (`18.py:55`) não mudou no diff.
+
+O que `gerar()` produz para uma seed **não mudou**: a comparação de saída entre `fa82f49` e a `main` (20 classes, 720 chamadas de `gerar()`, sorteio ligado e desligado, 60 e 50 Hz, três índices e três seeds) deu hash idêntico por classe, e `tests.test_offline.PerfisDeFaixasTests` (fixtures byte a byte em `tests/fixtures/`) passa. Detalhe no `CHANGELOG/v1.15.md`.
 
 ## 13. Referências
 

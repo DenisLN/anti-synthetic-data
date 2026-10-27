@@ -1,11 +1,10 @@
 # Classe 17: NOTCH_OSCILLATORY_TRANSIENT
 
-:::{note} Revisão e procedência
-Texto de referência importado do levantamento de 16/10/2026, baseado em [fa82f496](https://github.com/DenisLN/anti-synthetic-data/tree/fa82f49600543456adf78e22485ab6de5dd032b9). Citações numéricas apontam para esse snapshot e não acompanham linhas atuais. Trechos `literalinclude` são extraídos do checkout atual por símbolo; consulte {doc}`../execucao_pendencias` para implementação e evidências vigentes. Relatos de sessões e transcrições são históricos, não medições repetidas nesta revisão.
-:::
+```{include} /_includes/aviso-base.md
+```
 
 
-{bdg-success}`VERIFICADO NA BANCADA` pré-v1.15 (entalhes em 4 ciclos; 127 V/60 Hz, 127 V/50 Hz e 230 V/50 Hz, 3 capturas cada, 07/10/2026) {bdg-info}`OFFLINE` {bdg-warning}`NÃO VERIFICADO` entalhes contínuos e a validação da crista {bdg-danger}`PENDENTE P-01` {bdg-danger}`PENDENTE P-07` {bdg-danger}`PENDENTE P-18` {bdg-danger}`PENDENTE P-19`
+{bdg-success}`VERIFICADO NA BANCADA` pré-v1.15 (entalhes em 4 ciclos; 127 V/60 Hz, 127 V/50 Hz e 230 V/50 Hz, 3 capturas cada, 07/10/2026) {bdg-info}`OFFLINE` {bdg-warning}`NÃO VERIFICADO` entalhes contínuos e a validação da crista {bdg-ref-warning}`P-01 Software pronto, falta bancada <estado-p-01>` {bdg-ref-info}`P-07 Falta decisão ou dado do responsável <estado-p-07>` {bdg-ref-warning}`P-18 Software pronto, falta bancada <estado-p-18>` {bdg-ref-primary}`P-19 Insuficiente na bancada <estado-p-19>`
 
 | Campo | Valor |
 |---|---|
@@ -19,7 +18,7 @@ Texto de referência importado do levantamento de 16/10/2026, baseado em [fa82f4
 
 ## 1. Em uma resposta
 
-**Pergunta:** como o dataset combina entalhes com um transitório oscilatório? **Resposta:** os **entalhes de 0,1 ms estão em todos os ciclos da janela** (como na {doc}`07-notch`) e uma **oscilação amortecida de 300 Hz, 0,3 pu, τ = 5 ms, começa em $t_0$ sorteado** por 60 ms. Só a oscilação é localizada; os entalhes são contínuos. A classe herda o toque da fonte de cada entalhe e herda também o problema da crista da 07, pior: a 127 V/60 Hz o fator calibrado (1,031) está muito abaixo do que o toque pede (≥ 1,420) e a primeira rodada tende a reprovar pela crista (P-07).
+**Pergunta:** como o dataset combina entalhes com um transitório oscilatório? **Resposta:** os **entalhes de 0,1 ms estão em todos os ciclos da janela** (como na {doc}`07-notch`) e uma **oscilação amortecida de 300 Hz, 0,3 pu, τ = 5 ms, começa em $t_0$ sorteado** por 60 ms. Só a oscilação é localizada; os entalhes são contínuos. A classe herda o toque da fonte de cada entalhe e herda também o problema da crista da 07, pior: a 127 V/60 Hz o fator calibrado era 1,031, muito abaixo do que o toque pede (≥ 1,420); a recalibração de 22/10/2026 o elevou a 1,575 (`logica/calibracao_extremos.json:25`), e a validação da crista exige revisão do dono e nova coleta ({ref}`P-07 <estado-p-07>`).
 
 ## 2. O fenômeno e a norma
 
@@ -84,12 +83,12 @@ O gancho `parametros_com_disturbio_reduzido` ([17.py:42-51](https://github.com/D
 
 O erro programada × modelo da 17 (0,29 pu a 50 Hz; 0,24 pu a 60 Hz) é o mesmo antes e depois da correção do rms CA: vem dos entalhes (como na 07), não do degrau do rms por ciclo.
 
-:::{warning} Decisão em aberto P-04
-`AmetekMX30.program_capture` só **avisa** quando o pico reconstruído passa de `max_peak_v` ("prosseguindo sem carga", [ametek_orm.py:1522-1527](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/ametek_orm.py#L1522-L1527)); quem recusa é a pré-validação do `mestre.py` (`ExperimentoBase._indices_viaveis`, antes de qualquer SCPI, e `_conferir_extremos_fisicos`, depois da captura já gravada). Pergunta ao responsável pelo projeto: o ORM também deve recusar? Opções: manter como está, ou recusar no ORM (um limite de segurança mais restritivo). Este site não decide ({ref}`P-04 <p-04>`, prioridade MÉDIA).
+:::{note} Pendência P-04 (Concluída, dono ainda não confirmou)
+{ref}`P-04 <estado-p-04>`: Concluída, dono ainda não confirmou; prioridade média. Opção (a): o ORM recusa com `ParameterOutOfBoundsError` o pico acima de `max_peak_v` (`logica/ametek_orm.py:1427-1428` e `:2105-2106`). No baseline `fa82f49` o ORM só avisava. Situação: Concluída — software. Escolha tomada no fork; o dono ainda não a confirmou. Falta. **Decisão do dono:** Confirmar a opção (a) (ou pedir a (b), ver a ressalva em Pergunta ao dono).
 :::
 
-:::{warning} Decisão em aberto P-23
-A fonte travou na ~280.ª gravação de TRACe de uma mesma conexão (quirk A3; causa {bdg-warning}`NÃO VERIFICADO`), e cada captura desta classe grava 12 TRACes a 60 Hz (10 a 50 Hz). `README.md` e `AGENTS.md` ainda recomendam `run all` (468 gravações a 60 Hz; 1116 com `set perfil todos`), enquanto o roteiro de bancada usa listas de classes (menos de 250 por conexão). Pergunta: qual texto os documentos devem adotar? Opção recomendada pelo roteiro: listas (`run 01-07`, depois `run 09-20`). Decisão do responsável pelo projeto ({ref}`P-23 <p-23>`, prioridade MÉDIA).
+:::{important} Pendência P-23 (Software pronto, falta bancada)
+{ref}`P-23 <estado-p-23>`: Software pronto, falta bancada; prioridade média. Orçamento operacional de 216 gravações de TRACe por conexão (`LIMITE_ESCRITAS_TRACE_CONEXAO`, `logica/politica_traces.py:3`); 216 é regra operacional, não limite do fabricante, e a causa física da trava (quirk A3) continua NÃO VERIFICADA. Situação: Parcial: proteção implementada. Falta. **Bancada:** Diagnóstico real com a saída OFF (`diag/diag_nativo_output_off.py`) para esclarecer a causa da trava. **Decisão do dono:** Confirmar o valor 216 como regra operacional, ou mudá-lo.
 :::
 
 ## 5. Parâmetros por perfil
@@ -100,16 +99,16 @@ A 17 é **independente do perfil**: a oscilação fica em 300 Hz e 0,3 pu (decis
 
 ## 6. Limites físicos e fator de extremo
 
-Fatores medidos: **1,031** a 127 V/60 Hz, **1,307** a 127 V/50 Hz e **1,242** a 230 V/50 Hz. A diferença é por **frequência**, não por tensão: a 230 V/50 Hz com a tabela de 127 V/60 Hz a 17 previu 405 V e mediu **444 V**, acima dos 425 Vp do hardware (07/10/2026), e foi o caso que fez nascer a calibração por condição (v1.14).
+Fatores medidos: **1,575** a 127 V/60 Hz (`logica/calibracao_extremos.json:25`, recalibrado em 22/10/2026; era 1,031), **1,307** a 127 V/50 Hz e **1,242** a 230 V/50 Hz. A diferença é por **frequência**, não por tensão: a 230 V/50 Hz com a tabela de 127 V/60 Hz a 17 previu 405 V e mediu **444 V**, acima dos 425 Vp do hardware (07/10/2026), e foi o caso que fez nascer a calibração por condição (v1.14).
 
 | Condição | Fator medido na tabela da condição | Capturas do plano | Pico programado (V) | Extremo previsto (V) | Teto (V) | Distúrbio aplicado (k) | Resultado |
 |---|---|---|---|---|---|---|---|
-| 127 V/60 Hz | 1,031 | 3 | 203,1 | 230,4 | 415,8 | 100 % | 3/3 rodam |
+| 127 V/60 Hz | 1,575 | 3 | 203,1 | 351,9 | 415,8 | 100 % | 3/3 rodam |
 | 127 V/50 Hz | 1,307 | 3 | 197,4 | 283,8 | 415,8 | 100 % | 3/3 rodam |
 | 230 V/50 Hz | 1,242 | 3 | 330,9 | 415,8 | 415,8 | 30 % | 3/3 rodam |
-| 220 V/60 Hz (sem tabela) | 1,475 (maior fator de todas as tabelas; regra sem tabela) | 3 | 321,3 | 415,8 | 415,8 | 25 % | 3/3 rodam |
+| 220 V/60 Hz (sem tabela) | 1,615 (maior fator de todas as tabelas; regra sem tabela) | 3 | 351,9 | 625,1 | 415,8 | 100 % | 0/3 rodam, 3 pulada(s) |
 
-*Fonte:* `logica/calibracao_extremos.json` e `scripts/relatorio_limites_bancada.py`, 2026-10-16 (perfil `literatura`, 3 capturas padrão, seed 20260827, sorteio ligado). A 230 V/50 Hz as três rodam com o distúrbio **reduzido a 30 %** (`notch_profundidade_pu_bancada` = 0,301 e `oscillation_amplitude_pu_bancada` = 0,090); em 07/10, com o fator 1,242 daquele dia, $k$ = 37 % e o pico máximo medido foi 382 V (antes, sem redução, 444 V). A 220 V/60 Hz (sem tabela) as três rodam a 25 %. Mudou, para menos, o previsto a 127 V/60 Hz depois da regra por frequência: de 292,0 V para 230,4 V.
+*Fonte:* `logica/calibracao_extremos.json` e `scripts/relatorio_limites_bancada.py`, 2026-10-16 (perfil `literatura`, 3 capturas padrão, seed 20260827, sorteio ligado). (`scripts/relatorio_limites_bancada.py` refeito em 2026-10-27 sobre a `main`, mesmos parâmetros: as linhas de 127 V/60 Hz e de 220 V/60 Hz mudaram com a recalibração de 22/10; as de 50 Hz não). A 230 V/50 Hz as três rodam com o distúrbio **reduzido a 30 %** (`notch_profundidade_pu_bancada` = 0,301 e `oscillation_amplitude_pu_bancada` = 0,090); em 07/10, com o fator 1,242 daquele dia, $k$ = 37 % e o pico máximo medido foi 382 V (antes, sem redução, 444 V). A 220 V/60 Hz (sem tabela) as três eram a 25 % e hoje são **puladas** (0 de 3: o extremo previsto é de 625,1 V com o fator conservador de 1,615). A 127 V/60 Hz o extremo previsto, que a regra por frequência levara de 292,0 V a 230,4 V, é hoje 351,9 V com o fator 1,575.
 
 ## 7. Validação física
 
@@ -130,10 +129,10 @@ Tolerâncias: {ref}`as sondas e as tolerâncias <validacao-fisica-tolerancias>`.
 | 60 Hz | 1,031 | 1,314 / 1,443 / 1,562 | 1,420 | 1,312 | **0/135** | 0/135 |
 | 50 Hz | 1,307 | 1,314 / 1,424 / 1,536 | 1,397 | 1,295 | 130/135 | 0/135 |
 
-A 17 a 127 V/60 Hz é, portanto, a classe com a **maior defasagem** entre o fator calibrado e o necessário: a primeira captura reprova pela crista se a fonte tocar como o modelo (1,314 × 1,0 contra 1,031 × 1,1 = 1,134). A recalibração (`set recalibracao on`) corrige o JSON ao fim do run, para o run seguinte.
+A 17 a 127 V/60 Hz era, portanto, a classe com a **maior defasagem** entre o fator calibrado e o necessário: a primeira captura reprovava pela crista se a fonte tocasse como o modelo (1,314 × 1,0 contra 1,031 × 1,1 = 1,134). A recalibração de 22/10/2026 levou o fator a 1,575 (`logica/calibracao_extremos.json:25`), acima do fator mínimo de 1,420 desta simulação; a tabela acima é o cálculo de 16/10 com o fator antigo e não foi refeito, e a validação exige revisão do dono e nova coleta ({ref}`P-07 <estado-p-07>`).
 
-:::{important} Pendência P-07
-Crista da validação física: fatores calibrados a 127 V/60 Hz (07 = 1,186; 17 = 1,031) não cobrem o toque simulado (≥ 1,344 e ≥ 1,420); a primeira rodada tende a reprovar só por "fator de crista". Fecha com: bancada (rodar com `set recalibracao on`, `git diff`, commitar). Prioridade ALTA.
+:::{important} Pendência P-07 (Falta decisão ou dado do responsável)
+{ref}`P-07 <estado-p-07>`: Falta decisão ou dado do responsável; prioridade alta. Fator da 17 em `logica/calibracao_extremos.json:25` (127 V/60 Hz): 1,575, antes 1,031; a 17 passou a ser recusada a 220 V. Situação: Evidência suficiente, revisão humana pendente. Falta. **Decisão do dono:** Revisar o diff da calibração (`022bb5c`, `a22fba9`) e decidir se os fatores 1,615 e 1,575 entram. **Bancada:** Nova coleta das classes 07 e 17 com a calibração revisada, para validar a crista (a de 22/10 não vale como aprovação).
 :::
 
 ## 8. As três versões e a correlação esperada
@@ -182,20 +181,20 @@ Modelo × programada é 0,993–0,996 e a medida cai a 0,90–0,95 pela mesma ca
 
 | Afirmação | Selo | Evidência |
 |---|---|---|
-| Entalhes em 4 ciclos com oscilação de 300 Hz via TRACe/LIST | {bdg-success}`VERIFICADO NA BANCADA` | 3 condições, 07/10/2026; fatores 1,031, 1,307 e 1,242 |
+| Entalhes em 4 ciclos com oscilação de 300 Hz via TRACe/LIST | {bdg-success}`VERIFICADO NA BANCADA` | 3 condições, 07/10/2026; fatores de então 1,031 (hoje 1,575 a 60 Hz), 1,307 e 1,242 |
 | Entalhes em todos os ciclos; crista com fator | {bdg-warning}`NÃO VERIFICADO` | nenhuma sessão com o código da v1.15; previsão por simulação |
 | `gerar()` e programada de hoje | {bdg-info}`OFFLINE` | modelo × programada 0,993–0,996 |
 
-:::{important} Pendência P-01
-Nenhum dado de bancada existe com o código da v1.15. Fecha com: bancada. Prioridade ALTA.
+:::{important} Pendência P-01 (Software pronto, falta bancada)
+{ref}`P-01 <estado-p-01>`: Software pronto, falta bancada; prioridade alta. A visita de 22/10/2026 cobriu 2 de 5 condições (127 V/60 Hz e 127 V/50 Hz) com as 20 classes e os 3 perfis: 159 capturas físicas, 19 com validação física reprovada (`docs/evidencias/2026-10-22/fechamento.json`). Os resultados por classe estão nas sessões do PC da bancada, fora do repositório: o desempenho desta classe nelas é NÃO VERIFICADO aqui. Decisão do dono confirmada em 2026-10-21. Falta. **Bancada:** Campanhas de 230 V/50 Hz, 220 V/60 Hz e 33 V/60 Hz (as duas últimas dependem de calibração, P-21); reexecutar `run 02,17,18,19`, `run 10,11` e `run 12,16` a 127 V/60 Hz, que a visita já agenda depois do bloco 10-A; retomar a visita no braço A da P-09. **Código:** O critério `quantidade_de_capturas_por_classe_perfil_condicao` do agregador está sem limite (`criterio_nao_definido`, 159 capturas medidas); o dono já respondeu 'padrão, 1 captura por classe' na P-26, mas isso ainda não foi codificado no agregador.
 :::
 
-:::{important} Pendência P-18
-Passo final `SINE` no `LIST`: existe só no branch `feat/passo-final-sin`, **fora da `main`** ({doc}`../projeto/passo-final-sin`). Fecha com: bancada e decisão do responsável pelo projeto. Prioridade MÉDIA.
+:::{important} Pendência P-18 (Software pronto, falta bancada)
+{ref}`P-18 <estado-p-18>`: Software pronto, falta bancada; prioridade média. Situação: Parcial: integrado experimental, desligado. Falta. **Bancada:** Rodar `diag/teste_passo_final_sin.py` com a confirmação `ENERGIZAR-PASSO-SIN` digitada pelo operador: aceitação de `SINE` em `LIST:FUNCtion:SHAPe` e restauração da fonte. **Decisão do dono:** Confirmar o padrão desligado até a validação.
 :::
 
-:::{important} Pendência P-19
-`TRACe:DATA?` (`set diagnostico retrieve`) nunca foi executado na fonte real. Fecha com: bancada, com o painel à vista. Prioridade MÉDIA.
+:::{important} Pendência P-19 (Insuficiente na bancada)
+{ref}`P-19 <estado-p-19>`: Insuficiente na bancada; prioridade média. Situação: Insuficiente em 2026-10-22. Falta. **Bancada:** Repetir a leitura com `set diagnostico retrieve on` e o painel à vista até obter 1024 valores finitos ou um erro SCPI de comando não suportado. Respeitar `AGENTS.md`: nunca consultar a fonte logo após `TRACe:DATA` (achado de segurança da v1.12). **Código:** Examinar como a leitura do `retrieve` recebe e decodifica a resposta, para descartar truncamento no próprio código antes de concluir algo sobre o firmware (proposta de investigação, não achado).
 :::
 
 ## 12. Como o código da classe funciona

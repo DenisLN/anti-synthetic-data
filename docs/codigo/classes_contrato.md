@@ -4,7 +4,7 @@
 ```
 
 
-{bdg-info}`OFFLINE` Lido (as 20 classes por `ast`; `08.py` e `18.py` por inteiro) em 2026-10-16, `main` em `fa82f49`. As fichas de cada classe, escritas na etapa seguinte do site, partem de {doc}`../classes`.
+{bdg-info}`OFFLINE` Lido (as 20 classes por `ast`; `08.py` e `18.py` por inteiro) em 2026-10-16, `main` em `fa82f49`. As fichas de cada classe, escritas na etapa seguinte do site, partem de {doc}`../classes`. **Atualização de 2026-10-27** (`main` em `7efd26e`): as tabelas abaixo foram conferidas contra `git diff fa82f49 main -- experimentos_nativos experimentos_waveform`; as linhas das classes 05, 06, 08, 15, 18 e 19 e os ganchos novos (`rota_programacao`, `exigencias_nativas`, `forma_esperada_para_validacao`) estão marcados "(desde `fa82f49`)". Os números de linha com link para `fa82f49` continuam históricos.
 
 **Pergunta:** o que um arquivo `experimentos_*/NN.py` precisa ter e quais ganchos pode sobrescrever? **Resposta:** um arquivo `NN.py` com **uma** classe chamada `Experimento` que herda `ExperimentoNativo` (implementa `gerar` e `configurar`) ou `ExperimentoWaveform` (só `gerar`), com `id` e `nome`; o resto são **ganchos opcionais** que a classe-base chama. Exatamente um arquivo por id de 01 a 20 em **uma** das duas pastas.
 
@@ -20,21 +20,21 @@
 | 02 SAG | `experimentos_nativos/02.py` | `ExperimentoNativo` | 1 (herdado) | 0.06 | `NIVEIS`, `gerar`, `configurar` |
 | 03 SWELL | `experimentos_nativos/03.py` | `ExperimentoNativo` | 1 (herdado) | 0.06 | `NIVEIS`, `gerar`, `configurar` |
 | 04 INTERRUPTION | `experimentos_nativos/04.py` | `ExperimentoNativo` | 3 | 0.06 | `gerar`, `configurar` |
-| 05 HARMONICS | `experimentos_nativos/05.py` | `ExperimentoNativo` | 1 (herdado) | 0 (herdado) | `NIVEIS_THD`, `total_niveis`, `gerar`, `configurar`, `usar_trace`, `scope_scale_v` |
-| 06 FLICKER | `experimentos_waveform/06.py` | `ExperimentoWaveform` | 3 | 0 (herdado) | `gerar`, `parametros_com_disturbio_reduzido` |
+| 05 HARMONICS | `experimentos_nativos/05.py` | `ExperimentoNativo` | 1 (herdado) | 0 (herdado) | `NIVEIS_THD`, `total_niveis`, `gerar`, `configurar`, `usar_trace`, `rota_programacao` (desde `fa82f49`), `scope_scale_v` |
+| 06 FLICKER | `experimentos_waveform/06.py` | `ExperimentoWaveform` | 3 | 0 (herdado) | `forma_esperada_para_validacao` (desde `fa82f49`), `gerar`, `parametros_com_disturbio_reduzido` |
 | 07 NOTCH | `experimentos_waveform/07.py` | `ExperimentoWaveform` | 3 | 0 (herdado) | `gerar`, `parametros_com_disturbio_reduzido` |
-| 08 TRANSIENT | `experimentos_waveform/08.py` | `ExperimentoWaveform` | 3 | 0 (herdado) | `limite_pico_bancada_pu`, `_indices_impulso`, `gerar`, `forma_para_bancada`, `excursao_fisica_prevista_v`, `ciclos_excluidos_da_validacao`, `conferir_posicao_do_evento` |
+| 08 TRANSIENT | `experimentos_waveform/08.py` | `ExperimentoWaveform` | 3 | 0 (herdado) | `SOBRESSINAL_ACHADO_DE_SEGURANCA` (desde `fa82f49`), `limite_pico_bancada_pu`, `_indices_impulso`, `gerar`, `forma_para_bancada`, `excursao_fisica_prevista_v`, `ciclos_excluidos_da_validacao`, `conferir_posicao_do_evento` (com a métrica de sobressinal, desde `fa82f49`) |
 | 09 OSCILLATORY_TRANSIENT | `experimentos_waveform/09.py` | `ExperimentoWaveform` | 3 | 0 (herdado) | `gerar`, `parametros_com_disturbio_reduzido` |
 | 10 SAG_HARMONICS | `experimentos_waveform/10.py` | `ExperimentoWaveform` | 3 | 0 (herdado) | `gerar`, `parametros_com_disturbio_reduzido` |
 | 11 SAG_FLICKER | `experimentos_waveform/11.py` | `ExperimentoWaveform` | 3 | 0 (herdado) | `gerar`, `parametros_com_disturbio_reduzido` |
 | 12 SAG_OSCILLATORY_TRANSIENT | `experimentos_waveform/12.py` | `ExperimentoWaveform` | 3 | 0 (herdado) | `gerar`, `parametros_com_disturbio_reduzido` |
 | 13 SWELL_HARMONICS | `experimentos_waveform/13.py` | `ExperimentoWaveform` | 3 | 0 (herdado) | `gerar`, `parametros_com_disturbio_reduzido` |
 | 14 SWELL_OSCILLATORY_TRANSIENT | `experimentos_waveform/14.py` | `ExperimentoWaveform` | 3 | 0 (herdado) | `gerar`, `parametros_com_disturbio_reduzido` |
-| 15 HARMONICS_FLICKER | `experimentos_waveform/15.py` | `ExperimentoWaveform` | 3 | 0 (herdado) | `gerar` |
+| 15 HARMONICS_FLICKER | `experimentos_waveform/15.py` | `ExperimentoWaveform` | 3 | 0 (herdado) | `gerar`, `parametros_com_disturbio_reduzido` (desde `fa82f49`) |
 | 16 INTERRUPTION_HARMONICS | `experimentos_waveform/16.py` | `ExperimentoWaveform` | 3 | 0 (herdado) | `gerar`, `parametros_com_disturbio_reduzido` |
 | 17 NOTCH_OSCILLATORY_TRANSIENT | `experimentos_waveform/17.py` | `ExperimentoWaveform` | 3 | 0 (herdado) | `gerar`, `parametros_com_disturbio_reduzido` |
-| 18 FREQUENCY_DRIFT | `experimentos_nativos/18.py` | `ExperimentoNativo` | 1 (herdado) | 0 (herdado) | `extremos_hz`, `gerar`, `configurar` |
-| 19 DC_OFFSET | `experimentos_nativos/19.py` | `ExperimentoNativo` | 3 | 0 (herdado) | `gerar`, `configurar` |
+| 18 FREQUENCY_DRIFT | `experimentos_nativos/18.py` | `ExperimentoNativo` | 1 (herdado) | 0 (herdado) | `extremos_hz`, `gerar`, `exigencias_nativas` (desde `fa82f49`), `configurar` |
+| 19 DC_OFFSET | `experimentos_nativos/19.py` | `ExperimentoNativo` | 3 | 0 (herdado) | `gerar`, `_offset_da_captura` (desde `fa82f49`), `exigencias_nativas` (desde `fa82f49`), `configurar` |
 | 20 INTERHARMONICS | `experimentos_waveform/20.py` | `ExperimentoWaveform` | 3 | 0 (herdado) | `gerar`, `parametros_com_disturbio_reduzido` |
 
 (`capturas_padrao` é o número de capturas por nível na bancada; "1 (herdado)" é o padrão de `ExperimentoBase`; 3 nas classes que **sorteiam** parâmetros, para uma captura não mostrar uma única realização.)
@@ -49,16 +49,19 @@
 | `scope_scale_v()` | `_preparar_acquisicao_real` | 05 |
 | `NIVEIS` / `NIVEIS_THD` / `total_niveis` | `dimensionar_capturas`, `tensao_rms_programada` | 02, 03, 05 |
 | `capturas_padrao`, `pre_trigger_s` | `Config.capturas`, `configure_acquisition` | ver a tabela |
-| `parametros_com_disturbio_reduzido(parametros, fracao)` | `_limitar_disturbio_para_bancada` | 06, 07, 09 a 14, 16, 17, 20 (**não** a 15) |
+| `parametros_com_disturbio_reduzido(parametros, fracao)` | `_limitar_disturbio_para_bancada` | 06, 07, 09 a 17 e 20 (a 15 passou a sobrescrever o gancho desde `fa82f49`, `15.py:26-53`) |
 | `forma_para_bancada`, `limite_pico_bancada_pu`, `excursao_fisica_prevista_v` | `_capturar_real` (waveform), pré-validação | só a 08 |
 | `ciclos_excluidos_da_validacao`, `conferir_posicao_do_evento`, `exige_medida_de_pico`, `fracao_teto_pico_medido` | `_validar_fisicamente`, `_conferir_extremos_fisicos` | só a 08 |
 | `sortear(rng, f0, **opcoes)` | dentro de `gerar()` | quase todas (ver {doc}`perfis`) |
+| `exigencias_nativas(capture_index, parametros)` (desde `fa82f49`) | `ExperimentoNativo.exigencias_de_capacidade` (`mestre.py:3641-3644`), na pré-validação, antes de qualquer I/O (`mestre.py:2730-2738`) | 18 (`18.py:45-53`) e 19 (`19.py:43-45`); o padrão em `mestre.py:3628` cobre o PULSe das 02/03/04 |
+| `rota_programacao(capture_index)` (desde `fa82f49`) | o laço de capturas físicas, que grava o campo no metadata (`mestre.py:3431`) | 05 (`05.py:72-74`: `"CSIN"` ou `"TRACe"`); o padrão em `mestre.py:2300` devolve `"TRACe"` ou `"nativa"` |
+| `forma_esperada_para_validacao(capture_index, t, seed)` (desde `fa82f49`) | `_validar_fisicamente` (`mestre.py:2432`) | 06 (`06.py:19-44`, forma programada reconstruída); o padrão de `ExperimentoWaveform` (`mestre.py:3741`) devolve a forma realmente programada |
 
 ## 4. Acoplamentos por classe ("se mudar isto, aquilo quebra")
 
 | Classe | Se mudar... | ...quebra |
 |---|---|---|
-| 04, 19 | `seed_da_captura` ([mestre.py:1703](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/mestre.py#L1703)) ou o id da classe | `configurar()` reproduz a seed **à mão** ([04.py:34](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/experimentos_nativos/04.py#L34), [19.py:32](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/experimentos_nativos/19.py#L32)) e deixa de concordar com `gerar()`; só vale com `capture_index == indice_global` |
+| 04, 19 | `seed_da_captura` ([mestre.py:1703](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/mestre.py#L1703)) ou o id da classe | `configurar()` reproduz a seed **à mão** (na 19, desde `fa82f49`, dentro de `_offset_da_captura`, `19.py:32-41`; [04.py:34](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/experimentos_nativos/04.py#L34), [19.py:32](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/experimentos_nativos/19.py#L32)) e deixa de concordar com `gerar()`; só vale com `capture_index == indice_global` |
 | 02, 03 | `INICIO_S`/`DURACAO_S` ou `pre_trigger_s` | `forma_programada_nativa` usa os dois via `getattr`, e `fase_de_disparo_graus` usa `pre_trigger_s` |
 | 05 | `TETO_CSINE` ou os níveis | `usar_trace` troca o mecanismo; nível acima de 20 % passa a gravar a Flash (entra na estimativa de gravações) |
 | 07, 17 | o número de chamadas ao `rng` por ciclo em `aplicar_entalhes_continuos` | todas as formas da seed mudam (fixtures) |

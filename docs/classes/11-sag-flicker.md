@@ -1,11 +1,10 @@
 # Classe 11: SAG_FLICKER
 
-:::{note} Revisão e procedência
-Texto de referência importado do levantamento de 16/10/2026, baseado em [fa82f496](https://github.com/DenisLN/anti-synthetic-data/tree/fa82f49600543456adf78e22485ab6de5dd032b9). Citações numéricas apontam para esse snapshot e não acompanham linhas atuais. Trechos `literalinclude` são extraídos do checkout atual por símbolo; consulte {doc}`../execucao_pendencias` para implementação e evidências vigentes. Relatos de sessões e transcrições são históricos, não medições repetidas nesta revisão.
-:::
+```{include} /_includes/aviso-base.md
+```
 
 
-{bdg-success}`VERIFICADO NA BANCADA` pré-v1.15 com parâmetros fixos (sag 0,5, flicker de 15 Hz a ±10 %; 127 V/60 Hz, 127 V/50 Hz e 230 V/50 Hz, 1 captura cada, 07/10/2026) {bdg-info}`OFFLINE` {bdg-warning}`NÃO VERIFICADO` parâmetros sorteados; efeito da média por ciclo do flicker {bdg-danger}`PENDENTE P-01` {bdg-danger}`PENDENTE P-08` {bdg-danger}`PENDENTE P-09` {bdg-danger}`PENDENTE P-11` {bdg-danger}`PENDENTE P-12` {bdg-danger}`PENDENTE P-18` {bdg-danger}`PENDENTE P-19`
+{bdg-success}`VERIFICADO NA BANCADA` pré-v1.15 com parâmetros fixos (sag 0,5, flicker de 15 Hz a ±10 %; 127 V/60 Hz, 127 V/50 Hz e 230 V/50 Hz, 1 captura cada, 07/10/2026) {bdg-info}`OFFLINE` {bdg-warning}`NÃO VERIFICADO` parâmetros sorteados; efeito da média por ciclo do flicker {bdg-ref-warning}`P-01 Software pronto, falta bancada <estado-p-01>` {bdg-ref-danger}`P-08 Reprovada na bancada <estado-p-08>` {bdg-ref-info}`P-09 Falta decisão ou dado do responsável <estado-p-09>` {bdg-ref-success}`P-11 Concluída, dono ainda não confirmou <estado-p-11>` {bdg-ref-success}`P-12 Concluída, dono ainda não confirmou <estado-p-12>` {bdg-ref-warning}`P-18 Software pronto, falta bancada <estado-p-18>` {bdg-ref-primary}`P-19 Insuficiente na bancada <estado-p-19>`
 
 | Campo | Valor |
 |---|---|
@@ -19,7 +18,7 @@ Texto de referência importado do levantamento de 16/10/2026, baseado em [fa82f4
 
 ## 1. Em uma resposta
 
-**Pergunta:** como o dataset combina um afundamento com flicker? **Resposta:** durante o evento (início e duração sorteados) a tensão cai a $\ell$ (0,1 a 0,9 pu) **e** a amplitude é modulada a $f_\text{fl}$ (8 a 25 Hz) com profundidade $m$ da faixa da classe 06; fora do evento a senoide é limpa. Na bancada herda os dois efeitos já descritos: a perda da média dos ciclos de borda do degrau ({doc}`10-sag-harmonics`) e a perda da média por ciclo do flicker ({doc}`06-flicker`); o efeito combinado do flicker nesta classe **não foi calculado** ({ref}`P-12 <p-12>`).
+**Pergunta:** como o dataset combina um afundamento com flicker? **Resposta:** durante o evento (início e duração sorteados) a tensão cai a $\ell$ (0,1 a 0,9 pu) **e** a amplitude é modulada a $f_\text{fl}$ (8 a 25 Hz) com profundidade $m$ da faixa da classe 06; fora do evento a senoide é limpa. Na bancada herda os dois efeitos já descritos: a perda da média dos ciclos de borda do degrau ({doc}`10-sag-harmonics`) e a perda da média por ciclo do flicker ({doc}`06-flicker`); o efeito combinado do flicker nesta classe **não foi calculado** ({ref}`P-12 <estado-p-12>`).
 
 ## 2. O fenômeno e a norma
 
@@ -82,7 +81,7 @@ O gancho `parametros_com_disturbio_reduzido` ([11.py:30-37](https://github.com/D
 
 - **Antes da correção** o `LIST:VOLTage` levava o rms do ciclo **com** a média, mas a TRACe seguia **sem** ela: a amplitude CA saía inflada e a previsão de pico subestimava até 38 % (106,9 a 141,2 V previstos contra 153,3 a 172,1 V emitidos, com degraus sintéticos de nível 0,2 a 0,8 a 50 e 60 Hz).
 - **Depois** (rms CA no `LIST:VOLTage`, pico previsto pela TRACe enviada) a previsão coincide com o emitido (diferença menor que 1 %), e **resta a média do ciclo**: erro máximo |programada − modelo| de 0,24 a 0,33 pu nas classes 10, 11, 12 e 16. Contra o modelo **sem** a média de cada ciclo, o erro cai a 0,02–0,04 pu. Só um offset por passo (modo ACDC, que tem o déficit de 5 a 6 % de CA da classe 19) o recuperaria.
-- Que a fonte real escale a TRACe ao rms CA programado, como prevê o manual, e que o pico emitido nas classes 10, 11, 12 e 16 continue dentro de 425 Vp com o novo `LIST:VOLTage` são {bdg-warning}`NÃO VERIFICADO`: só a bancada confirma (comparar `pico_medido_v` e `vale_medido_v` com `extremo_previsto_v`, {ref}`P-08 <p-08>`).
+- Que a fonte real escale a TRACe ao rms CA programado, como prevê o manual, e que o pico emitido nas classes 10, 11, 12 e 16 continue dentro de 425 Vp com o novo `LIST:VOLTage` são {bdg-warning}`NÃO VERIFICADO`: só a bancada confirma (comparar `pico_medido_v` e `vale_medido_v` com `extremo_previsto_v`, {ref}`P-08 <estado-p-08>`).
 
 | Erro máximo \|programada − modelo\| (pu) | 50 Hz, 127 V | 60 Hz, 230 V |
 |---|---|---|
@@ -93,20 +92,20 @@ O gancho `parametros_com_disturbio_reduzido` ([11.py:30-37](https://github.com/D
 
 Ao erro dos ciclos de borda soma-se, nesta classe, a média por ciclo do próprio flicker dentro do evento (cresce com $f_\text{fl}/f_0$, {doc}`06-flicker`): quanto ela pesa na 11 e na 15 é {bdg-warning}`NÃO VERIFICADO`, não foi calculado. Erros da programação por ciclo medidos na revisão das compostas sorteadas (sag e swell em 1 pu para isolar o componente): flicker de 25 Hz, erro máximo 0,048 pu a 50 Hz (rms relativo 3,3 %) e 0,053 pu a 60 Hz (4,7 %); pico do distúrbio do modelo 0,094 para 0,087 pu na programada. **Com o sag sorteado** o erro máximo sobe a 0,25–0,32 pu, vindo da borda do sag no meio do ciclo, não do flicker.
 
-:::{warning} Decisão em aberto P-09
-Resta a média de cada ciclo de borda; só um offset por passo (modo ACDC, com o déficit de 5 a 6 % de CA da classe 19) a recuperaria. Investigar depois da primeira bancada com o código da v1.15? Decisão do responsável pelo projeto ({ref}`P-09 <p-09>`, prioridade BAIXA).
+:::{important} Pendência P-09 (Falta decisão ou dado do responsável)
+{ref}`P-09 <estado-p-09>`: Falta decisão ou dado do responsável; prioridade baixa. Resta a média de cada ciclo de borda; só um offset por passo a recuperaria, e a fonte não aceita esse comando (`-113`, 22/10). Situação: Parcial: sem suporte a offset por passo. Decisão do dono confirmada em 2026-10-21. Falta. **Decisão do dono:** Decidir entre fechar agora como limitação aceita com (d), conforme o plano de 21/10, ou exigir antes os braços A e B. Se o dono exigir A e B, voltam a faltar sessões de bancada (retomada da visita no braço A).
 :::
 
-:::{warning} Decisão em aberto P-12
-Para a 06, comparar contra a forma programada ou redefinir o flicker com média nula por ciclo; as classes 11 e 15 herdam o efeito, ainda não calculado. Decisão do responsável pelo projeto ({ref}`P-12 <p-12>`, prioridade MÉDIA; detalhes na {doc}`06-flicker`).
+:::{note} Pendência P-12 (Concluída, dono ainda não confirmou)
+{ref}`P-12 <estado-p-12>`: Concluída, dono ainda não confirmou; prioridade média. O efeito da média por ciclo do flicker na 11 está quantificado offline em `modelo_programado.json`. Situação: Concluída — software e decisão. Escolha tomada no fork; o dono ainda não a confirmou. Falta. **Decisão do dono:** Confirmar comparar a 06 com a programada, sem redefinir o flicker.
 :::
 
-:::{warning} Decisão em aberto P-04
-`AmetekMX30.program_capture` só **avisa** quando o pico reconstruído passa de `max_peak_v` ("prosseguindo sem carga", [ametek_orm.py:1522-1527](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/ametek_orm.py#L1522-L1527)); quem recusa é a pré-validação do `mestre.py` (`ExperimentoBase._indices_viaveis`, antes de qualquer SCPI, e `_conferir_extremos_fisicos`, depois da captura já gravada). Pergunta ao responsável pelo projeto: o ORM também deve recusar? Opções: manter como está, ou recusar no ORM (um limite de segurança mais restritivo). Este site não decide ({ref}`P-04 <p-04>`, prioridade MÉDIA).
+:::{note} Pendência P-04 (Concluída, dono ainda não confirmou)
+{ref}`P-04 <estado-p-04>`: Concluída, dono ainda não confirmou; prioridade média. Opção (a): o ORM recusa com `ParameterOutOfBoundsError` o pico acima de `max_peak_v` (`logica/ametek_orm.py:1427-1428` e `:2105-2106`). No baseline `fa82f49` o ORM só avisava. Situação: Concluída — software. Escolha tomada no fork; o dono ainda não a confirmou. Falta. **Decisão do dono:** Confirmar a opção (a) (ou pedir a (b), ver a ressalva em Pergunta ao dono).
 :::
 
-:::{warning} Decisão em aberto P-23
-A fonte travou na ~280.ª gravação de TRACe de uma mesma conexão (quirk A3; causa {bdg-warning}`NÃO VERIFICADO`), e cada captura desta classe grava 12 TRACes a 60 Hz (10 a 50 Hz). `README.md` e `AGENTS.md` ainda recomendam `run all` (468 gravações a 60 Hz; 1116 com `set perfil todos`), enquanto o roteiro de bancada usa listas de classes (menos de 250 por conexão). Pergunta: qual texto os documentos devem adotar? Opção recomendada pelo roteiro: listas (`run 01-07`, depois `run 09-20`). Decisão do responsável pelo projeto ({ref}`P-23 <p-23>`, prioridade MÉDIA).
+:::{important} Pendência P-23 (Software pronto, falta bancada)
+{ref}`P-23 <estado-p-23>`: Software pronto, falta bancada; prioridade média. Orçamento operacional de 216 gravações de TRACe por conexão (`LIMITE_ESCRITAS_TRACE_CONEXAO`, `logica/politica_traces.py:3`); 216 é regra operacional, não limite do fabricante, e a causa física da trava (quirk A3) continua NÃO VERIFICADA. Situação: Parcial: proteção implementada. Falta. **Bancada:** Diagnóstico real com a saída OFF (`diag/diag_nativo_output_off.py`) para esclarecer a causa da trava. **Decisão do dono:** Confirmar o valor 216 como regra operacional, ou mudá-lo.
 :::
 
 ## 5. Parâmetros por perfil
@@ -121,16 +120,16 @@ A fonte travou na ~280.ª gravação de TRACe de uma mesma conexão (quirk A3; c
 
 ## 6. Limites físicos e fator de extremo
 
-Fatores medidos: 1,258 a 127 V/60 Hz, 1,030 a 127 V/50 Hz e a 230 V/50 Hz (o mesmo da 01, 1,03: uma captura reduzida só dá um limite inferior do fator).
+Fatores medidos: 1,297 a 127 V/60 Hz (era 1,258 até a recalibração de 22/10/2026), 1,030 a 127 V/50 Hz e a 230 V/50 Hz (o mesmo da 01, 1,03: uma captura reduzida só dá um limite inferior do fator).
 
 | Condição | Fator medido na tabela da condição | Capturas do plano | Pico programado (V) | Extremo previsto (V) | Teto (V) | Distúrbio aplicado (k) | Resultado |
 |---|---|---|---|---|---|---|---|
-| 127 V/60 Hz | 1,258 | 3 | 179,6 | 248,5 | 415,8 | 100 % | 3/3 rodam |
+| 127 V/60 Hz | 1,297 | 3 | 179,6 | 256,2 | 415,8 | 100 % | 3/3 rodam |
 | 127 V/50 Hz | 1,030 | 3 | 179,6 | 203,5 | 415,8 | 100 % | 3/3 rodam |
 | 230 V/50 Hz | 1,030 | 3 | 325,3 | 368,5 | 415,8 | 100 % | 3/3 rodam |
-| 220 V/60 Hz (sem tabela) | 1,475 (maior fator de todas as tabelas; regra sem tabela) | 3 | 311,1 | 415,8 | 415,8 | 37 % | 3/3 rodam |
+| 220 V/60 Hz (sem tabela) | 1,615 (maior fator de todas as tabelas; regra sem tabela) | 3 | 311,1 | 415,8 | 415,8 | 28 % | 3/3 rodam |
 
-*Fonte:* `logica/calibracao_extremos.json` e `scripts/relatorio_limites_bancada.py`, 2026-10-16 (perfil `literatura`, 3 capturas padrão, seed 20260827, sorteio ligado). A 220 V/60 Hz (sem tabela) as três capturas rodam reduzidas a 37 %. A fórmula do limite de bancada em {doc}`../limites_e_calibracao` §3.
+*Fonte:* `logica/calibracao_extremos.json` e `scripts/relatorio_limites_bancada.py`, 2026-10-16 (perfil `literatura`, 3 capturas padrão, seed 20260827, sorteio ligado). (`scripts/relatorio_limites_bancada.py` refeito em 2026-10-27 sobre a `main`, mesmos parâmetros: as linhas de 127 V/60 Hz e de 220 V/60 Hz mudaram com a recalibração de 22/10; as de 50 Hz não). A 220 V/60 Hz (sem tabela) as três capturas rodam reduzidas a 28 % (37 % com o fator antigo). A fórmula do limite de bancada em {doc}`../limites_e_calibracao` §3.
 
 ## 7. Validação física
 
@@ -169,13 +168,13 @@ A `programada` é a reconstrução da TRACe (rms CA por passo, sem a média de c
 | programada × medida | 0,999 / 0,999 | 0,997 / 0,997 | 0,996 / 0,996 |
 | modelo × medida | 0,999 / 0,998 | 0,969 / 0,957 | 0,996 / 0,995 |
 
-Causa de a classe ficar abaixo de 0,90, quando fica: idem 10; a média por ciclo do flicker somado ao SAG não foi calculada (P-09, P-12)
+Causa de a classe ficar abaixo de 0,90, quando fica: idem 10; a média por ciclo do flicker somado ao SAG não foi calculada ({ref}`P-09 <estado-p-09>`, {ref}`P-12 <estado-p-12>`)
 
 O modelo × programada é o mais baixo das compostas de sag (0,843–0,998): ao erro dos ciclos de borda soma-se a média por ciclo do flicker; a medida física acompanha a programada (0,996–0,999), isto é, a perda está na programação.
 
 ## 9. Quirks e armadilhas
 
-- **A20:** a volta do afundamento sobressai (fator 1,258 a 127 V/60 Hz).
+- **A20:** a volta do afundamento sobressai (fator 1,297 a 127 V/60 Hz; 1,258 até a recalibração de 22/10/2026).
 - **A2, A3, A4, A5, A16, K7:** como na {doc}`06-flicker`.
 - **Programada de 07/10 reconstruída com o código de hoje:** a coluna "programada × medida" é estimativa com o código de hoje ({doc}`../medicao/correlacao` §2).
 - **Acoplamento:** a ordem das três chamadas a `perfis.composto` define o `rng`.
@@ -196,24 +195,24 @@ O modelo × programada é o mais baixo das compostas de sag (0,843–0,998): ao 
 | Efeito da média por ciclo do flicker na 11 | {bdg-warning}`NÃO VERIFICADO` | não calculado (`CHANGELOG/v1.15.md`, "Pendentes da correlação do distúrbio") |
 | `gerar()` e programada de hoje | {bdg-info}`OFFLINE` | modelo × programada 0,843–0,998 |
 
-:::{important} Pendência P-01
-Nenhum dado de bancada existe com o código da v1.15. Fecha com: bancada. Prioridade ALTA.
+:::{important} Pendência P-01 (Software pronto, falta bancada)
+{ref}`P-01 <estado-p-01>`: Software pronto, falta bancada; prioridade alta. A visita de 22/10/2026 cobriu 2 de 5 condições (127 V/60 Hz e 127 V/50 Hz) com as 20 classes e os 3 perfis: 159 capturas físicas, 19 com validação física reprovada (`docs/evidencias/2026-10-22/fechamento.json`). Os resultados por classe estão nas sessões do PC da bancada, fora do repositório: o desempenho desta classe nelas é NÃO VERIFICADO aqui. Decisão do dono confirmada em 2026-10-21. Falta. **Bancada:** Campanhas de 230 V/50 Hz, 220 V/60 Hz e 33 V/60 Hz (as duas últimas dependem de calibração, P-21); reexecutar `run 02,17,18,19`, `run 10,11` e `run 12,16` a 127 V/60 Hz, que a visita já agenda depois do bloco 10-A; retomar a visita no braço A da P-09. **Código:** O critério `quantidade_de_capturas_por_classe_perfil_condicao` do agregador está sem limite (`criterio_nao_definido`, 159 capturas medidas); o dono já respondeu 'padrão, 1 captura por classe' na P-26, mas isso ainda não foi codificado no agregador.
 :::
 
-:::{important} Pendência P-08
-Conferir `pico_medido_v` e `vale_medido_v` contra `extremo_previsto_v` depois da correção do rms CA por ciclo. Fecha com: bancada. Prioridade ALTA.
+:::{warning} Pendência P-08 (Reprovada na bancada)
+{ref}`P-08 <estado-p-08>`: Reprovada na bancada; prioridade alta. Situação: Reprovada em 2026-10-22. Falta. **Bancada:** Recoletar as 10, 11, 12 e 16 com os fatores de `13b9bdb` e conferir a razão ≤ 1; só 127 V/60 Hz foi medida, as demais condições da P-26 ainda não.
 :::
 
-:::{warning} Decisão em aberto P-11
-Manter ou reverter as extensões das compostas, entre elas o sag em 11 e 12 e a profundidade do flicker da `norma` (2 a 7 %); o texto da proposta pedia o sorteio só na 10. Decisão do responsável pelo projeto ({ref}`P-11 <p-11>`, prioridade MÉDIA).
+:::{note} Pendência P-11 (Concluída, dono ainda não confirmou)
+{ref}`P-11 <estado-p-11>`: Concluída, dono ainda não confirmou; prioridade média. Sag em 11 e 12 e profundidade do flicker da `norma` (2 a 7 %) ficam, como extensão do sorteio pedido só para a 10. Situação: Concluída — decisão e metadata. Escolha tomada no fork; o dono ainda não a confirmou. Falta. **Decisão do dono:** Confirmar manter as extensões das compostas 10 a 16.
 :::
 
-:::{important} Pendência P-18
-Passo final `SINE` no `LIST`: existe só no branch `feat/passo-final-sin`, **fora da `main`** ({doc}`../projeto/passo-final-sin`). Fecha com: bancada e decisão do responsável pelo projeto. Prioridade MÉDIA.
+:::{important} Pendência P-18 (Software pronto, falta bancada)
+{ref}`P-18 <estado-p-18>`: Software pronto, falta bancada; prioridade média. Situação: Parcial: integrado experimental, desligado. Falta. **Bancada:** Rodar `diag/teste_passo_final_sin.py` com a confirmação `ENERGIZAR-PASSO-SIN` digitada pelo operador: aceitação de `SINE` em `LIST:FUNCtion:SHAPe` e restauração da fonte. **Decisão do dono:** Confirmar o padrão desligado até a validação.
 :::
 
-:::{important} Pendência P-19
-`TRACe:DATA?` (`set diagnostico retrieve`) nunca foi executado na fonte real. Fecha com: bancada, com o painel à vista. Prioridade MÉDIA.
+:::{important} Pendência P-19 (Insuficiente na bancada)
+{ref}`P-19 <estado-p-19>`: Insuficiente na bancada; prioridade média. Situação: Insuficiente em 2026-10-22. Falta. **Bancada:** Repetir a leitura com `set diagnostico retrieve on` e o painel à vista até obter 1024 valores finitos ou um erro SCPI de comando não suportado. Respeitar `AGENTS.md`: nunca consultar a fonte logo após `TRACe:DATA` (achado de segurança da v1.12). **Código:** Examinar como a leitura do `retrieve` recebe e decodifica a resposta, para descartar truncamento no próprio código antes de concluir algo sobre o firmware (proposta de investigação, não achado).
 :::
 
 ## 12. Como o código da classe funciona

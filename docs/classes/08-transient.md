@@ -1,11 +1,10 @@
 # Classe 08: TRANSIENT
 
-:::{note} Revisão e procedência
-Texto de referência importado do levantamento de 16/10/2026, baseado em [fa82f496](https://github.com/DenisLN/anti-synthetic-data/tree/fa82f49600543456adf78e22485ab6de5dd032b9). Citações numéricas apontam para esse snapshot e não acompanham linhas atuais. Trechos `literalinclude` são extraídos do checkout atual por símbolo; consulte {doc}`../execucao_pendencias` para implementação e evidências vigentes. Relatos de sessões e transcrições são históricos, não medições repetidas nesta revisão.
-:::
+```{include} /_includes/aviso-base.md
+```
 
 
-{bdg-success}`VERIFICADO NA BANCADA` pré-v1.15 **só como impulso filtrado** (127 V/60 Hz e 127 V/50 Hz, 3 capturas cada, 07/10/2026) {bdg-info}`OFFLINE` {bdg-warning}`NÃO VERIFICADO` impulso a 90 ms a 50 Hz e o mecanismo da cópia em 100 ms {bdg-danger}`PENDENTE P-01` {bdg-danger}`PENDENTE P-02` {bdg-danger}`PENDENTE P-03` {bdg-danger}`PENDENTE P-18` {bdg-danger}`PENDENTE P-19`
+{bdg-success}`VERIFICADO NA BANCADA` pré-v1.15 **só como impulso filtrado** (127 V/60 Hz e 127 V/50 Hz, 3 capturas cada, 07/10/2026) {bdg-info}`OFFLINE` {bdg-success}`VERIFICADO NA BANCADA` 22/10/2026: impulso a 90 ms a 127 V/50 Hz, 3 de 3 capturas com validação física ok (sessão fora do repositório; `fechamento.json`) {bdg-warning}`NÃO VERIFICADO` mecanismo da cópia em 100 ms (hipóteses não distinguidas) {bdg-ref-warning}`P-01 Software pronto, falta bancada <estado-p-01>` {bdg-ref-danger}`P-02 Reprovada na bancada <estado-p-02>` {bdg-ref-success}`P-03 Concluída, dono ainda não confirmou <estado-p-03>` {bdg-ref-warning}`P-18 Software pronto, falta bancada <estado-p-18>` {bdg-ref-primary}`P-19 Insuficiente na bancada <estado-p-19>`
 
 | Campo | Valor |
 |---|---|
@@ -21,7 +20,7 @@ Texto de referência importado do levantamento de 16/10/2026, baseado em [fa82f4
 
 **Pergunta:** a bancada reproduz o impulso de 5 a 10 pu e 50 µs do modelo? **Resposta:** **não**. A captura física da 08 é um **impulso de baixa amplitude filtrado pela fonte** (um pico seguido de oscilação de ~7,5 a 10 kHz que morre em menos de 0,5 ms), por **três limitações independentes**: a amplitude cabe só até 0,9 × `max_peak_v` (374,2 V, 2,084 pu a 127 V), a fonte não sobe em 50 µs, e a TRACe representa o impulso com 3 a 4 pontos. O modelo `gerar()` e o dataset simulado continuam com a amplitude da especificação; só a captura física é limitada. A 08 é, por construção, a exceção da correlação (diferença máxima programada × modelo de 0,56 pu a 60 Hz e 0,82 pu a 50 Hz, correção do rms por ciclo).
 
-Estado: o impulso filtrado foi medido; a 50 Hz o evento saiu a 100 ms em vez de 80 ms nas três capturas (A22), e a correção (impulso a 90 ms e conferência de posição) nunca foi medida ({ref}`P-03 <p-03>`); o mecanismo do deslocamento é desconhecido ({ref}`P-02 <p-02>`).
+Estado: o impulso filtrado foi medido em 07/10/2026; a 50 Hz o evento saiu a 100 ms em vez de 80 ms nas três capturas (A22). A correção (impulso a 90 ms e conferência de posição) foi medida em 22/10/2026 a 127 V/50 Hz: 3 de 3 capturas com validação física ok, desvio de posição de 2 amostras (limite 10), pico máximo de 339 V (limite 374,2 V) e sobressinal de 0,295 pu (limite 0,55) ({ref}`P-03 <estado-p-03>`, concluída; o dono ainda não confirmou). A 127 V/60 Hz o desvio foi de 16 amostras contra o limite de 10 e o mecanismo do deslocamento segue desconhecido ({ref}`P-02 <estado-p-02>`, reprovada na bancada). As sessões ficam no PC da bancada, fora do repositório.
 
 ## 2. O fenômeno e a norma
 
@@ -117,20 +116,20 @@ A 50 Hz os 80 ms são o início do 5.º ciclo (fronteira) e a fonte tocou o impu
 
 Com o sorteio ligado o impulso vai a 90 ms a 50 Hz (meio do ciclo, cruzamento por zero como o de 80 ms, mesmo nível de partida), nunca a menos de 30 amostras de uma fronteira: o deslocamento medido envolve até 4 pontos da TRACe (até 2,3 amostras), as capturas diferem ±2 amostras entre si e o toque pós-impulso dura menos de 0,5 ms (15 amostras). A 08 fica fora do sorteio de posição e de fase porque o sobressinal foi calibrado para um ponto de partida.
 
-:::{important} Pendência P-02
-Mecanismo da cópia ou deslocamento do evento em 100,0 ms (quirks A22 e A25): a 08 a 50 Hz saiu em 100 ms em 3 de 3; a 09 tem impulso de 0,12–0,27 pu em 100,0–100,2 ms em 9 de 9. Fecha com: bancada (Blocos 4 e 6 do roteiro: `diag_marcadores_trace.py`, retrieve, recaptura). Prioridade ALTA.
+:::{warning} Pendência P-02 (Reprovada na bancada)
+{ref}`P-02 <estado-p-02>`: Reprovada na bancada; prioridade alta. A 08 a 127 V/60 Hz teve desvio de posição de 16 amostras contra o limite de 10 (22/10; a sessão não está no repositório). Recapturas da 08 existem a 50 Hz (3) e a 60 Hz (3). Situação: Reprovada em 2026-10-22. Falta. **Bancada:** Diagnóstico dirigido que distinga as hipóteses (marcadores, TRACe recuperada, recaptura da 08 e da 09 a 50 e 60 Hz) e nova recaptura da 08 a 127 V/60 Hz com desvio ≤ 10 amostras. **Código:** Definir no agregador o critério da hipótese da cópia (hoje sem critério). Qualquer correção da posição só depois de distinguir as hipóteses; se mudar o que `gerar()` produz, exige autorização do dono registrada em `AGENTS.md`.
 :::
 
-:::{important} Pendência P-03
-Recaptura a 127 V/50 Hz com o impulso em 90 ms: posição (|desvio| ≤ 10 amostras), pico ≤ 374,2 V e sobressinal ≤ 0,55. Acima disso é achado de segurança. Fecha com: bancada. Prioridade ALTA.
+:::{note} Pendência P-03 (Concluída, dono ainda não confirmou)
+{ref}`P-03 <estado-p-03>`: Concluída, dono ainda não confirmou; prioridade alta. 3 de 3 capturas da 08 a 127 V/50 Hz com o evento em 90 ms: desvio de posição de 2 amostras (limite 10), pico máximo de 339 V (limite 374,2 V), sobressinal de 0,295 pu (limite 0,55), gravado por `experimentos_waveform/08.py:206-228`. Situação: Concluída — bancada 2026-10-22. Escolha tomada no fork; o dono ainda não a confirmou. Falta. **Decisão do dono:** Confirmar o encerramento com base no `fechamento.json`.
 :::
 
-:::{warning} Decisão em aberto P-04
-`AmetekMX30.program_capture` só **avisa** quando o pico reconstruído passa de `max_peak_v` ("prosseguindo sem carga", [ametek_orm.py:1522-1527](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/ametek_orm.py#L1522-L1527)); quem recusa é a pré-validação do `mestre.py` (`ExperimentoBase._indices_viaveis`, antes de qualquer SCPI, e `_conferir_extremos_fisicos`, depois da captura já gravada). Pergunta ao responsável pelo projeto: o ORM também deve recusar? Opções: manter como está, ou recusar no ORM (um limite de segurança mais restritivo). Este site não decide ({ref}`P-04 <p-04>`, prioridade MÉDIA).
+:::{note} Pendência P-04 (Concluída, dono ainda não confirmou)
+{ref}`P-04 <estado-p-04>`: Concluída, dono ainda não confirmou; prioridade média. Opção (a): o ORM recusa com `ParameterOutOfBoundsError` o pico acima de `max_peak_v` (`logica/ametek_orm.py:1427-1428` e `:2105-2106`). No baseline `fa82f49` o ORM só avisava. Situação: Concluída — software. Escolha tomada no fork; o dono ainda não a confirmou. Falta. **Decisão do dono:** Confirmar a opção (a) (ou pedir a (b), ver a ressalva em Pergunta ao dono).
 :::
 
-:::{warning} Decisão em aberto P-23
-A fonte travou na ~280.ª gravação de TRACe de uma mesma conexão (quirk A3; causa {bdg-warning}`NÃO VERIFICADO`), e cada captura desta classe grava 12 TRACes a 60 Hz (10 a 50 Hz). `README.md` e `AGENTS.md` ainda recomendam `run all` (468 gravações a 60 Hz; 1116 com `set perfil todos`), enquanto o roteiro de bancada usa listas de classes (menos de 250 por conexão). Pergunta: qual texto os documentos devem adotar? Opção recomendada pelo roteiro: listas (`run 01-07`, depois `run 09-20`). Decisão do responsável pelo projeto ({ref}`P-23 <p-23>`, prioridade MÉDIA).
+:::{important} Pendência P-23 (Software pronto, falta bancada)
+{ref}`P-23 <estado-p-23>`: Software pronto, falta bancada; prioridade média. Orçamento operacional de 216 gravações de TRACe por conexão (`LIMITE_ESCRITAS_TRACE_CONEXAO`, `logica/politica_traces.py:3`); 216 é regra operacional, não limite do fabricante, e a causa física da trava (quirk A3) continua NÃO VERIFICADA. Situação: Parcial: proteção implementada. Falta. **Bancada:** Diagnóstico real com a saída OFF (`diag/diag_nativo_output_off.py`) para esclarecer a causa da trava. **Decisão do dono:** Confirmar o valor 216 como regra operacional, ou mudá-lo.
 :::
 
 ## 5. Parâmetros por perfil
@@ -148,7 +147,7 @@ A 08 **não usa** a tabela `calibracao_extremos.json` (`observacao_08` do arquiv
 | 127 V/60 Hz | sem entrada | 3 | 179,6 | 374,2 | 374,2 | 100 % | 3/3 rodam |
 | 127 V/50 Hz | sem entrada | 3 | 241,4 | 374,2 | 374,2 | 100 % | 3/3 rodam |
 | 230 V/50 Hz | sem entrada | 3 | 325,3 | 374,2 | 374,2 | 100 % | 3/3 rodam |
-| 220 V/60 Hz (sem tabela) | 1,475 (maior fator de todas as tabelas; regra sem tabela) | 3 | 311,1 | 374,2 | 374,2 | 100 % | 3/3 rodam |
+| 220 V/60 Hz (sem tabela) | 1,615 (maior fator de todas as tabelas; regra sem tabela; a 08 não usa a tabela, ver o texto) | 3 | 311,1 | 374,2 | 374,2 | 100 % | 3/3 rodam |
 
 *Fonte:* `scripts/relatorio_limites_bancada.py`, 2026-10-16 (perfil `literatura`, 3 capturas padrão, seed 20260827). A coluna "Teto" é 374,2 V, e "Extremo previsto" = teto por construção. A 08 roda em todas as condições (inclusive 220 V/60 Hz e 230 V/50 Hz), com a **amplitude** reduzida (tabela da seção 4); o que muda com a tensão é a amplitude segura.
 
@@ -197,7 +196,7 @@ A `programada` da 08 é a TRACe reconstruída **da forma de bancada** (impulso d
 | programada × medida | 0,028–0,058 / 0,024–0,053 | 0,807–0,816 / 0,813–0,824 | — |
 | modelo × medida | 0,004–0,011 / 0,001–0,006 | 0,824–0,831 / 0,831–0,839 | — |
 
-Causa de a classe ficar abaixo de 0,90, quando fica: a 127 V/50 Hz o impulso saiu a 100 ms em vez de 80 ms (A22), pico fora da janela esperada; a 127 V/60 Hz o impulso de 50 µs sai filtrado pela fonte (A21) e a métrica é sensível ao alinhamento de uma amostra (P-02, P-03)
+Causa de a classe ficar abaixo de 0,90, quando fica: a 127 V/50 Hz o impulso saiu a 100 ms em vez de 80 ms (A22), pico fora da janela esperada; a 127 V/60 Hz o impulso de 50 µs sai filtrado pela fonte (A21) e a métrica é sensível ao alinhamento de uma amostra ({ref}`P-02 <estado-p-02>`, {ref}`P-03 <estado-p-03>`)
 
 Leitura. **A 127 V/60 Hz** o impulso saiu no lugar (modelo × medida 0,824–0,831), e a métrica é sensível ao alinhamento de **uma amostra**; **a 127 V/50 Hz** o impulso saiu a 100 ms e o pico cai fora da janela esperada (modelo × medida 0,004–0,011): é o defeito A22, não a fonte filtrando. A correlação do distúrbio é invariante à escala do distúrbio, então ela não mede quanto o impulso chegou; para isso vale a razão de pico e a tabela de amplitudes da seção 4. O modelo × programada com o código da v1.15 é 0,986–0,993.
 
@@ -229,16 +228,16 @@ Leitura. **A 127 V/60 Hz** o impulso saiu no lugar (modelo × medida 0,824–0,8
 | Mecanismo da cópia em 100 ms | {bdg-warning}`NÃO VERIFICADO` | `diag_ciclos_trace.py` rodado offline em 07/10 (08 a 50 Hz: resíduo máximo em torno de 100 ms 1,887 / 1,887 / 1,321 pu; a 60 Hz 0,034 / 0,034 / 0,040 pu); não decide o mecanismo |
 | 230 V/50 Hz | {bdg-warning}`NÃO VERIFICADO` | parada em 07/10 com o sobressinal antigo; hoje a amplitude segura é 0,742 pu |
 
-:::{important} Pendência P-01
-Nenhum dado de bancada existe com o código da v1.15. Fecha com: bancada. Prioridade ALTA.
+:::{important} Pendência P-01 (Software pronto, falta bancada)
+{ref}`P-01 <estado-p-01>`: Software pronto, falta bancada; prioridade alta. A visita de 22/10/2026 cobriu 2 de 5 condições (127 V/60 Hz e 127 V/50 Hz) com as 20 classes e os 3 perfis: 159 capturas físicas, 19 com validação física reprovada (`docs/evidencias/2026-10-22/fechamento.json`). Os resultados por classe estão nas sessões do PC da bancada, fora do repositório: o desempenho desta classe nelas é NÃO VERIFICADO aqui. Decisão do dono confirmada em 2026-10-21. Falta. **Bancada:** Campanhas de 230 V/50 Hz, 220 V/60 Hz e 33 V/60 Hz (as duas últimas dependem de calibração, P-21); reexecutar `run 02,17,18,19`, `run 10,11` e `run 12,16` a 127 V/60 Hz, que a visita já agenda depois do bloco 10-A; retomar a visita no braço A da P-09. **Código:** O critério `quantidade_de_capturas_por_classe_perfil_condicao` do agregador está sem limite (`criterio_nao_definido`, 159 capturas medidas); o dono já respondeu 'padrão, 1 captura por classe' na P-26, mas isso ainda não foi codificado no agregador.
 :::
 
-:::{important} Pendência P-18
-Passo final `SINE` no `LIST`: existe só no branch `feat/passo-final-sin`, **fora da `main`** ({doc}`../projeto/passo-final-sin`). Fecha com: bancada e decisão do responsável pelo projeto. Prioridade MÉDIA.
+:::{important} Pendência P-18 (Software pronto, falta bancada)
+{ref}`P-18 <estado-p-18>`: Software pronto, falta bancada; prioridade média. Situação: Parcial: integrado experimental, desligado. Falta. **Bancada:** Rodar `diag/teste_passo_final_sin.py` com a confirmação `ENERGIZAR-PASSO-SIN` digitada pelo operador: aceitação de `SINE` em `LIST:FUNCtion:SHAPe` e restauração da fonte. **Decisão do dono:** Confirmar o padrão desligado até a validação.
 :::
 
-:::{important} Pendência P-19
-`TRACe:DATA?` (`set diagnostico retrieve`) nunca foi executado na fonte real; a primeira captura da 08 é o lugar indicado para ligá-lo, com o painel à vista. Fecha com: bancada. Prioridade MÉDIA.
+:::{important} Pendência P-19 (Insuficiente na bancada)
+{ref}`P-19 <estado-p-19>`: Insuficiente na bancada; prioridade média. As leituras de `TRACe:DATA?` de 22/10 vieram das capturas das classes 08 e 09: 10 valores em vez de 1024. Situação: Insuficiente em 2026-10-22. Falta. **Bancada:** Repetir a leitura com `set diagnostico retrieve on` e o painel à vista até obter 1024 valores finitos ou um erro SCPI de comando não suportado. Respeitar `AGENTS.md`: nunca consultar a fonte logo após `TRACe:DATA` (achado de segurança da v1.12). **Código:** Examinar como a leitura do `retrieve` recebe e decodifica a resposta, para descartar truncamento no próprio código antes de concluir algo sobre o firmware (proposta de investigação, não achado).
 :::
 
 ## 12. Como o código da classe funciona
@@ -257,6 +256,15 @@ Passo final `SINE` no `LIST`: existe só no branch `feat/passo-final-sin`, **for
 - `gerar` usa o `rng` uma vez (`rng.uniform(5.0, 10.0)`), exceto na cobertura. `forma_para_bancada` **muta** `parametros` (acrescenta as chaves da bancada) e guarda `_excursao_prevista_v` e `_amplitude_bancada_pu` na instância; `conferir_posicao_do_evento` usa o segundo para o critério de "impulso não encontrado".
 - `exige_medida_de_pico` e `fracao_teto_pico_medido` são atributos de classe de `ExperimentoBase`, nas linhas [mestre.py:1940](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/mestre.py#L1940) e [mestre.py:1943](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/mestre.py#L1943), sobrescritos aqui; são lidos nas linhas [mestre.py:1964](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/mestre.py#L1964) (`_conferir_extremos_fisicos`), [mestre.py:2077](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/mestre.py#L2077) (`avaliar_captura_na_bancada`) e [mestre.py:3065](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/mestre.py#L3065) (`_limitar_disturbio_para_bancada`).
 - Contrato e ganchos: {doc}`../codigo/classes_contrato` §3 e §5 (a 08 como o único arquivo com lógica própria de bancada).
+
+### Mudanças no código desde `fa82f49` (conferidas em 2026-10-27, `main` em `7efd26e`)
+
+- `Experimento.SOBRESSINAL_ACHADO_DE_SEGURANCA = 0.55` (`experimentos_waveform/08.py:61-64`, novo): limite do sobressinal **medido** a partir do qual o resultado vira achado de segurança (`docs/roteiro-bancada.md`, Bloco 6). Só vira sinalizador no metadata; **não reprova a captura** (o roteiro manda parar e avisar, não descartar). É um valor distinto de `SOBRESSINAL_DO_DEGRAU` (0,55, `08.py:59`), que dimensiona o impulso previsto; a igualdade numérica é coincidência de projeto, não acoplamento.
+- Métrica de sobressinal em `conferir_posicao_do_evento` (`08.py:206-228`, novo): com a amplitude do degrau programado A (`_amplitude_bancada_pu`) positiva, `sobressinal = max(medido − senoide) / A − 1`, isto é, o maior desvio **sinalizado** na direção do degrau (não o maior desvio absoluto, que pode ser o vale). Se o resultado for não finito ou menor que −1, grava `sobressinal_medido = None` e `sobressinal_invalido = True`; senão grava `sobressinal_medido`, `sobressinal_limite` (0,55) e `sobressinal_acima_do_limite` (`sobressinal > 0,55`). Sem `_amplitude_bancada_pu`, nada é gravado. Os campos entram em `validacao_fisica.posicao_evento` ({doc}`../metadata`).
+- **Ressalva de amostragem (a 30 kSa/s):** a janela é amostrada a 30 kSa/s e a oscilação é de ~10 kHz (3 amostras por período); o pico **amostrado** pode ficar abaixo do real, então o sobressinal pode ser **subestimado**. O pico absoluto real é conferido por `medir_extremos` contra o teto de 374,2 V (comentário em `08.py:215-217`). Em 22/10/2026 a 127 V/50 Hz o sobressinal medido foi 0,295 pu e o pico máximo 339 V (`fechamento.json`, {ref}`P-03 <estado-p-03>`).
+- Outra mudança no arquivo desde `fa82f49` é só de comentário (commit `230740d`, 2 linhas). O trecho `conferir_posicao_do_evento` citado na tabela acima (de `fa82f49`, linhas 181-216) hoje ocupa `08.py:185-242`.
+
+O que `gerar()` produz para uma seed **não mudou**: a comparação de saída entre `fa82f49` e a `main` (20 classes, 720 chamadas de `gerar()`, sorteio ligado e desligado, 60 e 50 Hz, três índices e três seeds) deu hash idêntico por classe, e `tests.test_offline.PerfisDeFaixasTests` (fixtures byte a byte em `tests/fixtures/`) passa. Detalhe no `CHANGELOG/v1.15.md`.
 
 ## 13. Referências
 
