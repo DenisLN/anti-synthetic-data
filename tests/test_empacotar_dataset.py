@@ -122,7 +122,7 @@ class EmpacotarDatasetTests(unittest.TestCase):
         self.assertIn("SHA256SUMS", readme)
         for p in self.saida.rglob("*"):
             if p.is_file() and p.suffix in (".json", ".txt"):
-                self.assertNotIn("10.5281", p.read_text(encoding="utf-8"), p.name)
+                self.assertNotIn("10." + "5281", p.read_text(encoding="utf-8"), p.name)  # prefixo de DOI do Zenodo
 
     def test_arquivo_adulterado_e_detectado(self):
         self.gerar()
