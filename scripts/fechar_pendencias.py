@@ -52,11 +52,11 @@ PERFIS = ("norma", "literatura", "fronteira")  # docs/perfis.md
 # scripts/verificar_prontidao.py::CONDICOES (tensão V, frequência Hz)
 CONDICOES = {"127V_60Hz": (127, 60), "127V_50Hz": (127, 50), "230V_50Hz": (230, 50),
              "220V_60Hz": (220, 60), "33V_60Hz": (33, 60)}
-TETO_08_V = 374.2  # 0,9 x max_peak_v 415,8 (docs/classes/08-transient.md; execucao_pendencias P-03)
+TETO_08_V = 374.2  # 0,9 x max_peak_v 415,8 (docs/classes/08-transient.md; docs/projeto/pendencias.md P-03)
 SOBRESSINAL_REVISAO_08 = 0.45  # acima disso o valor amostrado pode subestimar o real: revisão humana
 SOBRESSINAL_MAX_08 = 0.55  # docs/roteiro-bancada.md (Bloco 6, seção 3) e docs/classes/08-transient.md: acima é achado de segurança
 TOL_POSICAO_08 = 10  # amostras (docs/metadata.md, validacao_fisica.posicao_evento)
-ORCAMENTO_TRACES = 216  # gravações TRACe por conexão (execucao_pendencias P-23)
+ORCAMENTO_TRACES = 216  # gravações TRACe por conexão (docs/projeto/pendencias.md P-23)
 FISICAS = ("P-01", "P-02", "P-03", "P-05", "P-06", "P-07", "P-08", "P-10", "P-16", "P-17",
            "P-18", "P-19", "P-21", "P-22", "P-23", "P-28", "P-31")
 TITULOS = {
@@ -372,12 +372,12 @@ def p02(ctx: Contexto) -> tuple:
         if n and not ok:
             cs[-1]["resultado"] = AVISO
     cs.append(crit("hipotese_da_copia_100ms", ND, None, None,
-                   "execucao_pendencias P-02: 'distinguir hipóteses antes da correção' (sem limiar)"))
+                   "docs/projeto/pendencias.md P-02: 'distinguir hipóteses antes da correção' (sem limiar)"))
     for f in (50.0, 60.0):
         for classe in ("08", "09"):
             sel = [r for r in r08 if _classe(r) == classe and _num(r.get("f0_hz")) == f]
             cs.append(crit(f"captura_{classe}_{f:g}Hz_presente", OK if sel else INSUF, len(sel), ">=1",
-                           "execucao_pendencias P-02: recaptura 08/09"))
+                           "docs/projeto/pendencias.md P-02: recaptura 08/09"))
     desv = [(r["id_captura"], (r.get("validacao_fisica") or {}).get("posicao_evento", {}).get("desvio_amostras"))
             for r in r08 if _classe(r) == "08"]
     desv = [(i, d) for i, d in desv if d is not None]
@@ -397,7 +397,7 @@ def p03(ctx: Contexto) -> tuple:
     evento90 = [r for r in alvo if abs((_num((r.get("parametros") or {}).get("inicio_impulso_s")) or -1) - 0.09) < 1e-6]
     cs = [crit("capturas_127V_50Hz_evento_90ms", OK if evento90 else INSUF,
                {"127V/50Hz": len(alvo), "com_evento_90ms": len(evento90)}, ">=1",
-               "execucao_pendencias P-03; parametros.inicio_impulso_s = 0,09 (docs/metadata.md)")]
+               "docs/projeto/pendencias.md P-03; parametros.inicio_impulso_s = 0,09 (docs/metadata.md)")]
     desvios, picos, pico_detalhe, sobressinais = [], [], [], []
     invalidas = [r["id_captura"] for r in evento90 if not (
         isinstance(r.get("validacao_fisica"), dict) and r["validacao_fisica"].get("ok") is True)]
@@ -504,7 +504,7 @@ def _via_verificador(ctx: Contexto, pid: str) -> tuple:
         alvo = [c for c in capturas if abs(float((c.metadado.get("parametros") or {}).get("start_hz", 0)) - 47.0) < 0.01
                 and abs(float((c.metadado.get("parametros") or {}).get("end_hz", 0)) - 53.0) < 0.01]
         cs.append(crit("capturas_18_47_para_53Hz", OK if alvo else INSUF, len(alvo), ">=1",
-                       "PENDENCIAS_TRACKER P-06: continuidade de fase 47->53 Hz"))
+                       "docs/projeto/pendencias.md P-06: continuidade de fase 47->53 Hz"))
         res = [r for r in ver.verificar_capturas(alvo) if r.verificacao == "fase_18"] if alvo else []
         medidas = [r for r in res if r.valor is not None]
         pior = max((abs(r.valor) for r in medidas), default=None)
@@ -519,14 +519,14 @@ def _via_verificador(ctx: Contexto, pid: str) -> tuple:
     faltam = [c for c in classes if c not in por]
     com_sorteio = all(c.metadado.get("sorteio_posicao") for c in capturas)
     cs.append(crit("classes_01_a_04_presentes", OK if not faltam else INSUF, sorted(por), list(classes),
-                   "PENDENCIAS_TRACKER P-05", nota=f"faltam: {faltam}" if faltam else None))
+                   "docs/projeto/pendencias.md P-05", nota=f"faltam: {faltam}" if faltam else None))
     cs.append(crit("sorteio_de_posicao_ligado", OK if com_sorteio else INSUF, com_sorteio, True,
                    "metadata sorteio_posicao (docs/metadata.md)"))
     larg = [r for r in res if r.verificacao == "largura_pulse" and r.valor is not None]
     cs.append(crit("largura_do_pulso_ms", SEMDADOS if not larg else (OK if all(r.ok for r in larg) else AVISO),
                    max((abs(r.valor) for r in larg), default=None), ver.TOL_LARGURA_MS,
                    "scripts/verificar_sessao_bancada.py::TOL_LARGURA_MS (limiar PROPOSTO, não critério físico validado)",
-                   nota="excesso é aviso: execucao_pendencias P-05 mantém o limiar distinto de critério validado"))
+                   nota="excesso é aviso: docs/projeto/pendencias.md P-05 mantém o limiar distinto de critério validado"))
     pt = [r for r in res if r.verificacao == "pre_trigger" and r.valor is not None]
     cs.append(crit("pre_trigger_desvio_amostras", SEMDADOS if not pt else (OK if all(r.ok for r in pt) else AVISO),
                    max((abs(r.valor) for r in pt), default=None), ver.TOL_PRETRIGGER_AMOSTRAS,
@@ -563,7 +563,7 @@ def p07(ctx: Contexto) -> tuple:
     except (OSError, subprocess.SubprocessError) as exc:
         cs.append(crit("recalibrar_extremos_executou", INSUF, str(exc), 0, "scripts/recalibrar_extremos.py"))
     cs.append(crit("diff_de_calibracao_revisado", ND, None, None,
-                   "execucao_pendencias P-07: 'revisar diff'; validação em coleta SEGUINTE, sem aprovação retroativa"))
+                   "docs/projeto/pendencias.md P-07: 'revisar diff'; validação em coleta SEGUINTE, sem aprovação retroativa"))
     cs.append(criterio_procedencia(ctx, r))
     return cs, True, {"recalibracao": extra}
 
@@ -579,7 +579,7 @@ def p08(ctx: Contexto) -> tuple:
     for cond, regs in sorted(conds.items()):
         faltam = [c for c in ("10", "11", "12", "16") if c not in {_classe(x) for x in regs}]
         cs.append(crit(f"{cond}: classes_10_11_12_16_presentes", OK if not faltam else INSUF,
-                       sorted({_classe(x) for x in regs}), ["10", "11", "12", "16"], "PENDENCIAS_TRACKER P-08"))
+                       sorted({_classe(x) for x in regs}), ["10", "11", "12", "16"], "docs/projeto/pendencias.md P-08"))
         viol, sem, pior = [], [], None
         for x in regs:
             pk, vl, prev = _num(x.get("pico_medido_v")), _num(x.get("vale_medido_v")), _num(x.get("extremo_previsto_v"))
@@ -592,7 +592,7 @@ def p08(ctx: Contexto) -> tuple:
                 viol.append(f"{x['id_captura']}: {m:.1f} V > {prev:.1f} V")
         cs.append(crit(f"{cond}: extremo_medido_ate_extremo_previsto",
                        INSUF if sem and not viol else (FALHA if viol else OK), {"maior_razao": pior, "sem_medida": sem},
-                       "razão <= 1", "metadata extremo_previsto_v; execucao_pendencias P-08 (violação exige investigação)",
+                       "razão <= 1", "metadata extremo_previsto_v; docs/projeto/pendencias.md P-08 (violação exige investigação)",
                        nota="; ".join(viol[:8]) or None))
         teto_viol = [x["id_captura"] for x in regs if (_num(x.get("teto_extremos_v")) is not None
                      and _num(x.get("pico_medido_v")) is not None and _num(x.get("vale_medido_v")) is not None
@@ -654,7 +654,7 @@ def p10(ctx: Contexto) -> tuple:
     pontos = {f"{n:g}": {"rota_esperada": ROTA_ESPERADA_05[n], "capturas": len(por_ponto.get(n, [])),
                          "com_validacao_ok": sum(1 for *_x, ok in por_ponto.get(n, []) if ok)} for n in sorted(exigidos)}
     cs = [crit("niveis_thd_cobertos", OK if not faltam else INSUF, sorted(niveis), sorted(exigidos),
-               "execucao_pendencias P-10 (CSIN 10/15/20 %, norma 2 %, TRACe 30 %)",
+               "docs/projeto/pendencias.md P-10 (CSIN 10/15/20 %, norma 2 %, TRACe 30 %)",
                nota=f"faltam: {faltam}" if faltam else None),
           crit("validacao_fisica_ok", OK if not ruins else FALHA, ruins or None, "ok=true em todas",
                "mestre.py comparar_fisicamente (tol. envelope/THD de VALIDACAO_TOL_*)"),
@@ -686,7 +686,7 @@ def p16(ctx: Contexto) -> tuple:
     commits = {s.procedencia()["git_commit"] for s in ctx.sessoes if s.procedencia()["git_commit"]}
     cs = [
         crit("sistema_windows", OK if win else INSUF, pc.get("plataforma"), "Windows",
-             "execucao_pendencias P-16: Windows efetivo; suíte em outra máquina não fecha"),
+             "docs/projeto/pendencias.md P-16: Windows efetivo; suíte em outra máquina não fecha"),
         crit("codigo_de_saida_zero", OK if pc.get("codigo_saida") == 0 else FALHA, pc.get("codigo_saida"), 0, "unittest discover"),
         crit("sem_falhas_nem_erros", OK if falhas == 0 and erros == 0 else FALHA,
              {"falhas": falhas, "erros": erros}, 0, "unittest discover"),
@@ -733,7 +733,7 @@ def p17(ctx: Contexto) -> tuple:
         resumo += [{"rotulo": l.get("rotulo"), "razao_ch1_ac_sobre_alvo": l.get("razao_ch1_ac_sobre_alvo"),
                     "razao_ch1_total_sobre_fonte_ac": l.get("razao_ch1_total_sobre_fonte_ac")} for l in linhas]
     cs.append(crit("deficit_acdc_aceitavel", ND, None, None,
-                   "execucao_pendencias P-17 só pede caracterizar (CA e RMS total); sem tolerância; V/g não é correção"))
+                   "docs/projeto/pendencias.md P-17 só pede caracterizar (CA e RMS total); sem tolerância; V/g não é correção"))
     cs.append(criterio_procedencia_artefatos([(a.name, j) for a, j in reais]))
     return cs, True, {"razoes": resumo}
 
@@ -765,7 +765,7 @@ def p18(ctx: Contexto) -> tuple:
         cs.append(crit("resultados_no_json", INSUF, 0, ">=1", "resultado.json de teste_passo_final_sin.py"))
     cs.append(criterio_procedencia_artefatos([(a.parent.name, ctx.json_de(a) or {}) for a in arts]))
     cs.append(crit("aceitacao_LIST_e_restauracao_na_fonte", ND, None, None,
-                   "execucao_pendencias P-18: conferir no scpi_transcricao.log; sem critério automático"))
+                   "docs/projeto/pendencias.md P-18: conferir no scpi_transcricao.log; sem critério automático"))
     cs.append(crit("padrao_OFF_confirmado_pelo_responsavel", ND, None, None, "decisão do responsável (frente D)"))
     return cs, True, {}
 
@@ -803,7 +803,7 @@ def p19(ctx: Contexto) -> tuple:
     cs.append(crit("trace_data_1024_finitos_ou_nao_suportado", res,
                    {"capturas_com_1024_finitos": finitas, "nao_suportado_registrado": len(nao_sup), "erros": len(erros)},
                    "1024 valores finitos por TRACe, ou erro SCPI explícito de comando não suportado",
-                   "ametek_orm.ler_trace (TRACE_POINTS=1024) / execucao_pendencias P-19", nota=nota))
+                   "ametek_orm.ler_trace (TRACE_POINTS=1024) / docs/projeto/pendencias.md P-19", nota=nota))
     cs.append(criterio_procedencia(ctx, r))
     humano = bool(nao_sup)
     return cs, True, {"revisao_forcada": humano}
@@ -838,7 +838,7 @@ def p21(ctx: Contexto) -> tuple:
             cs.append(crit(f"{s.pasta.name}: {cond}: calibracao_da_condicao", OK if e and not faltam else INSUF,
                            {"existe": bool(e), "classes_sem_fator": faltam, "origem": (e or {}).get("origem")},
                            "entrada por_condicao com fatores das 20 classes e origem registrada",
-                           "logica/calibracao_extremos.json (por_condicao) / execucao_pendencias P-21"))
+                           "logica/calibracao_extremos.json (por_condicao) / docs/projeto/pendencias.md P-21"))
     cs.append(crit("calibracao_feita_antes_da_coleta", ND, None, None,
                    "ordem temporal não é verificável offline; conferir origem dos fatores e datas (sem elevar limites)"))
     cs.append(criterio_procedencia(ctx, ctx.fisicos))
@@ -878,7 +878,7 @@ def p22(ctx: Contexto) -> tuple:
                        {"capturas": len(caps), "tempo_s": round(dt, 4)}, "leitura completa sem exceção",
                        "logica/sessao_io.py::ler_capturas", nota=erro))
     host = platform.node()  # só informativo: é o computador de ANÁLISE, não o que mediu
-    origem22 = "execucao_pendencias P-22: PC/disco da bancada; hostname gravado no próprio artefato de medição"
+    origem22 = "docs/projeto/pendencias.md P-22: PC/disco da bancada; hostname gravado no próprio artefato de medição"
     medicoes = []
     for padrao in ("benchmark_bancada*.json", "benchmark_sessao_io*.json"):
         for a in ctx.procura(padrao):
@@ -973,7 +973,7 @@ def p23(ctx: Contexto) -> tuple:
                 for linha in lg.read_text(encoding="utf-8", errors="replace").splitlines())
         totais[str(lg)] = n
         cs.append(crit(f"{lg.parent.name}: gravacoes_TRACe_no_log", OK if n <= ORCAMENTO_TRACES else INSUF, n, ORCAMENTO_TRACES,
-                       "orçamento por CONEXÃO (execucao_pendencias P-23); o log da sessão soma conexões",
+                       "orçamento por CONEXÃO (docs/projeto/pendencias.md P-23); o log da sessão soma conexões",
                        nota=None if n <= ORCAMENTO_TRACES else "acima de 216 no total: separar por conexão manualmente; "
                        "formato do log não verificado contra bancada real"))
     if not logs:
@@ -984,7 +984,7 @@ def p23(ctx: Contexto) -> tuple:
                    "diag/diag_nativo_output_off.py (diag_nativo-*.json com resultados T<n> e _procedencia física, commit limpo)",
                    nota="; ".join(diag_rejeitados) or None))
     cs.append(crit("causa_fisica_da_trava", ND, None, None,
-                   "execucao_pendencias P-23: causa só com diagnóstico real e interpretação humana"))
+                   "docs/projeto/pendencias.md P-23: causa só com diagnóstico real e interpretação humana"))
     if ctx.fisicos:
         cs.append(criterio_procedencia(ctx, ctx.fisicos))
     return cs, True, {"gravacoes_por_log": totais}
@@ -1047,7 +1047,7 @@ def p31(ctx: Contexto) -> tuple:
     cs = [crit("capturas_fisicas_com_tres_versoes", OK if not faltam else INSUF, sorted(por), list(classes),
                "diag/analisar_modelo_programado.py::CLASSES; metadata tres_versoes",
                nota=f"faltam: {faltam}" if faltam else None),
-          crit("metrica_oficial", ND, None, None, "execucao_pendencias P-31: falta justificar a métrica (nominal x fundamental ajustada)"),
+          crit("metrica_oficial", ND, None, None, "docs/projeto/pendencias.md P-31: falta justificar a métrica (nominal x fundamental ajustada)"),
           criterio_procedencia(ctx, r)]
     arts = []
     for a in ctx.procura("modelo_programada_sessoes*.json"):

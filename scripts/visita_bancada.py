@@ -1,4 +1,4 @@
-"""Visita à bancada num comando só: conduz ``docs/bancada_pendencias.md`` do
+"""Visita à bancada num comando só: conduz ``docs/roteiro-bancada.md`` do
 Bloco 1 ao fechamento, nas cinco condições da P-26.
 
 Uso no PC da bancada (atalho ``scripts\\VISITA_BANCADA.cmd``)::
@@ -64,7 +64,7 @@ TENSAO_MAX_FASE_NEUTRO = 270.0
 # Códigos de saída do modo roteiro da CLI (SessaoCLI.ROTEIRO_*).
 CLI_OK, CLI_COM_FALHAS, CLI_INFRA, CLI_NAO_CONFIRMADO, CLI_INVALIDO = 0, 1, 2, 3, 4
 
-# Bloco 9 com ``set perfil todos`` (bancada_pendencias.md, passo 9.3).
+# Bloco 9 com ``set perfil todos`` (roteiro-bancada.md, passo 9.3).
 PARTES_9_TODOS = ("06,10", "11,12", "13,14", "15,16", "07,08,09,20")
 PARTE_1_TODOS = "01,02,03,04,05,17,18,19"  # passo 8.1 com set perfil todos
 CLASSES_P09 = "10,11,12,16"  # Bloco 10-B
@@ -401,7 +401,7 @@ class Visita:
         if alertas:
             for a in alertas:
                 self.log(f"ALERTA: {a}")
-            self.log("Extremo acima do previsto (bancada_pendencias.md, passo 9.5): registrar; perto de "
+            self.log("Extremo acima do previsto (roteiro-bancada.md, passo 9.5): registrar; perto de "
                      f"{TETO_PICO_V:g} V é achado de segurança.")
             resp = self.entrada("Digite C para continuar a visita ou P para parar aqui: ").strip().upper()
             if resp != "C":
