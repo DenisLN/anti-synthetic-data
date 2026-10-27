@@ -11,3 +11,5 @@
 - 2026-10-27 12:40 · pri 31 · ASD: Scripts de Diagnóstico em diag/ e Visita Rodando de Lá · haiku · em andamento
 - 2026-10-27 13:00 · pri 31 · ASD: Scripts de Diagnóstico em diag/ e Visita Rodando de Lá · haiku · feito · relatório: sem-pendencias/31-diag.md · critério de parada atendido
 - 2026-10-27 13:00 · pri 32 · ASD: Documentação Unificada no Read the Docs · sonnet · em andamento
+- 2026-10-27 13:13 · pri 32 · ASD: Documentação Unificada no Read the Docs · sonnet · feito · relatório: sem-pendencias/32-docs-rtd.md · critério de parada atendido
+- 2026-10-27 13:13 · pri 33 · ASD: Rastreador de Pendências Integrado ao Read the Docs · sonnet · em andamento
