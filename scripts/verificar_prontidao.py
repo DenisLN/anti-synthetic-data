@@ -42,6 +42,18 @@ def _evidencias(base, valor, contexto, faltantes):
             faltantes.append(f"{contexto}: {exc}")
 
 
+def _item(pendencias, ident):
+    """Item da pendência: aceita a chave "P-01" (arquivo único, docs/estado_prontidao.json)
+    e a "P01" (modelo antigo do manifesto)."""
+    return pendencias.get(f"{ident[0]}-{ident[1:]}", pendencias.get(ident))
+
+
+def _estado(item):
+    """Formato novo: "estado" (concluida, aguarda-bancada, aguarda-decisao, em-andamento,
+    reprovada-bancada). Formato antigo: "status" binário (concluida/aberta)."""
+    return item.get("estado", item.get("status"))
+
+
 def _sessao(base, texto, condicao, faltantes):
     resumo = {"classes_aprovadas": [], "capturas_independentes": 0, "aliases_ignorados": 0}
     try:
@@ -141,8 +153,8 @@ def verificar(manifesto):
     if not isinstance(pendencias, dict):
         pendencias = {}
     for ident in PENDENCIAS:
-        item = pendencias.get(ident)
-        if not isinstance(item, dict) or item.get("status") != "concluida":
+        item = _item(pendencias, ident)
+        if not isinstance(item, dict) or _estado(item) != "concluida":
             faltantes.append(f"{ident}: status concluida obrigatório")
         if isinstance(item, dict):
             _evidencias(base, item.get("evidencias"), ident, faltantes)

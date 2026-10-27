@@ -415,8 +415,9 @@ class IntegridadeEIsolamento(Base):
         pasta = montar_sessao(self.raiz, "sessao_b", [r08(1)])
         rel, saida = self.agregar(pasta)
         self.assertEqual(estado.read_bytes(), antes)
-        bloco = rel["bloco_estado_prontidao"]["pendencias"]["P03"]
-        self.assertEqual(bloco["status"], "aberta" if rel["itens"]["P-03"]["requer_revisao_humana"] else "concluida")
+        bloco = rel["bloco_estado_prontidao"]["pendencias"]["P-03"]
+        self.assertEqual(bloco["estado_sugerido"],
+                         "aguarda-decisao" if rel["itens"]["P-03"]["requer_revisao_humana"] else "concluida")
         self.assertEqual(len(bloco["evidencias"]), 1)
 
     def test_nenhum_import_de_pyvisa_ou_pymeasure(self):

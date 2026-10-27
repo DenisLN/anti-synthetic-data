@@ -1,168 +1,844 @@
 {
-  "instrucoes": "Caminhos relativos a este manifesto, apenas arquivos reais revisados. Não preencher com dados sintéticos. A verificação é estrutural e não autentica a origem física nem substitui a análise científica.",
+  "esquema": 2,
+  "instrucoes": "Arquivo único de estado das pendências P-01 a P-31. Fonte do site (docs/projeto/pendencias.md), de scripts/gerar_mapa_pendencias.py e de scripts/verificar_prontidao.py. Formato e fluxo: docs/contribuir_docs.md. Evidências são caminhos relativos a docs/ de arquivos reais; não preencher com dados sintéticos. A verificação é estrutural e não autentica a origem física nem substitui a análise científica.",
+  "atualizado": "2026-10-22",
+  "nota_atualizacao": "suíte offline 759 OK / 0 skips no PC da bancada, evidencias/2026-10-22/pc_bancada.json",
   "pendencias": {
-    "P01": {
-      "status": "aberta",
+    "P-01": {
+      "titulo": "executar campanha v1.15 e reconciliar cobertura por classe/perfil/condição",
+      "estado": "aguarda-bancada",
+      "prioridade": "alta",
+      "responsavel": "Coordenador + operador",
+      "acao": "executar campanha v1.15 e reconciliar cobertura por classe/perfil/condição",
+      "dependencia": "Etapas 0–3; P-26",
+      "criterio": "Sessões reais com SHA/configuração, análise de cada bloco; lacunas permanecem explícitas",
+      "quem_fecha": [
+        "bancada"
+      ],
+      "frentes": [
+        "K",
+        "R"
+      ],
+      "falta": "Campanha v1.15 real por classe/perfil/condição",
+      "como_tratada": null,
+      "situacao_execucao": "Preparada / aguarda bancada",
+      "entrega": "Executar campanha v1.15 por classe/perfil/condição; registrar sessões e cobertura, sem converter simulação em validação física.",
+      "decisao_dono": {
+        "registrada": false,
+        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+      },
+      "commits": [],
       "evidencias": []
     },
-    "P02": {
-      "status": "aberta",
+    "P-02": {
+      "titulo": "comparar marcadores, TRACe recuperada e recaptura 08/09",
+      "estado": "aguarda-bancada",
+      "prioridade": "alta",
+      "responsavel": "B + operador",
+      "acao": "comparar marcadores, TRACe recuperada e recaptura 08/09; testar hipóteses do evento em 100 ms",
+      "dependencia": "Dados e blocos 4/6 do roteiro; P-19",
+      "criterio": "Diagnóstico discriminando hipóteses; correção, se necessária, seguida de nova captura. Ferramenta existente não fecha mecanismo",
+      "quem_fecha": [
+        "bancada"
+      ],
+      "frentes": [
+        "K",
+        "R"
+      ],
+      "falta": "Reprovada em 2026-10-22 (`evidencias/2026-10-22/fechamento.json`): marcadores 30/30 sem espúrios, recapturas 08/09 a 50 e 60 Hz presentes, mas posição da 08 a 127 V/60 Hz desvia −16 amostras (limite 10) em uma captura por perfil (`sessao_2026-10-22_15-19-56`); hipótese da cópia de 100 ms sem critério definido",
+      "como_tratada": null,
+      "situacao_execucao": "Reprovada em 2026-10-22 / aguarda bancada",
+      "entrega": "Marcadores 30/30 sem espúrios e recapturas 08/09 presentes; posição da 08 a 127 V/60 Hz desvia −16 amostras (limite 10); `evidencias/2026-10-22/fechamento.json`. Diagnóstico da cópia/evento em 100 ms com marcadores, TRACe recuperada e capturas 08/09; distinguir hipóteses antes da correção.",
+      "decisao_dono": {
+        "registrada": false,
+        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+      },
+      "commits": [],
       "evidencias": []
     },
-    "P03": {
-      "status": "concluida",
+    "P-03": {
+      "titulo": "recapturar 08 a 127 V/50 Hz com evento em 90 ms",
+      "estado": "concluida",
+      "prioridade": "alta",
+      "responsavel": "B + operador",
+      "acao": "recapturar 08 a 127 V/50 Hz com evento em 90 ms",
+      "dependencia": "Campanha e checagem de segurança",
+      "criterio": "Desvio absoluto ≤10 amostras, pico ≤374,2 V, sobressinal ≤0,55 conforme critério documentado; acima disso registrar achado de segurança",
+      "quem_fecha": [
+        "bancada"
+      ],
+      "frentes": [
+        "K",
+        "R"
+      ],
+      "falta": "—",
+      "como_tratada": "2026-10-22: 3/3 capturas a 127 V/50 Hz com evento 90 ms, desvio 2 amostras, pico 339 V ≤ 374,2 V, sobressinal 0,295 pu ≤ 0,55; `evidencias/2026-10-22/fechamento.json`",
+      "situacao_execucao": "Concluída — bancada 2026-10-22",
+      "entrega": "3/3 capturas: desvio 2 amostras, pico 339 V, sobressinal 0,295 pu (`evidencias/2026-10-22/fechamento.json`). Critério: recapturar 08 a 127 V/50 Hz, evento 90 ms; conferir posição ≤10 amostras, teto 374,2 V e sobressinal conforme o roteiro. Excesso exige investigação, não relaxamento do teto.",
+      "decisao_dono": {
+        "registrada": false,
+        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+      },
+      "commits": [],
       "evidencias": [
         "evidencias/2026-10-22/fechamento.json"
       ]
     },
-    "P04": {
-      "status": "concluida",
+    "P-04": {
+      "titulo": "conferir `program_capture`",
+      "estado": "concluida",
+      "prioridade": "media",
+      "responsavel": "A",
+      "acao": "conferir `program_capture`; propor recusa de pico excessivo nos caminhos completo e por ciclo",
+      "dependencia": "Baseline e decisão de comportamento",
+      "criterio": "Testes com instrumento falso provando recusa antes de escrita pertinente, fronteiras válidas aceitas e nenhum enfraquecimento de validações",
+      "quem_fecha": [
+        "decisao-dono",
+        "codigo"
+      ],
+      "frentes": [],
+      "falta": "—",
+      "como_tratada": "software",
+      "situacao_execucao": "Concluída — software",
+      "entrega": "Recusa offline de parâmetros inválidos e excessos de RMS/pico, inclusive senoide imediata com offset e cache. Faixa de frequência do driver aplicada antes de I/O. Regressões e integração aprovadas.",
+      "decisao_dono": {
+        "registrada": false,
+        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+      },
+      "commits": [],
       "evidencias": [
         "evidencias/2026-10-17/validacao_software.json",
         "execucao_pendencias.md"
       ]
     },
-    "P05": {
-      "status": "aberta",
+    "P-05": {
+      "titulo": "medir fase, posição, largura e pretrigger nas 01–04 com sorteio",
+      "estado": "aguarda-decisao",
+      "prioridade": "media",
+      "responsavel": "B + operador",
+      "acao": "medir fase, posição, largura e pretrigger nas 01–04 com sorteio",
+      "dependencia": "Campanha v1.15",
+      "criterio": "Sessões reais e relatório do verificador; registrar desvio >2 amostras como aviso, não inventar tolerância de aprovação",
+      "quem_fecha": [
+        "bancada"
+      ],
+      "frentes": [
+        "K",
+        "R"
+      ],
+      "falta": "Evidência suficiente (2026-10-22), falta revisão humana: largura ≤ 1,1 ms (limite 2); pre-trigger determinístico até ±6 amostras (aviso, limite 2 nunca validado; ver `evidencias/2026-10-22/LEIA-ME.md`); critério de fase/início não definido",
+      "como_tratada": null,
+      "situacao_execucao": "Evidência suficiente, revisão humana pendente",
+      "entrega": "2026-10-22: largura ≤ 1,1 ms; pre-trigger determinístico até ±6 amostras (aviso). Medir fase, início/duração e pretrigger nas nativas 01–04; reportar desvios e manter o limiar proposto distinto de critério físico validado.",
+      "decisao_dono": {
+        "registrada": false,
+        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+      },
+      "commits": [],
       "evidencias": []
     },
-    "P06": {
-      "status": "aberta",
+    "P-06": {
+      "titulo": "medir continuidade na rampa 47→53 Hz e restauração da base",
+      "estado": "aguarda-bancada",
+      "prioridade": "media",
+      "responsavel": "B + operador",
+      "acao": "medir continuidade na rampa 47→53 Hz e restauração da base",
+      "dependencia": "Classe 18 real",
+      "criterio": "Medição de fase/frequência; limiar de 10° continua proposta até fundamentação e decisão",
+      "quem_fecha": [
+        "bancada"
+      ],
+      "frentes": [
+        "K",
+        "R"
+      ],
+      "falta": "Bug de estado corrigido; falta continuidade de fase 47→53 Hz real",
+      "como_tratada": null,
+      "situacao_execucao": "Parcial — bug de estado corrigido",
+      "entrega": "Classe 18 após STEP/PULSe não herda readbacks antigos; divergências continuam recusadas antes de INIT. Falta medir continuidade de fase e restauração na fonte real.",
+      "decisao_dono": {
+        "registrada": false,
+        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+      },
+      "commits": [],
       "evidencias": []
     },
-    "P07": {
-      "status": "aberta",
+    "P-07": {
+      "titulo": "recalibrar 07/17 e repetir coleta com tabela revisada",
+      "estado": "aguarda-decisao",
+      "prioridade": "alta",
+      "responsavel": "B + operador",
+      "acao": "recalibrar 07/17 e repetir coleta com tabela revisada",
+      "dependencia": "Capturas reais e revisão de diff",
+      "criterio": "Fatores derivados de medições, diff revisado, calibração identificada e validação na execução seguinte",
+      "quem_fecha": [
+        "bancada"
+      ],
+      "frentes": [
+        "K",
+        "R"
+      ],
+      "falta": "Evidência suficiente (2026-10-22), falta revisão humana do diff e decisão: 07 1,186 → 1,615 e 17 1,031 → 1,575 (`022bb5c`, `a22fba9`); na Parte 6 a 07 rodou sem alerta de extremo; 17 recusada a 220 V",
+      "como_tratada": null,
+      "situacao_execucao": "Evidência suficiente, revisão humana pendente",
+      "entrega": "2026-10-22: 07 → 1,615, 17 → 1,575 (`022bb5c`, `a22fba9`). Recalibrar 07/17 com medidas reais, revisar diff e identificar calibração; validar em nova coleta, sem aprovação retroativa.",
+      "decisao_dono": {
+        "registrada": false,
+        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+      },
+      "commits": [
+        "022bb5c",
+        "a22fba9"
+      ],
       "evidencias": []
     },
-    "P08": {
-      "status": "aberta",
+    "P-08": {
+      "titulo": "conferir pico/vale das 10/11/12/16 contra previsão corrigida",
+      "estado": "aguarda-bancada",
+      "prioridade": "alta",
+      "responsavel": "B + operador",
+      "acao": "conferir pico/vale das 10/11/12/16 contra previsão corrigida",
+      "dependencia": "Campanha v1.15",
+      "criterio": "Extremos medidos compatíveis com teto previsto, por condição; qualquer violação investigada",
+      "quem_fecha": [
+        "bancada"
+      ],
+      "frentes": [
+        "K",
+        "R"
+      ],
+      "falta": "Reprovada em 2026-10-22: extremos até 1,30× o previsto (12: 264 V contra 203,5 V), abaixo do teto. Recalibrado (`13b9bdb`); validar na próxima coleta e nas outras condições",
+      "como_tratada": null,
+      "situacao_execucao": "Reprovada em 2026-10-22 / aguarda bancada",
+      "entrega": "Extremos até 1,30× o previsto, abaixo do teto; recalibrado em `13b9bdb`. Conferir pico/vale 10/11/12/16 contra previsão por condição; investigar violações do teto previsto.",
+      "decisao_dono": {
+        "registrada": false,
+        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+      },
+      "commits": [
+        "13b9bdb"
+      ],
       "evidencias": []
     },
-    "P09": {
-      "status": "aberta",
+    "P-09": {
+      "titulo": "quantificar perda da média por ciclo e viabilidade física de offset",
+      "estado": "aguarda-bancada",
+      "prioridade": "baixa",
+      "responsavel": "B",
+      "acao": "quantificar perda da média por ciclo e viabilidade física de offset; recomendar aceitar limite até haver evidência",
+      "dependencia": "P-17 para eventual compensação ACDC",
+      "criterio": "Decisão registrada com erro quantificado; se optar por mudança, demonstração técnica e regressões antes/depois",
+      "quem_fecha": [
+        "decisao-dono"
+      ],
+      "frentes": [
+        "K",
+        "R"
+      ],
+      "falta": "`diag_list_offset.py` real (2026-10-22): **sem suporte** a `SOURce:LIST:VOLTage:OFFSet` (`-113`), braço C não roda. Falta braço A (refazer, parado no alerta), braço B e análise A/B; depois aceitar a limitação com métricas (d)",
+      "como_tratada": null,
+      "situacao_execucao": "Parcial — sem suporte a offset por passo",
+      "entrega": "2026-10-22: `SOURce:LIST:VOLTage:OFFSet` não aceito (`-113`); braço C fora; faltam braços A e B. Perda de média por ciclo quantificada em `modelo_programado.json`; aceita provisoriamente como limitação. Compensação física depende de P-17 e dados reais.",
+      "decisao_dono": {
+        "registrada": true,
+        "texto": "Aceitar como limitação somente se as alternativas não se confirmarem: (b) offset DC por passo de LIST não confirmado no manual, (c) inviável, (d) publicar a distância modelo→programada. Plano: consultar `LIST:VOLT:OFFS?` na bancada; se o comando não existir, fechar como limitação aceita com (d). Fonte: `docs/decisoes_pendentes.md`, seção P-09.",
+        "data": "2026-10-21"
+      },
+      "commits": [],
       "evidencias": [
         "evidencias/2026-10-16/modelo_programado.json"
-      ]
+      ],
+      "direcao_vigente": "Aceitar e explicitar provisoriamente a perda da média por ciclo; nenhuma compensação física sem dados. Quantificar a diferença entre modelo e programada."
     },
-    "P10": {
-      "status": "concluida",
+    "P-10": {
+      "titulo": "medir RMS/THD da 05 em CSIN 10/15/20%, norma 2% e TRACe 30%",
+      "estado": "concluida",
+      "prioridade": "media",
+      "responsavel": "B + operador",
+      "acao": "medir RMS/THD da 05 em CSIN 10/15/20%, norma 2% e TRACe 30%",
+      "dependencia": "Campanha",
+      "criterio": "Capturas reais por nível, modelo/rota identificados e comparação contra critérios de validação vigentes",
+      "quem_fecha": [
+        "bancada"
+      ],
+      "frentes": [
+        "K",
+        "R"
+      ],
+      "falta": "—",
+      "como_tratada": "2026-10-22: níveis 2/5/10/15/20/30 % com validação física ok; rota CSIN para 2–20 % e TRACe para 30 %; `evidencias/2026-10-22/fechamento.json`",
+      "situacao_execucao": "Concluída — bancada 2026-10-22",
+      "entrega": "Níveis 2–30 % com validação ok e rota esperada (`evidencias/2026-10-22/fechamento.json`). Medir RMS/THD da 05: CSIN 10/15/20%, norma 2% e TRACe 30%, identificando rota, nível e configuração.",
+      "decisao_dono": {
+        "registrada": false,
+        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+      },
+      "commits": [],
       "evidencias": [
         "evidencias/2026-10-22/fechamento.json"
       ]
     },
-    "P11": {
-      "status": "concluida",
+    "P-11": {
+      "titulo": "comparar manter/reverter extensões 10–16",
+      "estado": "concluida",
+      "prioridade": "media",
+      "responsavel": "B",
+      "acao": "comparar manter/reverter extensões 10–16; revisar metadata efetiva na redução da classe 15",
+      "dependencia": "Decisão sobre definição do dataset",
+      "criterio": "Escolha registrada, testes/fixtures justificadas; metadata consistente com o sinal efetivamente programado",
+      "quem_fecha": [
+        "decisao-dono"
+      ],
+      "frentes": [],
+      "falta": "—",
+      "como_tratada": null,
+      "situacao_execucao": "Concluída — decisão e metadata",
+      "entrega": "Mantidas as extensões 10–16; classe 15 registra envelopes e THD central/mínima/máxima da redução, com testes analíticos. gerar()/fixtures preservados; validação física das classes continua em P-01/P-08.",
+      "decisao_dono": {
+        "registrada": false,
+        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+      },
+      "commits": [],
       "evidencias": [
         "evidencias/2026-10-17/validacao_software.json",
         "execucao_pendencias.md"
       ]
     },
-    "P12": {
-      "status": "concluida",
+    "P-12": {
+      "titulo": "quantificar efeitos nas 06/11/15",
+      "estado": "concluida",
+      "prioridade": "media",
+      "responsavel": "B",
+      "acao": "quantificar efeitos nas 06/11/15; recomendar comparação com programada para preservar modelo",
+      "dependencia": "Decisão científica; P-09",
+      "criterio": "Relatório de comparação e decisão. Alterar `gerar()` só com escopo explicitamente definido e regressões do dataset",
+      "quem_fecha": [
+        "decisao-dono"
+      ],
+      "frentes": [],
+      "falta": "—",
+      "como_tratada": null,
+      "situacao_execucao": "Concluída — software e decisão",
+      "entrega": "Classe 06 compara medida com a programação reconstruída, sem usar a medida como referência. Modelo ideal preservado; efeito nas 11/15 quantificado offline. Fidelidade física continua pendente em P-01.",
+      "decisao_dono": {
+        "registrada": false,
+        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+      },
+      "commits": [],
       "evidencias": [
         "evidencias/2026-10-17/validacao_software.json",
         "execucao_pendencias.md"
       ]
     },
-    "P13": {
-      "status": "concluida",
+    "P-13": {
+      "titulo": "avaliar recuperação automática versus comando explícito",
+      "estado": "concluida",
+      "prioridade": "baixa",
+      "responsavel": "A",
+      "acao": "avaliar recuperação automática versus comando explícito; recomendar recuperação visível e sem sobrescrita",
+      "dependencia": "Decisão sobre retomada e identidade da sessão",
+      "criterio": "Testes de parcial válido/truncado/corrompido e repetição idempotente; originais preservados e nenhuma energização durante recuperação",
+      "quem_fecha": [
+        "decisao-dono",
+        "codigo"
+      ],
+      "frentes": [],
+      "falta": "—",
+      "como_tratada": null,
+      "situacao_execucao": "Concluída — software",
+      "entrega": "Recuperação com lock exclusivo POSIX/Windows; escritor ativo ignorado; morte abrupta preserva ambos os IDs. Metadata/corrente/SNR/aliases preservados, pastas exclusivas e escrita pós-close recusada. Integração aprovada.",
+      "decisao_dono": {
+        "registrada": false,
+        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+      },
+      "commits": [],
       "evidencias": [
         "evidencias/2026-10-17/validacao_software.json",
         "execucao_pendencias.md"
       ]
     },
-    "P14": {
-      "status": "concluida",
+    "P-14": {
+      "titulo": "rejeitar `run 01 02` ambíguo",
+      "estado": "concluida",
+      "prioridade": "baixa",
+      "responsavel": "A",
+      "acao": "rejeitar `run 01 02` ambíguo; preservar exclusões apenas na bateria e listas explícitas como pedido exato",
+      "dependencia": "Decisão documentada",
+      "criterio": "Testes para espaços, vírgulas, intervalos, IDs inválidos/duplicados e exclusões; entrada inválida não executa classe alguma",
+      "quem_fecha": [
+        "decisao-dono"
+      ],
+      "frentes": [],
+      "falta": "—",
+      "como_tratada": null,
+      "situacao_execucao": "Concluída — software",
+      "entrega": "Parsing estrito e exclusões em listas; seleção efetiva mostrada antes de confirmação. Exclusão total ou sintaxe ambígua não executa nenhuma classe. Testes aprovados.",
+      "decisao_dono": {
+        "registrada": false,
+        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+      },
+      "commits": [],
       "evidencias": [
         "evidencias/2026-10-17/validacao_software.json",
         "execucao_pendencias.md"
       ]
     },
-    "P15": {
-      "status": "concluida",
+    "P-15": {
+      "titulo": "preferir corrigir texto para comportamento atual",
+      "estado": "concluida",
+      "prioridade": "baixa",
+      "responsavel": "A + C",
+      "acao": "preferir corrigir texto para comportamento atual; avaliar limite explícito apenas se necessário",
+      "dependencia": "Confirmar carregamento e renderização",
+      "criterio": "Matriz de formatos 1/2 e origens simulada/física; HTML com contagem esperada; se limitar, avisar truncamento e preservar dados",
+      "quem_fecha": [
+        "decisao-dono"
+      ],
+      "frentes": [],
+      "falta": "—",
+      "como_tratada": null,
+      "situacao_execucao": "Concluída — software",
+      "entrega": "Limite padrão de três capturas por classe/perfil no HTML físico/simulado; seleções explícitas preservadas e leitura dos dados originais integral. Testes aprovados.",
+      "decisao_dono": {
+        "registrada": false,
+        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+      },
+      "commits": [],
       "evidencias": [
         "evidencias/2026-10-17/validacao_software.json",
         "execucao_pendencias.md"
       ]
     },
-    "P16": {
-      "status": "concluida",
+    "P-16": {
+      "titulo": "rodar suíte offline no PC efetivo da bancada com calibração e checkout registrados",
+      "estado": "concluida",
+      "prioridade": "media",
+      "responsavel": "D + operador",
+      "acao": "rodar suíte offline no PC efetivo da bancada com calibração e checkout registrados",
+      "dependencia": "Etapa 0 e acesso ao PC",
+      "criterio": "Log completo, versões, SHA, status, resultado e skips. Resultado de outro Windows não fecha este item",
+      "quem_fecha": [
+        "bancada"
+      ],
+      "frentes": [],
+      "falta": "—",
+      "como_tratada": "suíte 680/0 falhas/0 skips no PC da bancada DESKTOP-FSEESJI, `21fb300`; `evidencias/2026-10-21/pc_bancada.json`; repetida em 2026-10-22 com 759/0, `evidencias/2026-10-22/pc_bancada.json`",
+      "situacao_execucao": "Concluída — PC da bancada",
+      "entrega": "Inspiron 15 (DESKTOP-FSEESJI), definido como PC da bancada em 21/10/2026: `scripts/validar_pc_bancada.ps1` em `21fb300`, árvore limpa, Python 3.11.9/numpy 2.4.6/PyMeasure 0.16.0/PyVISA 1.14.1, 680 testes, 0 falhas, 0 erros, 0 skips (assinaturas exatas de Windows executadas). Evidência: `evidencias/2026-10-21/pc_bancada.json` e `.log`; `fechar_pendencias.py` P-16 = evidencia_suficiente sem revisão pendente.",
+      "decisao_dono": {
+        "registrada": false,
+        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+      },
+      "commits": [
+        "21fb300"
+      ],
       "evidencias": [
         "evidencias/2026-10-21/pc_bancada.json",
         "evidencias/2026-10-21/pc_bancada.log"
       ]
     },
-    "P17": {
-      "status": "aberta",
+    "P-17": {
+      "titulo": "executar diagnóstico de amplitude ACDC, separar CA e RMS total",
+      "estado": "aguarda-decisao",
+      "prioridade": "media",
+      "responsavel": "B + operador",
+      "acao": "executar diagnóstico de amplitude ACDC, separar CA e RMS total",
+      "dependencia": "Escolha de tensão P-26",
+      "criterio": "Medições e análise do déficit de 5–6%; compensação V/g apenas após caracterização e nova validação",
+      "quem_fecha": [
+        "bancada"
+      ],
+      "frentes": [
+        "K",
+        "R"
+      ],
+      "falta": "Evidência suficiente (2026-10-22, 50 e 60 Hz, AC / ACDC offset 0 / ACDC com offset): falta decidir se o déficit em ACDC é aceitável (critério não definido)",
+      "como_tratada": null,
+      "situacao_execucao": "Evidência suficiente, revisão humana pendente",
+      "entrega": "2026-10-22: AC / ACDC offset 0 / ACDC com offset a 50 e 60 Hz; falta critério do déficit. Caracterizar déficit ACDC por CA e RMS total; não aplicar V/g como correção antes da caracterização.",
+      "decisao_dono": {
+        "registrada": false,
+        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+      },
+      "commits": [],
       "evidencias": []
     },
-    "P18": {
-      "status": "aberta",
+    "P-18": {
+      "titulo": "integração experimental do passo SINE e validação física",
+      "estado": "aguarda-bancada",
+      "prioridade": "media",
+      "responsavel": "Coordenador + D + operador",
+      "acao": "integração experimental do passo SINE e validação física",
+      "dependencia": "PR #3; decisão do padrão; campanha",
+      "criterio": "Suíte do merge e teste real da aceitação LIST/forma/restauração; manter aberto se faltar bancada",
+      "quem_fecha": [
+        "bancada",
+        "decisao-dono"
+      ],
+      "frentes": [
+        "K",
+        "R",
+        "D"
+      ],
+      "falta": "SINE integrado OFF; validar aceitação LIST/restauração na fonte; responsável confirma padrão OFF",
+      "como_tratada": null,
+      "situacao_execucao": "Parcial — integrado experimental OFF",
+      "entrega": "SINE integrado com padrão desligado e regressões offline; falta validar aceitação SCPI e a restauração na fonte real.",
+      "decisao_dono": {
+        "registrada": false,
+        "texto": "Seção em `docs/decisoes_pendentes.md` com a resposta em branco."
+      },
+      "commits": [],
+      "evidencias": [],
+      "direcao_vigente": "SINE integrado experimentalmente no checkout, desligado por padrão (`AMETEK_PASSO_FINAL_SIN=0`, `passo_final_sin=False`); validação física permanece pendente."
+    },
+    "P-19": {
+      "titulo": "verificar `TRACe:DATA?` na revisão real do equipamento",
+      "estado": "aguarda-bancada",
+      "prioridade": "media",
+      "responsavel": "B + operador",
+      "acao": "verificar `TRACe:DATA?` na revisão real do equipamento",
+      "dependencia": "Roteiro e observação do painel",
+      "criterio": "Resposta real com 1024 valores finitos ou registro explícito de comando não suportado; interromper diante de falha de infraestrutura",
+      "quem_fecha": [
+        "bancada"
+      ],
+      "frentes": [
+        "K",
+        "R"
+      ],
+      "falta": "2026-10-22: `TRACe:DATA? TCC00` devolve 10 valores (9 leituras, classes 08/09), nem 1024 finitos nem erro de comando não suportado: investigar o formato da resposta",
+      "como_tratada": null,
+      "situacao_execucao": "Insuficiente em 2026-10-22 / aguarda análise",
+      "entrega": "`TRACe:DATA? TCC00` devolve 10 valores (9 leituras). Verificar `TRACe:DATA?` no firmware real, 1024 valores finitos ou comando explicitamente não suportado; preservar intervalos de segurança.",
+      "decisao_dono": {
+        "registrada": false,
+        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+      },
+      "commits": [],
       "evidencias": []
     },
-    "P19": {
-      "status": "aberta",
+    "P-20": {
+      "titulo": "preparar congelamento, licença, autoria, citação e Zenodo",
+      "estado": "aguarda-decisao",
+      "prioridade": "media",
+      "responsavel": "Coordenador + responsável",
+      "acao": "preparar congelamento, licença, autoria, citação e Zenodo",
+      "dependencia": "Cobertura validada e decisões de direitos/publicação",
+      "criterio": "Tag/release verificáveis, metadados aprovados, licença autorizada; DOI somente quando emitido",
+      "quem_fecha": [
+        "decisao-dono"
+      ],
+      "frentes": [
+        "D"
+      ],
+      "falta": "Aguarda o Denis: licença, autoria, citação, tag/Zenodo",
+      "como_tratada": null,
+      "situacao_execucao": "Aberta — depende de direitos/publicação",
+      "entrega": "Preparar congelamento, licença e autoria verificadas, citação e Zenodo após validação; não criar licença ou DOI fictícios.",
+      "decisao_dono": {
+        "registrada": false,
+        "texto": "Aguardar o Denis (21/10/2026): licença, autoria, citação e DOI não são criados antes da resposta dele. Fonte: `docs/decisoes_pendentes.md`, seção P-20."
+      },
+      "commits": [],
+      "evidencias": [],
+      "direcao_vigente": "Preparar material de publicação sem inventar licença, autoria ou DOI. O fork não concede direitos de relicenciamento."
+    },
+    "P-21": {
+      "titulo": "calibrar novas condições antes de coleta científica nelas",
+      "estado": "aguarda-bancada",
+      "prioridade": "media",
+      "responsavel": "B + operador",
+      "acao": "calibrar novas condições antes de coleta científica nelas",
+      "dependencia": "Segurança e campanha por condição",
+      "criterio": "Tabela por tensão/frequência com origem real e validação; não subir limite para fazer classe caber",
+      "quem_fecha": [
+        "bancada"
+      ],
+      "frentes": [
+        "K",
+        "R"
+      ],
+      "falta": "Calibrar 220 V/60 Hz e 33 V/60 Hz antes da coleta científica. 50 Hz: calibração pela campanha de 127 V antes da de 230 V (`aac725b`). 220 V/60 Hz: decisão sobre a regra de condição sem tabela (`evidencias/2026-10-22/LEIA-ME.md`)",
+      "como_tratada": null,
+      "situacao_execucao": "Preparada / aguarda bancada",
+      "entrega": "Calibrar condições novas antes de coleta científica e registrar origem dos fatores, sem elevar limites para acomodar classes.",
+      "decisao_dono": {
+        "registrada": true,
+        "texto": "Opção A por enquanto (manter a regra de condição sem tabela; a rodada de 220 V calibra só as classes que cabem), escolhida pelo operador na bancada; a decisão final é do responsável. Fonte: `docs/decisoes_pendentes.md`, seção P-21.",
+        "data": "2026-10-22"
+      },
+      "commits": [
+        "aac725b"
+      ],
       "evidencias": []
     },
-    "P20": {
-      "status": "aberta",
+    "P-22": {
+      "titulo": "medir tamanho/tempo/memória da consolidação com ruído e amostras físicas",
+      "estado": "aguarda-decisao",
+      "prioridade": "baixa",
+      "responsavel": "A + B",
+      "acao": "medir tamanho/tempo/memória da consolidação com ruído e amostras físicas",
+      "dependencia": "Sessões reais; sintético apenas preliminar",
+      "criterio": "Benchmark reprodutível e integridade por leitura de retorno; perfis espelhados identificados como aliases da mesma captura, sem duplicar arrays nem tratá-los como medições independentes",
+      "quem_fecha": [
+        "bancada"
+      ],
+      "frentes": [
+        "K",
+        "R"
+      ],
+      "falta": "Evidência suficiente (2026-10-22: 14 sessões físicas lidas sem erro no DESKTOP-FSEESJI, benchmark com hashes iguais): falta definir tempo/tamanho aceitáveis",
+      "como_tratada": null,
+      "situacao_execucao": "Evidência suficiente, revisão humana pendente",
+      "entrega": "2026-10-22: benchmark com 14 sessões físicas no DESKTOP-FSEESJI, falta critério de tempo/tamanho. `benchmark_sintetico.json` mede tempo/tamanho/tracemalloc para 3/10/30 capturas e verifica leitura/aliases. Falta medir dados físicos reais e custo no PC/disco da bancada.",
+      "decisao_dono": {
+        "registrada": false,
+        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+      },
+      "commits": [],
       "evidencias": []
     },
-    "P21": {
-      "status": "aberta",
-      "evidencias": []
+    "P-23": {
+      "titulo": "alinhar orientação a grupos de classes",
+      "estado": "aguarda-bancada",
+      "prioridade": "media",
+      "responsavel": "C + A",
+      "acao": "alinhar orientação a grupos de classes; B investiga trava separadamente",
+      "dependencia": "Orçamento TRACe e roteiro",
+      "criterio": "Docs coerentes com grupos <250 gravações/conexão; causa da trava só encerrada com diagnóstico real, sem ensaio cego até travar",
+      "quem_fecha": [
+        "decisao-dono",
+        "bancada"
+      ],
+      "frentes": [
+        "K",
+        "R"
+      ],
+      "falta": "Orçamento 216/conexão aplicado; causa física da trava só com diagnóstico real",
+      "como_tratada": null,
+      "situacao_execucao": "Parcial — proteção implementada",
+      "entrega": "CLI e entrada principal recusam estimativas acima de 216 antes de abrir instrumentos; ORM verifica a captura inteira e conta tentativas cumulativas, inclusive comandos diretos e falhas de envio. Cache confirmado não consome novas gravações. Esgotamento aborta a bateria sem retry. Causa física da trava ainda depende de diagnóstico real.",
+      "decisao_dono": {
+        "registrada": false,
+        "texto": "Seção em `docs/decisoes_pendentes.md` com a resposta em branco."
+      },
+      "commits": [],
+      "evidencias": [],
+      "direcao_vigente": "Orçamento operacional de 216 gravações TRACe por conexão aplicado no CLI, entrada principal e ORM; inclui tentativas de envio incertas e comandos diretos. Esgotamento aborta a bateria sem retry. A causa física da trava continua aberta."
     },
-    "P22": {
-      "status": "aberta",
-      "evidencias": []
-    },
-    "P23": {
-      "status": "aberta",
-      "evidencias": []
-    },
-    "P24": {
-      "status": "concluida",
+    "P-24": {
+      "titulo": "substituir linhas frágeis por símbolos/links estáveis, revisar carimbos, contagens, quirk B8 e tabelas do site",
+      "estado": "concluida",
+      "prioridade": "media",
+      "responsavel": "C",
+      "acao": "substituir linhas frágeis por símbolos/links estáveis, revisar carimbos, contagens, quirk B8 e tabelas do site",
+      "dependencia": "Código e branch do site disponíveis",
+      "criterio": "Build conforme configuração real, links/âncoras conferidos e auditoria das referências; corrigir tabela P-03 e tabela de decisões renderizadas incorretamente",
+      "quem_fecha": [
+        "codigo"
+      ],
+      "frentes": [],
+      "falta": "—",
+      "como_tratada": null,
+      "situacao_execucao": "Concluída — revisão e build local",
+      "entrega": "Referências atuais por símbolos/25 `pyobject` validados AST; 1136 citações históricas fixadas por permalink SHA; B8 e contagens corrigidos; build Sphinx estrito aprovado e tabelas P-03/decisões verificadas no HTML. Publicação remota do site não é afirmada.",
+      "decisao_dono": {
+        "registrada": false,
+        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+      },
+      "commits": [],
       "evidencias": [
         "evidencias/2026-10-17/validacao_software.json",
         "execucao_pendencias.md"
       ]
     },
-    "P25": {
-      "status": "concluida",
+    "P-25": {
+      "titulo": "tratar ajustes editoriais um a um, preservando changelogs fechados",
+      "estado": "concluida",
+      "prioridade": "baixa",
+      "responsavel": "C + coordenador",
+      "acao": "tratar ajustes editoriais um a um, preservando changelogs fechados",
+      "dependencia": "Decisão de escopo; checksum da calibração",
+      "criterio": "Diff limitado e justificativa de qualquer mudança de hash; não alterar calibração só por estética",
+      "quem_fecha": [
+        "decisao-dono"
+      ],
+      "frentes": [],
+      "falta": "—",
+      "como_tratada": null,
+      "situacao_execucao": "Concluída — decisão editorial",
+      "entrega": "Removidos identificadores `spec NN` das páginas operacionais atuais; aceitas renomeação local e manutenção do texto `uso_limite_bancada` sem alterar o JSON/hash. Mantidos histórico fechado e termos de governança em AGENTS por decisão explícita.",
+      "decisao_dono": {
+        "registrada": false,
+        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+      },
+      "commits": [],
       "evidencias": [
         "evidencias/2026-10-17/validacao_software.json",
         "execucao_pendencias.md"
       ]
     },
-    "P26": {
-      "status": "aberta",
+    "P-26": {
+      "titulo": "registrar perfis, frequências e eventual ACDC 230 V antes da coleta",
+      "estado": "aguarda-bancada",
+      "prioridade": "media",
+      "responsavel": "Coordenador + operador",
+      "acao": "registrar perfis, frequências e eventual ACDC 230 V antes da coleta",
+      "dependencia": "Disponibilidade da bancada",
+      "criterio": "Configuração prévia documentada e igual à sessão coletada",
+      "quem_fecha": [
+        "decisao-dono"
+      ],
+      "frentes": [
+        "K",
+        "R"
+      ],
+      "falta": "Decidida em 21/10: 5 condições, `set perfil todos`, 1 captura/classe, sem ACDC a 230 V. Fecha quando as sessões registrarem essa configuração",
+      "como_tratada": null,
+      "situacao_execucao": "Preparada / aguarda operador",
+      "entrega": "Registrar antes da coleta perfil/frequência/tensão e escopo ACDC opcional 230 V; resolver essa exceção ao roteiro de 127 V antes de executá-la.",
+      "decisao_dono": {
+        "registrada": true,
+        "texto": "Perfis `todos`; condições 127 V/60 Hz, 127 V/50 Hz, 230 V/50 Hz, 220 V/60 Hz e 33 V/60 Hz; ACDC só a 127 V; 1 captura por classe. Fonte: `docs/decisoes_pendentes.md`, seção P-26.",
+        "data": "2026-10-21"
+      },
+      "commits": [],
       "evidencias": []
     },
-    "P27": {
-      "status": "concluida",
+    "P-27": {
+      "titulo": "localizar `validacao_gerador_v1.14.md` ou tornar explícita a ausência da fonte das correlações",
+      "estado": "concluida",
+      "prioridade": "baixa",
+      "responsavel": "C + B",
+      "acao": "localizar `validacao_gerador_v1.14.md` ou tornar explícita a ausência da fonte das correlações",
+      "dependencia": "Material do responsável/origem verificável",
+      "criterio": "Fonte recuperada e verificável ou alegações sem lastro removidas/reclassificadas com justificativa; não fabricar referência",
+      "quem_fecha": [
+        "decisao-dono"
+      ],
+      "frentes": [],
+      "falta": "—",
+      "como_tratada": null,
+      "situacao_execucao": "Concluída — comparações sem fonte retiradas",
+      "entrega": "Removidas faixas de referência e coluna “bate?” que dependiam do arquivo ausente. Valores históricos permanecem identificados como reportados e não são critérios de aceite; não se fabricou a fonte.",
+      "decisao_dono": {
+        "registrada": false,
+        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+      },
+      "commits": [],
       "evidencias": [
         "evidencias/2026-10-17/validacao_software.json",
         "execucao_pendencias.md"
       ]
     },
-    "P28": {
-      "status": "aberta",
+    "P-28": {
+      "titulo": "comparar interpolação atual com sinal bruto e alternativa com anti-aliasing",
+      "estado": "aguarda-decisao",
+      "prioridade": "baixa",
+      "responsavel": "B",
+      "acao": "comparar interpolação atual com sinal bruto e alternativa com anti-aliasing",
+      "dependencia": "Taxa bruta real; offline preliminar",
+      "criterio": "Erro temporal, espectral, pico, THD e correlação quantificados; decisão com efeito sobre compatibilidade e dataset",
+      "quem_fecha": [
+        "bancada"
+      ],
+      "frentes": [
+        "K",
+        "R"
+      ],
+      "falta": "Evidência suficiente (2026-10-22: 135 exportações brutas íntegras, reamostragem casada por SHA-256): falta decidir se o FIR substitui o interpolador",
+      "como_tratada": null,
+      "situacao_execucao": "Evidência suficiente, revisão humana pendente",
+      "entrega": "2026-10-22: 135 exportações brutas íntegras e reamostragem casada por SHA-256. `set diagnostico bruto on` preserva BYTE/preamble/tempos antes de interpolar, sem nova aquisição, em arquivos independentes com vínculo por hash. Analisador compara RMS/pico/THD/erro temporal/espectro na grade salva, com rastreabilidade de entrada/configuração. Faltam exportações reais e revisão dos resultados físicos; FIR não substitui o interpolador do dataset.",
+      "decisao_dono": {
+        "registrada": false,
+        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+      },
+      "commits": [],
       "evidencias": []
     },
-    "P29": {
-      "status": "aberta",
+    "P-29": {
+      "titulo": "obter transcrições reais e selecionar exemplos verificáveis para comandos",
+      "estado": "aguarda-bancada",
+      "prioridade": "media",
+      "responsavel": "C + responsável",
+      "acao": "obter transcrições reais e selecionar exemplos verificáveis para comandos",
+      "dependencia": "Logs locais não versionados e definição de publicação",
+      "criterio": "Trechos com sessão, condição, contexto e revisão; revisar dados sensíveis antes de publicar; ausência dos logs permanece bloqueio",
+      "quem_fecha": [
+        "decisao-dono"
+      ],
+      "frentes": [
+        "R",
+        "D"
+      ],
+      "falta": "Decisão B (21/10): logs antigos indisponíveis; usar `scpi_transcricao.log` das sessões novas, com revisão de dados sensíveis",
+      "como_tratada": null,
+      "situacao_execucao": "Bloqueada por logs reais",
+      "entrega": "Transcrições locais das sessões não disponíveis no checkout; obter trechos com sessão/condição/SHA. A tabela SCPI descreve código/manual, não prova medição.",
+      "decisao_dono": {
+        "registrada": true,
+        "texto": "Opção B: usar as `scpi_transcricao.log` das sessões novas da campanha v1.15, revisadas antes de publicar; os dados do PC antigo não podem ser copiados. Fonte: `docs/decisoes_pendentes.md`, seção P-29.",
+        "data": "2026-10-21"
+      },
+      "commits": [],
       "evidencias": []
     },
-    "P30": {
-      "status": "concluida",
+    "P-30": {
+      "titulo": "definir escopo de “piloto” e reconciliar 63 vs 99",
+      "estado": "concluida",
+      "prioridade": "baixa",
+      "responsavel": "C + B",
+      "acao": "definir escopo de “piloto” e reconciliar 63 vs 99",
+      "dependencia": "Sessões originais e critério de inclusão",
+      "criterio": "Tabela por sessão com 36+36+27, justificando subconjuntos; registrar retificação sem apagar histórico",
+      "quem_fecha": [
+        "decisao-dono"
+      ],
+      "frentes": [],
+      "falta": "—",
+      "como_tratada": "retificação: 63/99 históricos não verificáveis; `tres_versoes.md`, `AGENTS.md`",
+      "situacao_execucao": "Concluída — retificação",
+      "entrega": "Sessões de 07/10 irrecuperáveis (decisão de 21/10/2026). As contagens 63 (\"piloto\") e 99 (36+36+27) ficam como históricas e não verificáveis, com nota de retificação em `AGENTS.md` e `docs/tres_versoes.md`, sem apagar o histórico. Nenhum resultado depende delas. Mesmo critério da P-27: não se fabricou a tabela por sessão.",
+      "decisao_dono": {
+        "registrada": true,
+        "texto": "Decisão D: registrar 63 e 99 como contagens históricas não verificáveis, sem apagar o histórico. Fonte: `docs/decisoes_pendentes.md`, seção P-30.",
+        "data": "2026-10-21"
+      },
+      "commits": [],
       "evidencias": [
         "decisoes_pendentes.md",
         "tres_versoes.md",
         "execucao_pendencias.md"
       ]
     },
-    "P31": {
-      "status": "aberta",
+    "P-31": {
+      "titulo": "publicar análise comparativa nominal/fundamental ajustada e recomendar ambas com nomes explícitos",
+      "estado": "aguarda-decisao",
+      "prioridade": "baixa",
+      "responsavel": "B",
+      "acao": "publicar análise comparativa nominal/fundamental ajustada e recomendar ambas com nomes explícitos",
+      "dependencia": "Novas sessões v1.15; decisão de métrica",
+      "criterio": "Cálculo reprodutível nas sessões novas e definição de métrica oficial; baixas correlações não ocultadas pela escolha da métrica",
+      "quem_fecha": [
+        "bancada",
+        "decisao-dono"
+      ],
+      "frentes": [
+        "K",
+        "R",
+        "D"
+      ],
+      "falta": "Evidência suficiente (2026-10-22: capturas físicas das 06/10/11/12/15/16 com três versões, correlações publicadas): falta escolher a métrica oficial",
+      "como_tratada": null,
+      "situacao_execucao": "Evidência suficiente, revisão humana pendente",
+      "entrega": "2026-10-22: capturas físicas de 06/10/11/12/15/16 e correlações publicadas; falta a métrica oficial. Relatório modelo/programada publica nominal e fundamental ajustada com limitações; falta comparar novas sessões físicas e justificar a métrica oficial.",
+      "decisao_dono": {
+        "registrada": false,
+        "texto": "Seção em `docs/decisoes_pendentes.md` com a resposta em branco."
+      },
+      "commits": [],
       "evidencias": []
     }
   },

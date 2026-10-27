@@ -6,7 +6,7 @@ JSON de ``scripts/validar_pc_bancada.ps1``). Para cada P-NN física emite um
 item com status, critérios avaliados (valor medido, limite, origem do limite),
 arquivos de origem com SHA-256 e a procedência (``git_commit``/``git_sujo``)
 lida da sessão. NÃO fecha pendência: o status máximo é ``evidencia_suficiente``
-e a decisão de encerrar continua com o responsável (``docs/PENDENCIAS_TRACKER.md``).
+e a decisão de encerrar continua com o responsável (estado em ``docs/estado_prontidao.json``).
 
     python scripts/fechar_pendencias.py --sessao resultados/sessao_A [--sessao resultados/sessao_B ...] \\
         [--artefatos logs] [--artefatos resultados/passo_final_sin_<data>] \\
@@ -1130,7 +1130,10 @@ def avaliar(pid: str, ctx: Contexto) -> dict:
 
 def bloco_estado(itens: Dict[str, dict], saida: Path, sessoes: Sequence[Sessao]) -> dict:
     """Trecho opcional para docs/estado_prontidao.json (NÃO é gravado aqui).
-    ``status_sugerido`` só vira "concluida" para evidência suficiente sem revisão."""
+    ``estado_sugerido`` só vira "concluida" para evidência suficiente sem revisão; com
+    revisão humana pendente a sugestão é "aguarda-decisao". Chaves no formato do
+    arquivo único ("P-03"); cole ``estado_sugerido`` em ``estado`` e a evidência em
+    ``evidencias`` do bloco da pendência."""
     base = (RAIZ / "docs").resolve()
     try:
         rel = Path(__import__("os").path.relpath(saida.resolve(), base)).as_posix()
@@ -1140,10 +1143,10 @@ def bloco_estado(itens: Dict[str, dict], saida: Path, sessoes: Sequence[Sessao])
     for pid, it in itens.items():
         if it["status"] != "evidencia_suficiente":
             continue
-        chave = pid.replace("-", "")
-        pend[chave] = {"status": "aberta" if it["requer_revisao_humana"] else "concluida", "evidencias": [rel],
-                       "comentario": ("revisão humana pendente" if it["requer_revisao_humana"]
-                                      else "evidência suficiente; o coordenador decide o encerramento")}
+        pend[pid] = {"estado_sugerido": "aguarda-decisao" if it["requer_revisao_humana"] else "concluida",
+                     "evidencias": [rel],
+                     "comentario": ("revisão humana pendente" if it["requer_revisao_humana"]
+                                    else "evidência suficiente; o coordenador decide o encerramento")}
     cond: Dict[str, str] = {}
     for s in sessoes:
         regs = s.fisicos
@@ -1155,7 +1158,7 @@ def bloco_estado(itens: Dict[str, dict], saida: Path, sessoes: Sequence[Sessao])
                     cond[c] = Path(__import__("os").path.relpath(s.pasta.resolve(), base)).as_posix()
                 except ValueError:
                     cond[c] = str(s.pasta)
-    return {"aviso": "Proposta; não gravada. Caminhos relativos a docs/. Confira antes de colar.",
+    return {"aviso": "Proposta; não gravada. Caminhos relativos a docs/. Confira e edite o bloco da pendência em docs/estado_prontidao.json.",
             "pendencias": pend, "sessoes": cond}
 
 
