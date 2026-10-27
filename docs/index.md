@@ -6,7 +6,7 @@
 
 **Pergunta:** o que é esta documentação e por onde começar? **Resposta:** é a documentação completa de uma bancada que produz um dataset rotulado de **20 classes de distúrbio de tensão** (fonte programável AMETEK MX30-3Pi mais osciloscópio Keysight DSO-X 4034A) e de um simulador que gera o mesmo dataset sem hardware. Comece pelo {doc}`visao-geral` (uma página) e, conforme o seu papel, siga para o {doc}`guia-operador`, a {doc}`scpi` (um comando por entrada, com exemplo real), o {doc}`codigo` (o código explicado sem abri-lo) ou o {doc}`projeto/estado-validacao`.
 
-{bdg-info}`OFFLINE` Estado: **v1.15 em andamento, sem tag**; o commit do build aparece no rodapé; pendências vigentes em {doc}`execucao_pendencias`. {bdg-success}`VERIFICADO NA BANCADA` nas campanhas de 30/09 e 07/10/2026 (código anterior à v1.15). {bdg-danger}`PENDENTE P-01` Nenhum dado de bancada existe com o código da v1.15. {bdg-warning}`EXPERIMENTAL OFF` O passo final `SINE` integrado no checkout de execução ({doc}`projeto/passo-final-sin`).
+{bdg-info}`OFFLINE` Estado: **v1.15 em andamento, sem tag**; o commit do build aparece no rodapé; pendências vigentes em {doc}`projeto/pendencias`. {bdg-success}`VERIFICADO NA BANCADA` nas campanhas de 30/09 e 07/10/2026 (código anterior à v1.15). {bdg-danger}`PENDENTE P-01` Nenhum dado de bancada existe com o código da v1.15. {bdg-warning}`EXPERIMENTAL OFF` O passo final `SINE` integrado no checkout de execução ({doc}`projeto/passo-final-sin`).
 
 ::::{grid} 1 2 2 3
 :gutter: 3

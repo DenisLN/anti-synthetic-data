@@ -1,13 +1,19 @@
-# Pendências — inventário histórico de 16/10/2026
+# Pendências: estado vigente e inventário de 16/10/2026
 
 :::{note} Revisão e procedência
 Texto de referência importado do levantamento de 16/10/2026, baseado em [fa82f496](https://github.com/DenisLN/anti-synthetic-data/tree/fa82f49600543456adf78e22485ab6de5dd032b9). Citações numéricas apontam para esse snapshot e não acompanham linhas atuais. Trechos `literalinclude` são extraídos do checkout atual por símbolo; consulte {doc}`../execucao_pendencias` para implementação e evidências vigentes. Relatos de sessões e transcrições são históricos, não medições repetidas nesta revisão.
 :::
 
 
-:::{important} Estado atual em outra página
-Esta página preserva o inventário e as opções anteriores ao início da execução. “Hoje”, contagens, conferências, decisões em aberto e estados abaixo pertencem ao relato de 15–16/10/2026, não à execução atual. O usuário autorizou tratar plenamente as pendências, atualizando escolhas anteriores; código e testes já estão em alteração. Consulte {doc}`../execucao_pendencias` para decisões vigentes, implementação, testes e bloqueios. As 31 entradas não significam 31 itens ainda inalterados. Alegações históricas de acesso a sessões/transcrições não foram repetidas neste checkout.
+:::{important} Estado vigente e inventário histórico
+A seção "Estado vigente" abaixo é gerada no build a partir de `docs/estado_prontidao.json` (arquivo único de estado; formato em {doc}`../contribuir_docs`), então mostra sempre o que está commitado. As seções numeradas de 1 a 6, depois dela, preservam o inventário e as opções anteriores ao início da execução: "hoje", contagens, conferências, decisões em aberto e estados nelas pertencem ao relato de 15–16/10/2026, não à execução atual. Implementação, decisões e testes da execução: {doc}`../execucao_pendencias`. As 31 entradas não significam 31 itens ainda inalterados. Alegações históricas de acesso a sessões/transcrições não foram repetidas neste checkout.
 :::
+
+## Estado vigente
+
+@@pendencias-estado@@
+
+## Inventário histórico de 16/10/2026
 
 
 {bdg-info}`BASELINE HISTÓRICA` 31 itens então abertos (P-01 a P-31) {bdg-info}`OFFLINE` base `main` em `fa82f49`, conferida em 2026-10-15 e 2026-10-16
@@ -470,5 +476,7 @@ Cada item abaixo é uma escolha que só o responsável pelo projeto faz. A pági
 | NÃO VERIFICADO: `diag_ciclos_trace.py` carrega as sessões reais de 07/10 | RESOLVIDA hoje | ver P-02, seção 2 |
 
 ## 6. Como esta página é mantida
+
+O "Estado vigente" não se edita aqui: muda-se `docs/estado_prontidao.json` (fluxo e formato em {doc}`../contribuir_docs`) e o build regenera a seção. As seções 1 a 5 são o inventário histórico; a regra a seguir descreve como ele era mantido.
 
 Uma pendência que fecha **sai** das seções 1 a 3, passa para a seção 5 com a evidência e o commit, e o selo `PENDENTE P-NN` sai das páginas que a citavam; o id **não é reaproveitado**. Uma afirmação que dependia da pendência volta a valer com o selo certo (VERIFICADO NA BANCADA com sessão e condição, ou OFFLINE com comando e saída), nunca por omissão.

@@ -39,6 +39,7 @@ extensions = [
     "sphinx_design",
     "sphinxcontrib.mermaid",
     "scpi",
+    "pendencias",
 ]
 
 source_suffix = {".md": "markdown"}
