@@ -1,0 +1,21 @@
+{
+  "title": "anti-synthetic-data: bancada de instrumentação para dataset de qualidade de energia",
+  "upload_type": "software",
+  "description": "<p>Código para gerar (simulação) e coletar em bancada (fonte AMETEK MX30 e osciloscópio Keysight) um conjunto de dados de distúrbios de tensão em 20 classes. Esta release contém só o código, os registros de mudança (<code>CHANGELOG/</code>) e a documentação; os dados coletados são arquivados em um registro separado do Zenodo, com licença CC-BY 4.0.</p><p>Licença do código: MIT (arquivo <code>LICENSE</code>). A documentação do projeto segue CC-BY 4.0. A transcrição de manuais de fabricante em <code>docs/manuais_txt/</code> não é coberta por essas licenças: os direitos permanecem com os fabricantes.</p>",
+  "creators": [
+    {
+      "name": "Henden Loyola, Denis Natã",
+      "orcid": "0009-0002-5691-6774",
+      "affiliation": "Universidade Federal do Paraná"
+    },
+    {
+      "name": "Ricardo Marin Israel",
+      "orcid": "0009-0001-3141-4498",
+      "affiliation": "Universidade Federal do Paraná"
+    }
+  ],
+  "license": "mit",
+  "access_right": "open",
+  "language": "por",
+  "keywords": ["qualidade de energia", "distúrbios de tensão", "IEEE 1159", "dataset"]
+}

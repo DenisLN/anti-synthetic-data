@@ -1,0 +1,15 @@
+cff-version: 1.2.0
+message: "Se você usar este software, cite-o como abaixo. Os dados (dataset) têm registro e citação próprios no Zenodo."
+title: "anti-synthetic-data: bancada de instrumentação para dataset de qualidade de energia"
+type: software
+version: v1.15
+authors:
+  - given-names: "Denis Natã"
+    family-names: "Henden Loyola"
+    orcid: "https://orcid.org/0009-0002-5691-6774"
+    affiliation: "Universidade Federal do Paraná"
+  - given-names: "Ricardo Marin Israel"
+    orcid: "https://orcid.org/0009-0001-3141-4498"
+    affiliation: "Universidade Federal do Paraná"
+license: MIT
+repository-code: "https://github.com/DenisLN/anti-synthetic-data"
