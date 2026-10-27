@@ -14,7 +14,7 @@
 | {bdg-info}`OFFLINE` | conferido sem hardware: leitura de código, simulação ou análise de dados já gravados | `arquivo:linha` (ou símbolo), comando e saída, e a data |
 | {bdg-warning}`NÃO VERIFICADO` | afirmação sem evidência disponível ou que depende de bancada | **motivo** obrigatório: o que falta e quem pode fechar |
 | {bdg-danger}`PENDENTE` | existe item aberto, com id `P-NN` | o id da pendência ({doc}`projeto/pendencias`) |
-| {bdg-secondary}`FORA DA MAIN` | só existe em branch ou em material de arquivo (hoje, `feat/passo-final-sin`) | branch e commit ({doc}`projeto/passo-final-sin`) |
+| {bdg-secondary}`FORA DA MAIN` | só existe em branch ou em material de arquivo (hoje, `feat/passo-final-sin`) | branch e commit ({ref}`passo-final-sin`) |
 
 Regras: (1) o selo vale por afirmação, não por página; as páginas de classe e de comando abrem com a linha de selos que as resume; (2) VERIFICADO NA BANCADA vale **só para a condição citada** (127 V/60 Hz, 127 V/50 Hz, 230 V/50 Hz) e para o **código da data**: hoje, tudo é anterior à v1.15 (P-01); (3) um NÃO VERIFICADO sem motivo falha a revisão; (4) quando uma pendência fecha, o selo sai e o estado dele passa a concluída, com a evidência, em {doc}`projeto/pendencias`; os ids não são reaproveitados; (5) OFFLINE nunca vira VERIFICADO NA BANCADA sem sessão nova.
 

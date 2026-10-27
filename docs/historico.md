@@ -80,5 +80,5 @@ O relatório final reúne oito decisões; todas entram em {doc}`projeto/pendenci
 ### 3. O que a rodada não resolveu e o que mudou desde o relatório
 
 - **Contagem de testes.** O estado da rodada (`ESTADO.md`) fala em 480 testes com 2 pulados; o relatório final, em 497 com 2 pulados (Linux). Em 2026-10-15, no Windows 11 (Python 3.11.9), a suíte deu `Ran 497 tests in 93.003s`, `OK`, **sem testes pulados** (P-16, parcialmente resolvida); em 2026-10-16 foi repetida para esta documentação (resultado em {doc}`projeto/estado-validacao`).
-- **Rodada seguinte.** O branch `feat/passo-final-sin` ({doc}`projeto/passo-final-sin`) é anterior a esta rodada e continua fora da `main`.
+- **Rodada seguinte.** O branch `feat/passo-final-sin` ({ref}`passo-final-sin`) é anterior a esta rodada e continua fora da `main`.
 - **O que não foi auditado aqui.** Os relatórios individuais foram lidos para esta página só até o nível de conclusão por tarefa; a leitura de cada um, linha a linha, não foi refeita.

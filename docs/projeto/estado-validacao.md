@@ -8,7 +8,7 @@
 
 **Pergunta:** quanto de cada classe foi verificado, em que camada e com que código? **Resposta:** todas as 20 classes têm `gerar()` e programada conferidos **offline**; todas rodaram na **bancada em 127 V/60 Hz e 127 V/50 Hz** em 07/10/2026 e 15 delas também a 230 V/50 Hz; **mas esse código é o anterior à v1.15**: perfis, sorteio de início, duração e fase, compostas sorteadas, entalhes contínuos, a 08 a 90 ms e a crista com fator **nunca foram medidos**. Em 2026-10-16 a `main` está em `fa82f49` e a última campanha de bancada continua sendo a de 07/10/2026 (P-01).
 
-O que cada selo exige está em {doc}`../como-ler`. **Pendências:** @@pendencias-placar@@; estado, resolução e perguntas ao dono em {doc}`pendencias`. Esta página não afirma que o passo final SINE existe: ele está fora da `main` ({doc}`passo-final-sin`).
+O que cada selo exige está em {doc}`../como-ler`. **Pendências:** @@pendencias-placar@@; estado, resolução e perguntas ao dono em {doc}`pendencias`. Esta página não afirma que o passo final SINE existe: ele está fora da `main` ({ref}`passo-final-sin`).
 
 ## 1. Camadas de verificação e a fonte de cada célula
 

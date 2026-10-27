@@ -70,4 +70,4 @@ Dentro do ORM, uma segunda barreira (`configure_safe_baseline`, `ametek_orm.py:1
 
 ## Variáveis que NÃO existem na `main`
 
-`AMETEK_PASSO_FINAL_SIN=0` é o padrão atual: passo final SINE experimental integrado ao checkout de execução, desligado até validação física (P-18). `1` habilita o passo extra na lista; não habilitar automaticamente durante coleta. Ver `docs/projeto/passo-final-sin.md`.
+`AMETEK_PASSO_FINAL_SIN=0` é o padrão atual: passo final SINE experimental integrado ao checkout de execução, desligado até validação física (P-18). `1` habilita o passo extra na lista; não habilitar automaticamente durante coleta. Ver {ref}`passo-final-sin`.
