@@ -13,7 +13,7 @@ tags:
 # {{ id }} — {{ titulo }}
 
 {% if status == "concluida" %}> [!success] Concluída
-{% elseif status == "aguarda-decisao" %}> [!question] Aguarda decisão ou dado do responsável — ver [[docs/decisoes_pendentes]]
+{% elseif status == "aguarda-decisao" %}> [!question] Aguarda decisão ou dado do responsável — ver [[docs/projeto/pendencias]]
 {% elseif status == "aguarda-bancada" %}> [!todo] Software pronto; falta bancada — ver [[docs/bancada_pendencias]]
 {% elseif status == "em-andamento" %}> [!info] Em andamento
 {% elseif status == "insuficiente-bancada" %}> [!warning] Insuficiente na bancada: medida feita, resultado inconclusivo — ver [[docs/bancada_pendencias]]

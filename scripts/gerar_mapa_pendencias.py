@@ -27,7 +27,7 @@ SAIDA = RAIZ / "mapa" / "pendencias"
 CALLOUTS = {
     "concluida": "> [!success] Concluída",
     "aguarda-bancada": "> [!todo] Software pronto; falta bancada — ver [[docs/bancada_pendencias]]",
-    "aguarda-decisao": "> [!question] Aguarda decisão ou dado do responsável — ver [[docs/decisoes_pendentes]]",
+    "aguarda-decisao": "> [!question] Aguarda decisão ou dado do responsável — ver [[docs/projeto/pendencias]]",
     "em-andamento": "> [!info] Em andamento",
     "insuficiente-bancada": "> [!warning] Insuficiente na bancada: medida feita, resultado inconclusivo — ver [[docs/bancada_pendencias]]",
     "reprovada-bancada": "> [!failure] Reprovada na bancada — ver [[docs/bancada_pendencias]]",

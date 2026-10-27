@@ -202,7 +202,7 @@ class RevisaoDe2026_10_27(unittest.TestCase):
         for ident, item in self.pend.items():
             decisao = item["decisao_dono"]
             if decisao["situacao"] == "confirmada":
-                self.assertIn("decisoes_pendentes.md", decisao["texto"], ident)
+                self.assertIn("projeto/pendencias.md", decisao["texto"], ident)
 
     def test_pergunta_ao_dono_em_toda_decisao_aberta(self):
         for ident, item in self.pend.items():

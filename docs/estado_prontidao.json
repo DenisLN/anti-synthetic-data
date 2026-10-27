@@ -27,7 +27,7 @@
       "decisao_dono": {
         "registrada": true,
         "situacao": "confirmada",
-        "texto": "A quantidade por célula vem da resposta 5 da P-26: padrão, 1 captura por classe, perfil `todos`. Fonte: `docs/decisoes_pendentes.md`, seção P-26.",
+        "texto": "A quantidade por célula vem da resposta 5 da P-26: padrão, 1 captura por classe, perfil `todos`. Fonte: `docs/projeto/pendencias.md`, seção P-26.",
         "data": "2026-10-21"
       },
       "commits": [
@@ -107,7 +107,7 @@
       "decisao_dono": {
         "registrada": false,
         "situacao": "tomada-no-fork",
-        "texto": "Marcada concluída no fork a partir do fechamento de 22/10. O inventário não a lista como decisão do dono, mas `fechamento.json` pede decisão do coordenador ou responsável, e nada em `docs/decisoes_pendentes.md` a registra.",
+        "texto": "Marcada concluída no fork a partir do fechamento de 22/10. O inventário não a lista como decisão do dono, mas `fechamento.json` pede decisão do coordenador ou responsável, e nada em `docs/projeto/pendencias.md` a registra.",
         "pergunta": "Confirma o encerramento da P-03 (3 de 3 capturas a 127 V/50 Hz: desvio 2 amostras, pico 339 V, sobressinal 0,295 pu)?",
         "opcoes": [
           "Sim, encerrada",
@@ -147,7 +147,7 @@
       "decisao_dono": {
         "registrada": false,
         "situacao": "tomada-no-fork",
-        "texto": "Escolha (a) tomada no fork por 'autorização do usuário nesta sessão' (`docs/historico.md`), não por resposta registrada: `docs/decisoes_pendentes.md` não tem seção para a P-04. A revisão independente de 20/10 confirmou o código, não a decisão.",
+        "texto": "Escolha (a) tomada no fork por 'autorização do usuário nesta sessão' (`docs/historico.md`), não por resposta registrada: `docs/projeto/pendencias.md` não tem seção para a P-04. A revisão independente de 20/10 confirmou o código, não a decisão.",
         "pergunta": "Confirma que o ORM também recusa pico acima do limite (opção a)?",
         "opcoes": [
           "(a) recusar também no ORM (adotada no fork; endurece a validação)",
@@ -344,7 +344,7 @@
       "decisao_dono": {
         "registrada": true,
         "situacao": "confirmada",
-        "texto": "Resposta do dono de 21/10: aceitar como limitação somente se as alternativas não se confirmarem. Plano: consultar `LIST:VOLT:OFFS?` na bancada; 'se o comando não existir, fechar a P-09 como limitação aceita com (d)'. A condição foi cumprida em 22/10 (`-113`), mas o rastreador de 22/10 ainda exige os braços A e B, que não estão no plano. Fonte: `docs/decisoes_pendentes.md`, seção P-09.",
+        "texto": "Resposta do dono de 21/10: aceitar como limitação somente se as alternativas não se confirmarem. Plano: consultar `LIST:VOLT:OFFS?` na bancada; 'se o comando não existir, fechar a P-09 como limitação aceita com (d)'. A condição foi cumprida em 22/10 (`-113`), mas o rastreador de 22/10 ainda exige os braços A e B, que não estão no plano. Fonte: `docs/projeto/pendencias.md`, seção P-09.",
         "data": "2026-10-21",
         "pergunta": "O comando de offset por passo não existe (`-113`, 22/10). Fecha a P-09 agora como limitação aceita com (d), ou exige antes os braços A e B?",
         "opcoes": [
@@ -429,7 +429,7 @@
       "decisao_dono": {
         "registrada": false,
         "situacao": "tomada-no-fork",
-        "texto": "Escolha (a) tomada no fork por 'autorização do usuário nesta sessão'; `docs/decisoes_pendentes.md` não tem seção para a P-11.",
+        "texto": "Escolha (a) tomada no fork por 'autorização do usuário nesta sessão'; `docs/projeto/pendencias.md` não tem seção para a P-11.",
         "pergunta": "Mantém as extensões das compostas 10 a 16 (sag em 11 e 12, swell em 13 e 14, faixas da `norma`, `fronteira` alternada, THD em 13, 15 e 16)?",
         "opcoes": [
           "(a) manter, documentado em `docs/perfis.md` (adotada no fork)",
@@ -467,7 +467,7 @@
       "decisao_dono": {
         "registrada": false,
         "situacao": "tomada-no-fork",
-        "texto": "Escolha (a) tomada no fork por 'autorização do usuário nesta sessão'; `docs/decisoes_pendentes.md` não tem seção para a P-12.",
+        "texto": "Escolha (a) tomada no fork por 'autorização do usuário nesta sessão'; `docs/projeto/pendencias.md` não tem seção para a P-12.",
         "pergunta": "Classe 06: compara com a forma programada ou redefine o flicker com média nula por ciclo?",
         "opcoes": [
           "(a) comparar com a programada, sem mudar o dataset (adotada no fork)",
@@ -507,7 +507,7 @@
       "decisao_dono": {
         "registrada": false,
         "situacao": "tomada-no-fork",
-        "texto": "Escolha (a) tomada no fork por 'autorização do usuário nesta sessão'; `docs/decisoes_pendentes.md` não tem seção para a P-13.",
+        "texto": "Escolha (a) tomada no fork por 'autorização do usuário nesta sessão'; `docs/projeto/pendencias.md` não tem seção para a P-13.",
         "pergunta": "Confirma chamar a recuperação de sessão parcial automaticamente no início de cada `run`?",
         "opcoes": [
           "(a) sim (adotada no fork)",
@@ -545,7 +545,7 @@
       "decisao_dono": {
         "registrada": false,
         "situacao": "tomada-no-fork",
-        "texto": "Escolha (a) tomada no fork por 'autorização do usuário nesta sessão'; `docs/decisoes_pendentes.md` não tem seção para a P-14.",
+        "texto": "Escolha (a) tomada no fork por 'autorização do usuário nesta sessão'; `docs/projeto/pendencias.md` não tem seção para a P-14.",
         "pergunta": "Confirma que `run 01 02` (com espaço) é recusado e que `BATERIA_EXCLUIR` vale também para listas?",
         "opcoes": [
           "(a) recusar e aplicar a exclusão (adotada no fork)",
@@ -583,7 +583,7 @@
       "decisao_dono": {
         "registrada": false,
         "situacao": "tomada-no-fork",
-        "texto": "Escolha (b) tomada no fork por 'autorização do usuário nesta sessão'; `docs/decisoes_pendentes.md` não tem seção para a P-15.",
+        "texto": "Escolha (b) tomada no fork por 'autorização do usuário nesta sessão'; `docs/projeto/pendencias.md` não tem seção para a P-15.",
         "pergunta": "Confirma limitar o HTML do fim do run a 3 capturas por classe e perfil também na bancada?",
         "opcoes": [
           "(a) corrigir o texto de `docs/operacao.md` e não limitar na bancada",
@@ -661,7 +661,7 @@
       "decisao_dono": {
         "registrada": false,
         "situacao": "em-branco",
-        "texto": "Nenhuma escolha feita: o critério `deficit_acdc_aceitavel` está `criterio_nao_definido` no fechamento e `docs/decisoes_pendentes.md` não tem seção para a P-17.",
+        "texto": "Nenhuma escolha feita: o critério `deficit_acdc_aceitavel` está `criterio_nao_definido` no fechamento e `docs/projeto/pendencias.md` não tem seção para a P-17.",
         "pergunta": "Que déficit de CA em ACDC (hoje cerca de 5,5 %) é aceitável, e a compensação V/g entra ou o déficit só é documentado?",
         "opcoes": [
           "Documentar o déficit como limitação, sem compensar",
@@ -702,7 +702,7 @@
       "decisao_dono": {
         "registrada": false,
         "situacao": "tomada-no-fork",
-        "texto": "O fork integrou com o padrão desligado, que é a opção A (recomendada) do formulário; a resposta do formulário está em branco. Fonte: `docs/decisoes_pendentes.md`, seção P-18.",
+        "texto": "O fork integrou com o padrão desligado, que é a opção A (recomendada) do formulário; a resposta do formulário está em branco. Fonte: `docs/projeto/pendencias.md`, seção P-18.",
         "pergunta": "O passo final SINE fica desligado por padrão até haver validação em bancada?",
         "opcoes": [
           "A. Manter desligado por padrão até validação; ligar só por variável explícita (adotada no fork)",
@@ -716,7 +716,7 @@
       ],
       "evidencias": [
         "evidencias/2026-10-22/fechamento.json",
-        "decisoes_pendentes.md"
+        "projeto/pendencias.md"
       ],
       "direcao_vigente": "SINE integrado experimentalmente no checkout, desligado por padrão (`AMETEK_PASSO_FINAL_SIN=0`, `passo_final_sin=False`); validação física permanece pendente.",
       "falta_por_tipo": {
@@ -776,13 +776,13 @@
         "D"
       ],
       "falta": "Tag `v1.15` e publicação no Zenodo, só depois de P-01 e P-31; o dono confirmar nome e afiliação lidos do ORCID, a ordem dos autores, o titular da MIT, quem autoriza a licença e o texto de citação",
-      "como_tratada": "Licenças e autoria decididas pelo dono em 2026-10-27 (decisão em conversa; `docs/decisoes_pendentes.md`, seção P-20): código MIT, dataset e documentação CC-BY 4.0, autores por ORCID `0009-0002-5691-6774` e `0009-0001-3141-4498`, nesta ordem. Preparado em branch `feat/publicacao-zenodo` (não mesclado, sem push): `LICENSE`, `CITATION.cff` e `.zenodo.json` (nome e afiliação do registro público do ORCID, sem `doi`), `scripts/empacotar_dataset.py` (pacote do dataset com SHA256SUMS, MANIFEST.json e zenodo_dataset.json; recusa sessão com `git_sujo`, salvo `--piloto`) e o fluxo em `docs/versionamento.md` §9. Teste a seco com `--piloto` sobre `sessao_2026-10-07_127V_50Hz` (fora do repositório) aprovado por `--verificar`. Não existe tag `v1.15`, nada foi publicado, nenhum DOI foi escrito; o upload no Zenodo Sandbox não foi exercitado.",
+      "como_tratada": "Licenças e autoria decididas pelo dono em 2026-10-27 (decisão em conversa; `docs/projeto/pendencias.md`, seção P-20): código MIT, dataset e documentação CC-BY 4.0, autores por ORCID `0009-0002-5691-6774` e `0009-0001-3141-4498`, nesta ordem. Preparado em branch `feat/publicacao-zenodo` (não mesclado, sem push): `LICENSE`, `CITATION.cff` e `.zenodo.json` (nome e afiliação do registro público do ORCID, sem `doi`), `scripts/empacotar_dataset.py` (pacote do dataset com SHA256SUMS, MANIFEST.json e zenodo_dataset.json; recusa sessão com `git_sujo`, salvo `--piloto`) e o fluxo em `docs/versionamento.md` §9. Teste a seco com `--piloto` sobre `sessao_2026-10-07_127V_50Hz` (fora do repositório) aprovado por `--verificar`. Não existe tag `v1.15`, nada foi publicado, nenhum DOI foi escrito; o upload no Zenodo Sandbox não foi exercitado.",
       "situacao_execucao": "Material de publicação preparado em branch; tag e publicação aguardam P-01 e P-31",
       "entrega": "Licença e autoria registradas, citação e metadados do Zenodo prontos; tag, release e publicação só após P-01 e P-31; DOI somente quando emitido.",
       "decisao_dono": {
         "registrada": true,
         "situacao": "confirmada",
-        "texto": "Decisão do dono em conversa (2026-10-27): licença do código MIT; licença do dataset e da documentação CC-BY 4.0; autores, nesta ordem, só por ORCID (`https://orcid.org/0009-0002-5691-6774`, `https://orcid.org/0009-0001-3141-4498`); tag `v1.15` e publicação no Zenodo só depois de P-01 e P-31 (opção A), um registro por versão. Não informados: quem autoriza a licença e o texto de citação. Fonte: decisão em conversa, registrada em `docs/decisoes_pendentes.md`, seção P-20.",
+        "texto": "Decisão do dono em conversa (2026-10-27): licença do código MIT; licença do dataset e da documentação CC-BY 4.0; autores, nesta ordem, só por ORCID (`https://orcid.org/0009-0002-5691-6774`, `https://orcid.org/0009-0001-3141-4498`); tag `v1.15` e publicação no Zenodo só depois de P-01 e P-31 (opção A), um registro por versão. Não informados: quem autoriza a licença e o texto de citação. Fonte: decisão em conversa, registrada em `docs/projeto/pendencias.md`, seção P-20.",
         "data": "2026-10-27",
         "pergunta": "Confirma o nome e a afiliação lidos do registro público do ORCID (Denis Natã Henden Loyola; Ricardo Marin Israel, sem sobrenome separado no registro; ambos Universidade Federal do Paraná), a ordem dos autores e Denis Natã Henden Loyola como titular do copyright da MIT?",
         "opcoes": [
@@ -796,7 +796,7 @@
         "d868644"
       ],
       "evidencias": [
-        "decisoes_pendentes.md",
+        "projeto/pendencias.md",
         "versionamento.md",
         "sobre.md"
       ],
@@ -830,7 +830,7 @@
       "decisao_dono": {
         "registrada": false,
         "situacao": "tomada-no-fork",
-        "texto": "Opção A 'por enquanto', escolhida pelo operador na bancada em 22/10; a decisão final é do responsável. Fonte: `docs/decisoes_pendentes.md`, seção P-21.",
+        "texto": "Opção A 'por enquanto', escolhida pelo operador na bancada em 22/10; a decisão final é do responsável. Fonte: `docs/projeto/pendencias.md`, seção P-21.",
         "data": "2026-10-22",
         "pergunta": "Confirma manter a regra atual para a condição sem tabela (220 V/60 Hz)?",
         "opcoes": [
@@ -877,7 +877,7 @@
       "decisao_dono": {
         "registrada": false,
         "situacao": "em-branco",
-        "texto": "Nenhuma escolha feita: `docs/decisoes_pendentes.md` não tem seção para a P-22 e o critério está `criterio_nao_definido` no fechamento.",
+        "texto": "Nenhuma escolha feita: `docs/projeto/pendencias.md` não tem seção para a P-22 e o critério está `criterio_nao_definido` no fechamento.",
         "pergunta": "Que tempo de reescrita e que tamanho do `NN_classe.npz` são aceitáveis?",
         "opcoes": [
           "Aceitar o que foi medido em 22/10 como suficiente",
@@ -920,7 +920,7 @@
       "decisao_dono": {
         "registrada": false,
         "situacao": "tomada-no-fork",
-        "texto": "O fork aplicou 216 como regra operacional, que é a opção A (recomendada) do formulário; a resposta está em branco. Fonte: `docs/decisoes_pendentes.md`, seção P-23.",
+        "texto": "O fork aplicou 216 como regra operacional, que é a opção A (recomendada) do formulário; a resposta está em branco. Fonte: `docs/projeto/pendencias.md`, seção P-23.",
         "pergunta": "Confirma o orçamento de 216 gravações TRACe por conexão como regra operacional?",
         "opcoes": [
           "A. Manter 216 como regra operacional e proteção de software, sem afirmar que é limite físico (adotada no fork)",
@@ -936,7 +936,7 @@
       ],
       "evidencias": [
         "evidencias/2026-10-22/fechamento.json",
-        "decisoes_pendentes.md"
+        "projeto/pendencias.md"
       ],
       "direcao_vigente": "Orçamento operacional de 216 gravações TRACe por conexão aplicado no CLI, entrada principal e ORM; inclui tentativas de envio incertas e comandos diretos. Esgotamento aborta a bateria sem retry. A causa física da trava continua aberta.",
       "falta_por_tipo": {
@@ -993,13 +993,13 @@
       ],
       "frentes": [],
       "falta": "O dono aceita ou retira os quatro itens, um a um; restam 'spec NN' em tests/test_offline.py e logica/",
-      "como_tratada": "Até agora, item a item do inventário: (1) identificadores 'spec NN': saíram das páginas de `docs/` (`dafde1f`, `9ce09b4`); `docs/limites_e_calibracao.md:51` não traz mais 'spec 26' (hoje trata a recalibração de 22/10). Restam comentários em `tests/test_offline.py` (linhas 3208, 6829, 6992, 7505, 9155 e 9272), ocorrências em `logica/` e os CHANGELOG fechados, que não se reescrevem. (2) Termo de governança em `AGENTS.md`: a busca por 'governan' não acha nada hoje, e o registro não diz qual era o termo (NÃO VERIFICADO). (3) Nome de variável local em `mestre.py`: o inventário cita `mestre.py:2398,2412` do baseline; não localizei a variável (NÃO VERIFICADO). (4) `uso_limite_bancada` em `logica/calibracao_extremos.json:81`: texto mantido. O dono não respondeu item a item e `docs/decisoes_pendentes.md` não tem seção para a P-25; a frase do registro anterior ('aceitas… por decisão explícita') não tem fonte.",
+      "como_tratada": "Até agora, item a item do inventário: (1) identificadores 'spec NN': saíram das páginas de `docs/` (`dafde1f`, `9ce09b4`); `docs/limites_e_calibracao.md:51` não traz mais 'spec 26' (hoje trata a recalibração de 22/10). Restam comentários em `tests/test_offline.py` (linhas 3208, 6829, 6992, 7505, 9155 e 9272), ocorrências em `logica/` e os CHANGELOG fechados, que não se reescrevem. (2) Termo de governança em `AGENTS.md`: a busca por 'governan' não acha nada hoje, e o registro não diz qual era o termo (NÃO VERIFICADO). (3) Nome de variável local em `mestre.py`: o inventário cita `mestre.py:2398,2412` do baseline; não localizei a variável (NÃO VERIFICADO). (4) `uso_limite_bancada` em `logica/calibracao_extremos.json:81`: texto mantido. O dono não respondeu item a item e `docs/projeto/pendencias.md` não tem seção para a P-25; a frase do registro anterior ('aceitas… por decisão explícita') não tem fonte.",
       "situacao_execucao": "Parcial: ajustes feitos no fork, sem resposta do dono",
       "entrega": "Removidos os identificadores 'spec NN' das páginas operacionais de `docs/`; mantidos o texto de `uso_limite_bancada` e o histórico fechado. Não há resposta do dono item a item.",
       "decisao_dono": {
         "registrada": false,
         "situacao": "tomada-no-fork",
-        "texto": "O fork removeu os 'spec NN' das páginas de `docs/` e manteve o resto; não há resposta do dono, nem seção na `docs/decisoes_pendentes.md`.",
+        "texto": "O fork removeu os 'spec NN' das páginas de `docs/` e manteve o resto; não há resposta do dono, nem seção na `docs/projeto/pendencias.md`.",
         "pergunta": "Item a item: aceita ou retira (1) os identificadores 'spec NN' que restam em código e testes, (2) o termo de governança em `AGENTS.md`, (3) o nome da variável local em `mestre.py`, (4) o texto de `uso_limite_bancada`?",
         "opcoes": [
           "Aceitar o item como está",
@@ -1035,13 +1035,13 @@
         "R"
       ],
       "falta": "Decidida; fecha quando as sessões das cinco condições registrarem a configuração (só 127 V existe)",
-      "como_tratada": "Decidida pelo dono em 21/10 (`docs/decisoes_pendentes.md`, seção P-26): perfis `todos`; condições 127 V/60 Hz, 127 V/50 Hz, 230 V/50 Hz, 220 V/60 Hz e 33 V/60 Hz; ACDC só a 127 V; 1 captura por classe (padrão). O plano offline está em `plano_campanhas_5_condicoes.json` (230 V/50 Hz com 13 recusas por swells; 220 V/60 Hz sem calibração e 52 recusas; 33 V/60 Hz sem calibração; `docs/historico.md`, 21/10). As sessões de 22/10 são só de 127 V (60 e 50 Hz): não há sessão de 230 V/50 Hz, 220 V/60 Hz nem 33 V/60 Hz.",
+      "como_tratada": "Decidida pelo dono em 21/10 (`docs/projeto/pendencias.md`, seção P-26): perfis `todos`; condições 127 V/60 Hz, 127 V/50 Hz, 230 V/50 Hz, 220 V/60 Hz e 33 V/60 Hz; ACDC só a 127 V; 1 captura por classe (padrão). O plano offline está em `plano_campanhas_5_condicoes.json` (230 V/50 Hz com 13 recusas por swells; 220 V/60 Hz sem calibração e 52 recusas; 33 V/60 Hz sem calibração; `docs/historico.md`, 21/10). As sessões de 22/10 são só de 127 V (60 e 50 Hz): não há sessão de 230 V/50 Hz, 220 V/60 Hz nem 33 V/60 Hz.",
       "situacao_execucao": "Decidida, aguarda operador",
       "entrega": "Registrar antes da coleta perfil/frequência/tensão e escopo ACDC opcional 230 V; resolver essa exceção ao roteiro de 127 V antes de executá-la.",
       "decisao_dono": {
         "registrada": true,
         "situacao": "confirmada",
-        "texto": "Perfis `todos`; condições 127 V/60 Hz, 127 V/50 Hz, 230 V/50 Hz, 220 V/60 Hz e 33 V/60 Hz; ACDC só a 127 V; 1 captura por classe. Fonte: `docs/decisoes_pendentes.md`, seção P-26.",
+        "texto": "Perfis `todos`; condições 127 V/60 Hz, 127 V/50 Hz, 230 V/50 Hz, 220 V/60 Hz e 33 V/60 Hz; ACDC só a 127 V; 1 captura por classe. Fonte: `docs/projeto/pendencias.md`, seção P-26.",
         "data": "2026-10-21"
       },
       "commits": [
@@ -1051,7 +1051,7 @@
       ],
       "evidencias": [
         "evidencias/2026-10-21/plano_campanhas_5_condicoes.json",
-        "decisoes_pendentes.md"
+        "projeto/pendencias.md"
       ],
       "falta_por_tipo": {
         "bancada": "Rodar as campanhas das cinco condições e registrar a configuração em cada sessão (as três condições restantes dependem de P-21 e da regra da P-01)."
@@ -1076,7 +1076,7 @@
       "decisao_dono": {
         "registrada": false,
         "situacao": "tomada-no-fork",
-        "texto": "Retirada do critério decidida no fork por 'autorização do usuário nesta sessão'; o inventário pedia ao dono que fornecesse o arquivo e `docs/decisoes_pendentes.md` só registra a busca sem resultado.",
+        "texto": "Retirada do critério decidida no fork por 'autorização do usuário nesta sessão'; o inventário pedia ao dono que fornecesse o arquivo e `docs/projeto/pendencias.md` só registra a busca sem resultado.",
         "pergunta": "Aceita seguir sem `validacao_gerador_v1.14.md` (faixas e 'bate?' retirados), ou vai fornecer o arquivo?",
         "opcoes": [
           "Seguir sem o arquivo; os valores históricos são só relato (adotada no fork)",
@@ -1117,7 +1117,7 @@
       "decisao_dono": {
         "registrada": false,
         "situacao": "em-branco",
-        "texto": "Nenhuma escolha feita: `docs/decisoes_pendentes.md` não tem seção para a P-28.",
+        "texto": "Nenhuma escolha feita: `docs/projeto/pendencias.md` não tem seção para a P-28.",
         "pergunta": "O FIR com anti-aliasing substitui a interpolação linear usada na reamostragem do osciloscópio?",
         "opcoes": [
           "Manter a interpolação linear (o FIR fica só como comparação)",
@@ -1158,14 +1158,14 @@
       "decisao_dono": {
         "registrada": true,
         "situacao": "confirmada",
-        "texto": "Opção B: usar as `scpi_transcricao.log` das sessões novas da campanha v1.15, revisadas antes de publicar; os dados do PC antigo não podem ser copiados. Fonte: `docs/decisoes_pendentes.md`, seção P-29.",
+        "texto": "Opção B: usar as `scpi_transcricao.log` das sessões novas da campanha v1.15, revisadas antes de publicar; os dados do PC antigo não podem ser copiados. Fonte: `docs/projeto/pendencias.md`, seção P-29.",
         "data": "2026-10-21"
       },
       "commits": [
         "e345921"
       ],
       "evidencias": [
-        "decisoes_pendentes.md"
+        "projeto/pendencias.md"
       ],
       "falta_por_tipo": {
         "bancada": "Reunir as `scpi_transcricao.log` das sessões da campanha, revisar dados sensíveis, selecionar trechos curtos com sessão, condição e SHA e atualizar `docs/scpi/transcricoes.md`."
@@ -1190,14 +1190,14 @@
       "decisao_dono": {
         "registrada": true,
         "situacao": "confirmada",
-        "texto": "Decisão D, confirmada pelo responsável: registrar 63 e 99 como contagens históricas não verificáveis, sem apagar o histórico. Fonte: `docs/decisoes_pendentes.md`, seção P-30.",
+        "texto": "Decisão D, confirmada pelo responsável: registrar 63 e 99 como contagens históricas não verificáveis, sem apagar o histórico. Fonte: `docs/projeto/pendencias.md`, seção P-30.",
         "data": "2026-10-21"
       },
       "commits": [
         "ef3d49d"
       ],
       "evidencias": [
-        "decisoes_pendentes.md",
+        "projeto/pendencias.md",
         "tres_versoes.md",
         "historico.md"
       ],
@@ -1226,7 +1226,7 @@
       "decisao_dono": {
         "registrada": false,
         "situacao": "tomada-no-fork",
-        "texto": "O fork publica as duas métricas sem eleger, o que equivale à opção A (recomendada); a resposta do formulário está em branco. Fonte: `docs/decisoes_pendentes.md`, seção P-31.",
+        "texto": "O fork publica as duas métricas sem eleger, o que equivale à opção A (recomendada); a resposta do formulário está em branco. Fonte: `docs/projeto/pendencias.md`, seção P-31.",
         "pergunta": "Qual métrica de correlação do distúrbio o dataset adota como oficial?",
         "opcoes": [
           "A. Publicar as duas, sem eleger oficial, até haver sessões físicas novas (o que o fork faz)",

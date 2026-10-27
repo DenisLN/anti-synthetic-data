@@ -49,7 +49,7 @@ SITUACOES_CURTAS = {
 }
 # de onde vêm as opções listadas em uma pergunta ao dono
 FONTES_OPCOES = {
-    "formulario": "formulário `decisoes_pendentes.md`",
+    "formulario": "formulário de decisões em `docs/projeto/pendencias.md`",
     "inventario": "inventário de 16/10",
     "evidencia": "evidência de 22/10",
     "sem-opcoes-previas": "sem opções prévias; proposta do revisor, não do formulário",
@@ -283,13 +283,13 @@ def gerar_markdown(dados):
     linhas.append("| " + " | ".join(str(cont[s]) for s in ESTADOS) + f" | {sum(cont.values())} |")
     espera = aguardam_confirmacao(dados)
     linhas += ["", f"Das {cont['concluida']} concluídas, **{len(espera)} aguardam a confirmação do dono** "
-               "(a escolha foi tomada no fork, sem resposta registrada em `docs/decisoes_pendentes.md`): "
+               "(a escolha foi tomada no fork, sem resposta registrada no formulário de decisões desta página): "
                + ", ".join(f"{{ref}}`{i} <estado-{i.lower()}>`" for i in espera) + "."]
     perguntas = perguntas_ao_dono(dados)
     linhas += ["", "### Perguntas ao dono", "",
                f"{len(perguntas)} decisões esperam o dono do projeto. Nenhuma foi tomada por esta página: "
                "cada linha traz a pergunta e as opções conhecidas; só vale o que o dono responder "
-               "(registre em `docs/decisoes_pendentes.md` e em `decisao_dono`).", ""]
+               "(registre no formulário de decisões desta página e em `decisao_dono`).", ""]
     for ident, d in perguntas:
         linhas.append(f"- {{ref}}`{ident} <estado-{ident.lower()}>` ({SITUACOES_DECISAO[d['situacao']]}): "
                       f"{d['pergunta']} Opções: {_opcoes_markdown(d)}")

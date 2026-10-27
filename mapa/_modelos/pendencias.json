@@ -341,9 +341,9 @@
   ],
   "evidencias": [
    "evidencias/2026-10-22/fechamento.json",
-   "decisoes_pendentes.md"
+   "projeto/pendencias.md"
   ],
-  "evidencias_txt": "`docs/evidencias/2026-10-22/fechamento.json`, `docs/decisoes_pendentes.md`"
+  "evidencias_txt": "`docs/evidencias/2026-10-22/fechamento.json`, `docs/projeto/pendencias.md`"
  },
  {
   "id": "P-19",
@@ -378,11 +378,11 @@
    "D"
   ],
   "evidencias": [
-   "decisoes_pendentes.md",
+   "projeto/pendencias.md",
    "versionamento.md",
    "sobre.md"
   ],
-  "evidencias_txt": "`docs/decisoes_pendentes.md`, `docs/versionamento.md`, `docs/sobre.md`"
+  "evidencias_txt": "`docs/projeto/pendencias.md`, `docs/versionamento.md`, `docs/sobre.md`"
  },
  {
   "id": "P-21",
@@ -440,9 +440,9 @@
   ],
   "evidencias": [
    "evidencias/2026-10-22/fechamento.json",
-   "decisoes_pendentes.md"
+   "projeto/pendencias.md"
   ],
-  "evidencias_txt": "`docs/evidencias/2026-10-22/fechamento.json`, `docs/decisoes_pendentes.md`"
+  "evidencias_txt": "`docs/evidencias/2026-10-22/fechamento.json`, `docs/projeto/pendencias.md`"
  },
  {
   "id": "P-24",
@@ -493,9 +493,9 @@
   ],
   "evidencias": [
    "evidencias/2026-10-21/plano_campanhas_5_condicoes.json",
-   "decisoes_pendentes.md"
+   "projeto/pendencias.md"
   ],
-  "evidencias_txt": "`docs/evidencias/2026-10-21/plano_campanhas_5_condicoes.json`, `docs/decisoes_pendentes.md`"
+  "evidencias_txt": "`docs/evidencias/2026-10-21/plano_campanhas_5_condicoes.json`, `docs/projeto/pendencias.md`"
  },
  {
   "id": "P-27",
@@ -549,9 +549,9 @@
    "D"
   ],
   "evidencias": [
-   "decisoes_pendentes.md"
+   "projeto/pendencias.md"
   ],
-  "evidencias_txt": "`docs/decisoes_pendentes.md`"
+  "evidencias_txt": "`docs/projeto/pendencias.md`"
  },
  {
   "id": "P-30",
@@ -565,11 +565,11 @@
   "falta": "Concluída pela decisão D do dono (21/10): as contagens 63 ('piloto') e 99 (36+36+27) ficam registradas como históricas e não verificáveis, sem apagar o histórico e sem uso como resultado; as sessões de 07/10 não podem ser recuperadas. A nota de retificação está em `AGENTS.md:128` e `docs/tres_versoes.md:68` (`ef3d49d`). A única ressalva é que o código dessas sessões é `994e170-dirty`, árvore suja.",
   "frentes": [],
   "evidencias": [
-   "decisoes_pendentes.md",
+   "projeto/pendencias.md",
    "tres_versoes.md",
    "historico.md"
   ],
-  "evidencias_txt": "`docs/decisoes_pendentes.md`, `docs/tres_versoes.md`, `docs/historico.md`"
+  "evidencias_txt": "`docs/projeto/pendencias.md`, `docs/tres_versoes.md`, `docs/historico.md`"
  },
  {
   "id": "P-31",

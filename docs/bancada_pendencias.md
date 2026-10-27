@@ -219,7 +219,7 @@ Fora do `docs/roteiro-bancada.md`: vem de {ref}`passo-final-sin` (seção 7.4 de
 
 ## Bloco 10-B. Experimento P-09 A/B/C (extensão, **não consta no roteiro**). Sessão B, 127 V/60 Hz, depois do Bloco 5 (P-17)
 
-Objetivo: decidir pela medição se o offset DC por passo de LIST recupera a média por ciclo que a TRACe perde (decisão P-09 em `decisoes_pendentes.md`). Mesmas classes, seed, perfil e condição nos três braços; só muda `set p09`.
+Objetivo: decidir pela medição se o offset DC por passo de LIST recupera a média por ciclo que a TRACe perde (decisão P-09 em `projeto/pendencias.md`). Mesmas classes, seed, perfil e condição nos três braços; só muda `set p09`.
 
 | Passo | Comando | P-NN | Evidência | Critério |
 |---|---|---|---|---|
