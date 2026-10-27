@@ -762,43 +762,48 @@
     },
     "P-20": {
       "titulo": "preparar congelamento, licença, autoria, citação e Zenodo",
-      "estado": "aguarda-decisao",
+      "estado": "em-andamento",
       "prioridade": "media",
       "responsavel": "Coordenador + responsável",
       "acao": "preparar congelamento, licença, autoria, citação e Zenodo",
-      "dependencia": "Cobertura validada e decisões de direitos/publicação",
+      "dependencia": "P-01 (campanha com o código v1.15) e P-31 resolvidas; confirmação do dono sobre os dados lidos do ORCID",
       "criterio": "Tag/release verificáveis, metadados aprovados, licença autorizada; DOI somente quando emitido",
       "quem_fecha": [
+        "bancada",
         "decisao-dono"
       ],
       "frentes": [
         "D"
       ],
-      "falta": "Respostas do dono: licença do código e do dataset, quem autoriza, autores com ORCID, citação, e a decisão de tag e Zenodo",
-      "como_tratada": "Nada foi criado, por regra. A `main` não tem `LICENSE`, `COPYING`, `CITATION.cff`, `.zenodo.json`, `AUTHORS` nem `CODEOWNERS` (`ls` na raiz, 27/10; a busca em todos os branches está em `docs/decisoes_pendentes.md`) e `git tag` não lista `v1.15` (versão em andamento, sem tag, `AGENTS.md`). A resposta do dono de 21/10 foi 'aguardar o Denis'; licença, autoria, citação e DOI não são criados antes disso, e o fork não concede direitos de relicenciamento.",
-      "situacao_execucao": "Aberta: depende de direitos e publicação",
-      "entrega": "Preparar congelamento, licença e autoria verificadas, citação e Zenodo após validação; não criar licença ou DOI fictícios.",
+      "falta": "Tag `v1.15` e publicação no Zenodo, só depois de P-01 e P-31; o dono confirmar nome e afiliação lidos do ORCID, a ordem dos autores, o titular da MIT, quem autoriza a licença e o texto de citação",
+      "como_tratada": "Licenças e autoria decididas pelo dono em 2026-10-27 (decisão em conversa; `docs/decisoes_pendentes.md`, seção P-20): código MIT, dataset e documentação CC-BY 4.0, autores por ORCID `0009-0002-5691-6774` e `0009-0001-3141-4498`, nesta ordem. Preparado em branch `feat/publicacao-zenodo` (não mesclado, sem push): `LICENSE`, `CITATION.cff` e `.zenodo.json` (nome e afiliação do registro público do ORCID, sem `doi`), `scripts/empacotar_dataset.py` (pacote do dataset com SHA256SUMS, MANIFEST.json e zenodo_dataset.json; recusa sessão com `git_sujo`, salvo `--piloto`) e o fluxo em `docs/versionamento.md` §9. Teste a seco com `--piloto` sobre `sessao_2026-10-07_127V_50Hz` (fora do repositório) aprovado por `--verificar`. Não existe tag `v1.15`, nada foi publicado, nenhum DOI foi escrito; o upload no Zenodo Sandbox não foi exercitado.",
+      "situacao_execucao": "Material de publicação preparado em branch; tag e publicação aguardam P-01 e P-31",
+      "entrega": "Licença e autoria registradas, citação e metadados do Zenodo prontos; tag, release e publicação só após P-01 e P-31; DOI somente quando emitido.",
       "decisao_dono": {
-        "registrada": false,
-        "situacao": "em-branco",
-        "texto": "Aguardar o Denis (21/10/2026): licença, autoria, citação e DOI não são criados antes da resposta dele. Fonte: `docs/decisoes_pendentes.md`, seção P-20.",
-        "pergunta": "Licença do código e do dataset (e quem a autoriza), autores com afiliação e ORCID, texto de citação, e quando tagear a v1.15 e publicar no Zenodo?",
+        "registrada": true,
+        "situacao": "confirmada",
+        "texto": "Decisão do dono em conversa (2026-10-27): licença do código MIT; licença do dataset e da documentação CC-BY 4.0; autores, nesta ordem, só por ORCID (`https://orcid.org/0009-0002-5691-6774`, `https://orcid.org/0009-0001-3141-4498`); tag `v1.15` e publicação no Zenodo só depois de P-01 e P-31 (opção A), um registro por versão. Não informados: quem autoriza a licença e o texto de citação. Fonte: decisão em conversa, registrada em `docs/decisoes_pendentes.md`, seção P-20.",
+        "data": "2026-10-27",
+        "pergunta": "Confirma o nome e a afiliação lidos do registro público do ORCID (Denis Natã Henden Loyola; Ricardo Marin Israel, sem sobrenome separado no registro; ambos Universidade Federal do Paraná), a ordem dos autores e Denis Natã Henden Loyola como titular do copyright da MIT?",
         "opcoes": [
-          "Tag: A. só depois de P-01 e P-31; Zenodo depois da tag",
-          "Tag: B. agora como pré-lançamento `-rc`, sem Zenodo",
-          "Tag: C. agora e publicar no Zenodo (DOI só depois de emitido)",
-          "Zenodo: A. só depois da licença e da autoria aprovadas; B. não publicar",
-          "Licença, autores e citação: texto livre a preencher (cinco perguntas abertas do formulário)"
+          "Confirmo como está",
+          "Corrigir (informar nome, afiliação, ordem ou titular)"
         ],
-        "fonte_opcoes": "formulario"
+        "fonte_opcoes": "sem-opcoes-previas"
       },
-      "commits": [],
-      "evidencias": [
-        "decisoes_pendentes.md"
+      "commits": [
+        "2101ab5",
+        "d868644"
       ],
-      "direcao_vigente": "Preparar material de publicação sem inventar licença, autoria ou DOI. O fork não concede direitos de relicenciamento.",
+      "evidencias": [
+        "decisoes_pendentes.md",
+        "versionamento.md",
+        "sobre.md"
+      ],
+      "direcao_vigente": "Não tagear nem publicar antes de P-01 e P-31. Não escrever DOI antes de emitido. Não inventar nome, afiliação nem licença; a MIT não cobre os manuais de fabricante.",
       "falta_por_tipo": {
-        "decisao-dono": "Responder as cinco perguntas do formulário e escolher quando tagear a v1.15 e quando publicar no Zenodo. A tag depende de P-01 e P-31."
+        "bancada": "Campanha com o código v1.15 (P-01), para a tag poder sair de commit limpo e as sessões do dataset terem `git_sujo = false`.",
+        "decisao-dono": "Decidir P-31; confirmar os dados do ORCID, a ordem e o titular da MIT; informar quem autoriza a licença e o texto de citação; tagear `v1.15`, criar a release e publicar (Sandbox para ensaio, depois o real)."
       }
     },
     "P-21": {

@@ -367,20 +367,22 @@
  {
   "id": "P-20",
   "titulo": "preparar congelamento, licença, autoria, citação e Zenodo",
-  "status": "aguarda-decisao",
+  "status": "em-andamento",
   "prioridade": "media",
   "responsavel": "Coordenador + responsável",
   "acao": "preparar congelamento, licença, autoria, citação e Zenodo",
-  "dependencia": "Cobertura validada e decisões de direitos/publicação",
+  "dependencia": "P-01 (campanha com o código v1.15) e P-31 resolvidas; confirmação do dono sobre os dados lidos do ORCID",
   "criterio": "Tag/release verificáveis, metadados aprovados, licença autorizada; DOI somente quando emitido",
-  "falta": "Respostas do dono: licença do código e do dataset, quem autoriza, autores com ORCID, citação, e a decisão de tag e Zenodo",
+  "falta": "Tag `v1.15` e publicação no Zenodo, só depois de P-01 e P-31; o dono confirmar nome e afiliação lidos do ORCID, a ordem dos autores, o titular da MIT, quem autoriza a licença e o texto de citação",
   "frentes": [
    "D"
   ],
   "evidencias": [
-   "decisoes_pendentes.md"
+   "decisoes_pendentes.md",
+   "versionamento.md",
+   "sobre.md"
   ],
-  "evidencias_txt": "`docs/decisoes_pendentes.md`"
+  "evidencias_txt": "`docs/decisoes_pendentes.md`, `docs/versionamento.md`, `docs/sobre.md`"
  },
  {
   "id": "P-21",
