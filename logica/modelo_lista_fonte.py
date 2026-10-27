@@ -6,7 +6,7 @@ instante fixo (100,0 ms) a 50 e a 60 Hz. A montagem da TRACE
 (``AmetekMX30.montar_programacao``) está descartada como causa; o mecanismo
 dentro da fonte é DESCONHECIDO. Este módulo guarda as hipóteses candidatas
 como funções puras e parametrizadas, para serem confrontadas com o que
-``scripts/diag_marcadores_trace.py`` medir na bancada.
+``diag/diag_marcadores_trace.py`` medir na bancada.
 
 NADA aqui é fato sobre o equipamento: cada mecanismo é uma hipótese
 (NÃO VERIFICADO até a bancada). ``mecanismo="ideal"`` é o contrato de

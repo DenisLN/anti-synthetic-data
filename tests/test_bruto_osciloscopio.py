@@ -188,7 +188,7 @@ class IntegracaoBrutoMestreTests(unittest.TestCase):
         import importlib.util
         self.exp._ler_captura({})
         entrada = self.pasta / self.exp._brutos_atuais[0]['arquivo']
-        script = Path(__file__).resolve().parents[1] / 'scripts' / 'analisar_reamostragem.py'
+        script = Path(__file__).resolve().parents[1] / 'diag' / 'analisar_reamostragem.py'
         spec = importlib.util.spec_from_file_location('analise_bruto_integracao', script)
         analise = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(analise)

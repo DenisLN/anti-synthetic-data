@@ -7,7 +7,7 @@ Texto de referência importado do levantamento de 16/10/2026, baseado em [fa82f4
 
 {bdg-info}`OFFLINE` {bdg-warning}`NÃO VERIFICADO` Lido por inteiro em 2026-10-16 (`main` em `fa82f49`). **Nada neste módulo é fato sobre o equipamento.**
 
-**Pergunta:** para que serve `modelo_lista_fonte.py`? **Resposta:** para confrontar, com o que `scripts/diag_marcadores_trace.py` medir na bancada, **hipóteses** sobre por que o evento das classes 08 e 09 aparece repetido ou deslocado em 100,0 ms (quirks A22 e A25, pendência P-02). Cada hipótese é uma função pura que, dada uma `ProgramacaoCaptura`, devolve a forma que a fonte emitiria **se** aquele mecanismo fosse verdadeiro; `confrontar` ordena as hipóteses pelo rms do resíduo contra a medida. A vencedora não é prova: é a que menos erra naquele dado.
+**Pergunta:** para que serve `modelo_lista_fonte.py`? **Resposta:** para confrontar, com o que `diag/diag_marcadores_trace.py` medir na bancada, **hipóteses** sobre por que o evento das classes 08 e 09 aparece repetido ou deslocado em 100,0 ms (quirks A22 e A25, pendência P-02). Cada hipótese é uma função pura que, dada uma `ProgramacaoCaptura`, devolve a forma que a fonte emitiria **se** aquele mecanismo fosse verdadeiro; `confrontar` ordena as hipóteses pelo rms do resíduo contra a medida. A vencedora não é prova: é a que menos erra naquele dado.
 
 | Símbolo | Assinatura | Linha | Papel |
 |---|---|---|---|
@@ -49,4 +49,4 @@ Nas capturas de 07/10/2026 o início do evento da 08 (a 50 Hz, em 3 de 3) e da 0
 
 ## 4. Depende de e quem depende
 
-Só `numpy`; recebe uma `ProgramacaoCaptura` (de `ametek_orm`) mas **não a importa**. É importado por `scripts/diag_marcadores_trace.py` e pelos testes (conferido por busca em 2026-10-16); `scripts/diag_ciclos_trace.py` (offline) não o importa.
+Só `numpy`; recebe uma `ProgramacaoCaptura` (de `ametek_orm`) mas **não a importa**. É importado por `diag/diag_marcadores_trace.py` e pelos testes (conferido por busca em 2026-10-16); `diag/diag_ciclos_trace.py` (offline) não o importa.

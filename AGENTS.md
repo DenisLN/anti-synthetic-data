@@ -82,7 +82,9 @@ para qualquer sessão futura que precise mexer neles (autorização registrada
 em 2026-09-09, ver `CHANGELOG/v1.7.md`):
 
 - `logica/mestre.py`, `logica/ametek_orm.py`,
-  `logica/preflight_new.py`, `logica/cli.py`, e os scripts em `scripts/`.
+  `logica/preflight_new.py`, `logica/cli.py`, e os scripts em `scripts/` e em
+  `diag/` (diagnósticos de bancada movidos de `scripts/` para `diag/` em
+  2026-10-27; ver `CHANGELOG/v1.15.md`).
 - `tests/test_offline.py` pode ser rodado e editado livremente — não toca
   hardware, roda os dois ORMs em modo simulado.
 
@@ -269,8 +271,8 @@ são registro histórico: não se reescrevem.
   metadata grava `git_commit`, `git_sujo`, `versao_codigo`, `numpy_versao` e
   uma cópia de `calibracao_extremos.json`. `git_sujo` vale para alteração
   rastreada em qualquer arquivo e para arquivo novo não ignorado em `logica/`,
-  `experimentos_nativos/`, `experimentos_waveform/` e `scripts/` (`mestre.py`,
-  `info_do_codigo`); é recalculado a cada pasta de sessão, ou seja, a cada
+  `experimentos_nativos/`, `experimentos_waveform/`, `scripts/` e `diag/`
+  (`mestre.py`, `info_do_codigo`, `PASTAS_DO_CODIGO`); é recalculado a cada pasta de sessão, ou seja, a cada
   `run` da CLI. Commite tudo (inclusive arquivos novos e a calibração
   recalibrada). `versao_codigo` fica em cache no processo: reinicie a CLI
   depois de commitar.

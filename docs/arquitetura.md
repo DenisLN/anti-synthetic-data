@@ -42,7 +42,8 @@ O projeto gera o dataset rotulado de 20 classes de distúrbio de tensão (200 ms
 | `logica/diag_digitizer_*.py` | removidos em 2026-10-13 (sondas do modo Digitizer, v1.10, descartado; histórico no git até `d3c7ce7`) |
 | `experimentos_nativos/` | classes 01–05, 18, 19 (mecanismo nativo da fonte) |
 | `experimentos_waveform/` | classes 06–17, 20 (TRACe/LIST) |
-| `scripts/` | PowerShell/CMD do operador e utilitários Python offline/de diagnóstico (tabela na seção 7) |
+| `scripts/` | PowerShell/CMD do operador e utilitários Python offline (tabela na seção 7) |
+| `diag/` | diagnósticos de bancada e análises offline (movidos de `scripts/` em 2026-10-27; tabela na seção 7) |
 | `tests/test_offline.py`, `tests/fixtures/` | suíte sem hardware (`docs/testes.md`) |
 | `CHANGELOG/vX.Y.md` | histórico por versão (registro; não reescrever) |
 | `docs/` | documentação viva (este índice está no `README.md`). As análises datadas (`docs/analise-AAAA-MM-DD/`) e `arquivo/analises:docs/superpowers/` estão no branch `arquivo/analises`, fora de `docs/` desde 2026-10-13 (**registro datado**) |

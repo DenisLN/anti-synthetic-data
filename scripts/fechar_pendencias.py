@@ -352,7 +352,7 @@ def p02(ctx: Contexto) -> tuple:
     cs: List[dict] = []
     if not reais:
         cs.append(crit("diag_marcadores_trace_real", SEMDADOS, None, None,
-                       "scripts/diag_marcadores_trace.py (--saida .json, sem --simulado)"))
+                       "diag/diag_marcadores_trace.py (--saida .json, sem --simulado)"))
     else:
         n = ident = prog = esp = 0
         for _, j in reais:
@@ -365,7 +365,7 @@ def p02(ctx: Contexto) -> tuple:
         ok = n > 0 and ident == prog and esp == 0
         cs.append(crit("marcadores_identificados", OK if n else INSUF, {"capturas": n, "identificados": ident,
                        "programados": prog, "espurios": esp}, "identificados == programados e 0 espúrios",
-                       "scripts/diag_marcadores_trace.py (resumo)",
+                       "diag/diag_marcadores_trace.py (resumo)",
                        nota=None if ok else "divergência é achado do diagnóstico, não reprovação do critério"
                        if n else "JSON sem capturas"))
         cs[-1]["resultado"] = OK if n else INSUF
@@ -729,7 +729,7 @@ def p17(ctx: Contexto) -> tuple:
         finito = all(_num(l.get("razao_ch1_ac_sobre_alvo")) is not None for l in linhas) and bool(linhas)
         cs.append(crit(f"{a.name}: condicoes_medidas", OK if (tem_ac and tem_acdc0 and tem_off and finito) else INSUF,
                        {"AC": tem_ac, "ACDC_offset0": tem_acdc0, "ACDC_com_offset": tem_off, "razoes_finitas": finito},
-                       "AC, ACDC off 0 e ACDC com offset, razões finitas", "scripts/diag_acdc_amplitude.py (linhas)"))
+                       "AC, ACDC off 0 e ACDC com offset, razões finitas", "diag/diag_acdc_amplitude.py (linhas)"))
         resumo += [{"rotulo": l.get("rotulo"), "razao_ch1_ac_sobre_alvo": l.get("razao_ch1_ac_sobre_alvo"),
                     "razao_ch1_total_sobre_fonte_ac": l.get("razao_ch1_total_sobre_fonte_ac")} for l in linhas]
     cs.append(crit("deficit_acdc_aceitavel", ND, None, None,
@@ -743,7 +743,7 @@ def p18(ctx: Contexto) -> tuple:
     arts = [a for a in arts if (ctx.json_de(a) or {}).get("simulado") is not True]
     if not arts:
         return [], False, {}
-    spec = importlib.util.spec_from_file_location("teste_passo_final_sin_fp", RAIZ / "scripts" / "teste_passo_final_sin.py")
+    spec = importlib.util.spec_from_file_location("teste_passo_final_sin_fp", RAIZ / "diag" / "teste_passo_final_sin.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)  # só constantes; main() não roda
     cs = []
@@ -755,12 +755,12 @@ def p18(ctx: Contexto) -> tuple:
             margem_ok = bool(mc) and all(abs(x - 1.0) <= mod.TOL_MARGEM_PU for x in mc)
             cs.append(crit(f"{a.parent.name}#{i}: margem_final_1pu", OK if margem_ok else FALHA,
                            max((abs(x - 1.0) for x in mc), default=None), mod.TOL_MARGEM_PU,
-                           "scripts/teste_passo_final_sin.py::TOL_MARGEM_PU (escolha do script, ajustável)"))
+                           "diag/teste_passo_final_sin.py::TOL_MARGEM_PU (escolha do script, ajustável)"))
             corr, dif = _num(r.get("janela_corr")), _num(r.get("janela_dif_max_pu"))
             jan_ok = corr is not None and dif is not None and corr >= mod.CORR_MIN_JANELA and dif <= mod.TOL_JANELA_PU
             cs.append(crit(f"{a.parent.name}#{i}: janela_rotulada_identica", OK if jan_ok else FALHA,
                            {"corr": corr, "dif_max_pu": dif}, {"corr_min": mod.CORR_MIN_JANELA, "dif_max_pu": mod.TOL_JANELA_PU},
-                           "scripts/teste_passo_final_sin.py::CORR_MIN_JANELA/TOL_JANELA_PU"))
+                           "diag/teste_passo_final_sin.py::CORR_MIN_JANELA/TOL_JANELA_PU"))
     if not cs:
         cs.append(crit("resultados_no_json", INSUF, 0, ">=1", "resultado.json de teste_passo_final_sin.py"))
     cs.append(criterio_procedencia_artefatos([(a.parent.name, ctx.json_de(a) or {}) for a in arts]))
@@ -906,7 +906,7 @@ def p22(ctx: Contexto) -> tuple:
     fisicos22 = [(a, j) for a, j in medicoes if j.get("tipo") == "benchmark_sessoes_fisicas" and j.get("simulado") is False]
     if not fisicos22:
         cs.append(crit("benchmark_de_sessoes_fisicas", SEMDADOS, None,
-                       "JSON de scripts/benchmark_sessao_io.py --sessao (simulado=false) em --artefatos", origem22))
+                       "JSON de diag/benchmark_sessao_io.py --sessao (simulado=false) em --artefatos", origem22))
     else:
         ruins22, resumo22 = [], []
         for a, j in fisicos22:
@@ -981,7 +981,7 @@ def p23(ctx: Contexto) -> tuple:
     for a in diag:
         ctx.marcar(a)
     cs.append(crit("diag_nativo_output_off_presente", OK if diag else INSUF, len(diag), ">=1",
-                   "scripts/diag_nativo_output_off.py (diag_nativo-*.json com resultados T<n> e _procedencia física, commit limpo)",
+                   "diag/diag_nativo_output_off.py (diag_nativo-*.json com resultados T<n> e _procedencia física, commit limpo)",
                    nota="; ".join(diag_rejeitados) or None))
     cs.append(crit("causa_fisica_da_trava", ND, None, None,
                    "execucao_pendencias P-23: causa só com diagnóstico real e interpretação humana"))
@@ -1028,8 +1028,8 @@ def p28(ctx: Contexto) -> tuple:
     cs.append(crit("analise_de_reamostragem_sobre_bruto_real", OK if casadas else INSUF,
                    {"casadas": [a.name for a, _ in casadas],
                     "sem_casamento": [a.name for a, _ in analises if (a, _) not in casadas]},
-                   ">=1 JSON de scripts/analisar_reamostragem.py --entrada cujo fonte.arquivo_sha256 é o de um bruto_osciloscopio da sessão",
-                   "scripts/analisar_reamostragem.py; metadata bruto_osciloscopio",
+                   ">=1 JSON de diag/analisar_reamostragem.py --entrada cujo fonte.arquivo_sha256 é o de um bruto_osciloscopio da sessão",
+                   "diag/analisar_reamostragem.py; metadata bruto_osciloscopio",
                    nota=None if casadas else "análise sem casamento de SHA-256 com os brutos registrados não conta"))
     cs.append(crit("fir_substitui_interpolador", ND, None, None,
                    "analisar_reamostragem: 'Nenhuma métrica desta ferramenta define critério de aceite físico'"))
@@ -1038,14 +1038,14 @@ def p28(ctx: Contexto) -> tuple:
 
 
 def p31(ctx: Contexto) -> tuple:
-    classes = ("06", "10", "11", "12", "15", "16")  # scripts/analisar_modelo_programado.py::CLASSES
+    classes = ("06", "10", "11", "12", "15", "16")  # diag/analisar_modelo_programado.py::CLASSES
     r = ctx.da_classe(*classes, filtro=lambda x: x.get("tres_versoes") is not None)
     if not r:
         return [], False, {}
     por = {_classe(x) for x in r}
     faltam = [c for c in classes if c not in por]
     cs = [crit("capturas_fisicas_com_tres_versoes", OK if not faltam else INSUF, sorted(por), list(classes),
-               "scripts/analisar_modelo_programado.py::CLASSES; metadata tres_versoes",
+               "diag/analisar_modelo_programado.py::CLASSES; metadata tres_versoes",
                nota=f"faltam: {faltam}" if faltam else None),
           crit("metrica_oficial", ND, None, None, "execucao_pendencias P-31: falta justificar a métrica (nominal x fundamental ajustada)"),
           criterio_procedencia(ctx, r)]
@@ -1054,7 +1054,7 @@ def p31(ctx: Contexto) -> tuple:
         j = ctx.json_de(a)
         if j is not None and j.get("tipo") == "correlacao_modelo_programada_medida_sessoes_fisicas":
             arts.append((a, j))
-    origem31 = "scripts/analisar_modelo_programado.py --sessao (nominal e fundamental ajustada)"
+    origem31 = "diag/analisar_modelo_programado.py --sessao (nominal e fundamental ajustada)"
     ok31 = [(a, j) for a, j in arts if j.get("simulado") is False]
     if not ok31:
         cs.append(crit("correlacoes_nominal_e_ajustada_publicadas", SEMDADOS, None,

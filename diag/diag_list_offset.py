@@ -25,11 +25,11 @@ Feche a CLI da bancada (libera COM10) antes de rodar.
 Uso (PowerShell, na raiz do projeto):
 
     $env:BENCH_MODE = "1"
-    env\\Scripts\\python.exe scripts\\diag_list_offset.py
+    env\\Scripts\\python.exe diag\\diag_list_offset.py
 
 Sem hardware (exercita o fluxo; resultado FICTÍCIO):
 
-    env\\Scripts\\python.exe scripts\\diag_list_offset.py --simulado [--sim-suportado]
+    env\\Scripts\\python.exe diag\\diag_list_offset.py --simulado [--sim-suportado]
 """
 from __future__ import annotations
 
@@ -49,7 +49,7 @@ from ametek_orm import AmetekMX30  # noqa: E402
 PORTA = "COM10"
 BAUD = 115_200
 # Limites só para o construtor (nada é programado nem energizado aqui); os
-# mesmos de scripts/diag_acdc_amplitude.py para o range 300 V.
+# mesmos de diag/diag_acdc_amplitude.py para o range 300 V.
 MAX_RMS = 300.0
 MAX_PICO_V = 415.8
 LIMITE_CORRENTE_A = 0.5

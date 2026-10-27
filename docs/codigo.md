@@ -46,7 +46,8 @@ flowchart TD
 | `logica/relatorio_html.py` | 762 | relatório HTML autocontido | {doc}`codigo/relatorio_html` |
 | `logica/recortar_margem.py` | 299 | tira a folga de 20/50 ms | {doc}`codigo/recortar_margem` |
 | `logica/preflight_new.py` | 806 | `comm`, `trigger`, `lowvoltage`, `native` | {doc}`codigo/preflight_new` |
-| `scripts/` | 6 `.ps1`/`.cmd` e 12 `.py` | entrada, recalibração, diagnósticos | {doc}`codigo/scripts` |
+| `scripts/` | 9 `.ps1`/`.cmd` e 10 `.py` | entrada, recalibração, relatórios e verificação | {doc}`codigo/scripts` |
+| `diag/` | 12 `.py` | diagnósticos de bancada e análises offline (movidos de `scripts/` em 2026-10-27) | {doc}`codigo/scripts` |
 | `experimentos_nativos/` e `experimentos_waveform/` | 7 + 13 classes | `gerar()`, `configurar()` e ganchos | {doc}`codigo/classes_contrato` |
 
 Páginas transversais: {doc}`codigo/invariantes` (as catorze camadas de segurança) e {doc}`codigo/acoplamentos` ("se mudar isto, aquilo quebra"). Além do código: `calibracao_extremos.json` ({doc}`medicao/recalibracao`) e `modelos/relatorio_capturas.html` (o modelo do relatório HTML).

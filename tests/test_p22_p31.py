@@ -21,7 +21,7 @@ sys.path.insert(0, str(RAIZ / "tests"))
 
 
 def _carregar(nome):
-    spec = importlib.util.spec_from_file_location(nome, RAIZ / "scripts" / f"{nome}.py")
+    spec = importlib.util.spec_from_file_location(nome, RAIZ / "diag" / f"{nome}.py")
     mod = importlib.util.module_from_spec(spec)
     sys.modules[nome] = mod
     spec.loader.exec_module(mod)

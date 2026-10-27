@@ -7,7 +7,7 @@ Este roteiro foi escrito sem acesso à bancada. Todo comando e toda confirmaçã
 ## 0. Regras fixas do dia
 
 - **Fator da probe de tensão**: o que está **escrito na probe física**, conferido na hora. Em todo comando abaixo aparece como `<FATOR escrito na probe>`; não presuma o valor de sessões anteriores. O `START_BENCH` pergunta; os scripts `diag_*` recebem em `--probe`.
-- **Confirmações digitadas, case-sensitive, nunca automatizadas**: `ENERGIZAR-TESTE`, `ENERGIZAR-COMANDOS`, `EXECUTAR-CLASSE-<NN>`, `EXECUTAR-CLASSES-<lista normalizada>`, `EXECUTAR-20-CLASSES` (não usada hoje), `ENERGIZAR-MARCADORES`, `ENERGIZAR-ACDC` e, **só no passo P-18** (Bloco 10-A, `scripts/teste_passo_final_sin.py`), `ENERGIZAR-PASSO-SIN`. **Nenhum script, macro ou agente digita qualquer uma delas: o operador está presente e digita cada uma.** Antes de digitar: probe, cabos, E-stop, EUT, **disjuntores entre a fonte e a probe fechados**.
+- **Confirmações digitadas, case-sensitive, nunca automatizadas**: `ENERGIZAR-TESTE`, `ENERGIZAR-COMANDOS`, `EXECUTAR-CLASSE-<NN>`, `EXECUTAR-CLASSES-<lista normalizada>`, `EXECUTAR-20-CLASSES` (não usada hoje), `ENERGIZAR-MARCADORES`, `ENERGIZAR-ACDC` e, **só no passo P-18** (Bloco 10-A, `diag/teste_passo_final_sin.py`), `ENERGIZAR-PASSO-SIN`. **Nenhum script, macro ou agente digita qualquer uma delas: o operador está presente e digita cada uma.** Antes de digitar: probe, cabos, E-stop, EUT, **disjuntores entre a fonte e a probe fechados**.
 - **Captura de corrente desligada** (`CAPTURE_CURRENT=0`). Não ativar.
 - **Tensão do dia: 127 V.** Sem 220/380 V. A execução ACDC a 230 V (Bloco 5, 3.ª execução) **não será feita**: decisão P-26 de 21/10/2026, opção A (`docs/decisoes_pendentes.md`). As campanhas CA nas outras condições (230 V/50 Hz, 220 V/60 Hz, 33 V/60 Hz) são sessões próprias, fora deste dia (`docs/bancada_pendencias.md`, "Campanhas por condição"). Frequências: sessão A em **50 Hz** (diagnóstico da 08/09), sessão B em **60 Hz** (campanha).
 - **Antes de scripts `diag_*` que acessam instrumentos, sair da CLI com `quit` e confirmar OUTPUT OFF**; COM10 é exclusiva. Scripts offline de análise não abrem instrumentos.
@@ -98,8 +98,8 @@ Objetivo: ver, nos dados que já existem, **qual ciclo programado explica cada c
 
 ```powershell
 cd C:\Users\denis\TCC\code
-env\Scripts\python.exe scripts\diag_ciclos_trace.py resultados\sessao_2026-10-07_127V_50Hz --classes 08,09
-env\Scripts\python.exe scripts\diag_ciclos_trace.py resultados\sessao_2026-10-07_14-59-54_run02 --classes 08,09
+env\Scripts\python.exe diag\diag_ciclos_trace.py resultados\sessao_2026-10-07_127V_50Hz --classes 08,09
+env\Scripts\python.exe diag\diag_ciclos_trace.py resultados\sessao_2026-10-07_14-59-54_run02 --classes 08,09
 Get-ChildItem logs\diag_ciclos_trace-* | Sort-Object LastWriteTime | Select-Object -Last 4 | Format-Table Name, Length
 Get-Content (Get-ChildItem logs\diag_ciclos_trace-*.md | Sort-Object LastWriteTime | Select-Object -Last 1).FullName
 ```
@@ -118,7 +118,7 @@ CLI fechada. PowerShell novo:
 ```powershell
 cd C:\Users\denis\TCC\code
 $env:BENCH_MODE = "1"
-env\Scripts\python.exe scripts\diag_marcadores_trace.py --probe <FATOR escrito na probe> --vrms 127
+env\Scripts\python.exe diag\diag_marcadores_trace.py --probe <FATOR escrito na probe> --vrms 127
 ```
 
 Digitar `ENERGIZAR-MARCADORES`. Padrão: 50 e 60 Hz, três variantes (`marcadores`, `fronteira`, `meio_ciclo`), 10 capturas, **110 gravações de TRACe** em uma conexão (abaixo do orçamento de 216). Para dividir em duas rodadas: `--frequencias 50` e depois `--frequencias 60`. Só o par ponto 0 / meio ciclo: `--variantes fronteira,meio_ciclo`.
@@ -144,9 +144,9 @@ CLI fechada. Três execuções (digitar `ENERGIZAR-ACDC` em cada uma):
 ```powershell
 cd C:\Users\denis\TCC\code
 $env:BENCH_MODE = "1"
-env\Scripts\python.exe scripts\diag_acdc_amplitude.py --probe <FATOR escrito na probe> --vrms 127 --hz 60 --testar-compensacao
-env\Scripts\python.exe scripts\diag_acdc_amplitude.py --probe <FATOR escrito na probe> --vrms 127 --hz 50 --testar-compensacao
-env\Scripts\python.exe scripts\diag_acdc_amplitude.py --probe <FATOR escrito na probe> --vrms 230 --hz 50 --testar-compensacao
+env\Scripts\python.exe diag\diag_acdc_amplitude.py --probe <FATOR escrito na probe> --vrms 127 --hz 60 --testar-compensacao
+env\Scripts\python.exe diag\diag_acdc_amplitude.py --probe <FATOR escrito na probe> --vrms 127 --hz 50 --testar-compensacao
+env\Scripts\python.exe diag\diag_acdc_amplitude.py --probe <FATOR escrito na probe> --vrms 230 --hz 50 --testar-compensacao
 Get-Content (Get-ChildItem logs\diag_acdc_amplitude-*.md | Sort-Object LastWriteTime | Select-Object -Last 1).FullName
 ```
 
@@ -219,7 +219,7 @@ Digitar `EXECUTAR-CLASSE-09`. Depois, offline, no PowerShell:
 ```powershell
 cd C:\Users\denis\TCC\code
 $s = (Get-ChildItem resultados -Directory | Sort-Object LastWriteTime | Select-Object -Last 1).FullName
-env\Scripts\python.exe scripts\diag_ciclos_trace.py $s --classes 08,09
+env\Scripts\python.exe diag\diag_ciclos_trace.py $s --classes 08,09
 Get-Content (Get-ChildItem logs\diag_ciclos_trace-*.md | Sort-Object LastWriteTime | Select-Object -Last 1).FullName
 ```
 
@@ -382,9 +382,9 @@ Medições e agregação (offline, **no PC da bancada** onde indicado; CLI fecha
 ```powershell
 cd C:\Users\denis\TCC\code
 # P-22: custo de I/O das sessões físicas, medido NO PC DA BANCADA (grava hostname e simulado)
-env\Scripts\python.exe scripts\benchmark_sessao_io.py --sessao <dir_sessao_1> [--sessao <dir_sessao_2> ...] --saida logs\benchmark_sessao_io_bancada.json
+env\Scripts\python.exe diag\benchmark_sessao_io.py --sessao <dir_sessao_1> [--sessao <dir_sessao_2> ...] --saida logs\benchmark_sessao_io_bancada.json
 # P-31: comparação modelo x programada nas sessões físicas
-env\Scripts\python.exe scripts\analisar_modelo_programado.py --sessao <dir_sessao_1> [--sessao <dir_sessao_2> ...] --saida logs\modelo_programada_sessoes_bancada.json
+env\Scripts\python.exe diag\analisar_modelo_programado.py --sessao <dir_sessao_1> [--sessao <dir_sessao_2> ...] --saida logs\modelo_programada_sessoes_bancada.json
 ```
 
 `--saida` não sobrescreve arquivo existente. Fechamento (pode rodar no computador de análise, com as pastas copiadas; `--artefatos` aceita `logs` e `resultados\passo_final_sin_*`):
@@ -519,18 +519,18 @@ Cada item abaixo foi conferido com `git grep` na árvore deste roteiro:
 | `EXECUTAR-CLASSE-<NN>` | `logica/cli.py:762` |
 | `EXECUTAR-CLASSES-<lista normalizada>` | `logica/cli.py:750` (`_run_lista`); a lista normalizada de cada comando deste roteiro foi gerada por `normalizar_lista_classes` (`cli.py:235`) |
 | `EXECUTAR-20-CLASSES` (não usado hoje) | `logica/cli.py:823` |
-| `ENERGIZAR-MARCADORES` | `scripts/diag_marcadores_trace.py:80` |
-| `ENERGIZAR-ACDC` | `scripts/diag_acdc_amplitude.py:68` |
+| `ENERGIZAR-MARCADORES` | `diag/diag_marcadores_trace.py:81` |
+| `ENERGIZAR-ACDC` | `diag/diag_acdc_amplitude.py:68` |
 | `set diagnostico retrieve on\|off`, `set capturas <N>\|padrao`, `set perfil todos`, `set recalibracao on\|off`, `set html on\|off`, `set sorteio` | `logica/cli.py`: `cmd_set` e `HELP_TEXT` |
 | `run 07,17`, `run 01-05,18-20` (lista) | `logica/cli.py`: `parsear_lista_classes`, `normalizar_lista_classes`, `_run_lista` |
-| `diag_ciclos_trace.py <sessao> --classes` | `scripts/diag_ciclos_trace.py` (`--classes`, `--sem-forma-bancada`, `--saida`) |
-| `diag_marcadores_trace.py --probe --vrms --frequencias --variantes` | `scripts/diag_marcadores_trace.py` |
-| `diag_acdc_amplitude.py --probe --vrms --hz --testar-compensacao` | `scripts/diag_acdc_amplitude.py` |
+| `diag_ciclos_trace.py <sessao> --classes` | `diag/diag_ciclos_trace.py` (`--classes`, `--sem-forma-bancada`, `--saida`) |
+| `diag_marcadores_trace.py --probe --vrms --frequencias --variantes` | `diag/diag_marcadores_trace.py` |
+| `diag_acdc_amplitude.py --probe --vrms --hz --testar-compensacao` | `diag/diag_acdc_amplitude.py` |
 | `verificar_sessao_bancada.py <sessao> --json` | `scripts/verificar_sessao_bancada.py` |
 | `recalibrar_extremos.py <sessao>` (sem `--gravar`) | `scripts/recalibrar_extremos.py` |
-| `ENERGIZAR-PASSO-SIN` (só P-18) | `scripts/teste_passo_final_sin.py:33` (`CONFIRMACAO`) |
-| `benchmark_sessao_io.py --sessao --saida` (P-22) | `scripts/benchmark_sessao_io.py` (`main`) |
-| `analisar_modelo_programado.py --sessao --saida` (P-31) | `scripts/analisar_modelo_programado.py` (`main`) |
+| `ENERGIZAR-PASSO-SIN` (só P-18) | `diag/teste_passo_final_sin.py:33` (`CONFIRMACAO`) |
+| `benchmark_sessao_io.py --sessao --saida` (P-22) | `diag/benchmark_sessao_io.py` (`main`) |
+| `analisar_modelo_programado.py --sessao --saida` (P-31) | `diag/analisar_modelo_programado.py` (`main`) |
 | `fechar_pendencias.py --sessao --artefatos --pc-bancada --saida` | `scripts/fechar_pendencias.py` (`main`; `--artefatos` repetível) |
 | `set diagnostico bruto on\|off` (P-28) | `logica/cli.py`: `cmd_set` e `HELP_TEXT` |
 | `analisar_sessao.py`, `recortar_margem.py`, `relatorio_html.py` | `logica/analisar_sessao.py`, `logica/recortar_margem.py`, `logica/relatorio_html.py` |

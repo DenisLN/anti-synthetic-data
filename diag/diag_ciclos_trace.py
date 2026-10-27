@@ -25,7 +25,7 @@ nesse caso vale ``k``).
 Só leitura: não abre a pasta da sessão para escrita; os resultados vão para
 ``--saida`` (padrão ``logs/``). Não toca hardware. Rodar em PowerShell, na raiz:
 
-    env\\Scripts\\python.exe scripts\\diag_ciclos_trace.py resultados\\sessao_2026-10-07_127V_50Hz --classes 08,09
+    env\\Scripts\\python.exe diag\\diag_ciclos_trace.py resultados\\sessao_2026-10-07_127V_50Hz --classes 08,09
 
 Saída: tabela em markdown no terminal e ``diag_ciclos_trace-<sessao>.md`` /
 ``.json`` em ``--saida``.

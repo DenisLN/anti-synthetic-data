@@ -38,7 +38,7 @@ N_SEQUENCIA_A_ANTES = 162
 
 def forma_classe16(f0=50.0, seed=2, perfil="fronteira"):
     """Caso de referência da P-09: classe 16, perfil fronteira, seed 2, 50 Hz
-    (mesma receita de scripts/analisar_modelo_programado.gerar_relatorio)."""
+    (mesma receita de diag/analisar_modelo_programado.gerar_relatorio)."""
     config = mestre.Config(
         fs_hz=30000., points=6000, duration_s=.2, grid_frequency_hz=f0,
         base_voltage_rms=127., snr_levels_db=(), base_seed=seed, capture_current=False,
@@ -394,11 +394,11 @@ class ConfiguracaoCliEDiagTests(unittest.TestCase):
         self.assertIn("AMETEK_P09_BRACO", (RAIZ / ".env.example").read_text(encoding="utf-8"))
 
     def test_diag_list_offset_simulado_so_consulta(self):
-        sys.path.insert(0, str(RAIZ / "scripts"))
+        sys.path.insert(0, str(RAIZ / "diag"))
         try:
             import diag_list_offset
         finally:
-            sys.path.remove(str(RAIZ / "scripts"))
+            sys.path.remove(str(RAIZ / "diag"))
         for suportado in (False, True):
             with tempfile.TemporaryDirectory() as tmp:
                 argv = ["--simulado", "--saida", tmp] + (["--sim-suportado"] if suportado else [])

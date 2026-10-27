@@ -8,8 +8,8 @@ e mede o RMS por ciclo da margem final (os 50 ms depois da janela nominal) e a
 identidade da janela rotulada. Reutiliza Bancada/ExperimentoWaveform de
 logica/mestre.py; não escreve nenhum SCPI próprio.
 
-    env\\Scripts\\python.exe scripts\\teste_passo_final_sin.py            # bancada
-    env\\Scripts\\python.exe scripts\\teste_passo_final_sin.py --simulado # sem hardware
+    env\\Scripts\\python.exe diag\\teste_passo_final_sin.py            # bancada
+    env\\Scripts\\python.exe diag\\teste_passo_final_sin.py --simulado # sem hardware
 
 Bancada: pergunta o fator EXATO da probe de tensão, a tensão e a frequência, e
 só energiza depois de digitar ENERGIZAR-PASSO-SIN (case-sensitive). Feche o MX

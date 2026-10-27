@@ -9,7 +9,7 @@ memória, tamanho); rodar no PC/disco da bancada. Perfis espelhados são aliases
 ``hostname`` e ``simulado`` (``false`` só se toda sessão for modo bancada e sem
 captura simulada); o agregador P-22 casa o hostname com ``pc_bancada.json``.
 
-    python scripts/benchmark_sessao_io.py --sessao resultados/sessao_A --sessao resultados/sessao_B \\
+    python diag/benchmark_sessao_io.py --sessao resultados/sessao_A --sessao resultados/sessao_B \\
         --saida logs/benchmark_sessao_io_bancada.json
 
 Modo sintético: Tempos não representam aquisição física,

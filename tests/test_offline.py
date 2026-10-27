@@ -4219,7 +4219,7 @@ class CapturasMaxCliPadraoTests(unittest.TestCase):
 
 
 def _carregar_script(nome):
-    caminho = PROJECT_ROOT / "scripts" / f"{nome}.py"
+    caminho = PROJECT_ROOT / ("diag" if (PROJECT_ROOT / "diag" / f"{nome}.py").exists() else "scripts") / f"{nome}.py"
     spec = importlib.util.spec_from_file_location(f"teste_script_{nome}", caminho)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -7004,7 +7004,7 @@ class RastreabilidadeRuidoEArvoreTests(unittest.TestCase):
     def _repo_git(self):
         """Repositório git temporário que imita a estrutura do projeto."""
         repo = self.tmp / "repo"
-        for pasta in ("logica", "docs", "scripts", "experimentos_nativos", "experimentos_waveform"):
+        for pasta in ("logica", "docs", "scripts", "diag", "experimentos_nativos", "experimentos_waveform"):
             (repo / pasta).mkdir(parents=True)
         (repo / ".gitignore").write_text("__pycache__/\n", encoding="utf-8")
         (repo / "logica" / "base.py").write_text("X = 1\n", encoding="utf-8")
@@ -7106,7 +7106,7 @@ class RastreabilidadeRuidoEArvoreTests(unittest.TestCase):
     def test_cada_pasta_do_codigo_conta_e_ignorado_nao(self):
         repo = self._repo_git()
         with mock.patch.object(mestre, "PROJECT_ROOT", repo):
-            for pasta in ("scripts", "experimentos_nativos", "experimentos_waveform"):
+            for pasta in ("scripts", "diag", "experimentos_nativos", "experimentos_waveform"):
                 (repo / pasta / "novo.py").write_text("Z = 3\n", encoding="utf-8")
                 self.assertTrue(mestre.info_do_codigo(recalcular=True)["git_sujo"], pasta)
                 (repo / pasta / "novo.py").unlink()
@@ -7908,7 +7908,7 @@ class VerificadorSessaoBancadaTests(unittest.TestCase):
         saida = self.tmp / "diag"
         ambiente = {k: v for k, v in os.environ.items() if k != "BENCH_MODE"}
         r = subprocess.run(
-            [sys.executable, str(PROJECT_ROOT / "scripts" / "diag_acdc_amplitude.py"), "--simulado",
+            [sys.executable, str(PROJECT_ROOT / "diag" / "diag_acdc_amplitude.py"), "--simulado",
              "--probe", "500", "--vrms", "127", "--hz", "60", "--testar-compensacao", "--saida", str(saida)],
             capture_output=True, text=True, env=ambiente, timeout=300,
         )

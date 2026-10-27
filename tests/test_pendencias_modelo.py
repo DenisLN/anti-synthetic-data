@@ -7,7 +7,7 @@ from unittest import mock
 
 import numpy as np
 
-from scripts import analisar_modelo_programado as analise
+from diag import analisar_modelo_programado as analise
 
 
 class ModeloProgramadoTests(unittest.TestCase):

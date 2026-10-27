@@ -341,7 +341,7 @@ class AmetekMX30:
     # outra classe (242 V contra 220 V = 10%).
     TOLERANCIA_READBACK = 0.005
     # Resolução de programação de VOLTage:TRIGgered medida na bancada
-    # (scripts/diag_nativo_output_off.py, 2026-09-30): a Rev. 5.53 TRUNCA
+    # (diag/diag_nativo_output_off.py, 2026-09-30): a Rev. 5.53 TRUNCA
     # para 0,1 V (2,76 -> 2,7; 4,999 -> 4,9). O manual SCPI não documenta.
     RESOLUCAO_TENSAO_V = 0.1
     # Sincronismo por comando (ver write()). Prazo para a fonte voltar a
@@ -358,7 +358,7 @@ class AmetekMX30:
     # Bits de erro do Standard Event Status (manual p. 169): QYE, DDE, EXE, CME.
     _ESR_BITS_DE_ERRO = 0x04 | 0x08 | 0x10 | 0x20
     # Consulta de sincronismo de write(): "ESR" (padrão — 20/20 na bancada em
-    # 2026-09-30) ou "OPC". Bancada 15:48 (T15, scripts/diag_nativo_output_off.py
+    # 2026-09-30) ou "OPC". Bancada 15:48 (T15, diag/diag_nativo_output_off.py
     # --so opc): a Rev. 5.53 NÃO segura a resposta do *OPC? como o IEEE 488.2
     # manda — responde na hora "1" (nada pendente) ou "0" (ex.: STEP armado
     # após INITiate). Não trava, mas não sincroniza mais que o *ESR? e todo
@@ -375,7 +375,7 @@ class AmetekMX30:
     # (manual SCPI p. 10). O menor dos dois, já que a série não é lida.
     MAX_DC_OFFSET_V = 220.0
     # Consulta do braço C. Só aparece como "Related Command" (manual p. 96):
-    # NÃO confirmada no manual; a bancada decide (scripts/diag_list_offset.py).
+    # NÃO confirmada no manual; a bancada decide (diag/diag_list_offset.py).
     CONSULTA_LIST_OFFSET = "SOURce:LIST:VOLTage:OFFSet?"
     COMANDO_LIST_OFFSET = "SOURce:LIST:VOLTage:OFFSet"
 
@@ -2636,7 +2636,7 @@ class AmetekMX30:
         # sqrt(MEAS^2 - offset^2). Interpretação a partir de UMA leitura
         # pré-degrau e da consistência das 3 capturas (relatório
         # acdc_amplitude_VERIFICAR, §1.3); ``MEASure:VOLTage:DC?`` fecha a
-        # dúvida (scripts/diag_acdc_amplitude.py). Usos hoje: a verificação da
+        # dúvida (diag/diag_acdc_amplitude.py). Usos hoje: a verificação da
         # cadeia de medição (``mestre.verificar_cadeia_de_medicao``, sempre em
         # AC, sem efeito) e o log de ``set diagnostico on``
         # (``_log_diagnostico``, campo ``tensao_v``), que em ACDC registra o

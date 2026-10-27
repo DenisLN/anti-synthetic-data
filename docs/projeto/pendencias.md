@@ -43,7 +43,7 @@ As pendências marcadas **DECISÃO DO USUÁRIO** pedem uma escolha do responsáv
 | {ref}`P-15 <p-15>` | GLOBAL | `docs/operacao.md:122` e o relatório individual 22 dizem que o HTML do fim do run mostra só as 3 primeiras capturas por classe e perfil; no código ([sessao_io.py:771-776](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/sessao_io.py#L771-L776), ... | DECISÃO DO USUÁRIO | {bdg-secondary}`BAIXA` |
 | {ref}`P-16 <p-16>` | GLOBAL | Rodar `tests.test_offline` no Windows. **Parcialmente resolvida hoje** (ver seção 2) | BANCADA (PC da bancada) | {bdg-warning}`MÉDIA` |
 | {ref}`P-17 <p-17>` | 19 | Déficit de 5-6 % de CA em ACDC (0,938-0,951 pu); `diag_acdc_amplitude.py` pronto, nunca rodou; compensação `V/g` é proposta; 230 V no ACDC é escolha do dia | BANCADA | {bdg-warning}`MÉDIA` |
-| {ref}`P-18 <p-18>` | 01-20 TRACe | Passo final `SINE` no `LIST` (PR #3, `18b144d`): `SINE` aceito em `LIST:FUNCtion:SHAPe`? Padrão LIGADO no branch (`AMETEK_PASSO_FINAL_SIN` = 1). Merge com a `main`: conflito textual só em ... | BANCADA (`scripts/teste_passo_final_sin.py`, `ENERGIZAR-PASSO-SIN`) e DECISÃO DO USUÁRIO (padrão desligado?) | {bdg-warning}`MÉDIA` |
+| {ref}`P-18 <p-18>` | 01-20 TRACe | Passo final `SINE` no `LIST` (PR #3, `18b144d`): `SINE` aceito em `LIST:FUNCtion:SHAPe`? Padrão LIGADO no branch (`AMETEK_PASSO_FINAL_SIN` = 1). Merge com a `main`: conflito textual só em ... | BANCADA (`diag/teste_passo_final_sin.py`, `ENERGIZAR-PASSO-SIN`) e DECISÃO DO USUÁRIO (padrão desligado?) | {bdg-warning}`MÉDIA` |
 | {ref}`P-19 <p-19>` | GLOBAL (TRACe) | A Rev. 5.53 aceita `TRACe:DATA? <nome>` e responde lista NRf separada por vírgula? O manual se contradiz (p. 126 "Query Syntax: none"; p. 147 "when queried... normalized"). Query nova numa ... | BANCADA (1.ª captura da 08 com `set diagnostico retrieve on` e painel à vista) | {bdg-warning}`MÉDIA` |
 | {ref}`P-20 <p-20>` | GLOBAL | Congelar a v1.15: tag `v1.15`, release no GitHub e Zenodo (não configurado); o projeto não tem `LICENSE` nem `CITATION.cff` | DECISÃO DO USUÁRIO | {bdg-warning}`MÉDIA` |
 | {ref}`P-21 <p-21>` | GLOBAL | Condições sem tabela de extremos (220 V/60 Hz e outras) rodam com previsão conservadora (fator 1,475) e várias classes puladas; a 230 V/50 Hz a 03 fica de fora (416,4 V > 415,8 V). Calibrar ... | BANCADA (bateria na condição + `recalibrar_extremos.py --gravar`) | {bdg-warning}`MÉDIA` |
@@ -109,7 +109,7 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 
 - **Fonte:** `CHANGELOG/v1.15.md:354-380`; `relatorio-final.md` §3; relatório individual 15; `docs/quirks.md` A22, A25
 - **O que fecha:** BANCADA (Blocos 4 e 6: `diag_marcadores_trace.py`, retrieve, recaptura)
-- **Conferência feita:** `scripts/diag_ciclos_trace.py` (Bloco 3 do roteiro, offline) rodado hoje, com `--saida` fora do repositório, nas duas sessões reais: `sessao_2026-10-07_127V_50Hz` e `sessao_2026-10-07_14-59-54_run02`, classes 08 e 09. Resultado: carrega o formato 1 sem erro (código de saída 0 nas duas), o que fecha o NÃO VERIFICADO do relatório individual 15 ("carregamento de `.npz` bruto + reconstrução não exercitado com dado real"). Medidas: nenhuma captura com "ciclos trocados" pelo critério do script; resíduo máximo em torno de 100 ms: 08 a 50 Hz 1,887/1,887/1,321 pu; 08 a 60 Hz 0,034/0,034/0,040 pu; 09 a 50 Hz 0,281/0,148/0,181 pu; 09 a 60 Hz 0,151/0,114/0,237 pu. Isso **não** decide o mecanismo (a decisão exige os Blocos 4 e 6); as sessões não foram alteradas (mtime inalterado).
+- **Conferência feita:** `diag/diag_ciclos_trace.py` (Bloco 3 do roteiro, offline) rodado hoje, com `--saida` fora do repositório, nas duas sessões reais: `sessao_2026-10-07_127V_50Hz` e `sessao_2026-10-07_14-59-54_run02`, classes 08 e 09. Resultado: carrega o formato 1 sem erro (código de saída 0 nas duas), o que fecha o NÃO VERIFICADO do relatório individual 15 ("carregamento de `.npz` bruto + reconstrução não exercitado com dado real"). Medidas: nenhuma captura com "ciclos trocados" pelo critério do script; resíduo máximo em torno de 100 ms: 08 a 50 Hz 1,887/1,887/1,321 pu; 08 a 60 Hz 0,034/0,034/0,040 pu; 09 a 50 Hz 0,281/0,148/0,181 pu; 09 a 60 Hz 0,151/0,114/0,237 pu. Isso **não** decide o mecanismo (a decisão exige os Blocos 4 e 6); as sessões não foram alteradas (mtime inalterado).
 
 (p-03)=
 ### P-03: 08
@@ -273,7 +273,7 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 
 - **Fonte:** `docs/quirks.md` A19; relatório individual 20; `ROTEIRO_BANCADA.md` Bloco 5
 - **O que fecha:** BANCADA
-- **Conferência feita:** `scripts/diag_acdc_amplitude.py` existe (493 linhas, `Diag` `:190`, confirmação `ENERGIZAR-ACDC`); `docs/quirks.md` A19; `measure_voltage` em ACDC devolve RMS total ([ametek_orm.py:1963-1977](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/ametek_orm.py#L1963-L1977), achado H-1 de `01-inventario.md`).
+- **Conferência feita:** `diag/diag_acdc_amplitude.py` existe (493 linhas, `Diag` `:190`, confirmação `ENERGIZAR-ACDC`); `docs/quirks.md` A19; `measure_voltage` em ACDC devolve RMS total ([ametek_orm.py:1963-1977](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/ametek_orm.py#L1963-L1977), achado H-1 de `01-inventario.md`).
 
 (p-18)=
 ### P-18: 01-20 TRACe
@@ -283,7 +283,7 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 **Pendência.** Passo final `SINE` no `LIST` (PR #3, `18b144d`): `SINE` aceito em `LIST:FUNCtion:SHAPe`? Padrão LIGADO no branch (`AMETEK_PASSO_FINAL_SIN` = 1). Merge com a `main`: conflito textual só em `CHANGELOG/v1.15.md` e `tests/test_offline.py`; `ametek_orm.py` e `mestre.py` fundem sem conflito, mas a suíte do merge não foi rodada
 
 - **Fonte:** `README.md:71-72`; `docs/versionamento.md:71`; `github/feat/passo-final-sin:docs/analise-2026-10-12/passo_final_sin.md`
-- **O que fecha:** BANCADA (`scripts/teste_passo_final_sin.py`, `ENERGIZAR-PASSO-SIN`) e DECISÃO DO USUÁRIO (padrão desligado?)
+- **O que fecha:** BANCADA (`diag/teste_passo_final_sin.py`, `ENERGIZAR-PASSO-SIN`) e DECISÃO DO USUÁRIO (padrão desligado?)
 - **Conferência feita:** `git diff d37e403 github/feat/passo-final-sin` toca 6 arquivos (457 inserções, 13 remoções); `git merge-tree d37e403 main github/feat/passo-final-sin`: "changed in both" em `CHANGELOG/v1.15.md` (conflito textual), `ametek_orm.py` (sem marcador), `mestre.py` (sem marcador), `tests/test_offline.py` (conflito textual). `AMETEK_PASSO_FINAL_SIN` default `True` no branch (`mestre.py`, +4 linhas no diff: leitura da variável e repasse a `AmetekMX30`; `ametek_orm.py`: parâmetro `passo_final_sin=True`).
 
 (p-19)=

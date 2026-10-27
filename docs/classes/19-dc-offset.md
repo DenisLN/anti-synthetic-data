@@ -110,7 +110,7 @@ Tolerâncias: {ref}`as sondas e as tolerâncias <validacao-fisica-tolerancias>`.
 Duas leituras. **O CC passa:** a média medida acompanha o programado com inclinação 1,0 entre os três níveis (o degrau de 0,0585 pu programado entre o menor e o maior nível sai com 0,0585, 0,0588 e 0,0583 pu medidos), e o desvio é **constante dentro de cada sessão** (+1,97 V, −1,3 V, −1,6 V), da ordem de 1 LSB do osciloscópio (escala vertical de 89,7, 107 e 139 V/div do metadata, 8 bits): é erro de zero do canal (B5, K10), não da fonte. **O CA não passa:** a amplitude (raiz de dois vezes o desvio padrão da janela) é 0,938 a 0,951 pu, **5 a 6 % abaixo** do 1 pu programado, igual nos três níveis de offset de cada sessão. O déficit **não depende de $\delta$**.
 
 :::{caution} Limitação
-A causa do déficit de CA em ACDC é {bdg-warning}`NÃO VERIFICADO`: o mecanismo nunca foi isolado. A correção proposta (compensar a tensão base por $V/g$) também é {bdg-warning}`NÃO VERIFICADO`. O script de diagnóstico `scripts/diag_acdc_amplitude.py` está pronto e nunca rodou na bancada ({ref}`P-17 <p-17>`). Quem usa o dataset físico da 19 deve contar com CA 5 a 6 % abaixo do modelo.
+A causa do déficit de CA em ACDC é {bdg-warning}`NÃO VERIFICADO`: o mecanismo nunca foi isolado. A correção proposta (compensar a tensão base por $V/g$) também é {bdg-warning}`NÃO VERIFICADO`. O script de diagnóstico `diag/diag_acdc_amplitude.py` está pronto e nunca rodou na bancada ({ref}`P-17 <p-17>`). Quem usa o dataset físico da 19 deve contar com CA 5 a 6 % abaixo do modelo.
 :::
 
 ## 8. As três versões e a correlação esperada
@@ -192,6 +192,6 @@ Déficit de 5 a 6 % de CA em ACDC; `diag_acdc_amplitude.py` pronto e nunca rodad
 
 ## 13. Referências
 
-- Código: `experimentos_nativos/19.py`; `logica/ametek_orm.py` (`enable_dc_offset`, `disable_dc_offset`, `measure_voltage`); `logica/sinais.py` (`valor_para_captura`, `forma_programada_nativa`); `scripts/diag_acdc_amplitude.py`.
+- Código: `experimentos_nativos/19.py`; `logica/ametek_orm.py` (`enable_dc_offset`, `disable_dc_offset`, `measure_voltage`); `logica/sinais.py` (`valor_para_captura`, `forma_programada_nativa`); `diag/diag_acdc_amplitude.py`.
 - Site: {doc}`../classes`, {doc}`../perfis`, {doc}`../limites_e_calibracao`, {doc}`../medicao/correlacao`, {doc}`../projeto/pendencias`, {doc}`../quirks`.
 - Histórico: `CHANGELOG/v1.7.md`, `v1.8.md`, `v1.12.md`, `v1.13.md`, `v1.14.md`, `v1.15.md`. Norma: IEEE Std 1159-2019, Tabela 2, item 5.1.

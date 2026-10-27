@@ -12,7 +12,7 @@ O que o orquestrador faz e o que ele NÃO faz:
 - Escolhe os comandos (os do roteiro), a condição de cada etapa (tensão e
   frequência), as pastas de saída, e confere cada sessão depois que ela
   termina. Cada etapa que energiza é um processo novo (conexão nova) da CLI
-  (``logica/cli.py --comando ...``) ou de um ``scripts/diag_*.py``.
+  (``logica/cli.py --comando ...``) ou de um ``diag/diag_*.py``.
 - **Nunca responde confirmação.** Os processos filhos herdam o teclado; quem
   digita a palavra de confirmação que cada etapa pede é o operador. Este
   arquivo não contém nenhuma dessas palavras (o teste confere).
@@ -49,6 +49,7 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple
 RAIZ = Path(__file__).resolve().parents[1]
 LOGICA = RAIZ / "logica"
 SCRIPTS = RAIZ / "scripts"
+DIAG = RAIZ / "diag"
 RESULTADOS = RAIZ / "resultados"
 LOGS = RAIZ / "logs"
 CALIBRACAO = Path("logica") / "calibracao_extremos.json"
@@ -381,7 +382,7 @@ class Visita:
         return codigo, novas
 
     def diag(self, etapa: Etapa, script: str, args: Sequence[str]) -> int:
-        codigo = self.python(SCRIPTS / script, args, etapa.condicao)
+        codigo = self.python(DIAG / script, args, etapa.condicao)
         if codigo != 0:
             raise VisitaParada(f"{script} terminou com código {codigo}. Confira OUTPUT OFF no painel. "
                                "Se você só não digitou a confirmação, rode o comando de novo para "
@@ -441,7 +442,7 @@ def e_ciclos_antigos(v: Visita, et: Etapa) -> str:
     for nome in ("sessao_2026-10-07_127V_50Hz", "sessao_2026-10-07_14-59-54_run02"):
         pasta = RESULTADOS / nome
         if pasta.is_dir():
-            v.offline(SCRIPTS / "diag_ciclos_trace.py", [str(pasta), "--classes", "08,09"])
+            v.offline(DIAG / "diag_ciclos_trace.py", [str(pasta), "--classes", "08,09"])
             feitas += 1
     return "ok" if feitas else "pulada: sessões de 07/10 não estão neste PC"
 
@@ -478,7 +479,7 @@ def e_classe09(v: Visita, et: Etapa) -> str:
 
 def e_ciclos_novos(v: Visita, et: Etapa) -> str:
     for pasta in v.sessoes_de("06-classe08", "06-classe09"):
-        v.offline(SCRIPTS / "diag_ciclos_trace.py", [str(pasta), "--classes", "08,09"])
+        v.offline(DIAG / "diag_ciclos_trace.py", [str(pasta), "--classes", "08,09"])
     return "ok"
 
 
@@ -577,7 +578,7 @@ def e_p09_analise(v: Visita, et: Etapa) -> str:
             args += ["--sessao", str(p)]
     if not args:
         return "pulada: sem sessões do experimento"
-    v.offline(SCRIPTS / "analisar_modelo_programado.py",
+    v.offline(DIAG / "analisar_modelo_programado.py",
               args + ["--classes", *CLASSES_P09.split(","), "--saida", str(v.pasta / "p09_abc.json")])
     return "ok"
 
@@ -585,7 +586,7 @@ def e_p09_analise(v: Visita, et: Etapa) -> str:
 def e_passo_sine(v: Visita, et: Etapa) -> str:
     print("O script pergunta fator da probe, tensão e frequência: responda "
           f"{os.environ['VOLTAGE_PROBE_ATTENUATION']}, 127 e 60.")
-    codigo = v.python(SCRIPTS / "teste_passo_final_sin.py", ["--classe", "06", "--repeticoes", "1"], et.condicao)
+    codigo = v.python(DIAG / "teste_passo_final_sin.py", ["--classe", "06", "--repeticoes", "1"], et.condicao)
     if codigo == 2:
         v.log("Passo final SINE: rodou, critério não atendido (registrado; padrão continua OFF).")
         return "falhas"
@@ -681,16 +682,16 @@ def e_entrega(v: Visita, et: Etapa) -> str:
     sessoes = [p for p in v.todas_as_sessoes() if p.is_dir()]
     sess_args = [a for p in sessoes for a in ("--sessao", str(p))]
     if sessoes:
-        v.offline(SCRIPTS / "benchmark_sessao_io.py",
+        v.offline(DIAG / "benchmark_sessao_io.py",
                   sess_args + ["--saida", str(v.pasta / "benchmark_sessao_io_bancada.json")])
-        v.offline(SCRIPTS / "analisar_modelo_programado.py",
+        v.offline(DIAG / "analisar_modelo_programado.py",
                   sess_args + ["--saida", str(v.pasta / "modelo_programada_sessoes_bancada.json")])
         for reg in v.estado.get("etapas", {}).values():
             cond = reg.get("condicao")
             for p in reg.get("sessoes", []):
                 for npz in sorted(Path(p).glob("bruto_osciloscopio/*/*-ch1-*.npz")):
                     (v.pasta / "reamostragem").mkdir(parents=True, exist_ok=True)
-                    v.offline(SCRIPTS / "analisar_reamostragem.py",
+                    v.offline(DIAG / "analisar_reamostragem.py",
                               ["--entrada", str(npz), "--f0-hz", f"{cond[1]:g}" if cond else "60",
                                "--harmonicos", "10", "--saida", str(v.pasta / "reamostragem" / f"{npz.stem}.json")])
     evid.mkdir(parents=True, exist_ok=True)

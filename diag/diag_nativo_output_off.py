@@ -31,9 +31,9 @@ Rodada 2 (RELATORIO_FINAL §8 de 2026-09-21, pendências listadas em
 
 Uso (com a CLI da bancada FECHADA, para liberar a COM10):
 
-    env\\Scripts\\python.exe scripts\\diag_nativo_output_off.py            (opcoes + limite)
-    env\\Scripts\\python.exe scripts\\diag_nativo_output_off.py --so pos_trava
-    env\\Scripts\\python.exe scripts\\diag_nativo_output_off.py --so estado,pulso,resolucao,rajada
+    env\\Scripts\\python.exe diag\\diag_nativo_output_off.py            (opcoes + limite)
+    env\\Scripts\\python.exe diag\\diag_nativo_output_off.py --so pos_trava
+    env\\Scripts\\python.exe diag\\diag_nativo_output_off.py --so estado,pulso,resolucao,rajada
 
 Os testes da rodada 1 (``estado``, ``pulso``, ``resolucao``, ``rajada``)
 continuam disponíveis por ``--so``, mas desde a correção do N1

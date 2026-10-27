@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "benchmark_sessao_io.py"
+SCRIPT = Path(__file__).resolve().parent.parent / "diag" / "benchmark_sessao_io.py"
 spec = importlib.util.spec_from_file_location("benchmark_sessao_io", SCRIPT)
 bench = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bench)

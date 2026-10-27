@@ -125,7 +125,7 @@ _INFO_CODIGO_CACHE: Optional[Dict[str, object]] = None
 # Pastas cujos arquivos NÃO rastreados também tornam a árvore "suja" (são o
 # código que gera e grava as sessões). Fora delas, arquivo novo não conta (ex.:
 # notas em docs/), como no -dirty de ``git describe``.
-PASTAS_DO_CODIGO = ("logica", "experimentos_nativos", "experimentos_waveform", "scripts")
+PASTAS_DO_CODIGO = ("logica", "experimentos_nativos", "experimentos_waveform", "scripts", "diag")
 
 
 def info_do_codigo(*, recalcular: bool = False) -> Dict[str, object]:

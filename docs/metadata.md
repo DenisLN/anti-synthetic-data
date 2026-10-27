@@ -33,7 +33,7 @@ um perfil, o metadata das capturas já feitas está em `parcial/NN_classe/` (cam
 | `criada_em` | ISO 8601 com fuso, no primeiro uso da pasta no processo |
 | `modo` | `bancada` ou `simulado` |
 | `git_commit` | `git rev-parse HEAD` (`null` se o git não respondeu) |
-| `git_sujo` | `true` se há alteração rastreada não commitada em qualquer arquivo (`git status --porcelain --untracked-files=no`) OU arquivo novo não ignorado dentro de `logica/`, `experimentos_nativos/`, `experimentos_waveform/` ou `scripts/` (`mestre.PASTAS_DO_CODIGO`); arquivo novo fora dessas pastas não conta; `null` se o git não respondeu. Recalculado a cada pasta de sessão (= a cada `run` da CLI), não uma vez por processo |
+| `git_sujo` | `true` se há alteração rastreada não commitada em qualquer arquivo (`git status --porcelain --untracked-files=no`) OU arquivo novo não ignorado dentro de `logica/`, `experimentos_nativos/`, `experimentos_waveform/`, `scripts/` ou `diag/` (`mestre.PASTAS_DO_CODIGO`); arquivo novo fora dessas pastas não conta; `null` se o git não respondeu. Recalculado a cada pasta de sessão (= a cada `run` da CLI), não uma vez por processo |
 | `arquivos_nao_rastreados` | lista (ordenada) dos arquivos novos não ignorados dentro de `PASTAS_DO_CODIGO` que tornaram a árvore suja; `[]` se nenhum (v1.15, acrescentado) |
 | `versao_codigo` | `git describe --always --dirty --tags` |
 | `numpy_versao`, `python_versao` | versões do ambiente que gravou |
@@ -90,7 +90,7 @@ Nenhum campo existente foi removido. Campos novos:
 | `compartilhada_com_perfis` | idem | lista de todos os perfis que apontam para a captura, origem primeiro (v1.15, acrescentado) |
 | `sha256_captura` | idem | SHA-256 dos arrays da captura (`sessao_io.hash_captura`: `medida`, `modelo`, `programada` em float64 little-endian, com rótulo e tamanho; versão ausente = `NaN`) (v1.15, acrescentado) |
 | `p09_braco` | toda captura (v1.15, acrescentado) | braço do experimento P-09 da conexão: `"A"` (padrão, modo AC), `"B"` (AC+DC, offset 0) ou `"C"` (AC+DC, offset por passo). `AMETEK_P09_BRACO`/`set p09`; no simulado, o da fonte simulada |
-| `media_perdida_maxima_absoluta_pu` | captura TRACe/LIST com modelo e programada (v1.15, acrescentado) | maior `abs(média do ciclo no modelo − média do ciclo na programada)`, pu do pico nominal (`sinais.distancia_modelo_programada`, as mesmas contas de `scripts/analisar_modelo_programado.py`). A programada é a efetiva do braço (no C, com o offset por passo). Na física, o modelo é `gerar()` antes da redução de bancada (08) |
+| `media_perdida_maxima_absoluta_pu` | captura TRACe/LIST com modelo e programada (v1.15, acrescentado) | maior `abs(média do ciclo no modelo − média do ciclo na programada)`, pu do pico nominal (`sinais.distancia_modelo_programada`, as mesmas contas de `diag/analisar_modelo_programado.py`). A programada é a efetiva do braço (no C, com o offset por passo). Na física, o modelo é `gerar()` antes da redução de bancada (08) |
 | `erro_rms_modelo_programada_pu` | idem | rms de `programada − modelo`, pu do pico nominal |
 | `salto_pico_modelo_programada_v` | idem | `(max abs(programada) − max abs(modelo)) × base × √2`, em V: quanto o pico programado se afasta do pico do modelo. `pico_programado_v` (física) não muda |
 | `snr_medido_db` | toda captura | SNR **acrescentado** por nível (`"20.0"`, `"30.0"`, `"40.0"`): janela limpa contra ruído somado, medido só na janela rotulada |

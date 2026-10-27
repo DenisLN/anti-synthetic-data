@@ -10,7 +10,7 @@ import unittest
 
 import numpy as np
 
-SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "analisar_reamostragem.py"
+SCRIPT = Path(__file__).resolve().parent.parent / "diag" / "analisar_reamostragem.py"
 spec = importlib.util.spec_from_file_location("analisar_reamostragem", SCRIPT)
 analise = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(analise)

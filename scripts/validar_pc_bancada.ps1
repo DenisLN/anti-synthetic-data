@@ -80,9 +80,9 @@ try { $infoVersoes = ($versoes.Saida -join "`n") | ConvertFrom-Json } catch { $i
 $commit = Invoke-Git @("rev-parse", "HEAD")
 # Mesma regra de logica/mestre.py::info_do_codigo: sujo = alteracao em arquivo RASTREADO
 # (qualquer pasta) ou arquivo novo nao ignorado em logica/, experimentos_nativos/,
-# experimentos_waveform/ e scripts/. Arquivo novo em docs/ etc. nao conta.
+# experimentos_waveform/, scripts/ e diag/. Arquivo novo em docs/ etc. nao conta.
 $status = Invoke-Git @("status", "--short", "--untracked-files=no")
-$novos = Invoke-Git @("ls-files", "--others", "--exclude-standard", "--", "logica", "experimentos_nativos", "experimentos_waveform", "scripts")
+$novos = Invoke-Git @("ls-files", "--others", "--exclude-standard", "--", "logica", "experimentos_nativos", "experimentos_waveform", "scripts", "diag")
 $gitSujo = $null
 if ($status.Codigo -eq 0 -and $novos.Codigo -eq 0) {
     $gitSujo = ((@($status.Saida | Where-Object { $_.Trim() }).Count -gt 0) -or (@($novos.Saida | Where-Object { $_.Trim() }).Count -gt 0))

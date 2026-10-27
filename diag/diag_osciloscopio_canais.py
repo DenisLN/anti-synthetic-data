@@ -2,7 +2,7 @@
 exceto :RUN para a tela atualizar e as medidas terem dado novo).
 
 Rode com a bateria PARADA (o VISA não compartilha a sessão) e, de
-preferência, com a fonte em 127 V rodando scripts/diag_saida_vs_medida.py em
+preferência, com a fonte em 127 V rodando diag/diag_saida_vs_medida.py em
 outro terminal, para as medidas de VRMS/VPP terem sinal.
 """
 import pyvisa

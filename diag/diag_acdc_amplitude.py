@@ -39,11 +39,11 @@ Feche a CLI da bancada (libera COM10 e o USB do Keysight) antes de rodar.
 Uso (PowerShell, na raiz do projeto, com o fator da probe escrito nela):
 
     $env:BENCH_MODE = "1"
-    env\\Scripts\\python.exe scripts\\diag_acdc_amplitude.py --probe 500 --vrms 127 --hz 60
+    env\\Scripts\\python.exe diag\\diag_acdc_amplitude.py --probe 500 --vrms 127 --hz 60
 
 Teste sem hardware (valores FICTÍCIOS; só exercita o código):
 
-    env\\Scripts\\python.exe scripts\\diag_acdc_amplitude.py --simulado --probe 500 --vrms 127 --hz 60 --testar-compensacao
+    env\\Scripts\\python.exe diag\\diag_acdc_amplitude.py --simulado --probe 500 --vrms 127 --hz 60 --testar-compensacao
 """
 from __future__ import annotations
 

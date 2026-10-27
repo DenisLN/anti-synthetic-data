@@ -7,7 +7,7 @@ Texto de referência importado do levantamento de 16/10/2026, baseado em [fa82f4
 
 {bdg-info}`OFFLINE` Lido por docstrings, símbolos e partes de `recalibrar_extremos.py` e `diag_*` em 2026-10-16 (`main` em `fa82f49`). Quais scripts já rodaram na bancada: cada linha abaixo diz.
 
-**Pergunta:** que scripts existem em `scripts/`, quais energizam e qual a ordem em que se usam? **Resposta:** são 6 arquivos `.ps1`/`.cmd` (porta de entrada, ambiente, limites) e 12 `.py` (recalibração, relatórios offline, verificações de sessão e diagnósticos). **Só os `diag_marcadores_trace.py`, `diag_acdc_amplitude.py`, `diag_saida_vs_medida.py`, `diag_fonte_vs_osciloscopio.py` e os preflights energizam**; todos pedem confirmação digitada. Os dois primeiros passam pelos ORMs; os dois últimos usam PyVISA cru ({doc}`../scpi/diagnostico`).
+**Pergunta:** que scripts existem em `scripts/` e `diag/`, quais energizam e qual a ordem em que se usam? **Resposta:** em `scripts/` são 9 arquivos `.ps1`/`.cmd` (porta de entrada, ambiente, limites) e 10 `.py` (recalibração, relatórios offline, verificações de sessão); os 12 `.py` de diagnóstico e análise foram movidos para `diag/` em 2026-10-27. **Só os `diag_marcadores_trace.py`, `diag_acdc_amplitude.py`, `diag_saida_vs_medida.py`, `diag_fonte_vs_osciloscopio.py` e os preflights energizam**; todos pedem confirmação digitada. Os dois primeiros passam pelos ORMs; os dois últimos usam PyVISA cru ({doc}`../scpi/diagnostico`).
 
 ## 1. Porta de entrada e ambiente (`.cmd` e `.ps1`)
 

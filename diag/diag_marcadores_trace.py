@@ -51,11 +51,11 @@ Feche a CLI da bancada (libera COM10 e o USB do Keysight) antes de rodar.
 Uso (PowerShell, na raiz do projeto, com o fator da probe escrito nela):
 
     $env:BENCH_MODE = "1"
-    env\\Scripts\\python.exe scripts\\diag_marcadores_trace.py --probe 500 --vrms 127
+    env\\Scripts\\python.exe diag\\diag_marcadores_trace.py --probe 500 --vrms 127
 
 Teste sem hardware (fonte e osciloscópio FICTÍCIOS que tocam a hipótese pedida):
 
-    env\\Scripts\\python.exe scripts\\diag_marcadores_trace.py --simulado --probe 500 --vrms 127 --simular "atraso_de_passos:d=1,t_inicio_s=0.1"
+    env\\Scripts\\python.exe diag\\diag_marcadores_trace.py --simulado --probe 500 --vrms 127 --simular "atraso_de_passos:d=1,t_inicio_s=0.1"
 """
 from __future__ import annotations
 

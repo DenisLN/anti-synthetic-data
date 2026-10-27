@@ -97,9 +97,9 @@ Para sessões físicas: SHA/estado git, classe/perfil/seed, tensão/frequência,
 Os arquivos em `docs/evidencias/2026-10-16/` são resultados reprodutíveis de software. Não são capturas físicas e não encerram as partes de bancada. Não regenerar por cima dos resultados: os scripts recusam sobrescrita de JSON; use outro destino para uma repetição.
 
 ```powershell
-.\env\Scripts\python.exe scripts\analisar_modelo_programado.py --saida modelo_programado_novo.json
-.\env\Scripts\python.exe scripts\analisar_reamostragem.py --sintetico --saida reamostragem_nova.json
-.\env\Scripts\python.exe scripts\benchmark_sessao_io.py --capturas 3 10 30 --saida benchmark_novo.json
+.\env\Scripts\python.exe diag\analisar_modelo_programado.py --saida modelo_programado_novo.json
+.\env\Scripts\python.exe diag\analisar_reamostragem.py --sintetico --saida reamostragem_nova.json
+.\env\Scripts\python.exe diag\benchmark_sessao_io.py --capturas 3 10 30 --saida benchmark_novo.json
 ```
 
 - `docs/evidencias/2026-10-16/modelo_programado.json`: seis classes, três perfis, 50/60 Hz e três seeds; representação TRACe/LIST comparada ao modelo, perda da média por ciclo e correlações nominal/ajustada. Sem hardware, calibração ou redução de bancada.

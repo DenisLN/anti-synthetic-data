@@ -33,7 +33,7 @@ O arquivo é salvo logo após a leitura de cada canal: CH1 sobrevive se CH2 falh
 Para comparar uma exportação CH1, substitua o caminho e informe a frequência da sessão:
 
 ```powershell
-.\env\Scripts\python.exe scripts\analisar_reamostragem.py --entrada <bruto_CH1.npz> --f0-hz 50 --harmonicos 10 --saida <analise_nova.json>
+.\env\Scripts\python.exe diag\analisar_reamostragem.py --entrada <bruto_CH1.npz> --f0-hz 50 --harmonicos 10 --saida <analise_nova.json>
 ```
 
 O analisador usa a taxa e o número de pontos registrados no NPZ para reproduzir a grade salva; `--fs-salvo` e `--pontos-salvos` permitem uma comparação alternativa explícita. Publica RMS, pico, erro temporal, energia espectral acima do Nyquist e THD ajustada conjuntamente com DC/seno/cosseno. A THD fica indisponível com justificativa quando faltam ciclos, fundamental ou condições numéricas suficientes. Hashes do arquivo, dos sinais e da configuração identificam a entrada usada.
@@ -42,7 +42,7 @@ O analisador usa a taxa e o número de pontos registrados no NPZ para reproduzir
 
 ## 2. Roteiro de investigação
 
-1. Reproduza **offline** quando possível: `tests.test_offline` (instrumentos simulados e `ScriptedVisaConnection`), ou um script em `arquivo/analises:docs/analise-AAAA-MM-DD/` que importe `mestre`/`ametek_orm`/`sinais` com `sys.path.insert(0, "logica")` (exemplos: `scripts/diag_fonte_vs_osciloscopio.py`; os diagnósticos temporários de 2026-10-12 estão em `arquivo/analises:docs/analise-2026-10-12/scripts/`).
+1. Reproduza **offline** quando possível: `tests.test_offline` (instrumentos simulados e `ScriptedVisaConnection`), ou um script em `arquivo/analises:docs/analise-AAAA-MM-DD/` que importe `mestre`/`ametek_orm`/`sinais` com `sys.path.insert(0, "logica")` (exemplos: `diag/diag_fonte_vs_osciloscopio.py`; os diagnósticos temporários de 2026-10-12 estão em `arquivo/analises:docs/analise-2026-10-12/scripts/`).
 2. Para dados já gravados: `logica\analisar_sessao.py`, `scripts\gerar_tres_versoes.py`, `scripts\relatorio_limites_bancada.py`, `relatorio_html.py`.
 3. Só então use hardware, com a menor energia possível e os scripts da seção 3.
 4. Registre hipóteses refutadas junto com as confirmadas.
@@ -51,14 +51,14 @@ O analisador usa a taxa e o número de pontos registrados no NPZ para reproduzir
 
 | Script | Energiza? | Confirmação | Uso |
 |---|---|---|---|
-| `scripts/diag_nativo_output_off.py` | **não** (nunca envia `OUTPut ON`; tensões ≤ 5 V só nos registradores) | — | `--so estado,pulso,resolucao,rajada,opcoes,limite,pos_trava,opc` (padrão `opcoes,limite`). Feche a CLI antes. `--flash` é recusado (consultar após `TRACe:DATA` trava a fonte) |
-| `scripts/diag_saida_vs_medida.py` | sim | `ENERGIZAR-<V>V` | `--tensao` (≤ 130, padrão 50), `--faixa 150\|300`, `--duracao`; lê a medida da própria fonte nas 3 fases |
-| `scripts/diag_fonte_vs_osciloscopio.py` | sim | `ENERGIZAR-127V` | fonte e CH1 lado a lado, direto e em degrau |
-| `scripts/diag_osciloscopio_canais.py` | não | — | só leitura dos 4 canais do Keysight (envia `:RUN`) |
-| `scripts/diag_acdc_amplitude.py` | sim | `ENERGIZAR-ACDC` | `BENCH_MODE=1`, `--probe` obrigatório; `--vrms`, `--hz`, `--offsets-pu`, `--testar-compensacao`, `--simulado` (sem hardware, ganho FICTÍCIO); mede o déficit de CA em ACDC |
-| `scripts/diag_list_offset.py` | **não** (nunca envia `OUTPut ON`; recusa se a saída estiver ligada) | — | P-09: com OUTPUT OFF confirmado, `SOURce:MODE ACDC`, `SOURce:LIST:VOLTage:OFFSet?` (comando não confirmado no manual) e `SYSTem:ERRor?`, volta a `--modo-anterior` (padrão `AC`; a Rev. 5.53 não tem `SOURce:MODE?`) e grava `logs/diag_list_offset-<data>.json` com `git_commit`/`git_sujo`, resultado e comandos. `BENCH_MODE=1`; `--simulado [--sim-suportado]` roda offline (resultado FICTÍCIO). `suportado=true` libera o braço C (`AMETEK_P09_BRACO=C`) |
-| `scripts/diag_ciclos_trace.py` | **não** (offline, só lê a sessão) | — | `<sessao_dir> [--classes 08,09] [--instante-ms 100] [--tol-rms-pu] [--margem-empate] [--saida logs]`; ver §3.1 |
-| `scripts/diag_marcadores_trace.py` | sim | `ENERGIZAR-MARCADORES` | `BENCH_MODE=1`, `--probe` obrigatório; `--vrms`, `--frequencias 50,60`, `--variantes marcadores,fronteira,meio_ciclo`, `--instantes-evento-ms 40,80`, `--amp-pu`, `--simulado` (+ `--simular "mecanismo:chave=valor"`); ver §3.1 |
+| `diag/diag_nativo_output_off.py` | **não** (nunca envia `OUTPut ON`; tensões ≤ 5 V só nos registradores) | — | `--so estado,pulso,resolucao,rajada,opcoes,limite,pos_trava,opc` (padrão `opcoes,limite`). Feche a CLI antes. `--flash` é recusado (consultar após `TRACe:DATA` trava a fonte) |
+| `diag/diag_saida_vs_medida.py` | sim | `ENERGIZAR-<V>V` | `--tensao` (≤ 130, padrão 50), `--faixa 150\|300`, `--duracao`; lê a medida da própria fonte nas 3 fases |
+| `diag/diag_fonte_vs_osciloscopio.py` | sim | `ENERGIZAR-127V` | fonte e CH1 lado a lado, direto e em degrau |
+| `diag/diag_osciloscopio_canais.py` | não | — | só leitura dos 4 canais do Keysight (envia `:RUN`) |
+| `diag/diag_acdc_amplitude.py` | sim | `ENERGIZAR-ACDC` | `BENCH_MODE=1`, `--probe` obrigatório; `--vrms`, `--hz`, `--offsets-pu`, `--testar-compensacao`, `--simulado` (sem hardware, ganho FICTÍCIO); mede o déficit de CA em ACDC |
+| `diag/diag_list_offset.py` | **não** (nunca envia `OUTPut ON`; recusa se a saída estiver ligada) | — | P-09: com OUTPUT OFF confirmado, `SOURce:MODE ACDC`, `SOURce:LIST:VOLTage:OFFSet?` (comando não confirmado no manual) e `SYSTem:ERRor?`, volta a `--modo-anterior` (padrão `AC`; a Rev. 5.53 não tem `SOURce:MODE?`) e grava `logs/diag_list_offset-<data>.json` com `git_commit`/`git_sujo`, resultado e comandos. `BENCH_MODE=1`; `--simulado [--sim-suportado]` roda offline (resultado FICTÍCIO). `suportado=true` libera o braço C (`AMETEK_P09_BRACO=C`) |
+| `diag/diag_ciclos_trace.py` | **não** (offline, só lê a sessão) | — | `<sessao_dir> [--classes 08,09] [--instante-ms 100] [--tol-rms-pu] [--margem-empate] [--saida logs]`; ver §3.1 |
+| `diag/diag_marcadores_trace.py` | sim | `ENERGIZAR-MARCADORES` | `BENCH_MODE=1`, `--probe` obrigatório; `--vrms`, `--frequencias 50,60`, `--variantes marcadores,fronteira,meio_ciclo`, `--instantes-evento-ms 40,80`, `--amp-pu`, `--simulado` (+ `--simular "mecanismo:chave=valor"`); ver §3.1 |
 | `scripts/verificar_sessao_bancada.py` | **não** (offline: só lê `resultados\sessao_*`) | — | `<pasta da sessão>` `[--tol-fase-graus 10] [--tol-largura-ms 2] [--tol-pretrigger-amostras 2] [--json arq]`; rodar logo depois da bancada (ver abaixo) |
 | `logica/diag_digitizer_*.py` | — | — | removidos em 2026-10-13 (modo Digitizer, v1.10, descartado; histórico no git até `d3c7ce7`) |
 | `preflight_new.py --list-diagnostics` | não | — | confirma comandos `SOURce:LIST:*` com write+leitura |

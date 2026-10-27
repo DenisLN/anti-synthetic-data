@@ -490,7 +490,7 @@ def distancia_modelo_programada(
     perdida por ciclo (média do modelo menos a da programada, em ciclos de
     ``pontos_por_ciclo`` amostras) e o seu máximo absoluto; e o salto de pico
     absoluto (``max|programada| - max|modelo|``). Mesmas contas de
-    ``scripts/analisar_modelo_programado.analisar_forma``. Exige as duas
+    ``diag/analisar_modelo_programado.analisar_forma``. Exige as duas
     formas do mesmo tamanho, múltiplo de ``pontos_por_ciclo``."""
     modelo = np.asarray(modelo_pu, dtype=np.float64)
     programada = np.asarray(programada_pu, dtype=np.float64)

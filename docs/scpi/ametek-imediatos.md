@@ -117,7 +117,7 @@ Texto de referência importado do levantamento de 16/10/2026, baseado em [fa82f4
 - **Sintaxe:** `MEASure:VOLTage:AC?` devolve V rms (NR2)
 - **Parâmetros e unidades:** Sem parâmetros.
 - **Sincronismo e ordem:** Usado por `verificar_cadeia_de_medicao` (fonte dentro de 5 % da base, sempre em AC) e por `set diagnostico on`. A consulta demora cerca de 0,2 s (E45: 0,2 s entre a pergunta e a resposta).
-- **Erros e quirks:** **Em `ACDC` devolve o RMS total (CA mais CC)**, apesar de o manual falar em "ac rms voltage": com offset de 5,58 V já programado e antes do degrau CA, a fonte leu 5,491 V (sessão de 127 V/60 Hz de 07/10, transcrição). Interpretação sustentada por uma leitura e pela consistência de três capturas; `MEASure:VOLTage:DC?` fecharia a dúvida (`scripts/diag_acdc_amplitude.py`, nunca rodou, P-17).
+- **Erros e quirks:** **Em `ACDC` devolve o RMS total (CA mais CC)**, apesar de o manual falar em "ac rms voltage": com offset de 5,58 V já programado e antes do degrau CA, a fonte leu 5,491 V (sessão de 127 V/60 Hz de 07/10, transcrição). Interpretação sustentada por uma leitura e pela consistência de três capturas; `MEASure:VOLTage:DC?` fecharia a dúvida (`diag/diag_acdc_amplitude.py`, nunca rodou, P-17).
 - **Quem envia:** `AmetekMX30.measure_voltage` ([ametek_orm.py:1977](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/ametek_orm.py#L1977))
 - **Manual:** p. 70.
 - **Classes que usam:** nenhuma classe (cadeia de medição e diagnóstico)
