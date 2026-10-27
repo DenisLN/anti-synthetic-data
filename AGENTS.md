@@ -233,9 +233,12 @@ ler para cada tarefa. Páginas por assunto (o índice está em `docs/index.md`):
 
 - operar a bancada: [`guia-operador`](docs/guia-operador.md), [`operacao`](docs/operacao.md),
   [`roteiro-bancada`](docs/roteiro-bancada.md), [`bancada_pendencias`](docs/bancada_pendencias.md);
-- estado e pendências: [`PENDENCIAS_TRACKER`](docs/PENDENCIAS_TRACKER.md) (fonte única de
-  estado), [`execucao_pendencias`](docs/execucao_pendencias.md),
-  [`decisoes_pendentes`](docs/decisoes_pendentes.md);
+- estado e pendências: [`estado_prontidao.json`](docs/estado_prontidao.json) (arquivo único
+  de estado, renderizado em [`projeto/pendencias`](docs/projeto/pendencias.md); formato em
+  [`contribuir_docs`](docs/contribuir_docs.md)), [`PENDENCIAS_TRACKER`](docs/PENDENCIAS_TRACKER.md)
+  (só o protocolo para agentes), [`execucao_pendencias`](docs/execucao_pendencias.md),
+  [`decisoes_pendentes`](docs/decisoes_pendentes.md); depois da coleta:
+  `fechar_pendencias.py` → editar o arquivo único → `gerar_mapa_pendencias.py` → build;
 - código e arquitetura: [`arquitetura`](docs/arquitetura.md), [`codigo`](docs/codigo.md),
   [`estender`](docs/estender.md), [`testes`](docs/testes.md), [`diagnostico`](docs/diagnostico.md);
 - equipamentos e medição: [`scpi`](docs/scpi.md), [`quirks`](docs/quirks.md),
@@ -296,8 +299,8 @@ são registro histórico: não se reescrevem.
 - Não há mais branch/PR de trabalho pendente (desde 2026-10-27 tudo está na
   `main`; o PR #3 foi fechado e o passo final SINE entrou desligado por padrão,
   `passo_final_sin=False` em `logica/ametek_orm.py`). Trabalho pendente de
-  bancada vive na página de pendências do site (`docs/execucao_pendencias.md`
-  e `docs/PENDENCIAS_TRACKER.md`, P-01 a P-31; o passo final SINE é a P-18) e
+  bancada vive na página de pendências do site (`docs/projeto/pendencias.md`, gerada
+  de `docs/estado_prontidao.json`, P-01 a P-31; o passo final SINE é a P-18) e
   é documentado como **pendente**, nunca como validado.
 - Branches de trabalho antigos foram descontinuados em 2026-10-27 (SHAs finais
   e estado da preservação em `CHANGELOG/v1.15.md`); `arquivo/analises`

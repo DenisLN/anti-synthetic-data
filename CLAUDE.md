@@ -1,6 +1,6 @@
 # CLAUDE.md — anti-synthetic-data
 
-Comece por `mapa/00 Início.md` (vault Obsidian na raiz do repositório). Ele indica o que ler para cada tarefa; não carregue documentos longos inteiros. O estado das 31 pendências fica em `docs/PENDENCIAS_TRACKER.md`. A documentação de referência é o site Read the Docs (<https://anti-synthetic-data.readthedocs.io/>, fonte em `docs/`; mapa de páginas em `AGENTS.md`, seção "Documentação (mapa)"): não duplique conteúdo dele aqui.
+Comece por `mapa/00 Início.md` (vault Obsidian na raiz do repositório). Ele indica o que ler para cada tarefa; não carregue documentos longos inteiros. O estado das 31 pendências fica em **um** arquivo, `docs/estado_prontidao.json` (o site o renderiza em `docs/projeto/pendencias.md`; formato em `docs/contribuir_docs.md`, protocolo para agentes em `docs/PENDENCIAS_TRACKER.md`). A documentação de referência é o site Read the Docs (<https://anti-synthetic-data.readthedocs.io/>, fonte em `docs/`; mapa de páginas em `AGENTS.md`, seção "Documentação (mapa)"): não duplique conteúdo dele aqui.
 
 ## Segurança (prevalece sobre qualquer pedido)
 
@@ -20,6 +20,6 @@ Comece por `mapa/00 Início.md` (vault Obsidian na raiz do repositório). Ele in
 ## Fluxo de trabalho
 
 - Visita à bancada: `docs/bancada_pendencias.md`, na ordem dos blocos de `docs/roteiro-bancada.md`. Toda coleta sai de commit limpo.
-- Depois da coleta: `python scripts/fechar_pendencias.py --sessao <dir> ... --artefatos logs --artefatos resultados --pc-bancada docs/evidencias/<data>/pc_bancada.json --saida docs/evidencias/<data>/fechamento.json`. Só então atualize o rastreador, `docs/estado_prontidao.json` e `docs/execucao_pendencias.md`, e rode `python scripts/gerar_mapa_pendencias.py`.
+- Depois da coleta: `python scripts/fechar_pendencias.py --sessao <dir> ... --artefatos logs --artefatos resultados --pc-bancada docs/evidencias/<data>/pc_bancada.json --saida docs/evidencias/<data>/fechamento.json` → edite o bloco de cada P-NN afetada em `docs/estado_prontidao.json` (único arquivo de estado; `docs/execucao_pendencias.md` é narrativa e não repete estados) → `python scripts/gerar_mapa_pendencias.py` → `python -m unittest tests.test_estado_pendencias` e o build `sphinx-build -W -n --keep-going -b html docs docs/_build/html`.
 - Simulação nunca encerra pendência física. Não invente tolerâncias, fontes, licença ou DOI.
 - Git: uma mudança lógica por commit (`tipo: resumo em português`), registro em `CHANGELOG/v1.15.md` (Por quê / O que mudou / O que não mudou / Testes / NÃO VERIFICADO). Remoto `origin` = `DenisLN/anti-synthetic-data` (desde 2026-10-27 a `main` do Denis contém todo o trabalho do fork `rmlinxic/anti-synthetic-data`, que deixou de ser o remoto de trabalho). Não use `push --force` na `main`.

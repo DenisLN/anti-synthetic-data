@@ -1,6 +1,6 @@
 # Decisões pendentes do responsável
 
-Formulário para responder de uma vez. Cada item traz o dado concreto, as opções e a recomendação técnica (marcada com **[recomendado]**). A recomendação não é decisão do projeto: só vale depois de preenchida em "Resposta". Estado geral em [](PENDENCIAS_TRACKER.md) e critérios em [](execucao_pendencias.md).
+Formulário para responder de uma vez. Cada item traz o dado concreto, as opções e a recomendação técnica (marcada com **[recomendado]**). A recomendação não é decisão do projeto: só vale depois de preenchida em "Resposta". Estado de cada pendência (gerado do arquivo único `docs/estado_prontidao.json`) em {doc}`projeto/pendencias` e critérios em [](execucao_pendencias.md). Cada resposta daqui também é resumida no campo `decisao_dono` desse arquivo.
 
 Nada aqui cria licença, autoria, DOI ou fonte de dados. Onde falta informação, o item pede que o responsável a forneça.
 

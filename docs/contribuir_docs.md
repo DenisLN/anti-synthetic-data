@@ -54,10 +54,36 @@ xdg-open docs/_build/html/index.html
 | comando SCPI sem entrada de referência | aviso de referência não resolvida (papéis `scpi` e `scpik`, `docs/_ext/scpi.py`) |
 | `literalinclude` com símbolo inexistente | erro de diretiva |
 | tabela ou cabeçalho malformado | aviso de docutils |
+| `docs/estado_prontidao.json` inválido (P-NN faltando ou repetido, estado fora da lista, evidência inexistente) | erro de extensão em `projeto/pendencias.md` (`docs/_ext/pendencias.py`) |
 
 Exceção registrada em `docs/conf.py`: três links relativos quebrados em `CHANGELOG/v1.0.md` e `v1.2.md` (que apontam para `../ametek_orm.py`, `../oscilloscope_orm.py` e `../mestre.py`) são ignorados porque os changelogs fechados não se reescrevem; qualquer outro link quebrado continua falhando.
 
-## 4. Publicar no Read the Docs
+## 5. Estado das pendências: um arquivo, renderizado no build
+
+O estado das 31 pendências (P-01 a P-31) vive **só** em `docs/estado_prontidao.json`. Nada mais guarda tabela de estado: `docs/PENDENCIAS_TRACKER.md` é apenas o protocolo para agentes, e {doc}`execucao_pendencias` e {doc}`decisoes_pendentes` remetem a {doc}`projeto/pendencias`. No build, a extensão `docs/_ext/pendencias.py` troca a linha `@@pendencias-estado@@` de `docs/projeto/pendencias.md` pelo placar, pela matriz e por uma seção por pendência, gerados do JSON, com a âncora `estado-p-NN` (por exemplo `` {ref}`P-08 <estado-p-08>` ``). O que o Read the Docs mostra é, portanto, o que está commitado.
+
+**Fluxo depois de uma coleta:** (1) `python scripts/fechar_pendencias.py --sessao <dir> ... --saida docs/evidencias/<data>/fechamento.json` gera a evidência (não decide); (2) editar o bloco da pendência em `docs/estado_prontidao.json`; (3) `python scripts/gerar_mapa_pendencias.py` (regenera `mapa/pendencias/`); (4) `python -m unittest tests.test_estado_pendencias` e o build `-W`.
+
+**Formato** (`esquema: 2`). Raiz: `atualizado` (data), `nota_atualizacao`, `pendencias` (objeto com as 31 chaves `"P-01"` a `"P-31"`, cada uma uma vez) e `sessoes` (as cinco condições do verificador). Cada pendência:
+
+| Campo | Conteúdo |
+|---|---|
+| `estado` | `concluida`, `aguarda-bancada` (software pronto, falta bancada), `aguarda-decisao` (falta decisão ou dado do responsável), `em-andamento` ou `reprovada-bancada` |
+| `titulo`, `prioridade` (`alta`, `media`, `baixa`), `responsavel` | identificação |
+| `acao` | o que a pendência pede |
+| `dependencia`, `criterio` | do que depende e quando fecha |
+| `quem_fecha` | lista de `bancada`, `decisao-dono`, `codigo` |
+| `frentes` | frentes de trabalho (K, R, D) |
+| `falta` | o que falta para fechar (`—` se nada) |
+| `como_tratada` | como foi resolvida ou tratada (texto; `null` se ainda não registrado) |
+| `commits` | hashes (7 a 40 hexadecimais) citados |
+| `evidencias` | caminhos relativos a `docs/` de arquivos que existem (por exemplo `evidencias/2026-10-22/fechamento.json`) |
+| `decisao_dono` | `registrada` (booleano), `texto` e, se houver, `data` |
+| `situacao_execucao`, `entrega`, `direcao_vigente` | opcionais: rótulo e texto migrados de `execucao_pendencias.md` |
+
+A validação está em `docs/_ext/estado_pendencias.py` e roda no build, em `scripts/gerar_mapa_pendencias.py` e em `tests/test_estado_pendencias.py`. `scripts/verificar_prontidao.py --manifesto docs/estado_prontidao.json` lê o mesmo arquivo (conta como concluída a pendência com `estado: concluida` e evidência). O manifesto `docs/manifesto_prontidao.json` segue sendo o modelo vazio no formato antigo (`P01`, `status`).
+
+## 6. Publicar no Read the Docs
 
 O build no serviço depende de conta e importação feitas pelo responsável pelo repositório; o arquivo `.readthedocs.yaml` já está na raiz.
 

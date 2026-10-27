@@ -20,18 +20,7 @@ Nenhum item é encerrado apenas por existir um script. Um fechamento de software
 
 ## Decisões atuais para implementação
 
-| Item | Direção vigente |
-|---|---|
-| P-04 | Concluída — software | Recusa offline de parâmetros inválidos e excessos de RMS/pico, inclusive senoide imediata com offset e cache. Faixa de frequência do driver aplicada antes de I/O. Regressões e integração aprovadas. |
-| P-09 | Aceitar e explicitar provisoriamente a perda da média por ciclo; nenhuma compensação física sem dados. Quantificar a diferença entre modelo e programada. |
-| P-11 | Concluída — decisão e metadata | Mantidas as extensões 10–16; classe 15 registra envelopes e THD central/mínima/máxima da redução, com testes analíticos. gerar()/fixtures preservados; validação física das classes continua em P-01/P-08. |
-| P-12 | Concluída — software e decisão | Classe 06 compara medida com a programação reconstruída, sem usar a medida como referência. Modelo ideal preservado; efeito nas 11/15 quantificado offline. Fidelidade física continua pendente em P-01. |
-| P-13 | Concluída — software | Recuperação com lock exclusivo POSIX/Windows; escritor ativo ignorado; morte abrupta preserva ambos os IDs. Metadata/corrente/SNR/aliases preservados, pastas exclusivas e escrita pós-close recusada. Integração aprovada. |
-| P-14 | Concluída — software | Parsing estrito e exclusões em listas; seleção efetiva mostrada antes de confirmação. Exclusão total ou sintaxe ambígua não executa nenhuma classe. Testes aprovados. |
-| P-15 | Concluída — software | Limite padrão de três capturas por classe/perfil no HTML físico/simulado; seleções explícitas preservadas e leitura dos dados originais integral. Testes aprovados. |
-| P-18 | SINE integrado experimentalmente no checkout, desligado por padrão (`AMETEK_PASSO_FINAL_SIN=0`, `passo_final_sin=False`); validação física permanece pendente. |
-| P-20 | Preparar material de publicação sem inventar licença, autoria ou DOI. O fork não concede direitos de relicenciamento. |
-| P-23 | Orçamento operacional de 216 gravações TRACe por conexão aplicado no CLI, entrada principal e ORM; inclui tentativas de envio incertas e comandos diretos. Esgotamento aborta a bateria sem retry. A causa física da trava continua aberta. |
+A direção vigente de cada pendência (inclusive as decisões do responsável e a data) está no campo `direcao_vigente` e em `decisao_dono` de `docs/estado_prontidao.json`, renderizada em {doc}`projeto/pendencias`. Esta página não repete estados nem direções.
 
 ## Responsabilidade e sequência
 
@@ -45,39 +34,41 @@ O coordenador integra código, registra baseline e revisa critérios de aceite. 
 
 ## Matriz de execução
 
-| ID | Estado nesta revisão | Próxima entrega e critério de aceite |
-|---|---|---|
-| P-01 | Preparada / aguarda bancada | Executar campanha v1.15 por classe/perfil/condição; registrar sessões e cobertura, sem converter simulação em validação física. |
-| P-02 | Reprovada em 2026-10-22 / aguarda bancada | Marcadores 30/30 sem espúrios e recapturas 08/09 presentes; posição da 08 a 127 V/60 Hz desvia −16 amostras (limite 10); `evidencias/2026-10-22/fechamento.json`. Diagnóstico da cópia/evento em 100 ms com marcadores, TRACe recuperada e capturas 08/09; distinguir hipóteses antes da correção. |
-| P-03 | Concluída — bancada 2026-10-22 | 3/3 capturas: desvio 2 amostras, pico 339 V, sobressinal 0,295 pu (`evidencias/2026-10-22/fechamento.json`). Critério: recapturar 08 a 127 V/50 Hz, evento 90 ms; conferir posição ≤10 amostras, teto 374,2 V e sobressinal conforme o roteiro. Excesso exige investigação, não relaxamento do teto. |
-| P-04 | Concluída — software | Recusa offline de parâmetros inválidos e excessos de RMS/pico, inclusive senoide imediata com offset e cache. Faixa de frequência do driver aplicada antes de I/O. Regressões e integração aprovadas. |
-| P-05 | Evidência suficiente, revisão humana pendente | 2026-10-22: largura ≤ 1,1 ms; pre-trigger determinístico até ±6 amostras (aviso). Medir fase, início/duração e pretrigger nas nativas 01–04; reportar desvios e manter o limiar proposto distinto de critério físico validado. |
-| P-06 | Parcial — bug de estado corrigido | Classe 18 após STEP/PULSe não herda readbacks antigos; divergências continuam recusadas antes de INIT. Falta medir continuidade de fase e restauração na fonte real. |
-| P-07 | Evidência suficiente, revisão humana pendente | 2026-10-22: 07 → 1,615, 17 → 1,575 (`022bb5c`, `a22fba9`). Recalibrar 07/17 com medidas reais, revisar diff e identificar calibração; validar em nova coleta, sem aprovação retroativa. |
-| P-08 | Reprovada em 2026-10-22 / aguarda bancada | Extremos até 1,30× o previsto, abaixo do teto; recalibrado em `13b9bdb`. Conferir pico/vale 10/11/12/16 contra previsão por condição; investigar violações do teto previsto. |
-| P-09 | Parcial — sem suporte a offset por passo | 2026-10-22: `SOURce:LIST:VOLTage:OFFSet` não aceito (`-113`); braço C fora; faltam braços A e B. Perda de média por ciclo quantificada em `modelo_programado.json`; aceita provisoriamente como limitação. Compensação física depende de P-17 e dados reais. |
-| P-10 | Concluída — bancada 2026-10-22 | Níveis 2–30 % com validação ok e rota esperada (`evidencias/2026-10-22/fechamento.json`). Medir RMS/THD da 05: CSIN 10/15/20%, norma 2% e TRACe 30%, identificando rota, nível e configuração. |
-| P-11 | Concluída — decisão e metadata | Mantidas as extensões 10–16; classe 15 registra envelopes e THD central/mínima/máxima da redução, com testes analíticos. gerar()/fixtures preservados; validação física das classes continua em P-01/P-08. |
-| P-12 | Concluída — software e decisão | Classe 06 compara medida com a programação reconstruída, sem usar a medida como referência. Modelo ideal preservado; efeito nas 11/15 quantificado offline. Fidelidade física continua pendente em P-01. |
-| P-13 | Concluída — software | Recuperação com lock exclusivo POSIX/Windows; escritor ativo ignorado; morte abrupta preserva ambos os IDs. Metadata/corrente/SNR/aliases preservados, pastas exclusivas e escrita pós-close recusada. Integração aprovada. |
-| P-14 | Concluída — software | Parsing estrito e exclusões em listas; seleção efetiva mostrada antes de confirmação. Exclusão total ou sintaxe ambígua não executa nenhuma classe. Testes aprovados. |
-| P-15 | Concluída — software | Limite padrão de três capturas por classe/perfil no HTML físico/simulado; seleções explícitas preservadas e leitura dos dados originais integral. Testes aprovados. |
-| P-16 | Concluída — PC da bancada | Inspiron 15 (DESKTOP-FSEESJI), definido como PC da bancada em 21/10/2026: `scripts/validar_pc_bancada.ps1` em `21fb300`, árvore limpa, Python 3.11.9/numpy 2.4.6/PyMeasure 0.16.0/PyVISA 1.14.1, 680 testes, 0 falhas, 0 erros, 0 skips (assinaturas exatas de Windows executadas). Evidência: `evidencias/2026-10-21/pc_bancada.json` e `.log`; `fechar_pendencias.py` P-16 = evidencia_suficiente sem revisão pendente. |
-| P-17 | Evidência suficiente, revisão humana pendente | 2026-10-22: AC / ACDC offset 0 / ACDC com offset a 50 e 60 Hz; falta critério do déficit. Caracterizar déficit ACDC por CA e RMS total; não aplicar V/g como correção antes da caracterização. |
-| P-18 | Parcial — integrado experimental OFF | SINE integrado com padrão desligado e regressões offline; falta validar aceitação SCPI e a restauração na fonte real. |
-| P-19 | Insuficiente em 2026-10-22 / aguarda análise | `TRACe:DATA? TCC00` devolve 10 valores (9 leituras). Verificar `TRACe:DATA?` no firmware real, 1024 valores finitos ou comando explicitamente não suportado; preservar intervalos de segurança. |
-| P-20 | Aberta — depende de direitos/publicação | Preparar congelamento, licença e autoria verificadas, citação e Zenodo após validação; não criar licença ou DOI fictícios. |
-| P-21 | Preparada / aguarda bancada | Calibrar condições novas antes de coleta científica e registrar origem dos fatores, sem elevar limites para acomodar classes. |
-| P-22 | Evidência suficiente, revisão humana pendente | 2026-10-22: benchmark com 14 sessões físicas no DESKTOP-FSEESJI, falta critério de tempo/tamanho. `benchmark_sintetico.json` mede tempo/tamanho/tracemalloc para 3/10/30 capturas e verifica leitura/aliases. Falta medir dados físicos reais e custo no PC/disco da bancada. |
-| P-23 | Parcial — proteção implementada | CLI e entrada principal recusam estimativas acima de 216 antes de abrir instrumentos; ORM verifica a captura inteira e conta tentativas cumulativas, inclusive comandos diretos e falhas de envio. Cache confirmado não consome novas gravações. Esgotamento aborta a bateria sem retry. Causa física da trava ainda depende de diagnóstico real. |
-| P-24 | Concluída — revisão e build local | Referências atuais por símbolos/25 `pyobject` validados AST; 1136 citações históricas fixadas por permalink SHA; B8 e contagens corrigidos; build Sphinx estrito aprovado e tabelas P-03/decisões verificadas no HTML. Publicação remota do site não é afirmada. |
-| P-25 | Concluída — decisão editorial | Removidos identificadores `spec NN` das páginas operacionais atuais; aceitas renomeação local e manutenção do texto `uso_limite_bancada` sem alterar o JSON/hash. Mantidos histórico fechado e termos de governança em AGENTS por decisão explícita. |
-| P-26 | Preparada / aguarda operador | Registrar antes da coleta perfil/frequência/tensão e escopo ACDC opcional 230 V; resolver essa exceção ao roteiro de 127 V antes de executá-la. |
-| P-27 | Concluída — comparações sem fonte retiradas | Removidas faixas de referência e coluna “bate?” que dependiam do arquivo ausente. Valores históricos permanecem identificados como reportados e não são critérios de aceite; não se fabricou a fonte. |
-| P-28 | Evidência suficiente, revisão humana pendente | 2026-10-22: 135 exportações brutas íntegras e reamostragem casada por SHA-256. `set diagnostico bruto on` preserva BYTE/preamble/tempos antes de interpolar, sem nova aquisição, em arquivos independentes com vínculo por hash. Analisador compara RMS/pico/THD/erro temporal/espectro na grade salva, com rastreabilidade de entrada/configuração. Faltam exportações reais e revisão dos resultados físicos; FIR não substitui o interpolador do dataset. |
-| P-29 | Bloqueada por logs reais | Transcrições locais das sessões não disponíveis no checkout; obter trechos com sessão/condição/SHA. A tabela SCPI descreve código/manual, não prova medição. |
-| P-30 | Concluída — retificação | Sessões de 07/10 irrecuperáveis (decisão de 21/10/2026). As contagens 63 ("piloto") e 99 (36+36+27) ficam como históricas e não verificáveis, com nota de retificação em `AGENTS.md` e `docs/tres_versoes.md`, sem apagar o histórico. Nenhum resultado depende delas. Mesmo critério da P-27: não se fabricou a tabela por sessão. |
-| P-31 | Evidência suficiente, revisão humana pendente | 2026-10-22: capturas físicas de 06/10/11/12/15/16 e correlações publicadas; falta a métrica oficial. Relatório modelo/programada publica nominal e fundamental ajustada com limitações; falta comparar novas sessões físicas e justificar a métrica oficial. |
+O estado, o que falta, a entrega de cada rodada e o critério de aceite de P-01 a P-31 estão em `docs/estado_prontidao.json` (campos `estado`, `situacao_execucao`, `entrega`, `falta`, `criterio`) e são renderizados no build em {doc}`projeto/pendencias`, com âncora por pendência (`estado-p-NN`). A tabela que existia aqui foi migrada para esse arquivo em 2026-10-27, sem mudar nenhum estado.
+
+## Registro de rodadas (uma linha por rodada, mais recente no topo)
+
+Migrado de `docs/PENDENCIAS_TRACKER.md` em 2026-10-27. É histórico datado: os estados citados valem na data de cada linha, não hoje.
+
+ (uma linha por rodada, mais recente no topo)
+
+- 2026-10-22 — Visita à bancada (Inspiron, COM10): Blocos 1–9 e 8-A completos a 127 V/60 Hz, parada no braço A da P-09. Fechamento parcial (`evidencias/2026-10-22/fechamento.json`): **P-03 e P-10 concluídas**; P-05, P-07, P-17, P-22, P-28 e P-31 com evidência suficiente aguardando revisão; P-02 e P-08 reprovadas; P-09 sem suporte a offset por passo. Correções: recalibração 127 V/60 Hz, forma volta à senoide depois de classe waveform (THD de 18/19), visita (P-09, Bloco 7, 50 Hz). 759 OK.
+
+- 2026-10-21 — Visita num comando: `scripts\VISITA_BANCADA.cmd` conduz os Blocos 1–10, 8-A, 10-A, 10-B, as cinco condições da P-26 (com calibração P-21 de 220/33 V) e o fechamento; CLI ganhou modo roteiro (`--comando`), as confirmações seguem com o operador. 754 OK.
+
+- 2026-10-21 — Pedido do responsável: capacidades da MX30 conferidas antes de I/O (LIST ≤32, TRACe ≤50, dwell, PULSe, offset), captura que excede é pulada e a bateria segue; orçamento esgotado desliga e registra; `falhas.json`; `run falhas` / `rerun`. Revisão Opus OK; 726 OK no Mac e no Inspiron (`suite.ps1`, EXIT=0, sem instrumentos).
+
+- 2026-10-21 — P-09: experimento A/B/C (braço A byte a byte idêntico; B = AC+DC; C = offset por passo, com consulta de suporte e recusa sem fallback; métricas modelo→programada no metadata); revisão Opus sem violação de limites, 3 achados corrigidos; 704 OK. Bloco 10-B no roteiro.
+
+- 2026-10-21 — **P-30 concluída** (decisão D: contagens históricas não verificáveis). P-09: implementação do experimento A/B/C (OFF por padrão) em andamento.
+
+- 2026-10-21 — P-29: decisão B (logs novos). P-20: aguarda Denis. P-09: alternativas pesquisadas (manual p. 96/126); plano (d)+(b)-simulado+consulta na bancada. P-30: proposta D aguardando confirmação.
+
+- 2026-10-21 — P-26 decidida (todos, padrão, ACDC só a 127 V); passa a aguardar só a conferência nas sessões. Roteiro atualizado.
+
+- 2026-10-21 — P-26 parcial: responsável fixou as cinco condições. Plano offline (`evidencias/2026-10-21/plano_campanhas_5_condicoes.json`): 230/50 com 13 recusas (swells), 220/60 sem calibração e 52 recusas, 33/60 sem calibração. `bancada_pendencias.md` ganhou "Campanhas por condição".
+
+- 2026-10-21 — Mapa Obsidian (skills oficiais kepano/obsidian-skills `3ccff53`): `mapa/` com 31 notas P-NN geradas por Knap, 15 cartões de módulo (dependências do grafo real de imports), 6 hubs de domínio, `Pendencias.base`, `Mapa.canvas`; `CLAUDE.md` na raiz aponta para o mapa.
+
+- 2026-10-21 — Inspiron 15 (DESKTOP-FSEESJI) definido como PC da bancada e preparado (Python 3.11.9, env validado, NI-VISA, energia/USB, atalho START_BENCH). **P-16 concluída** (8/8 critérios do agregador). Drivers: NI-VISA 26.5 (passaportes USB e serial; PyVISA usa `visa32.dll`) e driver USB da AMETEK (TUSB3410, `usbuart3410.inf` 6.7.2.0, WHQL, do download oficial "USB VCP Driver" da página MX; cópia em `C:\drivers_bancada\ametek_vcp`). Falta: ligar os instrumentos, ajustar a porta da AMETEK para COM10 e conferir `*IDN?` dos dois sem energizar.
+
+- 2026-10-21 — Software das P-03 (sobressinal gravado), P-10 (rota + sequência Bloco 8-A), P-22/P-31 (ferramentas sobre sessões reais) e roteiro sem contradições; revisão Opus sem achado alto; 680 OK. Inspiron 15 (DESKTOP-FSEESJI) preparado: Python 3.11.9, env com versões validadas, NI-VISA. Restante destas quatro: só bancada.
+
+- 2026-10-20 — Revisão independente (Opus) do trabalho do Codex e desta sessão: sem violação dos limites; P-04, P-11–P-15 confirmadas no código. 17 achados corrigidos (ver CHANGELOG "Correções da revisão independente"); 650 OK. Lacunas abertas: campo de sobressinal na coleta (P-03), hostname no benchmark (P-22), `TRACe:DEFine` no orçamento (P-23, decisão).
+
+- 2026-10-20 — C: integradas as frentes K (`fechar_pendencias.py`, `validar_pc_bancada.ps1`, 18 testes), R (`bancada_pendencias.md`) e D (`decisoes_pendentes.md`); 633 OK; Sphinx -W OK. **Próximo:** responsável preenche `decisoes_pendentes.md`; resolver as 4 contradições do roteiro (CHANGELOG v1.15, kit de fechamento); visita à bancada seguindo `bancada_pendencias.md`; rodar `fechar_pendencias.py` e atualizar esta matriz.
+- 2026-10-20 — C: commit `f974954` (P-28 preservação do bruto); criado este rastreador.
+- 2026-10-17 — Codex: 9 concluídas (P-04, P-11–P-15, P-24, P-25, P-27); suíte 574 OK; evidências em `evidencias/2026-10-17/`.
 
 ## Verificação e registro de evidência
 
@@ -118,4 +109,4 @@ A inspeção estrutural do HTML confirmou 32 linhas e cinco colunas na tabela ge
 
 ## Critério final de encerramento
 
-As 31 pendências devem ter evidência de conclusão. Depois do tratamento delas, será feita a auditoria completa das especificações da AMETEK e a validação das sessões exigidas: 127 V/60 Hz, 127 V/50 Hz, 230 V/50 Hz, 220 V/60 Hz e 33 V/60 Hz. A ordem foi definida pelo usuário; o planejamento offline não representa execução dessas sessões. O verificador `scripts/verificar_prontidao.py` não declara o projeto pronto enquanto faltam evidências e dados físicos. `docs/manifesto_prontidao.json` é um modelo vazio; `docs/estado_prontidao.json` registra os itens de software já concluídos e as lacunas atuais. Use `python scripts/verificar_prontidao.py --manifesto docs/estado_prontidao.json` para verificar o estado registrado; seu código de saída 1 é esperado enquanto houver lacunas.
+As 31 pendências devem ter evidência de conclusão. Depois do tratamento delas, será feita a auditoria completa das especificações da AMETEK e a validação das sessões exigidas: 127 V/60 Hz, 127 V/50 Hz, 230 V/50 Hz, 220 V/60 Hz e 33 V/60 Hz. A ordem foi definida pelo usuário; o planejamento offline não representa execução dessas sessões. O verificador `scripts/verificar_prontidao.py` não declara o projeto pronto enquanto faltam evidências e dados físicos. `docs/manifesto_prontidao.json` é um modelo vazio; `docs/estado_prontidao.json` é o arquivo único de estado das 31 pendências (formato em {doc}`contribuir_docs`). Use `python scripts/verificar_prontidao.py --manifesto docs/estado_prontidao.json` para verificar o estado registrado; seu código de saída 1 é esperado enquanto houver lacunas.
