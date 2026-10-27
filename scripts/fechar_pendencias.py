@@ -54,7 +54,7 @@ CONDICOES = {"127V_60Hz": (127, 60), "127V_50Hz": (127, 50), "230V_50Hz": (230, 
              "220V_60Hz": (220, 60), "33V_60Hz": (33, 60)}
 TETO_08_V = 374.2  # 0,9 x max_peak_v 415,8 (docs/classes/08-transient.md; execucao_pendencias P-03)
 SOBRESSINAL_REVISAO_08 = 0.45  # acima disso o valor amostrado pode subestimar o real: revisão humana
-SOBRESSINAL_MAX_08 = 0.55  # ROTEIRO_BANCADA.md:197/374 e docs/classes/08-transient.md: acima é achado de segurança
+SOBRESSINAL_MAX_08 = 0.55  # docs/roteiro-bancada.md (Bloco 6, seção 3) e docs/classes/08-transient.md: acima é achado de segurança
 TOL_POSICAO_08 = 10  # amostras (docs/metadata.md, validacao_fisica.posicao_evento)
 ORCAMENTO_TRACES = 216  # gravações TRACe por conexão (execucao_pendencias P-23)
 FISICAS = ("P-01", "P-02", "P-03", "P-05", "P-06", "P-07", "P-08", "P-10", "P-16", "P-17",
@@ -436,7 +436,7 @@ def p03(ctx: Contexto) -> tuple:
     else:
         res_sb, nota_sb = OK, None
     cs.append(crit("sobressinal_pu", res_sb, sb_max, SOBRESSINAL_MAX_08,
-                   "ROTEIRO_BANCADA.md:197/374 e docs/classes/08-transient.md: sobressinal > 0,55 ou pico_medido_v > 374,2 V "
+                   "docs/roteiro-bancada.md (Bloco 6, seção 3) e docs/classes/08-transient.md: sobressinal > 0,55 ou pico_medido_v > 374,2 V "
                    "é achado de segurança",
                    nota="; ".join(x for x in (nota_sb, f"pico_medido_v máx |.| = {pk_max:.1f} V (teto {TETO_08_V})"
                                               if pk_max is not None else None) if x) or None))

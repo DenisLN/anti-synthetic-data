@@ -13,7 +13,7 @@ Fonte única de **estado**. Narrativa e critérios completos: `execucao_pendenci
 ## Protocolo para agentes (economia de contexto)
 
 0. Entrada do mapa: `mapa/00 Início.md` (vault Obsidian; cartões de módulo, notas P-NN, `Pendencias.base`, `Mapa.canvas`). Após mudar estados aqui, rode `python scripts/gerar_mapa_pendencias.py`.
-1. Leia **só** este arquivo e os arquivos citados na linha da sua pendência. Não leia `ROTEIRO_BANCADA.md`, `AGENTS.md` ou `execucao_pendencias.md` inteiros; use `grep -n` para a seção necessária.
+1. Leia **só** este arquivo e os arquivos citados na linha da sua pendência. Não leia `docs/roteiro-bancada.md`, `AGENTS.md` ou `execucao_pendencias.md` inteiros; use `grep -n` para a seção necessária.
 2. Limites inegociáveis: `AGENTS.md` seção "Limites inegociáveis" (COM10/115200, limites RMS/pico/corrente, confirmação digitada para energizar, validações SCPI, `gerar()`/fixtures intocados).
 3. Escopo de arquivos por frente (abaixo). Não editar arquivos de outra frente; este rastreador, `estado_prontidao.json`, `execucao_pendencias.md` e `CHANGELOG/v1.15.md` são editados **só pelo coordenador**. Agentes devolvem um trecho de CHANGELOG pronto no relatório.
 4. Relatório final do agente: ≤25 linhas — arquivos alterados, comando de teste e resultado, P-NN afetados, o que NÃO foi verificado.

@@ -2,7 +2,7 @@
 
 Execução atualizada em 17/10/2026 (horário de Brasília). Baseline de código: `fa82f49600543456adf78e22485ab6de5dd032b9`, v1.15 em andamento. Esta página é o registro de trabalho atual; os changelogs fechados e relatos anteriores permanecem preservados.
 
-Fonte do inventário: [pendências publicadas](https://anti-synthetic-data.readthedocs.io/pt/docs-site-readthedocs/projeto/pendencias.html). A autorização do usuário nesta sessão determina implementar plenamente as pendências como atualização das escolhas anteriores. Não se interpreta um contrato antigo de teste como impedimento à atualização: P-14 passa a aplicar exclusões às listas, e P-15 passa a limitar o HTML também na bancada. Resultados de testes antigos devem ser atualizados para o novo contrato e acompanhados de regressões independentes.
+Fonte do inventário: {doc}`projeto/pendencias`. A autorização do usuário nesta sessão determina implementar plenamente as pendências como atualização das escolhas anteriores. Não se interpreta um contrato antigo de teste como impedimento à atualização: P-14 passa a aplicar exclusões às listas, e P-15 passa a limitar o HTML também na bancada. Resultados de testes antigos devem ser atualizados para o novo contrato e acompanhados de regressões independentes.
 
 O fork `rmlinxic/anti-synthetic-data`, com parent `DenisLN/anti-synthetic-data`, foi confirmado pela API. A baseline teve 497 testes aprovados. A integração do código em `58130af2e58b914e17b5e15615bdc655f905ca3f` executou **574 testes em 63,686 s: OK, com dois hashes específicos de Windows pulados no macOS**. Ambiente: Python 3.11.15/numpy 2.4.6; assinaturas portáveis executadas. A evidência e o log completos estão em `docs/evidencias/2026-10-17/`. Isso não equivale à execução no PC da bancada nem a uma validação física.
 
@@ -40,7 +40,7 @@ O coordenador integra código, registra baseline e revisa critérios de aceite. 
 1. Preparar checkout e ambiente identificados; registrar `git status`, versões e suite descoberta.
 2. Implementar P-04/P-13/P-14/P-15 com regressões offline; corrigir P-23/P-24 e documentação do contrato.
 3. Executar análises P-09/P-11/P-12/P-22/P-28/P-31; integrar SINE separadamente em P-18, com revisão.
-4. Preparar campanha com diagnósticos antes da coleta conforme `ROTEIRO_BANCADA.md`. P-26 fixa as condições antes de energizar.
+4. Preparar campanha com diagnósticos antes da coleta conforme `docs/roteiro-bancada.md`. P-26 fixa as condições antes de energizar.
 5. Incorporar sessões reais e fontes faltantes; revisar cada ID e publicar somente o que estiver comprovado.
 
 ## Matriz de execução
@@ -112,9 +112,9 @@ A documentação de referência importada usa permalinks do snapshot `fa82f49600
 
 ### Verificação local do site
 
-`/tmp/asd-exec-venv/bin/sphinx-build -W -n --keep-going -b html docs /tmp/asd-docs-build` concluiu com código 0 e `build succeeded`, após as referências serem auditadas. Configuração Sphinx 9.0.4/MyST 5.1.0/Furo 2025.12.19 conforme `docs/requirements.txt`. Sem supressão geral de avisos; o filtro específico de três links de changelogs fechados já existente no branch do site foi preservado. Artefatos brutos `evidencias/**` são excluídos das páginas Sphinx, sem alterar seu conteúdo.
+`sphinx-build -W -n --keep-going -b html docs <pasta de saída>` concluiu com código 0 e `build succeeded`, após as referências serem auditadas. Configuração Sphinx 9.0.4/MyST 5.1.0/Furo 2025.12.19 conforme `docs/requirements.txt`. Sem supressão geral de avisos; o filtro específico de três links de changelogs fechados já existente no branch do site foi preservado. Artefatos brutos `evidencias/**` são excluídos das páginas Sphinx, sem alterar seu conteúdo.
 
-A inspeção estrutural do HTML confirmou 32 linhas e cinco colunas na tabela geral de pendências (incluindo P-03), 15 linhas e três colunas na tabela de decisões e link para o estado atual no índice. Log local: `/tmp/asd-docs-build.log`. Isso comprova geração e estrutura, não publicação do site remoto ou validade física dos relatos.
+A inspeção estrutural do HTML confirmou 32 linhas e cinco colunas na tabela geral de pendências (incluindo P-03), 15 linhas e três colunas na tabela de decisões e link para o estado atual no índice. Isso comprova geração e estrutura, não publicação do site remoto ou validade física dos relatos.
 
 ## Critério final de encerramento
 

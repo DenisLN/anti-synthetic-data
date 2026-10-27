@@ -1,8 +1,7 @@
 # Estado de validação das 20 classes
 
-:::{note} Revisão e procedência
-Texto de referência importado do levantamento de 16/10/2026, baseado em [fa82f496](https://github.com/DenisLN/anti-synthetic-data/tree/fa82f49600543456adf78e22485ab6de5dd032b9). Citações numéricas apontam para esse snapshot e não acompanham linhas atuais. Trechos `literalinclude` são extraídos do checkout atual por símbolo; consulte {doc}`../execucao_pendencias` para implementação e evidências vigentes. Relatos de sessões e transcrições são históricos, não medições repetidas nesta revisão.
-:::
+```{include} /_includes/aviso-base.md
+```
 
 
 {bdg-info}`OFFLINE` {bdg-success}`VERIFICADO NA BANCADA` (código anterior à v1.15) {bdg-warning}`NÃO VERIFICADO` (v1.15) {bdg-danger}`PENDENTE P-01`
@@ -107,7 +106,7 @@ Nas sessões de 07/10 o código era o da v1.13/v1.14 (`CHANGELOG/v1.14.md`): par
 | 20 INTERHARMONICS | sim | {bdg-warning}`NÃO VERIFICADO` amplitudes do perfil; fases sorteadas | {ref}`P-01 <p-01>` |
 
 :::{important} Pendência P-01
-Nenhum dado de bancada existe com o código da v1.15. A campanha prevista é o `ROTEIRO_BANCADA.md` (10 blocos; 2 h a 3 h com um perfil e 2 h 30 a 3 h 30 com `set perfil todos`): {doc}`../roteiro-bancada`. Fecha com: BANCADA. Prioridade ALTA.
+Nenhum dado de bancada existe com o código da v1.15. A campanha prevista é o `docs/roteiro-bancada.md` (10 blocos; 2 h a 3 h com um perfil e 2 h 30 a 3 h 30 com `set perfil todos`): {doc}`../roteiro-bancada`. Fecha com: BANCADA. Prioridade ALTA.
 :::
 
 ## 5. O que não está verificado

@@ -1,15 +1,14 @@
 # Análises arquivadas
 
-:::{note} Revisão e procedência
-Texto de referência importado do levantamento de 16/10/2026, baseado em [fa82f496](https://github.com/DenisLN/anti-synthetic-data/tree/fa82f49600543456adf78e22485ab6de5dd032b9). Citações numéricas apontam para esse snapshot e não acompanham linhas atuais. Trechos `literalinclude` são extraídos do checkout atual por símbolo; consulte {doc}`../execucao_pendencias` para implementação e evidências vigentes. Relatos de sessões e transcrições são históricos, não medições repetidas nesta revisão.
-:::
+```{include} /_includes/aviso-base.md
+```
 
 
 {bdg-info}`OFFLINE` {bdg-warning}`NÃO VERIFICADO` (rodada de 13 a 15/10/2026 sem bancada)
 
 **Pergunta:** o que a última rodada de análise concluiu e o que ficou em aberto? **Resposta:** a rodada de **13 a 15/10/2026** executou 17 tarefas de código e de documentação (numeradas 10 a 26), todas integradas na `main` (`fa82f49`), com a suíte offline passando (497 testes), mas **nada foi validado na bancada**: tudo o que depende da fonte e do osciloscópio está marcado "a confirmar", e a última campanha de bancada continua sendo a de 07/10/2026 (P-01).
 
-As rodadas anteriores (21/09, 30/09 e 12/10/2026) já foram revisadas e não são reabertas aqui; os achados duráveis delas estão nas quirks ({doc}`../quirks`: A1, A2, A13, K1 e outras) e no {doc}`../historico` (v1.11 a v1.15). Os relatórios datados ficam no branch `arquivo/analises` (fora de `docs/` desde 13/10/2026) e **não** se reescrevem. Fontes desta página: `github/arquivo/analises:sessao-13-10-2026/{ESTADO.md,relatorio-final.md,ROTEIRO_BANCADA.md,wip/}` e `:specs/2026-10-13/relatorios-individuais/` (commit `3ba499c` do branch), mais `CHANGELOG/v1.15.md`.
+As rodadas anteriores (21/09, 30/09 e 12/10/2026) já foram revisadas e não são reabertas aqui; os achados duráveis delas estão nas quirks ({doc}`../quirks`: A1, A2, A13, K1 e outras) e no {doc}`../historico` (v1.11 a v1.15). Os relatórios datados ficam no branch `arquivo/analises` (fora de `docs/` desde 13/10/2026) e **não** se reescrevem. Fontes desta página: `github/arquivo/analises:sessao-13-10-2026/{ESTADO.md,relatorio-final.md,docs/roteiro-bancada.md,wip/}` e `:specs/2026-10-13/relatorios-individuais/` (commit `3ba499c` do branch), mais `CHANGELOG/v1.15.md`.
 
 :::{caution} Limitação
 **A análise de 13 a 15/10 não foi validada na bancada.** Perfis, sorteio de início, duração e fase, compostas sorteadas, entalhes contínuos, a 08 a 90 ms, a crista com fator, o leitor de um `.npz` por classe e a leitura de volta das TRACes existem no código e passam nos testes offline, mas nenhuma sessão física os exerceu. O estado de cada classe está em {doc}`estado-validacao`; o que falta, em {doc}`pendencias`.
@@ -32,7 +31,7 @@ As rodadas anteriores (21/09, 30/09 e 12/10/2026) já foram revisadas e não sã
 | 20 | Pendentes conferíveis offline (ACDC, 18, sorteio) | `scripts/verificar_sessao_bancada.py` mede a continuidade de fase da 18, a largura do PULSe e o desvio do pré-trigger numa sessão gravada; limiares de 10°, 2 ms e 2 amostras são propostas, sem dado de bancada | P-05, P-06, P-17 |
 | 21 | Fixtures portáveis | o hash exato do `gerar()` difere entre Windows e Linux no último bit do seno (2·10⁻¹⁶); comparação por tolerância de 1e-9, e o hash exato continua só no Windows | rodar `tests.test_offline` no PC da bancada: P-16 |
 | 22 | Documentação autocontida | seção única sobre HTML e recalibração em `docs/operacao.md` §9; autorizações que faltavam em `AGENTS.md` | decisões menores: P-25; HTML mostra todas as capturas numa sessão de bancada em formato 2: P-15 |
-| 23 | Roteiro da bancada | `ROTEIRO_BANCADA.md` (10 blocos, de 2 h a 3 h com um perfil) | nenhum bloco executado: P-01, P-26; ver {doc}`../roteiro-bancada` |
+| 23 | Roteiro da bancada | `docs/roteiro-bancada.md` (10 blocos, de 2 h a 3 h com um perfil) | nenhum bloco executado: P-01, P-26; ver {doc}`../roteiro-bancada` |
 | 24 | Scripts e `sessao_io` | os scripts de diagnóstico foram adaptados ao leitor único | nada |
 | 25 | `set perfil todos` sem repetir | classes que não dependem do perfil (com sorteio ligado: 01, 04, 07, 08, 09, 17, 18, 19) são capturadas uma vez, sob `literatura`; o metadata dos três perfis aponta para a mesma captura; com `todos`, `run all` planeja 1116 gravações de TRACe a 60 Hz (1404 sem a deduplicação; 468 com um perfil) | acima da trava de ~280 por conexão: P-23 |
 | 26 | Crista com fator calibrado | a validação da crista usa a calibração de extremos (`fator_crista`): aceita de `crista × 0,9` até `crista × fator × 1,1`; decisão de usar a calibração em vez de afrouxar a tolerância | os fatores de 07 e 17 a 127 V/60 Hz (1,186 e 1,031) não cobrem o toque simulado (≥ 1,344 e ≥ 1,420): a 1.ª rodada deve reprovar; ver {doc}`../medicao/recalibracao`: P-07 |

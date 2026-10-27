@@ -1,0 +1,3 @@
+:::{note} Base desta página
+Números de linha (`arquivo:linha`) e citações de código foram conferidos contra o commit [fa82f49](https://github.com/DenisLN/anti-synthetic-data/commit/fa82f49600543456adf78e22485ab6de5dd032b9) (2026-10-16), salvo onde a própria página traz outra data ou commit; a `main` andou desde então e o código atual vale mais que o número de linha citado. Trechos `literalinclude` vêm do checkout atual. O rodapé do site mostra o commit do build. Estado vigente das pendências: {doc}`/execucao_pendencias`. Relatos de sessões e transcrições são históricos, não medições repetidas.
+:::

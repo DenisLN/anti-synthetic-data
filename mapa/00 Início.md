@@ -15,7 +15,7 @@ TCC: a fonte **AMETEK MX30** gera distúrbios de qualidade de energia e o oscilo
 > 1. Leia só esta nota. Siga **apenas** os links da tarefa em mãos.
 > 2. Tarefa sobre uma pendência → abra `[[P-NN]]` (10–20 linhas). Os backlinks mostram os módulos envolvidos.
 > 3. Tarefa sobre código → cartão em `mapa/codigo/`, depois o guia `docs/codigo/<módulo>` se precisar, e só então o `.py` (com `grep`, nunca inteiro).
-> 4. Não leia por inteiro `ROTEIRO_BANCADA.md` (45 KB), `AGENTS.md`, `docs/execucao_pendencias.md` nem `logica/mestre.py`. Use `grep -n`.
+> 4. Não leia por inteiro `docs/roteiro-bancada.md` (52 KB), `AGENTS.md`, `docs/execucao_pendencias.md` nem `logica/mestre.py`. Use `grep -n`.
 
 > [!danger] Limites inegociáveis
 > COM10/115200 fixos; limites RMS/pico/corrente intocáveis; nenhuma validação SCPI enfraquecida; `gerar()`/fixtures só com autorização. **Toda energização exige confirmação digitada pelo operador presente; agente nunca digita.** Ver [[mapa/dominio/Segurança e limites]] e `AGENTS.md` § "Limites inegociáveis".

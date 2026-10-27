@@ -16,7 +16,7 @@ Esta página preserva o inventário e as opções anteriores ao início da execu
 
 Resumo por tipo de fechamento (o primeiro tipo citado na coluna "O que fecha"): BANCADA 17, DECISÃO DO USUÁRIO 13, CÓDIGO 1. Por prioridade: ALTA 5, MÉDIA 16, BAIXA 10.
 
-Fontes das pendências: o relatório final da rodada de 13 a 15/10/2026 e o estado dessa rodada (branch `arquivo/analises`, ver {doc}`analises-arquivadas`), o `CHANGELOG/v1.15.md`, o `ROTEIRO_BANCADA.md` ({doc}`../roteiro-bancada`), as seções "NÃO VERIFICADO" de cada documento de `docs/` e o diff real do branch `feat/passo-final-sin` ({doc}`passo-final-sin`). As pendências de 21/09, 30/09 e 12/10/2026 não foram reabertas: só entram as que as fontes acima ainda citam.
+Fontes das pendências: o relatório final da rodada de 13 a 15/10/2026 e o estado dessa rodada (branch `arquivo/analises`, ver {doc}`analises-arquivadas`), o `CHANGELOG/v1.15.md`, o `docs/roteiro-bancada.md` ({doc}`../roteiro-bancada`), as seções "NÃO VERIFICADO" de cada documento de `docs/` e o diff real do branch `feat/passo-final-sin` ({doc}`passo-final-sin`). As pendências de 21/09, 30/09 e 12/10/2026 não foram reabertas: só entram as que as fontes acima ainda citam.
 
 :::{warning} Decisão em aberto
 As pendências marcadas **DECISÃO DO USUÁRIO** pedem uma escolha do responsável pelo projeto; este site não decide por ele. Ver a seção 4. Ids: P-04, P-09, P-11 a P-15, P-20, P-23, P-25 e P-26, mais as partes de decisão de P-18, P-29, P-30 e P-31 (a P-10 é só de bancada).
@@ -96,9 +96,9 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 
 **Pendência.** Nenhum dado de bancada com o código da v1.15 (perfis, sorteio, compostas, entalhes contínuos, 08 a 90 ms, crista com fator, cópia em 100 ms): a última campanha é de 07/10
 
-- **Fonte:** `ESTADO.md`; `relatorio-final.md` §1; `ROTEIRO_BANCADA.md` §0-§8
+- **Fonte:** `ESTADO.md`; `relatorio-final.md` §1; `docs/roteiro-bancada.md` §0-§8
 - **O que fecha:** BANCADA (roteiro de 10 blocos; estimativa do roteiro: 2 h a 3 h com um perfil, 2 h 30 a 3 h 30 com `todos`)
-- **Conferência feita:** o `ROTEIRO_BANCADA.md` (490 linhas) existe na raiz e na `main`; nenhum bloco foi executado (nenhuma sessão posterior a 07/10 em `resultados/`: só `sessao_2026-10-07_*`, com mtime 12/10).
+- **Conferência feita:** o roteiro (arquivo da raiz, 490 linhas, até 2026-10-27; hoje `docs/roteiro-bancada.md`) existe na `main`; nenhum bloco foi executado (nenhuma sessão posterior a 07/10 em `resultados/`: só `sessao_2026-10-07_*`, com mtime 12/10).
 
 (p-02)=
 ### P-02: 08, 09
@@ -118,7 +118,7 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 
 **Pendência.** Recaptura a 127 V/50 Hz com impulso em 90 ms: posição (`abs(desvio)` ≤ 10 amostras), pico ≤ 374,2 V, sobressinal ≤ 0,55. Acima disso é achado de segurança
 
-- **Fonte:** `CHANGELOG/v1.15.md:72-84`; `ROTEIRO_BANCADA.md` Bloco 6
+- **Fonte:** `CHANGELOG/v1.15.md:72-84`; `docs/roteiro-bancada.md` Bloco 6
 - **O que fecha:** BANCADA
 - **Conferência feita:** [experimentos_waveform/08.py:35,82-99](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/experimentos_waveform/08.py#L35) (`DISTANCIA_MIN_FRONTEIRA_AMOSTRAS = 30`; com sorteio ligado e frequência em que 80 ms cai na fronteira, o impulso vai ao meio do ciclo: 90 ms a 50 Hz; 80 ms a 60 Hz); `:39` (`TOLERANCIA_POSICAO_AMOSTRAS = 10`); `:181-216` (`conferir_posicao_do_evento`). Nenhuma sessão com este código.
 
@@ -162,7 +162,7 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 
 **Pendência.** Crista da validação física: fatores calibrados a 127 V/60 Hz (07 = 1,186; 17 = 1,031) não cobrem o toque simulado (≥ 1,344 e ≥ 1,420); a 1.ª rodada tende a reprovar só por "fator de crista". Recalibração ao fim do run vale só para o run seguinte
 
-- **Fonte:** `CHANGELOG/v1.15.md:398-405,573-603`; relatórios individuais 20, 26; `ROTEIRO_BANCADA.md` Bloco 7
+- **Fonte:** `CHANGELOG/v1.15.md:398-405,573-603`; relatórios individuais 20, 26; `docs/roteiro-bancada.md` Bloco 7
 - **O que fecha:** BANCADA (rodar com `set recalibracao on`, `git diff`, commitar)
 - **Conferência feita:** `logica/calibracao_extremos.json:16,25` (07 = 1,186; 17 = 1,031 a 127 V/60 Hz); [mestre.py:1896-1920](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/mestre.py#L1896-L1920) e [sinais.py:360-456](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/sinais.py#L360-L456) (crista bilateral); [cli.py:895-927](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/cli.py#L895-L927) (recalibração ao fim do run, nunca diminui).
 
@@ -173,7 +173,7 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 
 **Pendência.** Conferir na 1.ª sessão que `pico_medido_v`/`vale_medido_v` ≤ `extremo_previsto_v` depois da correção do rms CA por ciclo (previsão antiga subestimava até 38 %)
 
-- **Fonte:** `CHANGELOG/v1.15.md:165-205`; relatório individual 11; `relatorio-final.md` §2.1; `ROTEIRO_BANCADA.md:343`
+- **Fonte:** `CHANGELOG/v1.15.md:165-205`; relatório individual 11; `relatorio-final.md` §2.1; `docs/roteiro-bancada.md` (Bloco 8-A)
 - **O que fecha:** BANCADA
 - **Conferência feita:** [mestre.py:1962-1979](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/mestre.py#L1962-L1979) (`_conferir_extremos_fisicos` compara VMAX/VMIN medidos com o teto) e [ametek_orm.py:1416-1509](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/ametek_orm.py#L1416-L1509) (`montar_programacao` com rms CA do ciclo): a correção existe; falta dado de bancada.
 
@@ -260,7 +260,7 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 
 **Pendência.** Rodar `tests.test_offline` no Windows. **Parcialmente resolvida hoje** (ver seção 2)
 
-- **Fonte:** `relatorio-final.md` §8; `ROTEIRO_BANCADA.md` Bloco 1; relatório individual 21
+- **Fonte:** `relatorio-final.md` §8; `docs/roteiro-bancada.md` Bloco 1; relatório individual 21
 - **O que fecha:** BANCADA (PC da bancada)
 - **Conferência feita:** `tests.test_offline` rodado neste PC Windows (Windows 11 10.0.26200, Python 3.11.9, numpy 2.4.6, o mesmo da bancada segundo `requirements.txt:1`): `Ran 497 tests in 93.003s`, `OK`, **nenhum teste pulado** (`skip` não aparece na saída). Isso inclui os dois SHA-256 exatos, que só rodam no Windows, e as assinaturas portáveis gravadas no Linux. O que falta: o mesmo no PC da bancada (se for outra máquina: `C:\Users\denis\TCC\code` não existe aqui) com a calibração e o `git status` limpos da data da coleta.
 
@@ -271,7 +271,7 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 
 **Pendência.** Déficit de 5-6 % de CA em ACDC (0,938-0,951 pu); `diag_acdc_amplitude.py` pronto, nunca rodou; compensação `V/g` é proposta; 230 V no ACDC é escolha do dia
 
-- **Fonte:** `docs/quirks.md` A19; relatório individual 20; `ROTEIRO_BANCADA.md` Bloco 5
+- **Fonte:** `docs/quirks.md` A19; relatório individual 20; `docs/roteiro-bancada.md` Bloco 5
 - **O que fecha:** BANCADA
 - **Conferência feita:** `diag/diag_acdc_amplitude.py` existe (493 linhas, `Diag` `:190`, confirmação `ENERGIZAR-ACDC`); `docs/quirks.md` A19; `measure_voltage` em ACDC devolve RMS total ([ametek_orm.py:1963-1977](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/ametek_orm.py#L1963-L1977), achado H-1 de `01-inventario.md`).
 
@@ -337,7 +337,7 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 
 **Pendência.** Trava da fonte na ~280.ª gravação de TRACe por conexão (quirk A3; causa NÃO VERIFICADA). `README.md:26` e `AGENTS.md` ainda recomendam `run all` (468 gravações a 60 Hz; 1116 com `todos`); o roteiro usa listas (< 250 por conexão)
 
-- **Fonte:** `docs/quirks.md` A3; `docs/operacao.md:79`; `ROTEIRO_BANCADA.md` §4-§5
+- **Fonte:** `docs/quirks.md` A3; `docs/operacao.md:79`; `docs/roteiro-bancada.md` §4-§5
 - **O que fecha:** DECISÃO DO USUÁRIO (texto dos docs) e BANCADA (causa)
 - **Conferência feita:** [mestre.py:3213](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/mestre.py#L3213) (`ESCRITAS_TRACE_REFERENCIA_TRAVA = 280`); [cli.py:495-497](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/cli.py#L495-L497) só avisa.
 
@@ -361,7 +361,7 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 
 - **Fonte:** relatório individual 22; `relatorio-final.md` §8 e decisão 7
 - **O que fecha:** DECISÃO DO USUÁRIO
-- **Conferência feita:** contagem por busca textual do identificador de tarefa: 8 ocorrências em 6 arquivos (`ROTEIRO_BANCADA.md` 2, `docs/decisoes.md` 1, `docs/limites_e_calibracao.md` 1, `docs/metadata.md` 1, `docs/tres_versoes.md` 1, `scripts/verificar_sessao_bancada.py` 2); o relatório individual 22 contava 25.
+- **Conferência feita:** contagem por busca textual do identificador de tarefa: 8 ocorrências em 6 arquivos (`docs/roteiro-bancada.md` 2, `docs/decisoes.md` 1, `docs/limites_e_calibracao.md` 1, `docs/metadata.md` 1, `docs/tres_versoes.md` 1, `scripts/verificar_sessao_bancada.py` 2); o relatório individual 22 contava 25.
 
 (p-26)=
 ### P-26: GLOBAL

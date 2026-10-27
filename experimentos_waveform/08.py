@@ -58,8 +58,8 @@ class Experimento(ExperimentoWaveform):
     # limitando).
     SOBRESSINAL_DO_DEGRAU = 0.55
     SUBSINAL_DO_DEGRAU = 0.70
-    # Sobressinal MEDIDO acima disto é achado de segurança (ROTEIRO_BANCADA.md
-    # linhas 197 e 374; docs/classes/08-transient.md). Só vira flag no metadata:
+    # Sobressinal MEDIDO acima disto é achado de segurança (docs/roteiro-bancada.md,
+    # Bloco 6 e seção 3; docs/classes/08-transient.md). Só vira flag no metadata:
     # não recusa a captura (o roteiro manda parar e avisar, não descartar).
     SOBRESSINAL_ACHADO_DE_SEGURANCA = 0.55
     # Primeiro degrau da varredura de caracterização (0,25 pu ≈ 45 V a 127 V).

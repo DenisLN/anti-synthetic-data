@@ -49,7 +49,7 @@ myst_heading_anchors = 4
 
 # Os PDFs/manuais em texto, o build e artefatos brutos gerados em evidencias/
 # não são páginas do site; páginas de síntese podem ligar aos resultados.
-exclude_patterns = ["_build", "manuais_txt", "*.pdf", "requirements.txt", "evidencias/**"]
+exclude_patterns = ["_build", "_includes", "manuais_txt", "*.pdf", "requirements.txt", "evidencias/**"]
 
 html_theme = "furo"
 html_title = "ASD Docs"
