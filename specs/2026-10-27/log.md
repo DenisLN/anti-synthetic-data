@@ -13,3 +13,5 @@
 - 2026-10-27 13:00 · pri 32 · ASD: Documentação Unificada no Read the Docs · sonnet · em andamento
 - 2026-10-27 13:13 · pri 32 · ASD: Documentação Unificada no Read the Docs · sonnet · feito · relatório: sem-pendencias/32-docs-rtd.md · critério de parada atendido
 - 2026-10-27 13:13 · pri 33 · ASD: Rastreador de Pendências Integrado ao Read the Docs · sonnet · em andamento
+- 2026-10-27 13:30 · pri 33 · ASD: Rastreador de Pendências Integrado ao Read the Docs · sonnet · feito · relatório: sem-pendencias/33-rastreador-rtd.md · critério de parada atendido
+- 2026-10-27 13:30 · pri 34 · ASD: Página de Pendências com Estado e Resolução de P-01 a P-31 · sonnet · em andamento
