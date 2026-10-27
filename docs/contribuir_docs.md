@@ -60,25 +60,26 @@ Exceção registrada em `docs/conf.py`: três links relativos quebrados em `CHAN
 
 ## 5. Estado das pendências: um arquivo, renderizado no build
 
-O estado das 31 pendências (P-01 a P-31) vive **só** em `docs/estado_prontidao.json`. Nada mais guarda tabela de estado: `docs/PENDENCIAS_TRACKER.md` é apenas o protocolo para agentes, e {doc}`execucao_pendencias` e {doc}`decisoes_pendentes` remetem a {doc}`projeto/pendencias`. No build, a extensão `docs/_ext/pendencias.py` troca a linha `@@pendencias-estado@@` de `docs/projeto/pendencias.md` pelo placar, pela matriz e por uma seção por pendência, gerados do JSON, com a âncora `estado-p-NN` (por exemplo `` {ref}`P-08 <estado-p-08>` ``). O que o Read the Docs mostra é, portanto, o que está commitado.
+O estado das 31 pendências (P-01 a P-31) vive **só** em `docs/estado_prontidao.json`. Nada mais guarda tabela de estado: `docs/PENDENCIAS_TRACKER.md` é apenas o protocolo para agentes, e {doc}`execucao_pendencias` e {doc}`decisoes_pendentes` remetem a {doc}`projeto/pendencias`. No build, a extensão `docs/_ext/pendencias.py` troca a linha `@@pendencias-estado@@` de `docs/projeto/pendencias.md` pelo placar, pelas perguntas ao dono, pela matriz e por uma seção por pendência, gerados do JSON, com a âncora `estado-p-NN` (por exemplo `` {ref}`P-08 <estado-p-08>` ``). Qualquer página pode citar o placar com o marcador `@@pendencias-placar@@` (uma linha com as contagens, fora de código em linha). O pedido original de cada pendência (inventário de 16/10) fica em {doc}`projeto/pendencias-inventario-2026-10-16`, com as âncoras `p-NN`. O que o Read the Docs mostra é, portanto, o que está commitado.
 
 **Fluxo depois de uma coleta:** (1) `python scripts/fechar_pendencias.py --sessao <dir> ... --saida docs/evidencias/<data>/fechamento.json` gera a evidência (não decide); (2) editar o bloco da pendência em `docs/estado_prontidao.json`; (3) `python scripts/gerar_mapa_pendencias.py` (regenera `mapa/pendencias/`); (4) `python -m unittest tests.test_estado_pendencias` e o build `-W`.
 
-**Formato** (`esquema: 2`). Raiz: `atualizado` (data), `nota_atualizacao`, `pendencias` (objeto com as 31 chaves `"P-01"` a `"P-31"`, cada uma uma vez) e `sessoes` (as cinco condições do verificador). Cada pendência:
+**Formato** (`esquema: 3`). Raiz: `atualizado` (data), `nota_atualizacao`, `pendencias` (objeto com as 31 chaves `"P-01"` a `"P-31"`, cada uma uma vez) e `sessoes` (as cinco condições do verificador). Cada pendência:
 
 | Campo | Conteúdo |
 |---|---|
-| `estado` | `concluida`, `aguarda-bancada` (software pronto, falta bancada), `aguarda-decisao` (falta decisão ou dado do responsável), `em-andamento` ou `reprovada-bancada` |
+| `estado` | `concluida`, `aguarda-bancada` (software pronto, falta bancada), `aguarda-decisao` (falta decisão ou dado do responsável), `em-andamento`, `insuficiente-bancada` (medida feita na bancada, resultado inconclusivo) ou `reprovada-bancada` (medida feita e reprovada) |
 | `titulo`, `prioridade` (`alta`, `media`, `baixa`), `responsavel` | identificação |
 | `acao` | o que a pendência pede |
 | `dependencia`, `criterio` | do que depende e quando fecha |
 | `quem_fecha` | lista de `bancada`, `decisao-dono`, `codigo` |
 | `frentes` | frentes de trabalho (K, R, D) |
-| `falta` | o que falta para fechar (`—` se nada) |
-| `como_tratada` | como foi resolvida ou tratada (texto; `null` se ainda não registrado) |
+| `falta` | resumo do que falta, usado na matriz (`—` se nada) |
+| `falta_por_tipo` | o que falta separado por quem faz: chaves `bancada`, `codigo`, `decisao-dono`; para pendência não concluída tem de ser não vazio e ter as mesmas chaves de `quem_fecha`; `{}` se concluída sem nada a fazer |
+| `como_tratada` | obrigatório: como foi resolvida ou, se não está resolvida, o que foi feito até agora (com commit, `arquivo:linha`, sessão ou evidência e o resultado medido) |
 | `commits` | hashes (7 a 40 hexadecimais) citados |
 | `evidencias` | caminhos relativos a `docs/` de arquivos que existem (por exemplo `evidencias/2026-10-22/fechamento.json`) |
-| `decisao_dono` | `registrada` (booleano), `texto` e, se houver, `data` |
+| `decisao_dono` | `registrada` (verdadeira só se `situacao` for `confirmada`), `situacao`, `texto` e `data` (obrigatória se confirmada, com a fonte no texto). `situacao`: `confirmada` (o dono decidiu), `tomada-no-fork` (escolha do fork aguardando o dono), `em-branco` (nada escolhido, resposta do dono em branco) ou `nao-se-aplica`. Se `tomada-no-fork` ou `em-branco`, exige `pergunta`, `opcoes` (lista) e `fonte_opcoes` (`formulario`, `inventario`, `evidencia` ou `sem-opcoes-previas`); `pergunta` também pode acompanhar uma decisão confirmada que gerou um conflito (P-09). Pendência concluída não pode ter a decisão em branco |
 | `situacao_execucao`, `entrega`, `direcao_vigente` | opcionais: rótulo e texto migrados de `execucao_pendencias.md` |
 
 A validação está em `docs/_ext/estado_pendencias.py` e roda no build, em `scripts/gerar_mapa_pendencias.py` e em `tests/test_estado_pendencias.py`. `scripts/verificar_prontidao.py --manifesto docs/estado_prontidao.json` lê o mesmo arquivo (conta como concluída a pendência com `estado: concluida` e evidência). O manifesto `docs/manifesto_prontidao.json` segue sendo o modelo vazio no formato antigo (`P01`, `status`).

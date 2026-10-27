@@ -1,8 +1,8 @@
 {
-  "esquema": 2,
+  "esquema": 3,
   "instrucoes": "Arquivo único de estado das pendências P-01 a P-31. Fonte do site (docs/projeto/pendencias.md), de scripts/gerar_mapa_pendencias.py e de scripts/verificar_prontidao.py. Formato e fluxo: docs/contribuir_docs.md. Evidências são caminhos relativos a docs/ de arquivos reais; não preencher com dados sintéticos. A verificação é estrutural e não autentica a origem física nem substitui a análise científica.",
-  "atualizado": "2026-10-22",
-  "nota_atualizacao": "suíte offline 759 OK / 0 skips no PC da bancada, evidencias/2026-10-22/pc_bancada.json",
+  "atualizado": "2026-10-27",
+  "nota_atualizacao": "revisão dos 31 estados contra docs/evidencias/ e o código da main (7262dfc); última suíte no PC da bancada: 759 OK em 6885e7c, que não é o HEAD",
   "pendencias": {
     "P-01": {
       "titulo": "executar campanha v1.15 e reconciliar cobertura por classe/perfil/condição",
@@ -13,48 +13,77 @@
       "dependencia": "Etapas 0–3; P-26",
       "criterio": "Sessões reais com SHA/configuração, análise de cada bloco; lacunas permanecem explícitas",
       "quem_fecha": [
-        "bancada"
+        "bancada",
+        "codigo"
       ],
       "frentes": [
         "K",
         "R"
       ],
-      "falta": "Campanha v1.15 real por classe/perfil/condição",
-      "como_tratada": null,
-      "situacao_execucao": "Preparada / aguarda bancada",
+      "falta": "Faltam 230 V/50 Hz, 220 V/60 Hz e 33 V/60 Hz e reexecutar o que reprovou em 22/10; o agregador não define quantas capturas por célula bastam",
+      "como_tratada": "Até agora: a visita de 22/10 (Inspiron 15, commits `c690a49`, `022bb5c` e `a22fba9`, árvore limpa) cobriu 127 V/60 Hz e 127 V/50 Hz com as 20 classes e os 3 perfis, 159 capturas físicas. O fechamento (`scripts/fechar_pendencias.py`) marca `insuficiente`: condições cobertas 2 de 5, e 19 capturas com validação física reprovada (ids em `fechamento.json`; as de 18 e 19 eram um bug de THD corrigido em `72bbcd6`, a da 02 era crista com fator baixo, ver `LEIA-ME.md`). A visita parou no braço A da P-09, com OUTPUT OFF conferido pelo operador. O plano das cinco condições está em `plano_campanhas_5_condicoes.json`. Nenhuma sessão de 230 V/50 Hz, 220 V/60 Hz ou 33 V/60 Hz existe.",
+      "situacao_execucao": "Parcial: 2 de 5 condições, fechamento insuficiente",
       "entrega": "Executar campanha v1.15 por classe/perfil/condição; registrar sessões e cobertura, sem converter simulação em validação física.",
       "decisao_dono": {
-        "registrada": false,
-        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+        "registrada": true,
+        "situacao": "confirmada",
+        "texto": "A quantidade por célula vem da resposta 5 da P-26: padrão, 1 captura por classe, perfil `todos`. Fonte: `docs/decisoes_pendentes.md`, seção P-26.",
+        "data": "2026-10-21"
       },
-      "commits": [],
-      "evidencias": []
+      "commits": [
+        "c690a49",
+        "022bb5c",
+        "a22fba9",
+        "13b9bdb"
+      ],
+      "evidencias": [
+        "evidencias/2026-10-22/fechamento.json",
+        "evidencias/2026-10-21/plano_campanhas_5_condicoes.json",
+        "evidencias/2026-10-22/LEIA-ME.md",
+        "evidencias/2026-10-22/visita_estado.json"
+      ],
+      "falta_por_tipo": {
+        "bancada": "Campanhas de 230 V/50 Hz, 220 V/60 Hz e 33 V/60 Hz (as duas últimas dependem de calibração, P-21); reexecutar `run 02,17,18,19`, `run 10,11` e `run 12,16` a 127 V/60 Hz, que a visita já agenda depois do bloco 10-A; retomar a visita no braço A da P-09.",
+        "codigo": "O critério `quantidade_de_capturas_por_classe_perfil_condicao` do agregador está sem limite (`criterio_nao_definido`, 159 capturas medidas); o dono já respondeu 'padrão, 1 captura por classe' na P-26, mas isso ainda não foi codificado no agregador."
+      }
     },
     "P-02": {
       "titulo": "comparar marcadores, TRACe recuperada e recaptura 08/09",
-      "estado": "aguarda-bancada",
+      "estado": "reprovada-bancada",
       "prioridade": "alta",
       "responsavel": "B + operador",
       "acao": "comparar marcadores, TRACe recuperada e recaptura 08/09; testar hipóteses do evento em 100 ms",
       "dependencia": "Dados e blocos 4/6 do roteiro; P-19",
       "criterio": "Diagnóstico discriminando hipóteses; correção, se necessária, seguida de nova captura. Ferramenta existente não fecha mecanismo",
       "quem_fecha": [
-        "bancada"
+        "bancada",
+        "codigo"
       ],
       "frentes": [
         "K",
         "R"
       ],
-      "falta": "Reprovada em 2026-10-22 (`evidencias/2026-10-22/fechamento.json`): marcadores 30/30 sem espúrios, recapturas 08/09 a 50 e 60 Hz presentes, mas posição da 08 a 127 V/60 Hz desvia −16 amostras (limite 10) em uma captura por perfil (`sessao_2026-10-22_15-19-56`); hipótese da cópia de 100 ms sem critério definido",
-      "como_tratada": null,
-      "situacao_execucao": "Reprovada em 2026-10-22 / aguarda bancada",
+      "falta": "Distinguir as hipóteses da cópia de 100 ms antes de corrigir e recapturar a 08 a 127 V/60 Hz com desvio ≤ 10 amostras",
+      "como_tratada": "Até agora, reprovada na bancada em 22/10 (visita, `c690a49`; `fechamento.json`): marcadores 30/30 identificados e 0 espúrios em 10 capturas; recapturas da 08 e da 09 presentes a 50 Hz (3 e 6) e a 60 Hz (3 e 3). Reprova o critério `posicao_08_desvio_amostras`: 16 amostras contra o limite de 10, a 127 V/60 Hz, em uma captura por perfil (`sessao_2026-10-22_15-19-56`, segundo o relato da execução; a sessão não está no repositório). O critério da hipótese da cópia de 100 ms está `criterio_nao_definido`: nenhuma das cinco hipóteses do inventário foi confirmada nem descartada.",
+      "situacao_execucao": "Reprovada em 2026-10-22",
       "entrega": "Marcadores 30/30 sem espúrios e recapturas 08/09 presentes; posição da 08 a 127 V/60 Hz desvia −16 amostras (limite 10); `evidencias/2026-10-22/fechamento.json`. Diagnóstico da cópia/evento em 100 ms com marcadores, TRACe recuperada e capturas 08/09; distinguir hipóteses antes da correção.",
       "decisao_dono": {
         "registrada": false,
-        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+        "situacao": "nao-se-aplica",
+        "texto": "Nenhuma decisão do dono envolvida; o que falta é medição ou código."
       },
-      "commits": [],
-      "evidencias": []
+      "commits": [
+        "c690a49"
+      ],
+      "evidencias": [
+        "evidencias/2026-10-22/fechamento.json",
+        "evidencias/2026-10-22/visita_estado.json",
+        "evidencias/2026-10-22/LEIA-ME.md"
+      ],
+      "falta_por_tipo": {
+        "bancada": "Diagnóstico dirigido que distinga as hipóteses (marcadores, TRACe recuperada, recaptura da 08 e da 09 a 50 e 60 Hz) e nova recaptura da 08 a 127 V/60 Hz com desvio ≤ 10 amostras.",
+        "codigo": "Definir no agregador o critério da hipótese da cópia (hoje sem critério). Qualquer correção da posição só depois de distinguir as hipóteses; se mudar o que `gerar()` produz, exige autorização do dono registrada em `AGENTS.md`."
+      }
     },
     "P-03": {
       "titulo": "recapturar 08 a 127 V/50 Hz com evento em 90 ms",
@@ -71,18 +100,32 @@
         "K",
         "R"
       ],
-      "falta": "—",
-      "como_tratada": "2026-10-22: 3/3 capturas a 127 V/50 Hz com evento 90 ms, desvio 2 amostras, pico 339 V ≤ 374,2 V, sobressinal 0,295 pu ≤ 0,55; `evidencias/2026-10-22/fechamento.json`",
+      "falta": "Só a confirmação do dono de que o critério foi cumprido",
+      "como_tratada": "Concluída no fork em 22/10 (`e4b02e6`). Sessão `sessao_2026-10-22_14-10-50` (`c690a49`, árvore limpa): 3 de 3 capturas da 08 a 127 V/50 Hz com o evento em 90 ms, validação física ok nas três, desvio de posição de 2 amostras (limite 10), pico máximo de 339 V (limite 374,2 V) e sobressinal de 0,295 pu (limite 0,55). O código que grava o sobressinal veio em `8603c20` (`experimentos_waveform/08.py:64`, `SOBRESSINAL_ACHADO_DE_SEGURANCA = 0.55`). As sessões físicas não estão no repositório; só o SHA-256 delas consta em `fechamento.json`. O próprio fechamento diz que evidência suficiente não é encerramento: a decisão é do coordenador ou do responsável.",
       "situacao_execucao": "Concluída — bancada 2026-10-22",
       "entrega": "3/3 capturas: desvio 2 amostras, pico 339 V, sobressinal 0,295 pu (`evidencias/2026-10-22/fechamento.json`). Critério: recapturar 08 a 127 V/50 Hz, evento 90 ms; conferir posição ≤10 amostras, teto 374,2 V e sobressinal conforme o roteiro. Excesso exige investigação, não relaxamento do teto.",
       "decisao_dono": {
         "registrada": false,
-        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+        "situacao": "tomada-no-fork",
+        "texto": "Marcada concluída no fork a partir do fechamento de 22/10. O inventário não a lista como decisão do dono, mas `fechamento.json` pede decisão do coordenador ou responsável, e nada em `docs/decisoes_pendentes.md` a registra.",
+        "pergunta": "Confirma o encerramento da P-03 (3 de 3 capturas a 127 V/50 Hz: desvio 2 amostras, pico 339 V, sobressinal 0,295 pu)?",
+        "opcoes": [
+          "Sim, encerrada",
+          "Não; pedir mais capturas ou outra condição"
+        ],
+        "fonte_opcoes": "sem-opcoes-previas"
       },
-      "commits": [],
+      "commits": [
+        "8603c20",
+        "c690a49",
+        "e4b02e6"
+      ],
       "evidencias": [
         "evidencias/2026-10-22/fechamento.json"
-      ]
+      ],
+      "falta_por_tipo": {
+        "decisao-dono": "Confirmar o encerramento com base no `fechamento.json`."
+      }
     },
     "P-04": {
       "titulo": "conferir `program_capture`",
@@ -97,19 +140,31 @@
         "codigo"
       ],
       "frentes": [],
-      "falta": "—",
-      "como_tratada": "software",
+      "falta": "Só a confirmação do dono da opção (a)",
+      "como_tratada": "Opção (a) do inventário implementada em `58130af`: o ORM recusa com `ParameterOutOfBoundsError` o pico acima de `max_peak_v` (`logica/ametek_orm.py:1427`, offset mais pico AC; `:2105`, pico da senoide com offset, da captura e da TRACe reconstruída). No baseline `program_capture()` só avisava ('prosseguindo sem carga', `fa82f49:logica/ametek_orm.py:1525`); esse aviso não existe mais na `main`. Testes em `tests/test_pendencias_orm.py`; a suíte de 17/10 deu 574 OK (`validacao_software.json`). Não altera `max_peak_v` nem remove `ParameterOutOfBoundsError`: endurece a validação.",
       "situacao_execucao": "Concluída — software",
       "entrega": "Recusa offline de parâmetros inválidos e excessos de RMS/pico, inclusive senoide imediata com offset e cache. Faixa de frequência do driver aplicada antes de I/O. Regressões e integração aprovadas.",
       "decisao_dono": {
         "registrada": false,
-        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+        "situacao": "tomada-no-fork",
+        "texto": "Escolha (a) tomada no fork por 'autorização do usuário nesta sessão' (`execucao_pendencias.md`), não por resposta registrada: `docs/decisoes_pendentes.md` não tem seção para a P-04. A revisão independente de 20/10 confirmou o código, não a decisão.",
+        "pergunta": "Confirma que o ORM também recusa pico acima do limite (opção a)?",
+        "opcoes": [
+          "(a) recusar também no ORM (adotada no fork; endurece a validação)",
+          "(b) manter só a recusa de `mestre.py` (voltaria ao aviso; `AGENTS.md` proíbe enfraquecer validações do ORM)"
+        ],
+        "fonte_opcoes": "inventario"
       },
-      "commits": [],
+      "commits": [
+        "58130af"
+      ],
       "evidencias": [
         "evidencias/2026-10-17/validacao_software.json",
         "execucao_pendencias.md"
-      ]
+      ],
+      "falta_por_tipo": {
+        "decisao-dono": "Confirmar a opção (a) (ou pedir a (b), ver a ressalva em Pergunta ao dono)."
+      }
     },
     "P-05": {
       "titulo": "medir fase, posição, largura e pretrigger nas 01–04 com sorteio",
@@ -120,22 +175,37 @@
       "dependencia": "Campanha v1.15",
       "criterio": "Sessões reais e relatório do verificador; registrar desvio >2 amostras como aviso, não inventar tolerância de aprovação",
       "quem_fecha": [
-        "bancada"
+        "decisao-dono"
       ],
       "frentes": [
         "K",
         "R"
       ],
-      "falta": "Evidência suficiente (2026-10-22), falta revisão humana: largura ≤ 1,1 ms (limite 2); pre-trigger determinístico até ±6 amostras (aviso, limite 2 nunca validado; ver `evidencias/2026-10-22/LEIA-ME.md`); critério de fase/início não definido",
-      "como_tratada": null,
+      "falta": "Revisão humana e decisão: o desvio de pre-trigger vira compensação do rótulo de início ou limite novo; critério de fase e início sem definição",
+      "como_tratada": "Até agora: medida em 22/10 (`sessao_2026-10-22_14-38-28`, `a22fba9`): sorteio de posição ligado nas classes 01 a 04; largura do pulso até 1,1 ms (limite 2 ms); pre-trigger com desvio determinístico, função do instante programado e igual nos três perfis e no rerun: 02 (início 19,07 ms) +5 amostras em 5 de 5, 03 (58,07 ms) −1, 04 (110,8 / 114,8 / 132,1 ms) −2 / −6 / +6, todos até ±0,2 ms a 30 kHz (`LEIA-ME.md`). O verificador trata desvio acima de 2 amostras como aviso, não reprovação; o maior foi 6. O fechamento diz evidência suficiente com revisão humana pendente e 'fase e início medidos' sem critério.",
       "situacao_execucao": "Evidência suficiente, revisão humana pendente",
       "entrega": "2026-10-22: largura ≤ 1,1 ms; pre-trigger determinístico até ±6 amostras (aviso). Medir fase, início/duração e pretrigger nas nativas 01–04; reportar desvios e manter o limiar proposto distinto de critério físico validado.",
       "decisao_dono": {
         "registrada": false,
-        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+        "situacao": "em-branco",
+        "texto": "Nenhuma escolha feita: o `LEIA-ME.md` de 22/10 deixa 'decidir se vira compensação do rótulo de início ou limite novo'.",
+        "pergunta": "O desvio determinístico de pre-trigger (até 6 amostras nas classes 02 a 04) vira compensação do rótulo de início ou limite novo?",
+        "opcoes": [
+          "Compensação do rótulo de início",
+          "Limite novo no verificador (informar o valor e a fonte)"
+        ],
+        "fonte_opcoes": "evidencia"
       },
-      "commits": [],
-      "evidencias": []
+      "commits": [
+        "a22fba9"
+      ],
+      "evidencias": [
+        "evidencias/2026-10-22/fechamento.json",
+        "evidencias/2026-10-22/LEIA-ME.md"
+      ],
+      "falta_por_tipo": {
+        "decisao-dono": "Decidir o destino do desvio de pre-trigger e definir o critério de fase e início. O limite de 2 amostras nunca foi validado e não há fonte para outro valor; não foi alterado."
+      }
     },
     "P-06": {
       "titulo": "medir continuidade na rampa 47→53 Hz e restauração da base",
@@ -152,16 +222,25 @@
         "K",
         "R"
       ],
-      "falta": "Bug de estado corrigido; falta continuidade de fase 47→53 Hz real",
-      "como_tratada": null,
-      "situacao_execucao": "Parcial — bug de estado corrigido",
+      "falta": "Capturar a rampa 47→53 Hz da classe 18 e medir a continuidade de fase (0 capturas até agora)",
+      "como_tratada": "Até agora, só software: a classe 18 depois de STEP/PULSe não herda readbacks antigos (registro da execução de 17/10; não conferi o diff) e a forma volta à senoide depois de uma classe waveform (`72bbcd6`, o bug de THD das classes 18 e 19; no `run falhas` das 14:42 a 18 e a 19 passaram, `LEIA-ME.md`). Nenhuma captura 47→53 Hz foi feita: o fechamento de 22/10 marca `insuficiente` (0 capturas, limite ≥ 1) e o salto de fase está `sem_dados` (limite de 10°, que o inventário diz ser proposta sem dado).",
+      "situacao_execucao": "Parcial: bug de estado corrigido, sem medida",
       "entrega": "Classe 18 após STEP/PULSe não herda readbacks antigos; divergências continuam recusadas antes de INIT. Falta medir continuidade de fase e restauração na fonte real.",
       "decisao_dono": {
         "registrada": false,
-        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+        "situacao": "nao-se-aplica",
+        "texto": "Nenhuma decisão do dono envolvida; o que falta é medição ou código."
       },
-      "commits": [],
-      "evidencias": []
+      "commits": [
+        "72bbcd6"
+      ],
+      "evidencias": [
+        "evidencias/2026-10-22/fechamento.json",
+        "evidencias/2026-10-22/LEIA-ME.md"
+      ],
+      "falta_por_tipo": {
+        "bancada": "Capturar a classe 18 (rampa 47→53 Hz a 50 Hz), medir o salto de fase na troca `start_hz → end_hz` do `LIST:FREQuency` e conferir `restaurar_frequencia_base` na fonte real. O limiar de 10° só vale depois da medida."
+      }
     },
     "P-07": {
       "titulo": "recalibrar 07/17 e repetir coleta com tabela revisada",
@@ -172,29 +251,44 @@
       "dependencia": "Capturas reais e revisão de diff",
       "criterio": "Fatores derivados de medições, diff revisado, calibração identificada e validação na execução seguinte",
       "quem_fecha": [
+        "decisao-dono",
         "bancada"
       ],
       "frentes": [
         "K",
         "R"
       ],
-      "falta": "Evidência suficiente (2026-10-22), falta revisão humana do diff e decisão: 07 1,186 → 1,615 e 17 1,031 → 1,575 (`022bb5c`, `a22fba9`); na Parte 6 a 07 rodou sem alerta de extremo; 17 recusada a 220 V",
-      "como_tratada": null,
+      "falta": "Revisão humana do diff de calibração e decisão; depois nova coleta para validar (sem aprovação retroativa)",
+      "como_tratada": "Até agora: recalibração com medidas reais de 22/10. A 07 foi de 1,186 para 1,615 (`022bb5c`) e a 17 de 1,031 para 1,575 (`a22fba9`, segunda rodada do Bloco 7, `sessao_2026-10-22_14-27-02`: mínimo 1,369, mediana 1,423); os valores estão em `logica/calibracao_extremos.json:16,25`. A 17 passou a ser recusada a 220 V. A 07 rodou na Parte 6 sem alerta de extremo. O fechamento marca evidência suficiente com revisão humana pendente (`diff_de_calibracao_revisado` e `decisao_humana` sem critério). A execução proíbe aprovação retroativa.",
       "situacao_execucao": "Evidência suficiente, revisão humana pendente",
       "entrega": "2026-10-22: 07 → 1,615, 17 → 1,575 (`022bb5c`, `a22fba9`). Recalibrar 07/17 com medidas reais, revisar diff e identificar calibração; validar em nova coleta, sem aprovação retroativa.",
       "decisao_dono": {
         "registrada": false,
-        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+        "situacao": "tomada-no-fork",
+        "texto": "A calibração foi gravada e commitada no fork na própria visita de 22/10; a revisão humana do diff não está registrada.",
+        "pergunta": "Aprova o diff de calibração das classes 07 e 17 a 127 V/60 Hz (fatores 1,615 e 1,575)?",
+        "opcoes": [
+          "Aprovar o diff (a validação ainda exige nova coleta)",
+          "Não aprovar; reverter os fatores e recalibrar"
+        ],
+        "fonte_opcoes": "sem-opcoes-previas"
       },
       "commits": [
         "022bb5c",
         "a22fba9"
       ],
-      "evidencias": []
+      "evidencias": [
+        "evidencias/2026-10-22/fechamento.json",
+        "evidencias/2026-10-22/LEIA-ME.md"
+      ],
+      "falta_por_tipo": {
+        "decisao-dono": "Revisar o diff da calibração (`022bb5c`, `a22fba9`) e decidir se os fatores 1,615 e 1,575 entram.",
+        "bancada": "Nova coleta das classes 07 e 17 com a calibração revisada, para validar a crista (a de 22/10 não vale como aprovação)."
+      }
     },
     "P-08": {
       "titulo": "conferir pico/vale das 10/11/12/16 contra previsão corrigida",
-      "estado": "aguarda-bancada",
+      "estado": "reprovada-bancada",
       "prioridade": "alta",
       "responsavel": "B + operador",
       "acao": "conferir pico/vale das 10/11/12/16 contra previsão corrigida",
@@ -207,22 +301,30 @@
         "K",
         "R"
       ],
-      "falta": "Reprovada em 2026-10-22: extremos até 1,30× o previsto (12: 264 V contra 203,5 V), abaixo do teto. Recalibrado (`13b9bdb`); validar na próxima coleta e nas outras condições",
-      "como_tratada": null,
-      "situacao_execucao": "Reprovada em 2026-10-22 / aguarda bancada",
+      "falta": "Nova coleta das classes 10, 11, 12 e 16 com a calibração de 13b9bdb; razão medido/previsto ≤ 1 em todas as condições",
+      "como_tratada": "Até agora, reprovada na bancada em 22/10 a 127 V/60 Hz (`fechamento.json`, sessões a partir de `sessao_2026-10-22_14-45-51`): maior razão extremo medido/previsto de 1,297; por exemplo a classe 12 chegou a 264 V contra 203,5 V previstos e a 10-0001 a 255 V contra 245,4 V. Todos ficaram abaixo do teto de bancada (critério `extremo_medido_ate_teto_de_bancada` ok). O `LEIA-ME.md` registra como achado de segurança que os extremos passaram do previsto em 1% a 30% e que a 13-0002 (classe 13, fora do escopo desta pendência) chegou a 378 V, contra o teto de 415,8 V. Resposta: recalibração de 127 V/60 Hz commitada em `13b9bdb` (proposta em `recalibracao_proposta_127V_60Hz.md`). Essa recalibração ainda não foi validada por nova coleta.",
+      "situacao_execucao": "Reprovada em 2026-10-22",
       "entrega": "Extremos até 1,30× o previsto, abaixo do teto; recalibrado em `13b9bdb`. Conferir pico/vale 10/11/12/16 contra previsão por condição; investigar violações do teto previsto.",
       "decisao_dono": {
         "registrada": false,
-        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+        "situacao": "nao-se-aplica",
+        "texto": "Nenhuma decisão do dono envolvida; o que falta é medição ou código."
       },
       "commits": [
         "13b9bdb"
       ],
-      "evidencias": []
+      "evidencias": [
+        "evidencias/2026-10-22/fechamento.json",
+        "evidencias/2026-10-22/LEIA-ME.md",
+        "evidencias/2026-10-22/recalibracao_proposta_127V_60Hz.md"
+      ],
+      "falta_por_tipo": {
+        "bancada": "Recoletar as 10, 11, 12 e 16 com os fatores de `13b9bdb` e conferir a razão ≤ 1; só 127 V/60 Hz foi medida, as demais condições da P-26 ainda não."
+      }
     },
     "P-09": {
       "titulo": "quantificar perda da média por ciclo e viabilidade física de offset",
-      "estado": "aguarda-bancada",
+      "estado": "aguarda-decisao",
       "prioridade": "baixa",
       "responsavel": "B",
       "acao": "quantificar perda da média por ciclo e viabilidade física de offset; recomendar aceitar limite até haver evidência",
@@ -235,20 +337,35 @@
         "K",
         "R"
       ],
-      "falta": "`diag_list_offset.py` real (2026-10-22): **sem suporte** a `SOURce:LIST:VOLTage:OFFSet` (`-113`), braço C não roda. Falta braço A (refazer, parado no alerta), braço B e análise A/B; depois aceitar a limitação com métricas (d)",
-      "como_tratada": null,
-      "situacao_execucao": "Parcial — sem suporte a offset por passo",
-      "entrega": "2026-10-22: `SOURce:LIST:VOLTage:OFFSet` não aceito (`-113`); braço C fora; faltam braços A e B. Perda de média por ciclo quantificada em `modelo_programado.json`; aceita provisoriamente como limitação. Compensação física depende de P-17 e dados reais.",
+      "falta": "Conflito: o plano do dono (21/10) manda fechar como limitação aceita se o comando não existir, e ele não existe; o rastreador ainda pede os braços A e B",
+      "como_tratada": "Até agora: (d) feito offline em `modelo_programado.json` (16/10; 108 registros): perda máxima da média por ciclo de 0,0009 a 0,0166 pu na 06, 0,0026 a 0,029 pu na 15 e 0,018 a 0,288 pu nas compostas com sag (10, 11, 12, 16); mediana geral 0,072 e máximo 0,288 pu (classe 16, 50 Hz). Experimento A/B/C implementado com padrão A (`08c24b7`). Na bancada, em 22/10 (`a22fba9`, `diag_list_offset.json`, `energizou: false`), `SOURce:LIST:VOLTage:OFFSet?` deu timeout VISA e `-113 Undefined header` (`suportado: false`); o modo AC foi restaurado e o OUTPUT OFF confirmado depois. O manual cita `LIST:VOLT:OFFS` só como 'Related Command' (p. 96). O braço C não roda; o braço A foi interrompido pelo operador no alerta de extremo; B e a análise A/B não rodaram.",
+      "situacao_execucao": "Parcial: sem suporte a offset por passo",
+      "entrega": "2026-10-22: `SOURce:LIST:VOLTage:OFFSet` não aceito (`-113`); braço C fora; braços A e B não rodaram. Perda de média por ciclo quantificada em `modelo_programado.json`. Compensação física depende de P-17 e de dados reais.",
       "decisao_dono": {
         "registrada": true,
-        "texto": "Aceitar como limitação somente se as alternativas não se confirmarem: (b) offset DC por passo de LIST não confirmado no manual, (c) inviável, (d) publicar a distância modelo→programada. Plano: consultar `LIST:VOLT:OFFS?` na bancada; se o comando não existir, fechar como limitação aceita com (d). Fonte: `docs/decisoes_pendentes.md`, seção P-09.",
-        "data": "2026-10-21"
+        "situacao": "confirmada",
+        "texto": "Resposta do dono de 21/10: aceitar como limitação somente se as alternativas não se confirmarem. Plano: consultar `LIST:VOLT:OFFS?` na bancada; 'se o comando não existir, fechar a P-09 como limitação aceita com (d)'. A condição foi cumprida em 22/10 (`-113`), mas o rastreador de 22/10 ainda exige os braços A e B, que não estão no plano. Fonte: `docs/decisoes_pendentes.md`, seção P-09.",
+        "data": "2026-10-21",
+        "pergunta": "O comando de offset por passo não existe (`-113`, 22/10). Fecha a P-09 agora como limitação aceita com (d), ou exige antes os braços A e B?",
+        "opcoes": [
+          "Fechar agora como limitação aceita com (d), como no plano de 21/10 (formulário A, ou C para só as classes 06 e 15)",
+          "Exigir antes os braços A e B (rastreador de 22/10)",
+          "Formulário B: não aceitar e abrir investigação de offset por passo (exige P-17 e bancada)"
+        ],
+        "fonte_opcoes": "formulario"
       },
-      "commits": [],
-      "evidencias": [
-        "evidencias/2026-10-16/modelo_programado.json"
+      "commits": [
+        "08c24b7",
+        "192791e"
       ],
-      "direcao_vigente": "Aceitar e explicitar provisoriamente a perda da média por ciclo; nenhuma compensação física sem dados. Quantificar a diferença entre modelo e programada."
+      "evidencias": [
+        "evidencias/2026-10-16/modelo_programado.json",
+        "evidencias/2026-10-22/diag_list_offset.json",
+        "evidencias/2026-10-22/LEIA-ME.md"
+      ],
+      "falta_por_tipo": {
+        "decisao-dono": "Decidir entre fechar agora como limitação aceita com (d), conforme o plano de 21/10, ou exigir antes os braços A e B. Se o dono exigir A e B, voltam a faltar sessões de bancada (retomada da visita no braço A)."
+      }
     },
     "P-10": {
       "titulo": "medir RMS/THD da 05 em CSIN 10/15/20%, norma 2% e TRACe 30%",
@@ -265,18 +382,33 @@
         "K",
         "R"
       ],
-      "falta": "—",
-      "como_tratada": "2026-10-22: níveis 2/5/10/15/20/30 % com validação física ok; rota CSIN para 2–20 % e TRACe para 30 %; `evidencias/2026-10-22/fechamento.json`",
+      "falta": "Só a confirmação do dono; o selo da página da classe 05 ainda diz PENDENTE",
+      "como_tratada": "Concluída no fork em 22/10 (`e4b02e6`). Sessão `sessao_2026-10-22_14-38-28` (`a22fba9`): as 13 medidas do fechamento (3 perfis) cobrem os níveis de THD 0,02, 0,05, 0,10, 0,15, 0,20 e 0,30, todas com validação física ok; os níveis exigidos de 2, 10, 15 e 20 % saem pela CSINusoid e o de 30 % pela TRACe (rota gravada por captura em `rota_programacao`, `8603c20`). Exemplo: THD programada de 2 % (perfil `norma`) medida em 0,02006 contra 0,01999 esperada. O nível de 5 % aparece nos dados, mas não estava na lista exigida. As sessões não estão no repositório.",
       "situacao_execucao": "Concluída — bancada 2026-10-22",
       "entrega": "Níveis 2–30 % com validação ok e rota esperada (`evidencias/2026-10-22/fechamento.json`). Medir RMS/THD da 05: CSIN 10/15/20%, norma 2% e TRACe 30%, identificando rota, nível e configuração.",
       "decisao_dono": {
         "registrada": false,
-        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+        "situacao": "tomada-no-fork",
+        "texto": "Marcada concluída no fork a partir do fechamento de 22/10; não há decisão do dono registrada.",
+        "pergunta": "Confirma o encerramento da P-10 (níveis de THD de 2, 10, 15 e 20 % por CSINusoid e 30 % por TRACe, todos com validação ok)?",
+        "opcoes": [
+          "Sim, encerrada",
+          "Não; pedir mais capturas por nível"
+        ],
+        "fonte_opcoes": "sem-opcoes-previas"
       },
-      "commits": [],
+      "commits": [
+        "8603c20",
+        "a22fba9",
+        "e4b02e6"
+      ],
       "evidencias": [
         "evidencias/2026-10-22/fechamento.json"
-      ]
+      ],
+      "falta_por_tipo": {
+        "decisao-dono": "Confirmar o encerramento (o fechamento diz que evidência suficiente não é encerramento).",
+        "codigo": "Atualizar o selo `PENDENTE P-10` de `docs/classes/05-harmonics.md:8` (a página de classe é de outra revisão)."
+      }
     },
     "P-11": {
       "titulo": "comparar manter/reverter extensões 10–16",
@@ -290,19 +422,31 @@
         "decisao-dono"
       ],
       "frentes": [],
-      "falta": "—",
-      "como_tratada": null,
+      "falta": "Só a confirmação do dono da opção (a)",
+      "como_tratada": "Opção (a) do inventário (manter): as extensões das compostas 10 a 16 ficam, documentadas em `docs/perfis.md`; `gerar()` e `tests/fixtures/` não mudaram (`git diff fa82f49 main -- tests/fixtures` vazio). A classe 15 passou a registrar os envelopes e a THD central, mínima e máxima da redução (`parametros_com_disturbio_reduzido`, `experimentos_waveform/15.py:26`, `58130af`; testes em `tests/test_pendencias_classe15.py`). A validação física dessas classes continua em P-01 e P-08.",
       "situacao_execucao": "Concluída — decisão e metadata",
       "entrega": "Mantidas as extensões 10–16; classe 15 registra envelopes e THD central/mínima/máxima da redução, com testes analíticos. gerar()/fixtures preservados; validação física das classes continua em P-01/P-08.",
       "decisao_dono": {
         "registrada": false,
-        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+        "situacao": "tomada-no-fork",
+        "texto": "Escolha (a) tomada no fork por 'autorização do usuário nesta sessão'; `docs/decisoes_pendentes.md` não tem seção para a P-11.",
+        "pergunta": "Mantém as extensões das compostas 10 a 16 (sag em 11 e 12, swell em 13 e 14, faixas da `norma`, `fronteira` alternada, THD em 13, 15 e 16)?",
+        "opcoes": [
+          "(a) manter, documentado em `docs/perfis.md` (adotada no fork)",
+          "(b) reverter, o que muda o dataset e exige regravar `tests/fixtures/gerar_sorteio_v1_15.json`"
+        ],
+        "fonte_opcoes": "inventario"
       },
-      "commits": [],
+      "commits": [
+        "58130af"
+      ],
       "evidencias": [
         "evidencias/2026-10-17/validacao_software.json",
         "execucao_pendencias.md"
-      ]
+      ],
+      "falta_por_tipo": {
+        "decisao-dono": "Confirmar manter as extensões das compostas 10 a 16."
+      }
     },
     "P-12": {
       "titulo": "quantificar efeitos nas 06/11/15",
@@ -316,19 +460,32 @@
         "decisao-dono"
       ],
       "frentes": [],
-      "falta": "—",
-      "como_tratada": null,
+      "falta": "Só a confirmação do dono da opção (a)",
+      "como_tratada": "Opção (a): a classe 06 compara a medida com a forma programada reconstruída (`forma_esperada_para_validacao`, `experimentos_waveform/06.py:19`, `58130af`), nunca com a própria medida; `gerar()` e as fixtures ficam intactos (modelo ideal preservado). O efeito nas classes 11 e 15 está quantificado offline em `modelo_programado.json`. Testes em `tests/test_pendencias_flicker.py`. A fidelidade física do flicker continua em P-01.",
       "situacao_execucao": "Concluída — software e decisão",
       "entrega": "Classe 06 compara medida com a programação reconstruída, sem usar a medida como referência. Modelo ideal preservado; efeito nas 11/15 quantificado offline. Fidelidade física continua pendente em P-01.",
       "decisao_dono": {
         "registrada": false,
-        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+        "situacao": "tomada-no-fork",
+        "texto": "Escolha (a) tomada no fork por 'autorização do usuário nesta sessão'; `docs/decisoes_pendentes.md` não tem seção para a P-12.",
+        "pergunta": "Classe 06: compara com a forma programada ou redefine o flicker com média nula por ciclo?",
+        "opcoes": [
+          "(a) comparar com a programada, sem mudar o dataset (adotada no fork)",
+          "(b) redefinir o flicker (muda `gerar()`; exige autorização registrada em `AGENTS.md`)"
+        ],
+        "fonte_opcoes": "inventario"
       },
-      "commits": [],
+      "commits": [
+        "58130af"
+      ],
       "evidencias": [
         "evidencias/2026-10-17/validacao_software.json",
-        "execucao_pendencias.md"
-      ]
+        "execucao_pendencias.md",
+        "evidencias/2026-10-16/modelo_programado.json"
+      ],
+      "falta_por_tipo": {
+        "decisao-dono": "Confirmar comparar a 06 com a programada, sem redefinir o flicker."
+      }
     },
     "P-13": {
       "titulo": "avaliar recuperação automática versus comando explícito",
@@ -343,19 +500,31 @@
         "codigo"
       ],
       "frentes": [],
-      "falta": "—",
-      "como_tratada": null,
+      "falta": "Só a confirmação do dono da opção (a)",
+      "como_tratada": "Opção (a) implementada: a CLI chama `sessao_io.recuperar_sessoes_interrompidas(mestre.RESULTS_DIR)` ao preparar a pasta de cada `run` (`logica/cli.py:339`; definição em `logica/sessao_io.py:674`), antes de qualquer contato com instrumentos e só consolidando arquivos, sem repetir capturas. Sessão legada sem marcador de lock não é tocada (`sessao_io.py:692`) e continua exigindo `recuperar_parcial` explícito; sessão com escritor ativo é ignorada (`SessaoEmUsoError`, `:702`). O lock exclusivo usa `msvcrt` no Windows e `fcntl` no POSIX (`.sessao.lock`). Testes em `tests/test_pendencias_persistencia.py` e `tests/test_sessao_concorrencia.py`. Entrega em `58130af`.",
       "situacao_execucao": "Concluída — software",
       "entrega": "Recuperação com lock exclusivo POSIX/Windows; escritor ativo ignorado; morte abrupta preserva ambos os IDs. Metadata/corrente/SNR/aliases preservados, pastas exclusivas e escrita pós-close recusada. Integração aprovada.",
       "decisao_dono": {
         "registrada": false,
-        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+        "situacao": "tomada-no-fork",
+        "texto": "Escolha (a) tomada no fork por 'autorização do usuário nesta sessão'; `docs/decisoes_pendentes.md` não tem seção para a P-13.",
+        "pergunta": "Confirma chamar a recuperação de sessão parcial automaticamente no início de cada `run`?",
+        "opcoes": [
+          "(a) sim (adotada no fork)",
+          "(b) manter manual"
+        ],
+        "fonte_opcoes": "inventario"
       },
-      "commits": [],
+      "commits": [
+        "58130af"
+      ],
       "evidencias": [
         "evidencias/2026-10-17/validacao_software.json",
         "execucao_pendencias.md"
-      ]
+      ],
+      "falta_por_tipo": {
+        "decisao-dono": "Confirmar a recuperação automática (opção a)."
+      }
     },
     "P-14": {
       "titulo": "rejeitar `run 01 02` ambíguo",
@@ -369,19 +538,31 @@
         "decisao-dono"
       ],
       "frentes": [],
-      "falta": "—",
-      "como_tratada": null,
+      "falta": "Só a confirmação do dono da opção (a)",
+      "como_tratada": "Opção (a): `run 01 02` (com espaço) é recusado com 'Nada foi energizado' (`logica/cli.py:833-836`) e `run all` recusa argumentos extras (`:824-826`); as listas aplicam `BATERIA_EXCLUIR` (`:848-851`), mostram a seleção efetiva e a exclusão total não energiza nada (`:853-856`). Argumentos ambíguos são recusados antes de confirmação ou contato com instrumentos; testes em `tests/test_pendencias_cli.py:28-91`. Entrega em `58130af`.",
       "situacao_execucao": "Concluída — software",
       "entrega": "Parsing estrito e exclusões em listas; seleção efetiva mostrada antes de confirmação. Exclusão total ou sintaxe ambígua não executa nenhuma classe. Testes aprovados.",
       "decisao_dono": {
         "registrada": false,
-        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+        "situacao": "tomada-no-fork",
+        "texto": "Escolha (a) tomada no fork por 'autorização do usuário nesta sessão'; `docs/decisoes_pendentes.md` não tem seção para a P-14.",
+        "pergunta": "Confirma que `run 01 02` (com espaço) é recusado e que `BATERIA_EXCLUIR` vale também para listas?",
+        "opcoes": [
+          "(a) recusar e aplicar a exclusão (adotada no fork)",
+          "(b) manter como estava"
+        ],
+        "fonte_opcoes": "inventario"
       },
-      "commits": [],
+      "commits": [
+        "58130af"
+      ],
       "evidencias": [
         "evidencias/2026-10-17/validacao_software.json",
         "execucao_pendencias.md"
-      ]
+      ],
+      "falta_por_tipo": {
+        "decisao-dono": "Confirmar recusar `run 01 02` ambíguo e aplicar `BATERIA_EXCLUIR` às listas."
+      }
     },
     "P-15": {
       "titulo": "preferir corrigir texto para comportamento atual",
@@ -395,23 +576,35 @@
         "decisao-dono"
       ],
       "frentes": [],
-      "falta": "—",
-      "como_tratada": null,
+      "falta": "Só a confirmação do dono da opção (b); o tamanho do HTML numa sessão real não foi medido",
+      "como_tratada": "Opção (b): o relatório HTML limita-se a 3 capturas por classe e perfil também numa sessão de bancada em formato 2 (`MAX_CAPTURAS_EMPILHADAS_PADRAO = 3`, `logica/relatorio_html.py:75`; aplicação com aviso em `:305-310`), salvo se o operador passar `--capturas` ou `--max-capturas-por-classe`; os dados originais continuam lidos por inteiro. Entrega em `58130af`. Não foi executado com uma sessão real de bancada: o tamanho do HTML (inventário: risco de passar de 20 MB) é NÃO VERIFICADO.",
       "situacao_execucao": "Concluída — software",
       "entrega": "Limite padrão de três capturas por classe/perfil no HTML físico/simulado; seleções explícitas preservadas e leitura dos dados originais integral. Testes aprovados.",
       "decisao_dono": {
         "registrada": false,
-        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+        "situacao": "tomada-no-fork",
+        "texto": "Escolha (b) tomada no fork por 'autorização do usuário nesta sessão'; `docs/decisoes_pendentes.md` não tem seção para a P-15.",
+        "pergunta": "Confirma limitar o HTML do fim do run a 3 capturas por classe e perfil também na bancada?",
+        "opcoes": [
+          "(a) corrigir o texto de `docs/operacao.md` e não limitar na bancada",
+          "(b) limitar a 3 capturas por classe e perfil também na bancada (adotada no fork)"
+        ],
+        "fonte_opcoes": "inventario"
       },
-      "commits": [],
+      "commits": [
+        "58130af"
+      ],
       "evidencias": [
         "evidencias/2026-10-17/validacao_software.json",
         "execucao_pendencias.md"
-      ]
+      ],
+      "falta_por_tipo": {
+        "decisao-dono": "Confirmar limitar o HTML também na bancada (opção b)."
+      }
     },
     "P-16": {
       "titulo": "rodar suíte offline no PC efetivo da bancada com calibração e checkout registrados",
-      "estado": "concluida",
+      "estado": "aguarda-bancada",
       "prioridade": "media",
       "responsavel": "D + operador",
       "acao": "rodar suíte offline no PC efetivo da bancada com calibração e checkout registrados",
@@ -421,21 +614,30 @@
         "bancada"
       ],
       "frentes": [],
-      "falta": "—",
-      "como_tratada": "suíte 680/0 falhas/0 skips no PC da bancada DESKTOP-FSEESJI, `21fb300`; `evidencias/2026-10-21/pc_bancada.json`; repetida em 2026-10-22 com 759/0, `evidencias/2026-10-22/pc_bancada.json`",
-      "situacao_execucao": "Concluída — PC da bancada",
-      "entrega": "Inspiron 15 (DESKTOP-FSEESJI), definido como PC da bancada em 21/10/2026: `scripts/validar_pc_bancada.ps1` em `21fb300`, árvore limpa, Python 3.11.9/numpy 2.4.6/PyMeasure 0.16.0/PyVISA 1.14.1, 680 testes, 0 falhas, 0 erros, 0 skips (assinaturas exatas de Windows executadas). Evidência: `evidencias/2026-10-21/pc_bancada.json` e `.log`; `fechar_pendencias.py` P-16 = evidencia_suficiente sem revisão pendente.",
+      "falta": "Rodar a suíte no PC da bancada no commit que será usado na campanha; a última rodada (6885e7c) não é o HEAD",
+      "como_tratada": "Até agora, no PC da bancada (Inspiron 15, DESKTOP-FSEESJI, Windows, Python 3.11.9, numpy 2.4.6, PyMeasure 0.16.0, PyVISA 1.14.1, `scripts/validar_pc_bancada.ps1`): em 21/10, `21fb300`, 680 testes, 0 falhas, 0 erros, 0 skips, 138 s; em 22/10, `6885e7c`, 759 testes, 0 falhas, 0 erros, 0 skips, 156,5 s. Nenhuma das duas é o HEAD: depois de `6885e7c` o commit `cd1e6a9` mudou `scripts/visita_bancada.py` (+7) e `tests/test_visita_bancada.py` (+17), e a integração de 27/10 trouxe mais código e testes. O fechamento marca `requer_revisao_humana: true` e o aviso `commit_igual_ao_das_sessoes`: as sessões físicas de 22/10 são de `c690a49`, `022bb5c` e `a22fba9`, a suíte é de `6885e7c`. A frase anterior 'P-16 = evidencia_suficiente sem revisão pendente' contradiz o fechamento e foi retirada. Por isso a P-16 deixou de constar como concluída.",
+      "situacao_execucao": "Suíte rodada no PC da bancada em 6885e7c, não no HEAD",
+      "entrega": "Inspiron 15 (DESKTOP-FSEESJI) é o PC da bancada desde 21/10/2026. Registros: `evidencias/2026-10-21/pc_bancada.json` (`21fb300`, 680 testes) e `evidencias/2026-10-22/pc_bancada.json` (`6885e7c`, 759 testes), ambos com árvore limpa e 0 skips.",
       "decisao_dono": {
         "registrada": false,
-        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+        "situacao": "nao-se-aplica",
+        "texto": "Nenhuma decisão do dono envolvida; o que falta é medição ou código."
       },
       "commits": [
-        "21fb300"
+        "21fb300",
+        "c526526",
+        "6885e7c"
       ],
       "evidencias": [
         "evidencias/2026-10-21/pc_bancada.json",
-        "evidencias/2026-10-21/pc_bancada.log"
-      ]
+        "evidencias/2026-10-21/pc_bancada.log",
+        "evidencias/2026-10-22/pc_bancada.json",
+        "evidencias/2026-10-22/pc_bancada.log",
+        "evidencias/2026-10-22/fechamento.json"
+      ],
+      "falta_por_tipo": {
+        "bancada": "Rodar `scripts\\validar_pc_bancada.ps1` no PC da bancada no commit exato da campanha (a `main` atual) e registrar o hash; tarefa do dono ou do operador, não de um agente. Neste checkout Linux a `main` deu 777 testes OK com 2 skipped, o que não vale para a P-16."
+      }
     },
     "P-17": {
       "titulo": "executar diagnóstico de amplitude ACDC, separar CA e RMS total",
@@ -446,22 +648,35 @@
       "dependencia": "Escolha de tensão P-26",
       "criterio": "Medições e análise do déficit de 5–6%; compensação V/g apenas após caracterização e nova validação",
       "quem_fecha": [
-        "bancada"
+        "decisao-dono"
       ],
       "frentes": [
         "K",
         "R"
       ],
-      "falta": "Evidência suficiente (2026-10-22, 50 e 60 Hz, AC / ACDC offset 0 / ACDC com offset): falta decidir se o déficit em ACDC é aceitável (critério não definido)",
-      "como_tratada": null,
+      "falta": "Definir o déficit de CA em ACDC aceitável (critério sem definição) e se a compensação V/g entra",
+      "como_tratada": "Até agora: `diag_acdc_amplitude.py` rodou em 22/10 (dois artefatos em `logs/`, a 50 e a 60 Hz, com AC, ACDC com offset 0 e ACDC com offset; razões finitas). Razão da CA do CH1 sobre o alvo: 1,007 em AC e 0,945 em ACDC (déficit de cerca de 5,5 %, em linha com os 5 a 6 % do inventário), igual com offset 0, 2 % e 10 %. Programando 134,4 V em vez de 127 V, a razão em ACDC sobe a 0,9994 (compensação V/g do inventário). A razão do RMS total do CH1 sobre o da fonte fica perto de 1,010 em todas as condições. Fechamento: evidência suficiente com revisão humana pendente; `deficit_acdc_aceitavel` sem critério. A execução manda caracterizar antes de aplicar qualquer correção.",
       "situacao_execucao": "Evidência suficiente, revisão humana pendente",
       "entrega": "2026-10-22: AC / ACDC offset 0 / ACDC com offset a 50 e 60 Hz; falta critério do déficit. Caracterizar déficit ACDC por CA e RMS total; não aplicar V/g como correção antes da caracterização.",
       "decisao_dono": {
         "registrada": false,
-        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+        "situacao": "em-branco",
+        "texto": "Nenhuma escolha feita: o critério `deficit_acdc_aceitavel` está `criterio_nao_definido` no fechamento e `docs/decisoes_pendentes.md` não tem seção para a P-17.",
+        "pergunta": "Que déficit de CA em ACDC (hoje cerca de 5,5 %) é aceitável, e a compensação V/g entra ou o déficit só é documentado?",
+        "opcoes": [
+          "Documentar o déficit como limitação, sem compensar",
+          "Compensar a amplitude por V/g (programar 134,4 V para 127 V), com nova medição",
+          "Fixar um limite numérico de aceitação (informar o valor e a fonte)"
+        ],
+        "fonte_opcoes": "sem-opcoes-previas"
       },
       "commits": [],
-      "evidencias": []
+      "evidencias": [
+        "evidencias/2026-10-22/fechamento.json"
+      ],
+      "falta_por_tipo": {
+        "decisao-dono": "Decidir o critério do déficit aceitável e se a compensação V/g entra; sem isso a P-09, que depende de ACDC, também não avança."
+      }
     },
     "P-18": {
       "titulo": "integração experimental do passo SINE e validação física",
@@ -480,43 +695,70 @@
         "R",
         "D"
       ],
-      "falta": "SINE integrado OFF; validar aceitação LIST/restauração na fonte; responsável confirma padrão OFF",
-      "como_tratada": null,
-      "situacao_execucao": "Parcial — integrado experimental OFF",
+      "falta": "Validar na fonte real a aceitação de SINE em LIST e a restauração; o dono confirma o padrão desligado",
+      "como_tratada": "Até agora: o passo final SINE está integrado na `main` com o padrão desligado (`AMETEK_PASSO_FINAL_SIN`, `logica/mestre.py:417`, `default=False`; forma `SINE` em `logica/ametek_orm.py:368`), com roteiro de teste `diag/teste_passo_final_sin.py` e cobertura offline em `tests/test_pendencias_sine.py` (entrega em `58130af`). Nunca foi medido na bancada: o fechamento de 22/10 marca `sem_dados`. O branch `feat/passo-final-sin` (PR #3, `18b144d`), que tinha o padrão ligado, não é a `main`.",
+      "situacao_execucao": "Parcial: integrado experimental, desligado",
       "entrega": "SINE integrado com padrão desligado e regressões offline; falta validar aceitação SCPI e a restauração na fonte real.",
       "decisao_dono": {
         "registrada": false,
-        "texto": "Seção em `docs/decisoes_pendentes.md` com a resposta em branco."
+        "situacao": "tomada-no-fork",
+        "texto": "O fork integrou com o padrão desligado, que é a opção A (recomendada) do formulário; a resposta do formulário está em branco. Fonte: `docs/decisoes_pendentes.md`, seção P-18.",
+        "pergunta": "O passo final SINE fica desligado por padrão até haver validação em bancada?",
+        "opcoes": [
+          "A. Manter desligado por padrão até validação; ligar só por variável explícita (adotada no fork)",
+          "B. Ligar por padrão (não recomendado sem validação física)",
+          "C. Retirar o código até haver bancada"
+        ],
+        "fonte_opcoes": "formulario"
       },
-      "commits": [],
-      "evidencias": [],
-      "direcao_vigente": "SINE integrado experimentalmente no checkout, desligado por padrão (`AMETEK_PASSO_FINAL_SIN=0`, `passo_final_sin=False`); validação física permanece pendente."
+      "commits": [
+        "58130af"
+      ],
+      "evidencias": [
+        "evidencias/2026-10-22/fechamento.json",
+        "decisoes_pendentes.md"
+      ],
+      "direcao_vigente": "SINE integrado experimentalmente no checkout, desligado por padrão (`AMETEK_PASSO_FINAL_SIN=0`, `passo_final_sin=False`); validação física permanece pendente.",
+      "falta_por_tipo": {
+        "bancada": "Rodar `diag/teste_passo_final_sin.py` com a confirmação `ENERGIZAR-PASSO-SIN` digitada pelo operador: aceitação de `SINE` em `LIST:FUNCtion:SHAPe` e restauração da fonte.",
+        "decisao-dono": "Confirmar o padrão desligado até a validação."
+      }
     },
     "P-19": {
       "titulo": "verificar `TRACe:DATA?` na revisão real do equipamento",
-      "estado": "aguarda-bancada",
+      "estado": "insuficiente-bancada",
       "prioridade": "media",
       "responsavel": "B + operador",
       "acao": "verificar `TRACe:DATA?` na revisão real do equipamento",
       "dependencia": "Roteiro e observação do painel",
       "criterio": "Resposta real com 1024 valores finitos ou registro explícito de comando não suportado; interromper diante de falha de infraestrutura",
       "quem_fecha": [
-        "bancada"
+        "bancada",
+        "codigo"
       ],
       "frentes": [
         "K",
         "R"
       ],
-      "falta": "2026-10-22: `TRACe:DATA? TCC00` devolve 10 valores (9 leituras, classes 08/09), nem 1024 finitos nem erro de comando não suportado: investigar o formato da resposta",
-      "como_tratada": null,
-      "situacao_execucao": "Insuficiente em 2026-10-22 / aguarda análise",
+      "falta": "A resposta de TRACe:DATA? veio com 10 valores em vez de 1024: entender o formato e repetir a leitura até 1024 finitos ou erro SCPI explícito",
+      "como_tratada": "Até agora, medido e inconclusivo (visita de 22/10, `c690a49`): `TRACe:DATA? TCC00` foi lido 9 vezes (capturas das classes 08 e 09, em `diagnostico_trace/*.npz` das sessões) e devolveu 10 valores em vez dos 1024 esperados. Não é nem 1024 valores finitos nem um erro SCPI explícito de comando não suportado (`fechamento.json`: `capturas_com_1024_finitos: 0`, `nao_suportado_registrado: 0`, `erros: 9`). A causa não foi diagnosticada; a pergunta do inventário (a Rev. 5.53 responde uma lista NRf?) continua sem resposta.",
+      "situacao_execucao": "Insuficiente em 2026-10-22",
       "entrega": "`TRACe:DATA? TCC00` devolve 10 valores (9 leituras). Verificar `TRACe:DATA?` no firmware real, 1024 valores finitos ou comando explicitamente não suportado; preservar intervalos de segurança.",
       "decisao_dono": {
         "registrada": false,
-        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+        "situacao": "nao-se-aplica",
+        "texto": "Nenhuma decisão do dono envolvida; o que falta é medição ou código."
       },
-      "commits": [],
-      "evidencias": []
+      "commits": [
+        "c690a49"
+      ],
+      "evidencias": [
+        "evidencias/2026-10-22/fechamento.json"
+      ],
+      "falta_por_tipo": {
+        "bancada": "Repetir a leitura com `set diagnostico retrieve on` e o painel à vista até obter 1024 valores finitos ou um erro SCPI de comando não suportado. Respeitar `AGENTS.md`: nunca consultar a fonte logo após `TRACe:DATA` (achado de segurança da v1.12).",
+        "codigo": "Examinar como a leitura do `retrieve` recebe e decodifica a resposta, para descartar truncamento no próprio código antes de concluir algo sobre o firmware (proposta de investigação, não achado)."
+      }
     },
     "P-20": {
       "titulo": "preparar congelamento, licença, autoria, citação e Zenodo",
@@ -532,17 +774,32 @@
       "frentes": [
         "D"
       ],
-      "falta": "Aguarda o Denis: licença, autoria, citação, tag/Zenodo",
-      "como_tratada": null,
-      "situacao_execucao": "Aberta — depende de direitos/publicação",
+      "falta": "Respostas do dono: licença do código e do dataset, quem autoriza, autores com ORCID, citação, e a decisão de tag e Zenodo",
+      "como_tratada": "Nada foi criado, por regra. A `main` não tem `LICENSE`, `COPYING`, `CITATION.cff`, `.zenodo.json`, `AUTHORS` nem `CODEOWNERS` (`ls` na raiz, 27/10; a busca em todos os branches está em `docs/decisoes_pendentes.md`) e `git tag` não lista `v1.15` (versão em andamento, sem tag, `AGENTS.md`). A resposta do dono de 21/10 foi 'aguardar o Denis'; licença, autoria, citação e DOI não são criados antes disso, e o fork não concede direitos de relicenciamento.",
+      "situacao_execucao": "Aberta: depende de direitos e publicação",
       "entrega": "Preparar congelamento, licença e autoria verificadas, citação e Zenodo após validação; não criar licença ou DOI fictícios.",
       "decisao_dono": {
         "registrada": false,
-        "texto": "Aguardar o Denis (21/10/2026): licença, autoria, citação e DOI não são criados antes da resposta dele. Fonte: `docs/decisoes_pendentes.md`, seção P-20."
+        "situacao": "em-branco",
+        "texto": "Aguardar o Denis (21/10/2026): licença, autoria, citação e DOI não são criados antes da resposta dele. Fonte: `docs/decisoes_pendentes.md`, seção P-20.",
+        "pergunta": "Licença do código e do dataset (e quem a autoriza), autores com afiliação e ORCID, texto de citação, e quando tagear a v1.15 e publicar no Zenodo?",
+        "opcoes": [
+          "Tag: A. só depois de P-01 e P-31; Zenodo depois da tag",
+          "Tag: B. agora como pré-lançamento `-rc`, sem Zenodo",
+          "Tag: C. agora e publicar no Zenodo (DOI só depois de emitido)",
+          "Zenodo: A. só depois da licença e da autoria aprovadas; B. não publicar",
+          "Licença, autores e citação: texto livre a preencher (cinco perguntas abertas do formulário)"
+        ],
+        "fonte_opcoes": "formulario"
       },
       "commits": [],
-      "evidencias": [],
-      "direcao_vigente": "Preparar material de publicação sem inventar licença, autoria ou DOI. O fork não concede direitos de relicenciamento."
+      "evidencias": [
+        "decisoes_pendentes.md"
+      ],
+      "direcao_vigente": "Preparar material de publicação sem inventar licença, autoria ou DOI. O fork não concede direitos de relicenciamento.",
+      "falta_por_tipo": {
+        "decisao-dono": "Responder as cinco perguntas do formulário e escolher quando tagear a v1.15 e quando publicar no Zenodo. A tag depende de P-01 e P-31."
+      }
     },
     "P-21": {
       "titulo": "calibrar novas condições antes de coleta científica nelas",
@@ -553,25 +810,45 @@
       "dependencia": "Segurança e campanha por condição",
       "criterio": "Tabela por tensão/frequência com origem real e validação; não subir limite para fazer classe caber",
       "quem_fecha": [
-        "bancada"
+        "bancada",
+        "decisao-dono",
+        "codigo"
       ],
       "frentes": [
         "K",
         "R"
       ],
-      "falta": "Calibrar 220 V/60 Hz e 33 V/60 Hz antes da coleta científica. 50 Hz: calibração pela campanha de 127 V antes da de 230 V (`aac725b`). 220 V/60 Hz: decisão sobre a regra de condição sem tabela (`evidencias/2026-10-22/LEIA-ME.md`)",
-      "como_tratada": null,
-      "situacao_execucao": "Preparada / aguarda bancada",
+      "falta": "Calibrar 220 V/60 Hz e 33 V/60 Hz; o dono confirma a regra de condição sem tabela; a classe 08 não tem fator em nenhuma condição",
+      "como_tratada": "Até agora: 127 V/60 Hz recalibrada (`13b9bdb`) e a calibração de 50 Hz passa a ser feita com a campanha de 127 V/50 Hz antes da de 230 V (`aac725b`). A 220 V/60 Hz não há tabela e a regra atual (decidida na v1.14) usa o maior fator já medido (1,615), de modo que na rodada de 220 V só cabem 07, 10, 11, 15 e 16 (e parte de 12 e 20). Em 22/10 o operador escolheu na bancada manter essa regra (opção A), registrado em `6aa8229`; a decisão final é do responsável. 33 V/60 Hz não tem calibração. Fechamento: `insuficiente`; a classe 08 não tem fator de extremo nem a 50 nem a 60 Hz (`classes_sem_fator: ['08']`). Isso é desenho, não esquecimento: `logica/calibracao_extremos.json` (`observacao_08`) diz que a 08 não usa essa tabela, pois `forma_para_bancada()` dimensiona o impulso e `excursao_fisica_prevista_v()` dá a excursão. O critério 'fatores das 20 classes' do agregador conflita com esse desenho.",
+      "situacao_execucao": "Preparada, aguarda bancada",
       "entrega": "Calibrar condições novas antes de coleta científica e registrar origem dos fatores, sem elevar limites para acomodar classes.",
       "decisao_dono": {
-        "registrada": true,
-        "texto": "Opção A por enquanto (manter a regra de condição sem tabela; a rodada de 220 V calibra só as classes que cabem), escolhida pelo operador na bancada; a decisão final é do responsável. Fonte: `docs/decisoes_pendentes.md`, seção P-21.",
-        "data": "2026-10-22"
+        "registrada": false,
+        "situacao": "tomada-no-fork",
+        "texto": "Opção A 'por enquanto', escolhida pelo operador na bancada em 22/10; a decisão final é do responsável. Fonte: `docs/decisoes_pendentes.md`, seção P-21.",
+        "data": "2026-10-22",
+        "pergunta": "Confirma manter a regra atual para a condição sem tabela (220 V/60 Hz)?",
+        "opcoes": [
+          "A. Manter a regra atual; a rodada de 220 V calibra só as classes que cabem (adotada pelo operador)",
+          "B. Condição com tabela de mesma frequência usa o fator da própria classe nessas tabelas",
+          "C. Decidir B depois das campanhas de 127 V/50 Hz e 230 V/50 Hz"
+        ],
+        "fonte_opcoes": "formulario"
       },
       "commits": [
-        "aac725b"
+        "13b9bdb",
+        "aac725b",
+        "6aa8229"
       ],
-      "evidencias": []
+      "evidencias": [
+        "evidencias/2026-10-22/fechamento.json",
+        "evidencias/2026-10-22/LEIA-ME.md"
+      ],
+      "falta_por_tipo": {
+        "bancada": "Rodadas de calibração a 220 V/60 Hz e 33 V/60 Hz, e a de 50 Hz com a campanha de 127 V/50 Hz antes de 230 V/50 Hz, com `recalibrar_extremos.py`; sem elevar limites para acomodar classes.",
+        "decisao-dono": "Confirmar a regra de condição sem tabela (opção A, escolhida pelo operador) ou escolher B ou C.",
+        "codigo": "Decidir como o agregador trata a 08: ajustar o critério `calibracao_da_condicao` para a 08 (que não usa a tabela) ou calibrar a 08, se o dono quiser."
+      }
     },
     "P-22": {
       "titulo": "medir tamanho/tempo/memória da consolidação com ruído e amostras físicas",
@@ -582,22 +859,38 @@
       "dependencia": "Sessões reais; sintético apenas preliminar",
       "criterio": "Benchmark reprodutível e integridade por leitura de retorno; perfis espelhados identificados como aliases da mesma captura, sem duplicar arrays nem tratá-los como medições independentes",
       "quem_fecha": [
-        "bancada"
+        "decisao-dono"
       ],
       "frentes": [
         "K",
         "R"
       ],
-      "falta": "Evidência suficiente (2026-10-22: 14 sessões físicas lidas sem erro no DESKTOP-FSEESJI, benchmark com hashes iguais): falta definir tempo/tamanho aceitáveis",
-      "como_tratada": null,
+      "falta": "Definir tempo e tamanho aceitáveis do .npz (critério sem definição)",
+      "como_tratada": "Até agora: `benchmark_sintetico.json` (16/10) mede tempo, tamanho e memória para 3, 10 e 30 capturas sintéticas, com verificação de leitura e dos aliases. Em 22/10 o benchmark rodou sobre as 14 sessões físicas no DESKTOP-FSEESJI: leitura sem erro (por exemplo 42 capturas em 0,041 s), hashes de antes e depois iguais, originais inalterados (`fechamento.json`; o artefato `benchmark_sessao_io_bancada.json` não está no repositório). `tempo_e_tamanho_aceitaveis` está sem critério. As capturas 'espelho' do `set perfil todos` são cópias, não três medidas (inventário).",
       "situacao_execucao": "Evidência suficiente, revisão humana pendente",
       "entrega": "2026-10-22: benchmark com 14 sessões físicas no DESKTOP-FSEESJI, falta critério de tempo/tamanho. `benchmark_sintetico.json` mede tempo/tamanho/tracemalloc para 3/10/30 capturas e verifica leitura/aliases. Falta medir dados físicos reais e custo no PC/disco da bancada.",
       "decisao_dono": {
         "registrada": false,
-        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+        "situacao": "em-branco",
+        "texto": "Nenhuma escolha feita: `docs/decisoes_pendentes.md` não tem seção para a P-22 e o critério está `criterio_nao_definido` no fechamento.",
+        "pergunta": "Que tempo de reescrita e que tamanho do `NN_classe.npz` são aceitáveis?",
+        "opcoes": [
+          "Aceitar o que foi medido em 22/10 como suficiente",
+          "Fixar limites de tempo e de tamanho (informar os valores e a fonte)"
+        ],
+        "fonte_opcoes": "sem-opcoes-previas"
       },
-      "commits": [],
-      "evidencias": []
+      "commits": [
+        "8603c20",
+        "ba490ef"
+      ],
+      "evidencias": [
+        "evidencias/2026-10-16/benchmark_sintetico.json",
+        "evidencias/2026-10-22/fechamento.json"
+      ],
+      "falta_por_tipo": {
+        "decisao-dono": "Definir tempo e tamanho aceitáveis do `NN_classe.npz` e revisar a medida."
+      }
     },
     "P-23": {
       "titulo": "alinhar orientação a grupos de classes",
@@ -608,24 +901,43 @@
       "dependencia": "Orçamento TRACe e roteiro",
       "criterio": "Docs coerentes com grupos <250 gravações/conexão; causa da trava só encerrada com diagnóstico real, sem ensaio cego até travar",
       "quem_fecha": [
-        "decisao-dono",
-        "bancada"
+        "bancada",
+        "decisao-dono"
       ],
       "frentes": [
         "K",
         "R"
       ],
-      "falta": "Orçamento 216/conexão aplicado; causa física da trava só com diagnóstico real",
-      "como_tratada": null,
-      "situacao_execucao": "Parcial — proteção implementada",
+      "falta": "Causa física da trava (~280.ª gravação) sem diagnóstico real; o dono confirma o orçamento de 216",
+      "como_tratada": "Até agora: orçamento operacional de 216 gravações de TRACe por conexão (`LIMITE_ESCRITAS_TRACE_CONEXAO = 216`, `logica/politica_traces.py:3`), aplicado antes de abrir instrumentos na CLI e na entrada principal e verificado no ORM (`verificar_orcamento_traces`, `logica/ametek_orm.py:2051`), que conta tentativas cumulativas, comandos diretos e falhas de envio; cache confirmado não consome; esgotamento aborta a bateria sem retry (`a6d59ac`, `aab2ce3`). Testes em `tests/test_orcamento_traces.py` e `tests/test_orcamento_cli.py`. As sessões de 22/10 ficaram em até 216 gravações cada (`fechamento.json`, critério `gravacoes_TRACe_no_log`). O fechamento marca `insuficiente`: não há diagnóstico nativo com OUTPUT OFF (`diag_nativo_output_off_presente` = 0, limite ≥ 1). A causa física da trava (quirk A3) continua NÃO VERIFICADA; 216 é regra operacional, não limite do fabricante.",
+      "situacao_execucao": "Parcial: proteção implementada",
       "entrega": "CLI e entrada principal recusam estimativas acima de 216 antes de abrir instrumentos; ORM verifica a captura inteira e conta tentativas cumulativas, inclusive comandos diretos e falhas de envio. Cache confirmado não consome novas gravações. Esgotamento aborta a bateria sem retry. Causa física da trava ainda depende de diagnóstico real.",
       "decisao_dono": {
         "registrada": false,
-        "texto": "Seção em `docs/decisoes_pendentes.md` com a resposta em branco."
+        "situacao": "tomada-no-fork",
+        "texto": "O fork aplicou 216 como regra operacional, que é a opção A (recomendada) do formulário; a resposta está em branco. Fonte: `docs/decisoes_pendentes.md`, seção P-23.",
+        "pergunta": "Confirma o orçamento de 216 gravações TRACe por conexão como regra operacional?",
+        "opcoes": [
+          "A. Manter 216 como regra operacional e proteção de software, sem afirmar que é limite físico (adotada no fork)",
+          "B. Mudar o valor (informar qual e a base de medição)",
+          "C. Tornar configurável por variável de ambiente, padrão 216"
+        ],
+        "fonte_opcoes": "formulario"
       },
-      "commits": [],
-      "evidencias": [],
-      "direcao_vigente": "Orçamento operacional de 216 gravações TRACe por conexão aplicado no CLI, entrada principal e ORM; inclui tentativas de envio incertas e comandos diretos. Esgotamento aborta a bateria sem retry. A causa física da trava continua aberta."
+      "commits": [
+        "a6d59ac",
+        "aab2ce3",
+        "e7f43aa"
+      ],
+      "evidencias": [
+        "evidencias/2026-10-22/fechamento.json",
+        "decisoes_pendentes.md"
+      ],
+      "direcao_vigente": "Orçamento operacional de 216 gravações TRACe por conexão aplicado no CLI, entrada principal e ORM; inclui tentativas de envio incertas e comandos diretos. Esgotamento aborta a bateria sem retry. A causa física da trava continua aberta.",
+      "falta_por_tipo": {
+        "bancada": "Diagnóstico real com a saída OFF (`diag/diag_nativo_output_off.py`) para esclarecer a causa da trava.",
+        "decisao-dono": "Confirmar o valor 216 como regra operacional, ou mudá-lo."
+      }
     },
     "P-24": {
       "titulo": "substituir linhas frágeis por símbolos/links estáveis, revisar carimbos, contagens, quirk B8 e tabelas do site",
@@ -639,45 +951,68 @@
         "codigo"
       ],
       "frentes": [],
-      "falta": "—",
-      "como_tratada": null,
+      "falta": "Só conferir no Read the Docs que a versão publicada é a da main atual",
+      "como_tratada": "Referências atuais passam por símbolo (25 `literalinclude` com `pyobject`, verificados por AST); as citações históricas de linha ficam fixadas por permalink do SHA `fa82f49` (764 ocorrências de `blob/fa82f496` em `docs/**/*.md` na `main`); quirk B8 e contagens corrigidos; build Sphinx estrito aprovado em 17/10 (`d6ba734`). Em 27/10 o fork foi integrado à `main` (`f322c0f`) e os textos desatualizados e citações de linha foram corrigidos (`dafde1f`, `9ce09b4`). A publicação no Read the Docs não foi conferida aqui: NÃO VERIFICADO.",
       "situacao_execucao": "Concluída — revisão e build local",
       "entrega": "Referências atuais por símbolos/25 `pyobject` validados AST; 1136 citações históricas fixadas por permalink SHA; B8 e contagens corrigidos; build Sphinx estrito aprovado e tabelas P-03/decisões verificadas no HTML. Publicação remota do site não é afirmada.",
       "decisao_dono": {
         "registrada": false,
-        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+        "situacao": "nao-se-aplica",
+        "texto": "Nenhuma decisão do dono envolvida; o que falta é medição ou código."
       },
-      "commits": [],
+      "commits": [
+        "d6ba734",
+        "f322c0f",
+        "dafde1f",
+        "9ce09b4"
+      ],
       "evidencias": [
         "evidencias/2026-10-17/validacao_software.json",
         "execucao_pendencias.md"
-      ]
+      ],
+      "falta_por_tipo": {
+        "codigo": "Conferir que o Read the Docs publica a `main` atual (fora do alcance deste checkout)."
+      }
     },
     "P-25": {
       "titulo": "tratar ajustes editoriais um a um, preservando changelogs fechados",
-      "estado": "concluida",
+      "estado": "aguarda-decisao",
       "prioridade": "baixa",
       "responsavel": "C + coordenador",
       "acao": "tratar ajustes editoriais um a um, preservando changelogs fechados",
       "dependencia": "Decisão de escopo; checksum da calibração",
       "criterio": "Diff limitado e justificativa de qualquer mudança de hash; não alterar calibração só por estética",
       "quem_fecha": [
-        "decisao-dono"
+        "decisao-dono",
+        "codigo"
       ],
       "frentes": [],
-      "falta": "—",
-      "como_tratada": null,
-      "situacao_execucao": "Concluída — decisão editorial",
-      "entrega": "Removidos identificadores `spec NN` das páginas operacionais atuais; aceitas renomeação local e manutenção do texto `uso_limite_bancada` sem alterar o JSON/hash. Mantidos histórico fechado e termos de governança em AGENTS por decisão explícita.",
+      "falta": "O dono aceita ou retira os quatro itens, um a um; restam 'spec NN' em tests/test_offline.py e logica/",
+      "como_tratada": "Até agora, item a item do inventário: (1) identificadores 'spec NN': saíram das páginas de `docs/` (`dafde1f`, `9ce09b4`); `docs/limites_e_calibracao.md:51` não traz mais 'spec 26' (hoje trata a recalibração de 22/10). Restam comentários em `tests/test_offline.py` (linhas 3208, 6829, 6992, 7505, 9155 e 9272), ocorrências em `logica/` e os CHANGELOG fechados, que não se reescrevem. (2) Termo de governança em `AGENTS.md`: a busca por 'governan' não acha nada hoje, e o registro não diz qual era o termo (NÃO VERIFICADO). (3) Nome de variável local em `mestre.py`: o inventário cita `mestre.py:2398,2412` do baseline; não localizei a variável (NÃO VERIFICADO). (4) `uso_limite_bancada` em `logica/calibracao_extremos.json:81`: texto mantido. O dono não respondeu item a item e `docs/decisoes_pendentes.md` não tem seção para a P-25; a frase do registro anterior ('aceitas… por decisão explícita') não tem fonte.",
+      "situacao_execucao": "Parcial: ajustes feitos no fork, sem resposta do dono",
+      "entrega": "Removidos os identificadores 'spec NN' das páginas operacionais de `docs/`; mantidos o texto de `uso_limite_bancada` e o histórico fechado. Não há resposta do dono item a item.",
       "decisao_dono": {
         "registrada": false,
-        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+        "situacao": "tomada-no-fork",
+        "texto": "O fork removeu os 'spec NN' das páginas de `docs/` e manteve o resto; não há resposta do dono, nem seção na `docs/decisoes_pendentes.md`.",
+        "pergunta": "Item a item: aceita ou retira (1) os identificadores 'spec NN' que restam em código e testes, (2) o termo de governança em `AGENTS.md`, (3) o nome da variável local em `mestre.py`, (4) o texto de `uso_limite_bancada`?",
+        "opcoes": [
+          "Aceitar o item como está",
+          "Retirar o item"
+        ],
+        "fonte_opcoes": "inventario"
       },
-      "commits": [],
+      "commits": [
+        "dafde1f",
+        "9ce09b4"
+      ],
       "evidencias": [
-        "evidencias/2026-10-17/validacao_software.json",
         "execucao_pendencias.md"
-      ]
+      ],
+      "falta_por_tipo": {
+        "decisao-dono": "Aceitar ou retirar, um a um: identificadores 'spec NN'; termo de governança em `AGENTS.md`; nome da variável local em `mestre.py`; texto de `uso_limite_bancada` (muda o SHA-256 do arquivo).",
+        "codigo": "Se o dono mandar retirar os 'spec NN' do código e dos testes: editar `tests/test_offline.py` e `logica/`."
+      }
     },
     "P-26": {
       "titulo": "registrar perfis, frequências e eventual ACDC 230 V antes da coleta",
@@ -688,23 +1023,34 @@
       "dependencia": "Disponibilidade da bancada",
       "criterio": "Configuração prévia documentada e igual à sessão coletada",
       "quem_fecha": [
-        "decisao-dono"
+        "bancada"
       ],
       "frentes": [
         "K",
         "R"
       ],
-      "falta": "Decidida em 21/10: 5 condições, `set perfil todos`, 1 captura/classe, sem ACDC a 230 V. Fecha quando as sessões registrarem essa configuração",
-      "como_tratada": null,
-      "situacao_execucao": "Preparada / aguarda operador",
+      "falta": "Decidida; fecha quando as sessões das cinco condições registrarem a configuração (só 127 V existe)",
+      "como_tratada": "Decidida pelo dono em 21/10 (`docs/decisoes_pendentes.md`, seção P-26): perfis `todos`; condições 127 V/60 Hz, 127 V/50 Hz, 230 V/50 Hz, 220 V/60 Hz e 33 V/60 Hz; ACDC só a 127 V; 1 captura por classe (padrão). O plano offline está em `plano_campanhas_5_condicoes.json` (230 V/50 Hz com 13 recusas por swells; 220 V/60 Hz sem calibração e 52 recusas; 33 V/60 Hz sem calibração; `execucao_pendencias.md`, 21/10). As sessões de 22/10 são só de 127 V (60 e 50 Hz): não há sessão de 230 V/50 Hz, 220 V/60 Hz nem 33 V/60 Hz.",
+      "situacao_execucao": "Decidida, aguarda operador",
       "entrega": "Registrar antes da coleta perfil/frequência/tensão e escopo ACDC opcional 230 V; resolver essa exceção ao roteiro de 127 V antes de executá-la.",
       "decisao_dono": {
         "registrada": true,
+        "situacao": "confirmada",
         "texto": "Perfis `todos`; condições 127 V/60 Hz, 127 V/50 Hz, 230 V/50 Hz, 220 V/60 Hz e 33 V/60 Hz; ACDC só a 127 V; 1 captura por classe. Fonte: `docs/decisoes_pendentes.md`, seção P-26.",
         "data": "2026-10-21"
       },
-      "commits": [],
-      "evidencias": []
+      "commits": [
+        "33ec7ba",
+        "4af6d17",
+        "c690a49"
+      ],
+      "evidencias": [
+        "evidencias/2026-10-21/plano_campanhas_5_condicoes.json",
+        "decisoes_pendentes.md"
+      ],
+      "falta_por_tipo": {
+        "bancada": "Rodar as campanhas das cinco condições e registrar a configuração em cada sessão (as três condições restantes dependem de P-21 e da regra da P-01)."
+      }
     },
     "P-27": {
       "titulo": "localizar `validacao_gerador_v1.14.md` ou tornar explícita a ausência da fonte das correlações",
@@ -718,19 +1064,31 @@
         "decisao-dono"
       ],
       "frentes": [],
-      "falta": "—",
-      "como_tratada": null,
+      "falta": "Só a confirmação do dono de seguir sem o arquivo",
+      "como_tratada": "As faixas de referência e a coluna 'bate?' saíram de `docs/correlacao_disturbio.md` (linhas 3, 37 e 75), porque dependiam de `validacao_gerador_v1.14.md`, que não existe em nenhum commit (`git log --all --oneline -- '*validacao_gerador*'` vazio). Os valores históricos ficam como relato, não como critério; a fonte não foi fabricada (`d6ba734`). O pedido original era 'fornecer o arquivo'; ele não foi respondido: o problema foi resolvido retirando o critério.",
       "situacao_execucao": "Concluída — comparações sem fonte retiradas",
       "entrega": "Removidas faixas de referência e coluna “bate?” que dependiam do arquivo ausente. Valores históricos permanecem identificados como reportados e não são critérios de aceite; não se fabricou a fonte.",
       "decisao_dono": {
         "registrada": false,
-        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+        "situacao": "tomada-no-fork",
+        "texto": "Retirada do critério decidida no fork por 'autorização do usuário nesta sessão'; o inventário pedia ao dono que fornecesse o arquivo e `docs/decisoes_pendentes.md` só registra a busca sem resultado.",
+        "pergunta": "Aceita seguir sem `validacao_gerador_v1.14.md` (faixas e 'bate?' retirados), ou vai fornecer o arquivo?",
+        "opcoes": [
+          "Seguir sem o arquivo; os valores históricos são só relato (adotada no fork)",
+          "Fornecer o arquivo para restaurar as faixas"
+        ],
+        "fonte_opcoes": "inventario"
       },
-      "commits": [],
+      "commits": [
+        "d6ba734"
+      ],
       "evidencias": [
         "evidencias/2026-10-17/validacao_software.json",
         "execucao_pendencias.md"
-      ]
+      ],
+      "falta_por_tipo": {
+        "decisao-dono": "Confirmar seguir sem o arquivo, ou fornecê-lo."
+      }
     },
     "P-28": {
       "titulo": "comparar interpolação atual com sinal bruto e alternativa com anti-aliasing",
@@ -741,22 +1099,37 @@
       "dependencia": "Taxa bruta real; offline preliminar",
       "criterio": "Erro temporal, espectral, pico, THD e correlação quantificados; decisão com efeito sobre compatibilidade e dataset",
       "quem_fecha": [
-        "bancada"
+        "decisao-dono"
       ],
       "frentes": [
         "K",
         "R"
       ],
-      "falta": "Evidência suficiente (2026-10-22: 135 exportações brutas íntegras, reamostragem casada por SHA-256): falta decidir se o FIR substitui o interpolador",
-      "como_tratada": null,
+      "falta": "Decidir se o FIR anti-aliasing substitui a interpolação linear (critério sem definição)",
+      "como_tratada": "Até agora: `set diagnostico bruto on` preserva BYTE, preamble e tempos do osciloscópio antes da interpolação, em arquivos independentes ligados por hash (`f974954`), e `diag/analisar_reamostragem.py` compara RMS, pico, THD, erro temporal e espectro; a comparação sintética está em `reamostragem_sintetica.json` (16/10; não avalia o bruto real). Em 22/10, `fechamento.json`: 135 exportações brutas íntegras (0 ausentes, 0 com erro) e reamostragem casada por SHA-256. O FIR é só comparação: não substitui o interpolador do dataset. `fir_substitui_interpolador` está sem critério.",
       "situacao_execucao": "Evidência suficiente, revisão humana pendente",
       "entrega": "2026-10-22: 135 exportações brutas íntegras e reamostragem casada por SHA-256. `set diagnostico bruto on` preserva BYTE/preamble/tempos antes de interpolar, sem nova aquisição, em arquivos independentes com vínculo por hash. Analisador compara RMS/pico/THD/erro temporal/espectro na grade salva, com rastreabilidade de entrada/configuração. Faltam exportações reais e revisão dos resultados físicos; FIR não substitui o interpolador do dataset.",
       "decisao_dono": {
         "registrada": false,
-        "texto": "Nenhuma resposta registrada em `docs/decisoes_pendentes.md`."
+        "situacao": "em-branco",
+        "texto": "Nenhuma escolha feita: `docs/decisoes_pendentes.md` não tem seção para a P-28.",
+        "pergunta": "O FIR com anti-aliasing substitui a interpolação linear usada na reamostragem do osciloscópio?",
+        "opcoes": [
+          "Manter a interpolação linear (o FIR fica só como comparação)",
+          "Substituir pelo FIR (muda o que o dataset grava)"
+        ],
+        "fonte_opcoes": "sem-opcoes-previas"
       },
-      "commits": [],
-      "evidencias": []
+      "commits": [
+        "f974954"
+      ],
+      "evidencias": [
+        "evidencias/2026-10-16/reamostragem_sintetica.json",
+        "evidencias/2026-10-22/fechamento.json"
+      ],
+      "falta_por_tipo": {
+        "decisao-dono": "Revisar os resultados físicos e decidir se o FIR substitui a interpolação linear."
+      }
     },
     "P-29": {
       "titulo": "obter transcrições reais e selecionar exemplos verificáveis para comandos",
@@ -767,23 +1140,31 @@
       "dependencia": "Logs locais não versionados e definição de publicação",
       "criterio": "Trechos com sessão, condição, contexto e revisão; revisar dados sensíveis antes de publicar; ausência dos logs permanece bloqueio",
       "quem_fecha": [
-        "decisao-dono"
+        "bancada"
       ],
       "frentes": [
         "R",
         "D"
       ],
-      "falta": "Decisão B (21/10): logs antigos indisponíveis; usar `scpi_transcricao.log` das sessões novas, com revisão de dados sensíveis",
-      "como_tratada": null,
-      "situacao_execucao": "Bloqueada por logs reais",
+      "falta": "Selecionar e versionar, após revisão de dados sensíveis, trechos das scpi_transcricao.log das sessões novas",
+      "como_tratada": "Decisão B do dono (21/10): os logs do PC antigo não podem ser copiados; os exemplos reais virão das `scpi_transcricao.log` das sessões novas da campanha v1.15. As sessões de 22/10 (árvore limpa) gravaram `scpi_transcricao.log`, mas ficam no PC da bancada, fora do repositório (só o SHA-256 consta em `fechamento.json`); nenhum trecho foi selecionado ou versionado. `docs/scpi/transcricoes.md` ainda descreve os 71 trechos das sessões de 07/10 e traz o selo `PENDENTE P-29`.",
+      "situacao_execucao": "Decidida, aguarda sessões novas",
       "entrega": "Transcrições locais das sessões não disponíveis no checkout; obter trechos com sessão/condição/SHA. A tabela SCPI descreve código/manual, não prova medição.",
       "decisao_dono": {
         "registrada": true,
+        "situacao": "confirmada",
         "texto": "Opção B: usar as `scpi_transcricao.log` das sessões novas da campanha v1.15, revisadas antes de publicar; os dados do PC antigo não podem ser copiados. Fonte: `docs/decisoes_pendentes.md`, seção P-29.",
         "data": "2026-10-21"
       },
-      "commits": [],
-      "evidencias": []
+      "commits": [
+        "e345921"
+      ],
+      "evidencias": [
+        "decisoes_pendentes.md"
+      ],
+      "falta_por_tipo": {
+        "bancada": "Reunir as `scpi_transcricao.log` das sessões da campanha, revisar dados sensíveis, selecionar trechos curtos com sessão, condição e SHA e atualizar `docs/scpi/transcricoes.md`."
+      }
     },
     "P-30": {
       "titulo": "definir escopo de “piloto” e reconciliar 63 vs 99",
@@ -798,20 +1179,24 @@
       ],
       "frentes": [],
       "falta": "—",
-      "como_tratada": "retificação: 63/99 históricos não verificáveis; `tres_versoes.md`, `AGENTS.md`",
+      "como_tratada": "Concluída pela decisão D do dono (21/10): as contagens 63 ('piloto') e 99 (36+36+27) ficam registradas como históricas e não verificáveis, sem apagar o histórico e sem uso como resultado; as sessões de 07/10 não podem ser recuperadas. A nota de retificação está em `AGENTS.md:128` e `docs/tres_versoes.md:68` (`ef3d49d`). A única ressalva é que o código dessas sessões é `994e170-dirty`, árvore suja.",
       "situacao_execucao": "Concluída — retificação",
       "entrega": "Sessões de 07/10 irrecuperáveis (decisão de 21/10/2026). As contagens 63 (\"piloto\") e 99 (36+36+27) ficam como históricas e não verificáveis, com nota de retificação em `AGENTS.md` e `docs/tres_versoes.md`, sem apagar o histórico. Nenhum resultado depende delas. Mesmo critério da P-27: não se fabricou a tabela por sessão.",
       "decisao_dono": {
         "registrada": true,
-        "texto": "Decisão D: registrar 63 e 99 como contagens históricas não verificáveis, sem apagar o histórico. Fonte: `docs/decisoes_pendentes.md`, seção P-30.",
+        "situacao": "confirmada",
+        "texto": "Decisão D, confirmada pelo responsável: registrar 63 e 99 como contagens históricas não verificáveis, sem apagar o histórico. Fonte: `docs/decisoes_pendentes.md`, seção P-30.",
         "data": "2026-10-21"
       },
-      "commits": [],
+      "commits": [
+        "ef3d49d"
+      ],
       "evidencias": [
         "decisoes_pendentes.md",
         "tres_versoes.md",
         "execucao_pendencias.md"
-      ]
+      ],
+      "falta_por_tipo": {}
     },
     "P-31": {
       "titulo": "publicar análise comparativa nominal/fundamental ajustada e recomendar ambas com nomes explícitos",
@@ -822,7 +1207,6 @@
       "dependencia": "Novas sessões v1.15; decisão de métrica",
       "criterio": "Cálculo reprodutível nas sessões novas e definição de métrica oficial; baixas correlações não ocultadas pela escolha da métrica",
       "quem_fecha": [
-        "bancada",
         "decisao-dono"
       ],
       "frentes": [
@@ -830,16 +1214,32 @@
         "R",
         "D"
       ],
-      "falta": "Evidência suficiente (2026-10-22: capturas físicas das 06/10/11/12/15/16 com três versões, correlações publicadas): falta escolher a métrica oficial",
-      "como_tratada": null,
+      "falta": "Escolher a métrica oficial de correlação do distúrbio (ou confirmar publicar as duas)",
+      "como_tratada": "Até agora: as duas métricas, contra o nominal e contra a fundamental ajustada, são publicadas lado a lado, sem eleger oficial e sem limiar, que é a opção A do formulário na prática (`modelo_programado.json`: classe 06, 50 Hz, perfil `norma`, 0,98756 e 0,98742; `docs/correlacao_disturbio.md`). Em 22/10 as capturas físicas das classes 06, 10, 11, 12, 15 e 16 com três versões foram cobertas, com as duas correlações publicadas (ferramentas em `8603c20`; fechamento: evidência suficiente, revisão humana pendente, `metrica_oficial` sem critério).",
       "situacao_execucao": "Evidência suficiente, revisão humana pendente",
       "entrega": "2026-10-22: capturas físicas de 06/10/11/12/15/16 e correlações publicadas; falta a métrica oficial. Relatório modelo/programada publica nominal e fundamental ajustada com limitações; falta comparar novas sessões físicas e justificar a métrica oficial.",
       "decisao_dono": {
         "registrada": false,
-        "texto": "Seção em `docs/decisoes_pendentes.md` com a resposta em branco."
+        "situacao": "tomada-no-fork",
+        "texto": "O fork publica as duas métricas sem eleger, o que equivale à opção A (recomendada); a resposta do formulário está em branco. Fonte: `docs/decisoes_pendentes.md`, seção P-31.",
+        "pergunta": "Qual métrica de correlação do distúrbio o dataset adota como oficial?",
+        "opcoes": [
+          "A. Publicar as duas, sem eleger oficial, até haver sessões físicas novas (o que o fork faz)",
+          "B. Eleger a nominal como oficial",
+          "C. Eleger a fundamental ajustada como oficial"
+        ],
+        "fonte_opcoes": "formulario"
       },
-      "commits": [],
-      "evidencias": []
+      "commits": [
+        "8603c20"
+      ],
+      "evidencias": [
+        "evidencias/2026-10-16/modelo_programado.json",
+        "evidencias/2026-10-22/fechamento.json"
+      ],
+      "falta_por_tipo": {
+        "decisao-dono": "Escolher a métrica oficial e, se eleger uma, informar se há limiar de aceite e a fonte dele (a faixa de `validacao_gerador_v1.14.md` não vale)."
+      }
     }
   },
   "sessoes": {

@@ -111,11 +111,118 @@ class ArquivoCorrompido(unittest.TestCase):
 
     def test_esquema_errado(self):
         self.dados["esquema"] = 1
-        self.assertErro("esquema deve ser 2")
+        self.assertErro("esquema deve ser 3")
 
     def test_estado_reprovada_bancada_e_aceito(self):
         self.dados["pendencias"]["P-02"]["estado"] = "reprovada-bancada"
         self.assertEqual(self.erros(), [])
+
+    def test_estado_insuficiente_bancada_e_aceito(self):
+        self.dados["pendencias"]["P-19"]["estado"] = "insuficiente-bancada"
+        self.assertEqual(self.erros(), [])
+
+    def test_como_tratada_obrigatorio(self):
+        self.dados["pendencias"]["P-06"]["como_tratada"] = None
+        self.assertErro("P-06: campo 'como_tratada' obrigatório")
+
+    def test_falta_por_tipo_obrigatorio_quando_nao_concluida(self):
+        self.dados["pendencias"]["P-06"]["falta_por_tipo"] = {}
+        self.assertErro("P-06: pendência não concluída exige falta_por_tipo")
+
+    def test_falta_por_tipo_precisa_bater_com_quem_fecha(self):
+        self.dados["pendencias"]["P-06"]["falta_por_tipo"] = {"decisao-dono": "x"}
+        self.assertErro("P-06: falta_por_tipo ['decisao-dono'] difere de quem_fecha ['bancada']")
+
+    def test_falta_por_tipo_chave_desconhecida(self):
+        self.dados["pendencias"]["P-03"]["falta_por_tipo"] = {"ninguem": "x"}
+        self.assertErro("P-03: falta_por_tipo tem chave 'ninguem'")
+
+    def test_situacao_da_decisao_fora_da_lista(self):
+        self.dados["pendencias"]["P-03"]["decisao_dono"]["situacao"] = "talvez"
+        self.assertErro("P-03: decisao_dono.situacao 'talvez'")
+
+    def test_registrada_so_vale_com_situacao_confirmada(self):
+        self.dados["pendencias"]["P-03"]["decisao_dono"]["registrada"] = True
+        self.assertErro("P-03: decisao_dono.registrada só é verdadeira quando a situação é 'confirmada'")
+
+    def test_decisao_confirmada_exige_data(self):
+        del self.dados["pendencias"]["P-30"]["decisao_dono"]["data"]
+        self.assertErro("P-30: decisão confirmada exige 'data'")
+
+    def test_escolha_do_fork_sem_pergunta(self):
+        del self.dados["pendencias"]["P-04"]["decisao_dono"]["pergunta"]
+        self.assertErro("P-04: decisão tomada-no-fork exige 'pergunta'")
+
+    def test_pergunta_exige_opcoes_e_fonte(self):
+        self.dados["pendencias"]["P-04"]["decisao_dono"]["opcoes"] = []
+        self.dados["pendencias"]["P-04"]["decisao_dono"]["fonte_opcoes"] = "palpite"
+        self.assertErro("P-04: 'opcoes' deve ser lista não vazia")
+        self.assertErro("P-04: 'fonte_opcoes' deve ser uma de")
+
+    def test_concluida_com_decisao_em_branco(self):
+        self.dados["pendencias"]["P-03"]["decisao_dono"].update({"situacao": "em-branco"})
+        self.assertErro("P-03: pendência concluída não pode ter a decisão do dono em branco")
+
+
+class RevisaoDe2026_10_27(unittest.TestCase):
+    """A revisão de 27/10: o que as evidências de 22/10 e o relatório de achados mostram."""
+
+    def setUp(self):
+        self.dados = lib.carregar(ARQUIVO)
+        self.pend = self.dados["pendencias"]
+
+    def test_p02_e_p08_estao_reprovadas_na_bancada(self):
+        self.assertEqual(self.pend["P-02"]["estado"], "reprovada-bancada")
+        self.assertEqual(self.pend["P-08"]["estado"], "reprovada-bancada")
+
+    def test_p19_tem_evidencia_insuficiente(self):
+        self.assertEqual(self.pend["P-19"]["estado"], "insuficiente-bancada")
+
+    def test_p16_e_p25_nao_estao_concluidas(self):
+        for ident in ("P-16", "P-25"):
+            self.assertNotEqual(self.pend[ident]["estado"], "concluida", ident)
+
+    def test_nenhuma_concluida_sem_escolha_confirmada_ou_do_fork_marcada(self):
+        for ident, item in self.pend.items():
+            if item["estado"] == "concluida":
+                self.assertIn(item["decisao_dono"]["situacao"], ("confirmada", "tomada-no-fork", "nao-se-aplica"), ident)
+
+    def test_escolhas_do_fork_aguardando_confirmacao(self):
+        esperadas = ["P-03", "P-04", "P-10", "P-11", "P-12", "P-13", "P-14", "P-15", "P-27"]
+        self.assertEqual(lib.aguardam_confirmacao(self.dados), esperadas)
+        for ident in ("P-25",):
+            self.assertEqual(self.pend[ident]["decisao_dono"]["situacao"], "tomada-no-fork")
+
+    def test_p09_registra_o_conflito_como_pergunta_ao_dono(self):
+        decisao = self.pend["P-09"]["decisao_dono"]
+        self.assertTrue(decisao["registrada"])
+        self.assertIn("braços A e B", decisao["pergunta"])
+
+    def test_decisoes_confirmadas_citam_a_fonte(self):
+        for ident, item in self.pend.items():
+            decisao = item["decisao_dono"]
+            if decisao["situacao"] == "confirmada":
+                self.assertIn("decisoes_pendentes.md", decisao["texto"], ident)
+
+    def test_pergunta_ao_dono_em_toda_decisao_aberta(self):
+        for ident, item in self.pend.items():
+            if item["decisao_dono"]["situacao"] in ("tomada-no-fork", "em-branco"):
+                self.assertTrue(item["decisao_dono"].get("pergunta"), ident)
+
+    def test_placar_soma_31_e_a_linha_bate_com_a_contagem(self):
+        cont = lib.contagem(self.dados)
+        self.assertEqual(sum(cont.values()), 31)
+        linha = lib.gerar_placar_linha(self.dados)
+        for slug, n in cont.items():
+            if n:
+                self.assertIn(f"{n} {lib.ESTADOS_CURTO[slug]}", linha)
+
+    def test_markdown_gerado_traz_as_secoes_pedidas_para_as_31(self):
+        texto = lib.gerar_markdown(self.dados)
+        self.assertEqual(texto.count("**Como foi resolvida ou o que foi feito:**"), 31)
+        self.assertEqual(texto.count("**Pedido original:**"), 31)
+        self.assertEqual(texto.count("**Escolha do fork e decisão do dono"), 31)
+        self.assertIn("### Perguntas ao dono", texto)
 
 
 if __name__ == "__main__":

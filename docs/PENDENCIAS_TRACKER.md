@@ -23,5 +23,5 @@ Esta página não guarda estado. O estado das 31 pendências vive em **um** arqu
 ## Depois da coleta
 
 1. `python scripts/fechar_pendencias.py --sessao <dir> ... --saida docs/evidencias/<data>/fechamento.json` (gera evidência, não decide).
-2. Edite o bloco de cada P-NN afetada em `docs/estado_prontidao.json` (estado, `falta`, `como_tratada`, `commits`, `evidencias`, `decisao_dono`).
+2. Edite o bloco de cada P-NN afetada em `docs/estado_prontidao.json` (estado, `falta`, `falta_por_tipo`, `como_tratada`, `commits`, `evidencias`, `decisao_dono` com `situacao`).
 3. `python scripts/gerar_mapa_pendencias.py` (regenera `mapa/pendencias/`), `python -m unittest tests.test_estado_pendencias` e o build `sphinx-build -W -n --keep-going -b html docs docs/_build/html`.
