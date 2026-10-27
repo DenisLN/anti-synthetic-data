@@ -1,8 +1,7 @@
 # Como compilar e contribuir com esta documentação
 
-:::{note} Revisão e procedência
-Texto de referência importado do levantamento de 16/10/2026, baseado em [fa82f496](https://github.com/DenisLN/anti-synthetic-data/tree/fa82f49600543456adf78e22485ab6de5dd032b9). Citações numéricas apontam para esse snapshot e não acompanham linhas atuais. Trechos `literalinclude` são extraídos do checkout atual por símbolo; consulte {doc}`execucao_pendencias` para implementação e evidências vigentes. Relatos de sessões e transcrições são históricos, não medições repetidas nesta revisão.
-:::
+```{include} /_includes/aviso-base.md
+```
 
 
 **Pergunta:** como gerar o site no computador e o que precisa estar certo antes de publicar? **Resposta:** instale as cinco dependências fixas de `docs/requirements.txt` em um ambiente virtual e rode `python -m sphinx -W --keep-going -b html docs docs/_build/html`; o site só é aceito se esse comando terminar com código 0, sem nenhum aviso, porque o Read the Docs roda o mesmo comando com `fail_on_warning: true` (`.readthedocs.yaml`).

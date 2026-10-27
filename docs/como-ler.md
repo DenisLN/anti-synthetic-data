@@ -1,8 +1,7 @@
 # Como ler esta documentação
 
-:::{note} Revisão e procedência
-Texto de referência importado do levantamento de 16/10/2026, baseado em [fa82f496](https://github.com/DenisLN/anti-synthetic-data/tree/fa82f49600543456adf78e22485ab6de5dd032b9). Citações numéricas apontam para esse snapshot e não acompanham linhas atuais. Trechos `literalinclude` são extraídos do checkout atual por símbolo; consulte {doc}`execucao_pendencias` para implementação e evidências vigentes. Relatos de sessões e transcrições são históricos, não medições repetidas nesta revisão.
-:::
+```{include} /_includes/aviso-base.md
+```
 
 
 **Pergunta:** como saber quanto cada afirmação desta documentação pode ser levada a sério? **Resposta:** pelo **selo** colado a ela. Há cinco selos, cada um com uma evidência exigida; uma afirmação sem selo vale como descrição do código, conferida em `arquivo:linha`, e qualquer número leva a condição (tensão e frequência) e a fonte.
@@ -50,7 +49,7 @@ Só para os limites inegociáveis e para ações que energizam.
 5. **Fato sobre o código cita `arquivo:linha`**, conferido com o código na data; listagens vêm do código real, e fórmulas e diagramas ficam em notação matemática e em Mermaid. Onde o `CHANGELOG` diverge do código, vale o código e a divergência fica registrada na página.
 6. **Quirks** são citadas pelos códigos de {doc}`quirks`: `A1` a `A25` (fonte AMETEK), `K1` a `K10` (osciloscópio) e `B1` a `B9` (bancada e PC).
 7. **Pendências** são `P-01` a `P-31` ({doc}`projeto/pendencias`).
-8. **Versão e commit** de cada página: o rodapé traz o commit do build; o texto da data de leitura diz de qual commit (hoje, `main` em `fa82f49`, v1.15 em andamento, sem tag).
+8. **Versão e commit** de cada página: o rodapé traz o commit do build; o aviso "Base desta página" (fonte única em `docs/_includes/aviso-base.md`) diz contra qual commit as citações de linha foram conferidas (`fa82f49`, 2026-10-16, salvo indicação na página). A v1.15 está em andamento, sem tag.
 
 ## 4. Lista de verificação para revisar uma página
 
