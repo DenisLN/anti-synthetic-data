@@ -23,6 +23,16 @@ MODELO_JSON = RAIZ / "mapa" / "_modelos" / "pendencias.json"
 MODELO_KNAP = RAIZ / "mapa" / "_modelos" / "pendencia.knap.md"
 SAIDA = RAIZ / "mapa" / "pendencias"
 
+# Callout de cada estado do esquema 3 (docs/_ext/estado_pendencias.py: ESTADOS); espelha o modelo Knap.
+CALLOUTS = {
+    "concluida": "> [!success] Concluída",
+    "aguarda-bancada": "> [!todo] Software pronto; falta bancada — ver [[docs/bancada_pendencias]]",
+    "aguarda-decisao": "> [!question] Aguarda decisão ou dado do responsável — ver [[docs/decisoes_pendentes]]",
+    "em-andamento": "> [!info] Em andamento",
+    "insuficiente-bancada": "> [!warning] Insuficiente na bancada: medida feita, resultado inconclusivo — ver [[docs/bancada_pendencias]]",
+    "reprovada-bancada": "> [!failure] Reprovada na bancada — ver [[docs/bancada_pendencias]]",
+}
+
 
 def _carregar_lib():
     caminho = RAIZ / "docs" / "_ext" / "estado_pendencias.py"
@@ -68,12 +78,9 @@ def renderizar(it: dict) -> str:
     st = it["status"]
     cab = "\n".join(_yaml(c, it[c]) for c in
                     ("id", "titulo", "status", "prioridade", "responsavel", "frentes", "evidencias"))
-    if st == "concluida":
-        callout = "> [!success] Concluída"
-    elif st == "aguarda-decisao":
-        callout = "> [!question] Aguarda decisão ou dado do responsável — ver [[docs/decisoes_pendentes]]"
-    else:
-        callout = "> [!todo] Software pronto; falta bancada — ver [[docs/bancada_pendencias]]"
+    callout = CALLOUTS.get(st)
+    if callout is None:
+        raise ValueError(f"estado sem callout no mapa: {st!r}")
     corpo = [f"{callout}\n> {it['falta']}\n"]
     linhas = []
     if it["acao"] != it["titulo"]:
