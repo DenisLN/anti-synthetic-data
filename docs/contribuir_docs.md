@@ -95,4 +95,4 @@ O build no serviço depende de conta e importação feitas pelo responsável pel
 5. Disparar o primeiro build e comparar o resultado com o build local. {bdg-warning}`NÃO VERIFICADO` O `.readthedocs.yaml` nunca rodou no serviço; qualquer diferença (versão do Python, rede para o CDN do Mermaid) aparece no primeiro build.
 6. Opcional: ativar a pré-visualização de pull request.
 
-O repositório tem manuais em PDF e texto (`docs/*.pdf`, `docs/manuais_txt/`) que **não** entram no site (`exclude_patterns` em `docs/conf.py`); ver {doc}`sobre` sobre a licença e a visibilidade antes de publicar.
+O repositório tem a transcrição dos manuais em texto (`docs/manuais_txt/`); os PDFs ficam só na máquina (`docs/*.pdf` no `.gitignore`). Nenhum dos dois entra no site (`exclude_patterns` em `docs/conf.py`); ver {doc}`sobre` sobre a licença e a visibilidade antes de publicar.

@@ -21,7 +21,7 @@ Cite: o nome do repositório, o **hash completo do commit** usado, a versão (`v
 
 ## 3. Licença e o que não é publicado
 
-O repositório **não tem arquivo de licença**: sem uma, o código e os dados não têm termos de uso explícitos (decisão do responsável, P-20). Os manuais do fabricante (`docs/*.pdf` e `docs/manuais_txt/`) estão no repositório mas **não** entram neste site: as páginas citam o comando e a página do manual e remetem ao fabricante. As transcrições SCPI completas de 07/10/2026 também não são versionadas; as páginas citam trechos curtos ({doc}`scpi/transcricoes`, P-29).
+O repositório **não tem arquivo de licença**: sem uma, o código e os dados não têm termos de uso explícitos (decisão do responsável, P-20). Os PDFs dos manuais do fabricante não são versionados (`docs/*.pdf` está no `.gitignore`); só a transcrição em texto (`docs/manuais_txt/`) fica no repositório, e ela **não** entra neste site: as páginas citam o comando e a página do manual e remetem ao fabricante. As transcrições SCPI completas de 07/10/2026 também não são versionadas; as páginas citam trechos curtos ({doc}`scpi/transcricoes`, P-29).
 
 ## 4. Publicação do site
 

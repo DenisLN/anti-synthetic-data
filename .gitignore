@@ -12,3 +12,6 @@ backups/
 
 # Configuração local do Obsidian (o vault é a raiz do repositório)
 .obsidian/
+
+# Manuais do fabricante em PDF: direitos do fabricante, ficam só na máquina (a transcrição em docs/manuais_txt/ continua versionada)
+docs/*.pdf
