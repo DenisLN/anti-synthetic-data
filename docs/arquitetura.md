@@ -46,7 +46,7 @@ O projeto gera o dataset rotulado de 20 classes de distúrbio de tensão (200 ms
 | `diag/` | diagnósticos de bancada e análises offline (movidos de `scripts/` em 2026-10-27; tabela na seção 7) |
 | `tests/test_offline.py`, `tests/fixtures/` | suíte sem hardware (`docs/testes.md`) |
 | `CHANGELOG/vX.Y.md` | histórico por versão (registro; não reescrever) |
-| `docs/` | documentação viva (este índice está no `README.md`). As análises datadas (`docs/analise-AAAA-MM-DD/`) e `arquivo/analises:docs/superpowers/` estão no branch `arquivo/analises`, fora de `docs/` desde 2026-10-13 (**registro datado**) |
+| `docs/` | documentação viva (o índice é o próprio site, `docs/index.md`). As análises datadas (`docs/analise-AAAA-MM-DD/`) e `arquivo/analises:docs/superpowers/` estão no branch `arquivo/analises`, fora de `docs/` desde 2026-10-13 (**registro datado**) |
 | `resultados/` | saída (gitignored) |
 | `logs/` | logs de scripts de diagnóstico e do `preflight_new.py` rodado direto (gitignored) |
 | `backups/`, `env/` | cópias locais e virtualenv (gitignored). `.claude/` e `.serena/` são pastas de ferramentas de agente, não fazem parte do projeto |

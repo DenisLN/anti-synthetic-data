@@ -226,11 +226,28 @@ não são tocadas e continuam legíveis por `logica/sessao_io.py`.
 
 ## Documentação (mapa)
 
-`README.md` é a porta de entrada e traz o mapa; os detalhes estão em `docs/`
-(`arquitetura`, `operacao`, `configuracao`, `limites_e_calibracao`, `classes`,
-`perfis`, `scpi`, `quirks`, `decisoes`, `dataset`, `metadata`, `tres_versoes`,
-`correlacao_disturbio`, `estender`, `diagnostico`, `testes`, `versionamento`,
-`glossario`). Arquivos `.md` são livres para editar, **mas todo fato sobre
+A documentação de referência é **um só site** (Sphinx/MyST, Read the Docs:
+<https://anti-synthetic-data.readthedocs.io/>), cuja fonte é `docs/`. `README.md`
+é curto e aponta para ele; `mapa/` (vault Obsidian, `mapa/00 Início.md`) diz o que
+ler para cada tarefa. Páginas por assunto (o índice está em `docs/index.md`):
+
+- operar a bancada: [`guia-operador`](docs/guia-operador.md), [`operacao`](docs/operacao.md),
+  [`roteiro-bancada`](docs/roteiro-bancada.md), [`bancada_pendencias`](docs/bancada_pendencias.md);
+- estado e pendências: [`PENDENCIAS_TRACKER`](docs/PENDENCIAS_TRACKER.md) (fonte única de
+  estado), [`execucao_pendencias`](docs/execucao_pendencias.md),
+  [`decisoes_pendentes`](docs/decisoes_pendentes.md);
+- código e arquitetura: [`arquitetura`](docs/arquitetura.md), [`codigo`](docs/codigo.md),
+  [`estender`](docs/estender.md), [`testes`](docs/testes.md), [`diagnostico`](docs/diagnostico.md);
+- equipamentos e medição: [`scpi`](docs/scpi.md), [`quirks`](docs/quirks.md),
+  [`medicao`](docs/medicao.md), [`limites_e_calibracao`](docs/limites_e_calibracao.md),
+  [`seguranca`](docs/seguranca.md);
+- dataset: [`classes`](docs/classes.md), [`perfis`](docs/perfis.md), [`dataset`](docs/dataset.md),
+  [`metadata`](docs/metadata.md), [`tres_versoes`](docs/tres_versoes.md),
+  [`correlacao_disturbio`](docs/correlacao_disturbio.md), [`configuracao`](docs/configuracao.md);
+- projeto: [`decisoes`](docs/decisoes.md), [`versionamento`](docs/versionamento.md),
+  [`glossario`](docs/glossario.md), [`contribuir_docs`](docs/contribuir_docs.md).
+
+Arquivos `.md` são livres para editar, **mas todo fato sobre
 comportamento deve ser conferido no código (`arquivo:linha`)**; se o CHANGELOG
 divergir do código, vale o código e a divergência é documentada. Relatórios
 datados (`arquivo/analises:docs/analise-*/`, `arquivo/analises:docs/superpowers/`; branch `arquivo/analises`, fora de `docs/` desde 2026-10-13) e `CHANGELOG/vX.Y.md` fechados
