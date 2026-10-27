@@ -117,7 +117,7 @@ Preencher:
    - B. Entra, como exceção formal ao roteiro de 127 V, com limites de `max_voltage_rms`/`max_peak_v` conferidos antes.
 5. Amostras por célula (capturas por classe, perfil e frequência):
 
-Resposta (21/10/2026, responsável): 1. perfis = **todos** (`set perfil todos`); 2–3. condições = **127 V/60 Hz, 127 V/50 Hz, 230 V/50 Hz, 220 V/60 Hz e 33 V/60 Hz**; 4. **A** — diagnóstico ACDC fora a 230 V (só 127 V); 5. **padrão** (1 captura por classe). Consequências na seção "Campanhas por condição (P-26)" de [](../bancada_pendencias.md): 220 V/60 Hz e 33 V/60 Hz não têm calibração (P-21).
+Resposta (21/10/2026, responsável): 1. perfis = **todos** (`set perfil todos`); 2–3. condições = **127 V/60 Hz, 127 V/50 Hz, 230 V/50 Hz, 220 V/60 Hz e 33 V/60 Hz**; 4. **A** — diagnóstico ACDC fora a 230 V (só 127 V); 5. **padrão** (1 captura por classe). Consequências na seção "Campanhas por condição (P-26)" de {ref}`campanhas-por-condicao`: 220 V/60 Hz e 33 V/60 Hz não têm calibração (P-21).
 
 ### P-29 Origem dos logs reais
 
@@ -175,4 +175,4 @@ As 31 pendências devem ter evidência de conclusão. Depois do tratamento delas
 
 ## Pedido original e histórico
 
-O pedido original de cada pendência (classe afetada, fonte, opções e "o que fecha", como levantados em 16/10/2026) está no {doc}`inventário histórico <pendencias-inventario-2026-10-16>`; cada seção acima tem o link para o item correspondente. O registro de rodadas e das evidências offline de 16 e 17/10 está em {ref}`execucao-pendencias` (histórico), os critérios de fechamento na seção acima, o roteiro de fechamento na bancada em {doc}`../bancada_pendencias` e o formulário do dono na seção "Formulário de decisões do dono" acima.
+O pedido original de cada pendência (classe afetada, fonte, opções e "o que fecha", como levantados em 16/10/2026) está no {doc}`inventário histórico <pendencias-inventario-2026-10-16>`; cada seção acima tem o link para o item correspondente. O registro de rodadas e das evidências offline de 16 e 17/10 está em {ref}`execucao-pendencias` (histórico), os critérios de fechamento na seção acima, o roteiro de fechamento na bancada em {doc}`../roteiro-bancada` e o formulário do dono na seção "Formulário de decisões do dono" acima.

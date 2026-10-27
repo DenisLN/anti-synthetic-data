@@ -26,11 +26,11 @@ SAIDA = RAIZ / "mapa" / "pendencias"
 # Callout de cada estado do esquema 3 (docs/_ext/estado_pendencias.py: ESTADOS); espelha o modelo Knap.
 CALLOUTS = {
     "concluida": "> [!success] Concluída",
-    "aguarda-bancada": "> [!todo] Software pronto; falta bancada — ver [[docs/bancada_pendencias]]",
+    "aguarda-bancada": "> [!todo] Software pronto; falta bancada — ver [[docs/roteiro-bancada]]",
     "aguarda-decisao": "> [!question] Aguarda decisão ou dado do responsável — ver [[docs/projeto/pendencias]]",
     "em-andamento": "> [!info] Em andamento",
-    "insuficiente-bancada": "> [!warning] Insuficiente na bancada: medida feita, resultado inconclusivo — ver [[docs/bancada_pendencias]]",
-    "reprovada-bancada": "> [!failure] Reprovada na bancada — ver [[docs/bancada_pendencias]]",
+    "insuficiente-bancada": "> [!warning] Insuficiente na bancada: medida feita, resultado inconclusivo — ver [[docs/roteiro-bancada]]",
+    "reprovada-bancada": "> [!failure] Reprovada na bancada — ver [[docs/roteiro-bancada]]",
 }
 
 

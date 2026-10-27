@@ -24,7 +24,7 @@ TCC: a fonte **AMETEK MX30** gera distúrbios de qualidade de energia e o oscilo
 
 - Placar e matriz (gerados do arquivo único de estado): [[docs/projeto/pendencias|estado das pendências]] · protocolo para agentes: [[docs/PENDENCIAS_TRACKER|protocolo]]
 - Painel: [[mapa/Pendencias.base|Pendências (Base)]] · mapa visual: [[mapa/Mapa.canvas|canvas]]
-- Visita à bancada: [[docs/bancada_pendencias]] · decisões do responsável: [[docs/projeto/pendencias|formulário de decisões]]
+- Visita à bancada: [[docs/roteiro-bancada]] · decisões do responsável: [[docs/projeto/pendencias|formulário de decisões]]
 
 ## Domínio
 

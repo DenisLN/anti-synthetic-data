@@ -1,6 +1,6 @@
 # Protocolo para agentes: pendências P-01–P-31
 
-Esta página não guarda estado. O estado das 31 pendências vive em **um** arquivo, `docs/estado_prontidao.json`, e o site o renderiza (placar, matriz e uma seção por P-NN com âncora `estado-p-NN`) em {doc}`projeto/pendencias`. Formato do arquivo e fluxo de atualização: {doc}`contribuir_docs`. Narrativa e critérios: {doc}`historico`. Visita à bancada: {doc}`bancada_pendencias`. Decisões do responsável: {doc}`projeto/pendencias`.
+Esta página não guarda estado. O estado das 31 pendências vive em **um** arquivo, `docs/estado_prontidao.json`, e o site o renderiza (placar, matriz e uma seção por P-NN com âncora `estado-p-NN`) em {doc}`projeto/pendencias`. Formato do arquivo e fluxo de atualização: {doc}`contribuir_docs`. Narrativa e critérios: {doc}`historico`. Visita à bancada: {doc}`roteiro-bancada`. Decisões do responsável: {doc}`projeto/pendencias`.
 
 ## Protocolo para agentes (economia de contexto)
 
@@ -16,7 +16,7 @@ Esta página não guarda estado. O estado das 31 pendências vive em **um** arqu
 | Frente | Escopo de arquivos | Pendências |
 |---|---|---|
 | **K** kit de bancada | `scripts/fechar_pendencias.py`, `scripts/validar_pc_bancada.ps1`, `tests/test_pendencias_fechamento.py` | ferramentas para P-01–P-08, P-10, P-16–P-19, P-21–P-23, P-28, P-31 |
-| **R** roteiro de fechamento | `docs/bancada_pendencias.md` | sequência única de visita à bancada |
+| **R** roteiro de fechamento | `docs/roteiro-bancada.md` | sequência única de visita à bancada |
 | **D** decisões e fontes | `docs/projeto/pendencias.md` | P-09, P-18, P-20, P-23, P-26, P-29, P-30, P-31 |
 | **C** coordenador | `estado_prontidao.json`, `historico.md`, CHANGELOG, commits | integração |
 

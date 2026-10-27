@@ -226,17 +226,8 @@
 		{
 			"id": "a9c51a6ae4247164",
 			"type": "file",
-			"file": "docs/bancada_pendencias.md",
+			"file": "docs/roteiro-bancada.md",
 			"x": 1080,
-			"y": 0,
-			"width": 300,
-			"height": 120
-		},
-		{
-			"id": "0436f30a8c26cf84",
-			"type": "file",
-			"file": "docs/decisoes_pendentes.md",
-			"x": 1440,
 			"y": 0,
 			"width": 300,
 			"height": 120
@@ -323,12 +314,6 @@
 			"id": "d2d0074fbd30fe78",
 			"fromNode": "c31c2dc46e4870cb",
 			"toNode": "a9c51a6ae4247164",
-			"toEnd": "arrow"
-		},
-		{
-			"id": "d75028f8c5ca98e4",
-			"fromNode": "c31c2dc46e4870cb",
-			"toNode": "0436f30a8c26cf84",
 			"toEnd": "arrow"
 		},
 		{

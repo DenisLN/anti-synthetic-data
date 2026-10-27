@@ -3,7 +3,7 @@ tipo: dominio
 tags: [dominio]
 ---
 # Operação na bancada
-- Roteiro por blocos: [[docs/roteiro-bancada]]; pendências físicas: [[docs/bancada_pendencias]]; passo a passo do operador: [[docs/guia-operador]].
+- Roteiro por blocos: [[docs/roteiro-bancada]]; roteiro de fechamento por pendência: seção 9 do roteiro; passo a passo do operador: [[docs/guia-operador]].
 - Referência: [[docs/operacao|operação]], [[docs/historico|histórico das rodadas]], [[docs/projeto/pendencias|decisões pendentes]].
 - Entrada: `scripts/START_BENCH.cmd` ([[mapa/codigo/scripts|scripts]]) -> [[mapa/codigo/cli|cli]]; preflights em [[mapa/codigo/preflight_new|preflight_new]] (`comm`, `trigger`, `lowvoltage`, `native`).
 - Antes: git limpo, ligação física, fator da probe exato. Depois: confirmar `OUTPUT OFF` no painel.

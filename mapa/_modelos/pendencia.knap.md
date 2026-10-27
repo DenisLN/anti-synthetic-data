@@ -14,10 +14,10 @@ tags:
 
 {% if status == "concluida" %}> [!success] Concluída
 {% elseif status == "aguarda-decisao" %}> [!question] Aguarda decisão ou dado do responsável — ver [[docs/projeto/pendencias]]
-{% elseif status == "aguarda-bancada" %}> [!todo] Software pronto; falta bancada — ver [[docs/bancada_pendencias]]
+{% elseif status == "aguarda-bancada" %}> [!todo] Software pronto; falta bancada — ver [[docs/roteiro-bancada]]
 {% elseif status == "em-andamento" %}> [!info] Em andamento
-{% elseif status == "insuficiente-bancada" %}> [!warning] Insuficiente na bancada: medida feita, resultado inconclusivo — ver [[docs/bancada_pendencias]]
-{% else %}> [!failure] Reprovada na bancada — ver [[docs/bancada_pendencias]]
+{% elseif status == "insuficiente-bancada" %}> [!warning] Insuficiente na bancada: medida feita, resultado inconclusivo — ver [[docs/roteiro-bancada]]
+{% else %}> [!failure] Reprovada na bancada — ver [[docs/roteiro-bancada]]
 {% endif %}> {{ falta }}
 
 {% if acao != titulo %}- **Ação:** {{ acao }}

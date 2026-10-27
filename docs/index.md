@@ -122,7 +122,6 @@ projeto/estado-validacao
 projeto/pendencias
 projeto/pendencias-inventario-2026-10-16
 PENDENCIAS_TRACKER
-bancada_pendencias
 historico
 sobre
 contribuir_docs
