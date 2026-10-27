@@ -225,5 +225,5 @@ O que `gerar()` produz para uma seed **não mudou**: a comparação de saída en
 ## 13. Referências
 
 - Código: `experimentos_nativos/05.py`; `logica/sinais.py` (`corte_da_senoide_clipada`, `senoide_clipada_pu`, `onda_com_harmonicos`, `forma_programada_nativa`); `logica/ametek_orm.py` (`configure_harmonics_csine`, `MAX_CSINE_THD_PCT`, `montar_programacao`).
-- Site: {doc}`../classes`, {doc}`../perfis`, {doc}`../scpi/sequencias`, {doc}`../medicao/correlacao`, {doc}`../projeto/pendencias`, {ref}`passo-final-sin`.
+- Site: {doc}`../classes`, {doc}`../perfis`, {doc}`../scpi/sequencias`, {doc}`../medicao/correlacao`, {doc}`../projeto/pendencias`, {ref}`passo-final-sine`.
 - Histórico: `CHANGELOG/v1.6.md`, `v1.7.md`, `v1.11.md`, `v1.12.md`, `v1.13.md`, `v1.15.md` (seções "Classes 05, 07, 17 e 18" e "Pendentes da correlação do distúrbio"). Norma: IEEE Std 1159-2019, Tabela 2, item 5.2.

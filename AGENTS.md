@@ -232,12 +232,12 @@ A documentação de referência é **um só site** (Sphinx/MyST, Read the Docs:
 ler para cada tarefa. Páginas por assunto (o índice está em `docs/index.md`):
 
 - operar a bancada: [`guia-operador`](docs/guia-operador.md), [`operacao`](docs/operacao.md),
-  [`roteiro-bancada`](docs/roteiro-bancada.md), [`bancada_pendencias`](docs/bancada_pendencias.md);
+  [`roteiro-bancada`](docs/roteiro-bancada.md) (inclui o roteiro de fechamento por pendência, seção 9);
 - estado e pendências: [`estado_prontidao.json`](docs/estado_prontidao.json) (arquivo único
   de estado, renderizado em [`projeto/pendencias`](docs/projeto/pendencias.md); formato em
-  [`contribuir_docs`](docs/contribuir_docs.md)), [`PENDENCIAS_TRACKER`](docs/PENDENCIAS_TRACKER.md)
-  (só o protocolo para agentes), [`execucao_pendencias`](docs/execucao_pendencias.md),
-  [`decisoes_pendentes`](docs/decisoes_pendentes.md); depois da coleta:
+  [`contribuir_docs`](docs/contribuir_docs.md), que traz também o protocolo para agentes,
+  seção 7); formulário de decisões do dono na mesma página `projeto/pendencias`; histórico
+  das rodadas em [`historico`](docs/historico.md); depois da coleta:
   `fechar_pendencias.py` → editar o arquivo único → `gerar_mapa_pendencias.py` → build;
 - código e arquitetura: [`arquitetura`](docs/arquitetura.md), [`codigo`](docs/codigo.md),
   [`estender`](docs/estender.md), [`testes`](docs/testes.md), [`diagnostico`](docs/diagnostico.md);

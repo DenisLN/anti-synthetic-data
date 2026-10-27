@@ -545,7 +545,7 @@ OUTPUT OFF no painel e CLI fechada (`quit`).
 
 #### Bloco 10-A. Passo final SINE (P-18; extensão ao roteiro dos Blocos 1 a 10). Sem estimativa
 
-Extensão ao roteiro (os Blocos 1 a 10 não a incluem): vem de {ref}`passo-final-sin` (seção 7.4 de `docs/codigo/ametek_orm.md`). Só depois dos Blocos 1 a 10, com a CLI fechada, a COM10 livre e **conexão própria** (o orçamento de 216 gravações vale também aqui; a conta do script não é a da CLI: **NÃO VERIFICADO**). Confirmação `ENERGIZAR-PASSO-SIN` digitada pelo operador, que informa o fator da probe, a tensão e a frequência quando o script perguntar.
+Extensão ao roteiro (os Blocos 1 a 10 não a incluem): vem de {ref}`passo-final-sine` (seção 7.4 de `docs/codigo/ametek_orm.md`). Só depois dos Blocos 1 a 10, com a CLI fechada, a COM10 livre e **conexão própria** (o orçamento de 216 gravações vale também aqui; a conta do script não é a da CLI: **NÃO VERIFICADO**). Confirmação `ENERGIZAR-PASSO-SIN` digitada pelo operador, que informa o fator da probe, a tensão e a frequência quando o script perguntar.
 
 | Passo | Comando exato | P-NN | Arquivo de evidência | Critério de aceite |
 |---|---|---|---|---|

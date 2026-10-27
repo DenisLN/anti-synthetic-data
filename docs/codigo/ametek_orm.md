@@ -121,13 +121,13 @@ flowchart TD
 - **`*WAI` em lugar de polling por `*IDN?` (v1.7).** 15 a 47 ms contra vários segundos, 3 de 3 na bancada. `aguardar_resposta` ficou como recurso reserva.
 - **`_neutralizar_transientes_residuais` (v1.11, P01).** `FUNCtion:MODE LIST` residual dava `-226` na classe 18.
 - **Rms CA por ciclo (v1.15).** O código antigo calculava o rms com a média; a fonte remove a média e escala, então ciclos com degrau a meio ciclo saíam com amplitude maior e o pico previsto ficava até 38 % abaixo do real.
-- **Passo final `SINE` (branch `feat/passo-final-sin`).** **Não existe na `main`**; ver a seção 7 abaixo ({ref}`passo-final-sin`).
+- **Passo final `SINE` (branch `feat/passo-final-sin`).** **Não existe na `main`**; ver a seção 7 abaixo ({ref}`passo-final-sine`).
 
 ## 6. Depende de e quem depende
 
 Importa só `numpy` e `pyvisa` (opcional: sem PyVISA importa e roda simulado). **Não importa `mestre`.** É usado por `mestre.py`, `preflight_new.py`, por `analisar_sessao.py`/`recalibrar_extremos.py`/`gerar_tres_versoes.py` (para `montar_programacao` e `quantizar_tensao_rms`) e por vários `diag_*`. Mudar `ProgramacaoCaptura` ou `montar_programacao` afeta `programada_pu`, `program_capture`, `modelo_lista_fonte` e os scripts de diagnóstico ({doc}`acoplamentos`).
 
-(passo-final-sin)=
+(passo-final-sine)=
 ## 7. Passo final SINE (experimental, desligado por padrão)
 
 :::{warning} Estado atual da integração

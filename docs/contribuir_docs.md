@@ -80,7 +80,7 @@ O estado das 31 pendências (P-01 a P-31) vive **só** em `docs/estado_prontidao
 | `commits` | hashes (7 a 40 hexadecimais) citados |
 | `evidencias` | caminhos relativos a `docs/` de arquivos que existem (por exemplo `evidencias/2026-10-22/fechamento.json`) |
 | `decisao_dono` | `registrada` (verdadeira só se `situacao` for `confirmada`), `situacao`, `texto` e `data` (obrigatória se confirmada, com a fonte no texto). `situacao`: `confirmada` (o dono decidiu), `tomada-no-fork` (escolha do fork aguardando o dono), `em-branco` (nada escolhido, resposta do dono em branco) ou `nao-se-aplica`. Se `tomada-no-fork` ou `em-branco`, exige `pergunta`, `opcoes` (lista) e `fonte_opcoes` (`formulario`, `inventario`, `evidencia` ou `sem-opcoes-previas`); `pergunta` também pode acompanhar uma decisão confirmada que gerou um conflito (P-09). Pendência concluída não pode ter a decisão em branco |
-| `situacao_execucao`, `entrega`, `direcao_vigente` | opcionais: rótulo e texto migrados da antiga página de execução das pendências, hoje em {ref}`execucao-pendencias` |
+| `situacao_execucao`, `entrega`, `direcao_vigente` | opcionais: rótulo e texto migrados da antiga página de execução das pendências, hoje em {ref}`rodadas-17-22-10` |
 
 A validação está em `docs/_ext/estado_pendencias.py` e roda no build, em `scripts/gerar_mapa_pendencias.py` e em `tests/test_estado_pendencias.py`. `scripts/verificar_prontidao.py --manifesto docs/estado_prontidao.json` lê o mesmo arquivo (conta como concluída a pendência com `estado: concluida` e evidência). O manifesto `docs/manifesto_prontidao.json` segue sendo o modelo vazio no formato antigo (`P01`, `status`).
 

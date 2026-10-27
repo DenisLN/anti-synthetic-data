@@ -29,7 +29,7 @@
 | `SORTEIO_TMIN_CICLOS` ou a ordem do sub-fluxo | o sorteio de todas as classes (sub-fluxo `_CHAVE_DO_SUBFLUXO`) | [mestre.py:870](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/mestre.py#L870) |
 | `calibracao_extremos.json` (texto de qualquer campo) | o SHA-256 do arquivo muda; as sessões antigas guardam o antigo, que continua certo para elas (P-25) | [mestre.py:199](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/mestre.py#L199) |
 | o formato de `chave_condicao` | as chaves do JSON e a busca por condição | [mestre.py:508](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/mestre.py#L508) |
-| um passo novo no LIST (por exemplo o passo final `SINE`, **fora da `main`**) | `_last_cycles`, os `:POINts?`, `montar_programacao`, `programada_pu`, `arm_transient` | {ref}`passo-final-sin` |
+| um passo novo no LIST (por exemplo o passo final `SINE`, **fora da `main`**) | `_last_cycles`, os `:POINts?`, `montar_programacao`, `programada_pu`, `arm_transient` | {ref}`passo-final-sine` |
 
 ## 2. Onde as cópias vivem (risco de divergir)
 

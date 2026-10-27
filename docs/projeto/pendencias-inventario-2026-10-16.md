@@ -18,7 +18,7 @@ O estado vigente de P-01 a P-31, o que foi feito em cada uma, o que falta e as p
 
 Resumo por tipo de fechamento (o primeiro tipo citado na coluna "O que fecha"): BANCADA 17, DECISÃO DO USUÁRIO 13, CÓDIGO 1. Por prioridade: ALTA 5, MÉDIA 16, BAIXA 10.
 
-Fontes das pendências: o relatório final da rodada de 13 a 15/10/2026 e o estado dessa rodada (branch `arquivo/analises`, ver {ref}`analises-arquivadas`), o `CHANGELOG/v1.15.md`, o `docs/roteiro-bancada.md` ({doc}`../roteiro-bancada`), as seções "NÃO VERIFICADO" de cada documento de `docs/` e o diff real do branch `feat/passo-final-sin` ({ref}`passo-final-sin`). As pendências de 21/09, 30/09 e 12/10/2026 não foram reabertas: só entram as que as fontes acima ainda citam.
+Fontes das pendências: o relatório final da rodada de 13 a 15/10/2026 e o estado dessa rodada (branch `arquivo/analises`, ver {ref}`rodada-analises-13-15-10`), o `CHANGELOG/v1.15.md`, o `docs/roteiro-bancada.md` ({doc}`../roteiro-bancada`), as seções "NÃO VERIFICADO" de cada documento de `docs/` e o diff real do branch `feat/passo-final-sin` ({ref}`passo-final-sine`). As pendências de 21/09, 30/09 e 12/10/2026 não foram reabertas: só entram as que as fontes acima ainda citam.
 
 :::{warning} Decisão em aberto
 As pendências marcadas **DECISÃO DO USUÁRIO** pedem uma escolha do responsável pelo projeto; este site não decide por ele. Ver a seção 4. Ids: P-04, P-09, P-11 a P-15, P-20, P-23, P-25 e P-26, mais as partes de decisão de P-18, P-29, P-30 e P-31 (a P-10 é só de bancada).

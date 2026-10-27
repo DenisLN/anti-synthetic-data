@@ -57,7 +57,7 @@ A bancada gera até 300 Vrms por fase e 425 Vp. O software limita a 300 Vrms e 4
 | as 20 classes geram, programam e reproduzem as fixtures; a suíte offline passa (497 testes, 2026-10-16) | {bdg-info}`OFFLINE` | {doc}`projeto/estado-validacao` |
 | as 20 classes rodaram na bancada em 127 V/60 Hz e 127 V/50 Hz, e 15 a 230 V/50 Hz (07/10/2026, **código anterior à v1.15**) | {bdg-success}`VERIFICADO NA BANCADA` | {doc}`projeto/estado-validacao` |
 | perfis, sorteio de início, duração e fase, compostas sorteadas, entalhes contínuos, a 08 a 90 ms, crista com fator | {bdg-warning}`NÃO VERIFICADO` | {doc}`projeto/pendencias` (P-01) |
-| passo final `SINE` da lista | {bdg-secondary}`FORA DA MAIN` | {ref}`passo-final-sin` |
+| passo final `SINE` da lista | {bdg-secondary}`FORA DA MAIN` | {ref}`passo-final-sine` |
 | 31 pendências: @@pendencias-placar@@ | {bdg-danger}`PENDENTE` | {doc}`projeto/pendencias` |
 
 ## 5. Por onde continuar
