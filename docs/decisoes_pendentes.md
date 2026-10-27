@@ -61,7 +61,14 @@ Zenodo:
 - A. Publicar só depois da licença e da autoria aprovadas. **[recomendado]**
 - B. Não publicar.
 
-Resposta: aguardar o Denis (21/10/2026). Nenhuma licença, autoria, citação ou DOI será criada antes da resposta dele.
+Resposta (2026-10-27, dono, em conversa; substitui o "aguardar o Denis" de 21/10/2026):
+
+1. Licença do código: **MIT** (SPDX `MIT`).
+2. Licença do dataset e da documentação: **CC-BY 4.0**.
+3. Quem autoriza a licença: **não informado**; o dono decidiu as licenças acima, sem dizer se há anuência por escrito do outro autor.
+4. Autores, nesta ordem, só por ORCID: `https://orcid.org/0009-0002-5691-6774` e `https://orcid.org/0009-0001-3141-4498`; nome e afiliação vêm do registro público do ORCID (a confirmar pelo dono).
+5. Texto de citação preferido: **não informado**; vale o `CITATION.cff` gerado a partir dos itens acima.
+- Tag: **A** (só depois de P-01 e P-31; Zenodo depois da tag). Zenodo: **A** (licença e autoria já decididas), com um registro por versão do projeto, com DOI. Preparado em branch, sem tag, sem publicação e sem DOI: `LICENSE`, `CITATION.cff`, `.zenodo.json`, `scripts/empacotar_dataset.py` e o fluxo em `docs/versionamento.md` §9.
 
 ## P-23 Orçamento de 216 gravações TRACe por conexão
 

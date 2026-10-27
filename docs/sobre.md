@@ -4,9 +4,9 @@
 ```
 
 
-{bdg-info}`OFFLINE` Conferido em 2026-10-16 (`main` em `fa82f49`). {bdg-danger}`PENDENTE P-20`
+{bdg-info}`OFFLINE` Conferido em 2026-10-27. {bdg-danger}`PENDENTE P-20`
 
-**Pergunta:** como citar este projeto e em que versão ele está? **Resposta:** a versão corrente é **v1.15, em andamento, sem tag**; ainda **não há DOI, `LICENSE` nem `CITATION.cff`** (P-20), então, por enquanto, cite o repositório com o **commit exato** e a data. Quando o responsável congelar a versão, ela ganha tag anotada `v1.15`, release no GitHub e arquivamento no Zenodo com DOI da versão exata, e este texto muda.
+**Pergunta:** como citar este projeto e em que versão ele está? **Resposta:** a versão corrente é **v1.15, em andamento, sem tag**; ainda **não há DOI** (P-20; `LICENSE`, `CITATION.cff` e `.zenodo.json` existem desde 2026-10-27, sem `doi`), então, por enquanto, cite o repositório com o **commit exato** e a data. Quando o responsável congelar a versão, ela ganha tag anotada `v1.15`, release no GitHub e arquivamento no Zenodo com DOI da versão exata, e este texto muda.
 
 ## 1. Versões
 
@@ -21,7 +21,7 @@ Cite: o nome do repositório, o **hash completo do commit** usado, a versão (`v
 
 ## 3. Licença e o que não é publicado
 
-O repositório **não tem arquivo de licença**: sem uma, o código e os dados não têm termos de uso explícitos (decisão do responsável, P-20). Os PDFs dos manuais do fabricante não são versionados (`docs/*.pdf` está no `.gitignore`); só a transcrição em texto (`docs/manuais_txt/`) fica no repositório, e ela **não** entra neste site: as páginas citam o comando e a página do manual e remetem ao fabricante. As transcrições SCPI completas de 07/10/2026 também não são versionadas; as páginas citam trechos curtos ({doc}`scpi/transcricoes`, P-29).
+Licenças decididas pelo dono em 2026-10-27 (conversa): **código sob MIT** (arquivo `LICENSE` na raiz); **dataset e documentação sob CC-BY 4.0**. Autores, nesta ordem, identificados por ORCID: `0009-0002-5691-6774` e `0009-0001-3141-4498` (nome e afiliação conforme o registro público do ORCID, em `CITATION.cff` e `.zenodo.json`). O dataset não fica no repositório: é arquivado no Zenodo, um registro por versão (fluxo em {doc}`versionamento` §9); a licença CC-BY 4.0 vai no `README.txt` e no `zenodo_dataset.json` de cada pacote. A MIT cobre o código do repositório, **não** o material de terceiros: os manuais do fabricante (AMETEK, Keysight) mantêm os direitos de seus autores, e a transcrição em `docs/manuais_txt/`, que continua no repositório, **não** é coberta nem pela MIT nem pela CC-BY. Os PDFs dos manuais do fabricante não são versionados (`docs/*.pdf` está no `.gitignore`); só a transcrição em texto (`docs/manuais_txt/`) fica no repositório, e ela **não** entra neste site: as páginas citam o comando e a página do manual e remetem ao fabricante. As transcrições SCPI completas de 07/10/2026 também não são versionadas; as páginas citam trechos curtos ({doc}`scpi/transcricoes`, P-29).
 
 ## 4. Publicação do site
 

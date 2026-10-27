@@ -30,7 +30,7 @@ git status --short                       # vazio (inclusive nada não rastreado 
 git tag -a vX.Y -m "vX.Y — resumo"       # só ao congelar a versão; a regra é descrever, não criar
 git push origin main vX.Y
 ```
-Depois, no GitHub, criar uma *Release* a partir da tag. **Zenodo** (procedimento geral da integração GitHub–Zenodo, ainda **não configurado neste projeto**): o repositório precisa estar ligado em zenodo.org (Settings → GitHub) **antes** de criar a release; cada release publicada gera um registro com **DOI** de versão (e um DOI "conceito" que agrupa todas as versões). O artigo cita o DOI da versão exata e, nas sessões, o `versao_codigo` do metadata (que deve coincidir com a tag). Metadados do depósito (título, autores, licença) são definidos pelos autores; o projeto hoje não tem arquivo de licença nem `CITATION.cff`.
+Depois, no GitHub, criar uma *Release* a partir da tag. **Zenodo** (procedimento geral da integração GitHub–Zenodo, ainda **não ligada neste projeto**): o repositório precisa estar ligado em zenodo.org (Settings → GitHub) **antes** de criar a release; cada release publicada gera um registro com **DOI** de versão (e um DOI "conceito" que agrupa todas as versões). O artigo cita o DOI da versão exata e, nas sessões, o `versao_codigo` do metadata (que deve coincidir com a tag). Metadados do depósito (título, autores, licença) são definidos pelos autores; desde 2026-10-27 o repositório tem `LICENSE`, `CITATION.cff` e `.zenodo.json` (§9).
 
 ## 4. Como escrever uma entrada de CHANGELOG
 Título `# vX.Y — resumo (data)`. Seções usadas no histórico, nesta ordem quando aplicável:
@@ -72,3 +72,21 @@ Branch `feat/passo-final-sin` (PR #3, **aberto, não mesclar antes da validaçã
 
 ## 8. Índice do `CHANGELOG/`
 `v1.0.md` … `v1.15.md` na pasta `CHANGELOG/`; cada arquivo é autocontido. Documentos de apoio: `arquivo/analises:docs/TAREFAS_NUVEM_2026-10-07.md` (tarefas da v1.13), `arquivo/analises:docs/analise-2026-09-21/` (sessões de 16/09), `arquivo/analises:docs/analise-2026-09-30/` (comissionamento v1.12), `arquivo/analises:docs/analise-2026-10-12/` (v1.15), `arquivo/analises:docs/superpowers/` (plano e design da v1.8).
+
+## 9. Fluxo de publicação: código e dataset no Zenodo (P-20, preparado em 2026-10-27)
+
+Decisão do dono (2026-10-27, conversa): **um registro Zenodo por versão do projeto**, com DOI, para o **dataset**; a release do **código** também pode ser arquivada pela integração GitHub–Zenodo. O repositório guarda só o código, os `CHANGELOG/`, os metadados de publicação (`LICENSE`, `CITATION.cff`, `.zenodo.json`) e, em cada pacote, o `SHA256SUMS`; nunca os dados (`resultados/` fica fora do git: binários sem diff útil). Licenças: código MIT; dataset e documentação CC-BY 4.0 (`docs/sobre.md` §3). **A tag `v1.15` e a publicação só depois de P-01 e P-31 resolvidas**; nada abaixo foi executado.
+
+1. **Pré-condições:** P-01 (campanha com o código v1.15) e P-31 resolvidas; suíte verde; `CHANGELOG/v1.15.md` fechado; árvore limpa (§3). As sessões do dataset têm de ter `git_sujo = false` (§2).
+2. **Tag e release do código:** tag anotada `v1.15` (§3) e *Release* no GitHub a partir dela. Antes da release, ligar o repositório em zenodo.org (Settings → GitHub); cada release publicada gera um registro de software. Os metadados vêm de `.zenodo.json` (autores, `license: mit`, `upload_type: software`); `CITATION.cff` é o formato que o GitHub lê para o botão "Cite this repository". NÃO VERIFICADO: qual dos dois a integração usa quando ambos existem (a documentação do Zenodo diz que `.zenodo.json` tem precedência).
+3. **Pacote do dataset (offline):**
+   ```powershell
+   # saída padrão: resultados\_pacote\dataset_v1.15\
+   python scripts\empacotar_dataset.py resultados\sessao_A [resultados\sessao_B ...]
+   python scripts\empacotar_dataset.py --verificar resultados\_pacote\dataset_v1.15
+   ```
+   O pacote traz cópia dos dados e do metadata (as pastas de origem não são tocadas), `calibracao_extremos.json`, `SHA256SUMS`, `MANIFEST.json` (versão, `git_commit` e `git_sujo` de cada sessão, arquivos com tamanho e SHA-256), `README.txt` (licença CC-BY 4.0 e como verificar) e `zenodo_dataset.json` (`upload_type: dataset`, `license: cc-by-4.0`, `related_identifiers` com `isSupplementTo` apontando para a release do GitHub). O empacotador **recusa** sessão com `git_sujo` verdadeiro ou indeterminado; `--piloto` aceita e marca o pacote como piloto (`MANIFEST.json` e título), só para ensaio. Logs, `relatorio_*.html`, `sem_margem/`, `ruido_janela/` e `parcial/` não entram (derivados ou diagnóstico).
+4. **Ensaio no Zenodo Sandbox** (sandbox.zenodo.org, conta e token próprios, registros descartáveis): enviar o pacote (de preferência `--piloto`), conferir título, autores, licença, relação com a release e os checksums mostrados pelo Zenodo. Qualquer DOI que o Sandbox mostre é de teste: não o cite nem o escreva em arquivo.
+5. **Upload real** (zenodo.org), só com o pacote **sem** `--piloto` e verificado. O token do Zenodo (escopos de depósito) fica **somente em variável de ambiente** (por exemplo `ZENODO_TOKEN`), nunca em arquivo do repositório, em log, em commit ou em saída de comando. Este repositório não tem script de upload: o envio é feito pelo responsável, pelo site ou pela API.
+6. **DOI de conceito versus DOI de versão.** Cada registro do Zenodo (o do código e o do dataset) tem um DOI de **versão** (esta publicação exata) e um DOI de **conceito** (agrupa todas as versões e aponta sempre para a mais nova). O artigo cita o DOI de versão do dataset e o do código; o de conceito serve para "todas as versões". Os DOIs só existem depois de emitidos: **não escrever DOI em arquivo algum antes disso** (a tag é imutável, então o `CITATION.cff` da própria tag não pode conter o DOI da sua release; ele entra depois, em commit posterior e em `docs/sobre.md`).
+7. **Relação código-dataset.** O registro do dataset é `isSupplementTo` da release do código no GitHub (URL da tag). Quando os dois DOIs existirem, o responsável pode editar os metadados dos registros para apontar um ao outro pelo DOI.
