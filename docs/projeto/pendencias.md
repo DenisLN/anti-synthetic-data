@@ -19,6 +19,8 @@ Os níveis de evidência vêm de `docs/evidencias/2026-10-16/` a `2026-10-22/`. 
 
 Formulário de decisões do responsável, migrado para esta página em 2026-10-27 (a página separada foi removida). Cada item traz o dado concreto, as opções e a recomendação técnica (marcada com **[recomendado]**). A recomendação não é decisão do projeto: só vale depois de preenchida em "Resposta". O resumo de cada resposta está no campo `decisao_dono` de `docs/estado_prontidao.json` e, gerado dele, em "Perguntas ao dono" acima. Critérios de fechamento: seção "Critérios de fechamento" abaixo.
 
+### Achados da busca de fontes (somente leitura, todos os branches locais)
+
 Branches consultados: `origin/main`, `origin/feat/execucao-pendencias-v1-15`, `upstream/main`, `upstream/arquivo/analises` (49c1d28), `upstream/docs/site-readthedocs`, `upstream/feat/passo-final-sin`, `upstream/claude/specs-v1-15-review-3w2bgl`.
 
 - **P-29 (logs reais):** nenhum `scpi_transcricao.log` nem `sessao.log` existe em qualquer branch ou no histórico. Os únicos `.log` versionados são `docs/evidencias/2026-10-17/build_documentacao.log` e `testes_offline.log` (branch de execução, não são de bancada). `upstream/arquivo/analises:specs/2026-10-15/com-pendencias/06-auditoria-arquitetura.md` (linhas 62 e 73) registra que as três `scpi_transcricao.log` de 07/10 ficam só em `resultados/` local, ignorado pelo git. O que existe versionado de bancada são dados de 30/09: `upstream/arquivo/analises:docs/analise-2026-09-30/dados/sessao_2026-09-30_{15-08-45,15-18-50,15-26-05,15-58-51}/*.jsonl` (JSONL por classe, não transcrição SCPI) e `docs/analise-2026-09-30/ANALISE.md`.
