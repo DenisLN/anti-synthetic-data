@@ -8,7 +8,7 @@
 
 **Pergunta:** quanto de cada classe foi verificado, em que camada e com que código? **Resposta:** todas as 20 classes têm `gerar()` e programada conferidos **offline**; todas rodaram na **bancada em 127 V/60 Hz e 127 V/50 Hz** em 07/10/2026 e 15 delas também a 230 V/50 Hz; **mas esse código é o anterior à v1.15**: perfis, sorteio de início, duração e fase, compostas sorteadas, entalhes contínuos, a 08 a 90 ms e a crista com fator **nunca foram medidos**. Em 2026-10-16 a `main` está em `fa82f49` e a última campanha de bancada continua sendo a de 07/10/2026 (P-01).
 
-O que cada selo exige está em {doc}`../como-ler`. Esta página não afirma que o passo final SINE existe: ele está fora da `main` ({doc}`passo-final-sin`).
+O que cada selo exige está em {doc}`../como-ler`. **Pendências:** @@pendencias-placar@@; estado, resolução e perguntas ao dono em {doc}`pendencias`. Esta página não afirma que o passo final SINE existe: ele está fora da `main` ({doc}`passo-final-sin`).
 
 ## 1. Camadas de verificação e a fonte de cada célula
 
@@ -84,26 +84,26 @@ Nas sessões de 07/10 o código era o da v1.13/v1.14 (`CHANGELOG/v1.14.md`): par
 
 | Classe | Depende do perfil? | O que a v1.15 mudou e nenhuma bancada mediu | Pendências |
 |---|---|---|---|
-| 01 NORMAL | não (capturada uma vez com `set perfil todos`) | {bdg-warning}`NÃO VERIFICADO` fase sorteada; disparo na fase sorteada | {ref}`P-05 <p-05>` |
-| 02 SAG | sim | {bdg-warning}`NÃO VERIFICADO` início, duração e fase sorteados; `TRIGger:SYNChronize:PHASe` em passos de 0,1°; `PULSe:WIDTh` sorteada | {ref}`P-05 <p-05>` |
-| 03 SWELL | sim | {bdg-warning}`NÃO VERIFICADO` idem 02 | {ref}`P-05 <p-05>` |
-| 04 INTERRUPTION | não (capturada uma vez com `set perfil todos`) | {bdg-warning}`NÃO VERIFICADO` idem 02 | {ref}`P-05 <p-05>` |
-| 05 HARMONICS | sim | {bdg-warning}`NÃO VERIFICADO` modelo passa a ser a senoide clipada; nível de 2 % (`norma`); nível de 30 % por TRACe | {ref}`P-10 <p-10>` |
-| 06 FLICKER | sim | {bdg-warning}`NÃO VERIFICADO` perfis; média por ciclo da TRACe | {ref}`P-12 <p-12>` |
-| 07 NOTCH | não (capturada uma vez com `set perfil todos`) | {bdg-warning}`NÃO VERIFICADO` entalhes em todos os ciclos; validação da crista com fator | {ref}`P-07 <p-07>` |
-| 08 TRANSIENT | não (capturada uma vez com `set perfil todos`) | {bdg-warning}`NÃO VERIFICADO` impulso a 90 ms a 50 Hz; conferência de posição; cópia em 100 ms | {ref}`P-02 <p-02>`, {ref}`P-03 <p-03>` |
-| 09 OSCILLATORY_TRANSIENT | não (capturada uma vez com `set perfil todos`) | {bdg-warning}`NÃO VERIFICADO` início e fase sorteados; cópia em 100 ms | {ref}`P-02 <p-02>` |
-| 10 SAG_HARMONICS | sim | {bdg-warning}`NÃO VERIFICADO` sag e THD sorteados; rms CA por ciclo | {ref}`P-08 <p-08>`, {ref}`P-09 <p-09>`, {ref}`P-11 <p-11>` |
-| 11 SAG_FLICKER | sim | {bdg-warning}`NÃO VERIFICADO` sag e flicker sorteados; rms CA por ciclo | {ref}`P-08 <p-08>`, {ref}`P-09 <p-09>`, {ref}`P-11 <p-11>` |
-| 12 SAG_OSCILLATORY_TRANSIENT | sim | {bdg-warning}`NÃO VERIFICADO` sag e oscilação sorteados; rms CA por ciclo | {ref}`P-08 <p-08>`, {ref}`P-09 <p-09>`, {ref}`P-11 <p-11>` |
-| 13 SWELL_HARMONICS | sim | {bdg-warning}`NÃO VERIFICADO` swell e THD sorteados | {ref}`P-11 <p-11>` |
-| 14 SWELL_OSCILLATORY_TRANSIENT | sim | {bdg-warning}`NÃO VERIFICADO` swell e oscilação sorteados | {ref}`P-11 <p-11>` |
-| 15 HARMONICS_FLICKER | sim | {bdg-warning}`NÃO VERIFICADO` THD e flicker nos 200 ms inteiros; sem `parametros_com_disturbio_reduzido` | {ref}`P-11 <p-11>` |
-| 16 INTERRUPTION_HARMONICS | sim com sorteio ligado; independente com `set sorteio off` | {bdg-warning}`NÃO VERIFICADO` interrupção fixa, THD sorteado; rms CA por ciclo | {ref}`P-08 <p-08>`, {ref}`P-09 <p-09>`, {ref}`P-11 <p-11>` |
-| 17 NOTCH_OSCILLATORY_TRANSIENT | não (capturada uma vez com `set perfil todos`) | {bdg-warning}`NÃO VERIFICADO` entalhes contínuos e oscilação de 300 Hz; crista com fator | {ref}`P-07 <p-07>` |
-| 18 FREQUENCY_DRIFT | não (capturada uma vez com `set perfil todos`) | {bdg-warning}`NÃO VERIFICADO` rampa f0 ± 3 Hz (era 57 a 63 Hz); continuidade de fase na troca | {ref}`P-06 <p-06>` |
-| 19 DC_OFFSET | não (capturada uma vez com `set perfil todos`) | {bdg-warning}`NÃO VERIFICADO` fase sorteada; ACDC | {ref}`P-17 <p-17>` |
-| 20 INTERHARMONICS | sim | {bdg-warning}`NÃO VERIFICADO` amplitudes do perfil; fases sorteadas | {ref}`P-01 <p-01>` |
+| 01 NORMAL | não (capturada uma vez com `set perfil todos`) | {bdg-warning}`NÃO VERIFICADO` fase sorteada; disparo na fase sorteada | {ref}`P-05 <estado-p-05>` |
+| 02 SAG | sim | {bdg-warning}`NÃO VERIFICADO` início, duração e fase sorteados; `TRIGger:SYNChronize:PHASe` em passos de 0,1°; `PULSe:WIDTh` sorteada | {ref}`P-05 <estado-p-05>` |
+| 03 SWELL | sim | {bdg-warning}`NÃO VERIFICADO` idem 02 | {ref}`P-05 <estado-p-05>` |
+| 04 INTERRUPTION | não (capturada uma vez com `set perfil todos`) | {bdg-warning}`NÃO VERIFICADO` idem 02 | {ref}`P-05 <estado-p-05>` |
+| 05 HARMONICS | sim | {bdg-warning}`NÃO VERIFICADO` modelo passa a ser a senoide clipada; nível de 2 % (`norma`); nível de 30 % por TRACe | {ref}`P-10 <estado-p-10>` |
+| 06 FLICKER | sim | {bdg-warning}`NÃO VERIFICADO` perfis; média por ciclo da TRACe | {ref}`P-12 <estado-p-12>` |
+| 07 NOTCH | não (capturada uma vez com `set perfil todos`) | {bdg-warning}`NÃO VERIFICADO` entalhes em todos os ciclos; validação da crista com fator | {ref}`P-07 <estado-p-07>` |
+| 08 TRANSIENT | não (capturada uma vez com `set perfil todos`) | {bdg-warning}`NÃO VERIFICADO` impulso a 90 ms a 50 Hz; conferência de posição; cópia em 100 ms | {ref}`P-02 <estado-p-02>`, {ref}`P-03 <estado-p-03>` |
+| 09 OSCILLATORY_TRANSIENT | não (capturada uma vez com `set perfil todos`) | {bdg-warning}`NÃO VERIFICADO` início e fase sorteados; cópia em 100 ms | {ref}`P-02 <estado-p-02>` |
+| 10 SAG_HARMONICS | sim | {bdg-warning}`NÃO VERIFICADO` sag e THD sorteados; rms CA por ciclo | {ref}`P-08 <estado-p-08>`, {ref}`P-09 <estado-p-09>`, {ref}`P-11 <estado-p-11>` |
+| 11 SAG_FLICKER | sim | {bdg-warning}`NÃO VERIFICADO` sag e flicker sorteados; rms CA por ciclo | {ref}`P-08 <estado-p-08>`, {ref}`P-09 <estado-p-09>`, {ref}`P-11 <estado-p-11>` |
+| 12 SAG_OSCILLATORY_TRANSIENT | sim | {bdg-warning}`NÃO VERIFICADO` sag e oscilação sorteados; rms CA por ciclo | {ref}`P-08 <estado-p-08>`, {ref}`P-09 <estado-p-09>`, {ref}`P-11 <estado-p-11>` |
+| 13 SWELL_HARMONICS | sim | {bdg-warning}`NÃO VERIFICADO` swell e THD sorteados | {ref}`P-11 <estado-p-11>` |
+| 14 SWELL_OSCILLATORY_TRANSIENT | sim | {bdg-warning}`NÃO VERIFICADO` swell e oscilação sorteados | {ref}`P-11 <estado-p-11>` |
+| 15 HARMONICS_FLICKER | sim | {bdg-warning}`NÃO VERIFICADO` THD e flicker nos 200 ms inteiros; sem `parametros_com_disturbio_reduzido` | {ref}`P-11 <estado-p-11>` |
+| 16 INTERRUPTION_HARMONICS | sim com sorteio ligado; independente com `set sorteio off` | {bdg-warning}`NÃO VERIFICADO` interrupção fixa, THD sorteado; rms CA por ciclo | {ref}`P-08 <estado-p-08>`, {ref}`P-09 <estado-p-09>`, {ref}`P-11 <estado-p-11>` |
+| 17 NOTCH_OSCILLATORY_TRANSIENT | não (capturada uma vez com `set perfil todos`) | {bdg-warning}`NÃO VERIFICADO` entalhes contínuos e oscilação de 300 Hz; crista com fator | {ref}`P-07 <estado-p-07>` |
+| 18 FREQUENCY_DRIFT | não (capturada uma vez com `set perfil todos`) | {bdg-warning}`NÃO VERIFICADO` rampa f0 ± 3 Hz (era 57 a 63 Hz); continuidade de fase na troca | {ref}`P-06 <estado-p-06>` |
+| 19 DC_OFFSET | não (capturada uma vez com `set perfil todos`) | {bdg-warning}`NÃO VERIFICADO` fase sorteada; ACDC | {ref}`P-17 <estado-p-17>` |
+| 20 INTERHARMONICS | sim | {bdg-warning}`NÃO VERIFICADO` amplitudes do perfil; fases sorteadas | {ref}`P-01 <estado-p-01>` |
 
 :::{important} Pendência P-01
 Nenhum dado de bancada existe com o código da v1.15. A campanha prevista é o `docs/roteiro-bancada.md` (10 blocos; 2 h a 3 h com um perfil e 2 h 30 a 3 h 30 com `set perfil todos`): {doc}`../roteiro-bancada`. Fecha com: BANCADA. Prioridade ALTA.

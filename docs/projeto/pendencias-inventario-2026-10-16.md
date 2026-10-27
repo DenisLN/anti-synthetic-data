@@ -1,20 +1,12 @@
-# Pendências: estado vigente e inventário de 16/10/2026
+# Inventário histórico das pendências (16/10/2026)
 
 :::{note} Revisão e procedência
-Texto de referência importado do levantamento de 16/10/2026, baseado em [fa82f496](https://github.com/DenisLN/anti-synthetic-data/tree/fa82f49600543456adf78e22485ab6de5dd032b9). Citações numéricas apontam para esse snapshot e não acompanham linhas atuais. Trechos `literalinclude` são extraídos do checkout atual por símbolo; consulte {doc}`../execucao_pendencias` para implementação e evidências vigentes. Relatos de sessões e transcrições são históricos, não medições repetidas nesta revisão.
+Texto de referência importado do levantamento de 16/10/2026, baseado em [fa82f496](https://github.com/DenisLN/anti-synthetic-data/tree/fa82f49600543456adf78e22485ab6de5dd032b9). Citações numéricas apontam para esse snapshot e não acompanham linhas atuais. Trechos `literalinclude` são extraídos do checkout atual por símbolo. Relatos de sessões e transcrições são históricos, não medições repetidas nesta revisão.
 :::
 
-
-:::{important} Estado vigente e inventário histórico
-A seção "Estado vigente" abaixo é gerada no build a partir de `docs/estado_prontidao.json` (arquivo único de estado; formato em {doc}`../contribuir_docs`), então mostra sempre o que está commitado. As seções numeradas de 1 a 6, depois dela, preservam o inventário e as opções anteriores ao início da execução: "hoje", contagens, conferências, decisões em aberto e estados nelas pertencem ao relato de 15–16/10/2026, não à execução atual. Implementação, decisões e testes da execução: {doc}`../execucao_pendencias`. As 31 entradas não significam 31 itens ainda inalterados. Alegações históricas de acesso a sessões/transcrições não foram repetidas neste checkout.
+:::{important} Esta página é o pedido original, não o estado
+O estado vigente de P-01 a P-31, o que foi feito em cada uma, o que falta e as perguntas ao dono estão em {doc}`pendencias`. Aqui ficam o inventário e as opções anteriores ao início da execução: "hoje", contagens, conferências, decisões em aberto e estados pertencem ao relato de 15 e 16/10/2026. As âncoras `p-NN` desta página continuam valendo (as páginas de classe as citam); cada seção traz um link para o estado vigente.
 :::
-
-## Estado vigente
-
-@@pendencias-estado@@
-
-## Inventário histórico de 16/10/2026
-
 
 {bdg-info}`BASELINE HISTÓRICA` 31 itens então abertos (P-01 a P-31) {bdg-info}`OFFLINE` base `main` em `fa82f49`, conferida em 2026-10-15 e 2026-10-16
 
@@ -98,6 +90,9 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 (p-01)=
 ### P-01: GLOBAL (todas)
 
+{bdg-info}`ESTADO VIGENTE` {ref}`P-01: estado, resolução e o que falta <estado-p-01>`
+
+
 {bdg-danger}`PENDENTE P-01` {bdg-danger}`ALTA`
 
 **Pendência.** Nenhum dado de bancada com o código da v1.15 (perfis, sorteio, compostas, entalhes contínuos, 08 a 90 ms, crista com fator, cópia em 100 ms): a última campanha é de 07/10
@@ -108,6 +103,9 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 
 (p-02)=
 ### P-02: 08, 09
+
+{bdg-info}`ESTADO VIGENTE` {ref}`P-02: estado, resolução e o que falta <estado-p-02>`
+
 
 {bdg-danger}`PENDENTE P-02` {bdg-danger}`ALTA`
 
@@ -120,6 +118,9 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 (p-03)=
 ### P-03: 08
 
+{bdg-info}`ESTADO VIGENTE` {ref}`P-03: estado, resolução e o que falta <estado-p-03>`
+
+
 {bdg-danger}`PENDENTE P-03` {bdg-danger}`ALTA`
 
 **Pendência.** Recaptura a 127 V/50 Hz com impulso em 90 ms: posição (`abs(desvio)` ≤ 10 amostras), pico ≤ 374,2 V, sobressinal ≤ 0,55. Acima disso é achado de segurança
@@ -130,6 +131,9 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 
 (p-04)=
 ### P-04: GLOBAL
+
+{bdg-info}`ESTADO VIGENTE` {ref}`P-04: estado, resolução e o que falta <estado-p-04>`
+
 
 {bdg-danger}`PENDENTE P-04` {bdg-warning}`MÉDIA`
 
@@ -142,6 +146,9 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 (p-05)=
 ### P-05: 01-04
 
+{bdg-info}`ESTADO VIGENTE` {ref}`P-05: estado, resolução e o que falta <estado-p-05>`
+
+
 {bdg-danger}`PENDENTE P-05` {bdg-warning}`MÉDIA`
 
 **Pendência.** Sorteio de posição nas nativas: disparo na fase sorteada (`TRIGger:SYNChronize:PHASe` em passos de 0,1°, sem readback), `:TIMebase:POSition` por captura, `PULSe:WIDTh` sorteada, `pre_trigger_desvio_amostras` (aviso > 2 amostras): nenhum foi medido
@@ -152,6 +159,9 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 
 (p-06)=
 ### P-06: 18
+
+{bdg-info}`ESTADO VIGENTE` {ref}`P-06: estado, resolução e o que falta <estado-p-06>`
+
 
 {bdg-danger}`PENDENTE P-06` {bdg-warning}`MÉDIA`
 
@@ -164,6 +174,9 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 (p-07)=
 ### P-07: 07, 17
 
+{bdg-info}`ESTADO VIGENTE` {ref}`P-07: estado, resolução e o que falta <estado-p-07>`
+
+
 {bdg-danger}`PENDENTE P-07` {bdg-danger}`ALTA`
 
 **Pendência.** Crista da validação física: fatores calibrados a 127 V/60 Hz (07 = 1,186; 17 = 1,031) não cobrem o toque simulado (≥ 1,344 e ≥ 1,420); a 1.ª rodada tende a reprovar só por "fator de crista". Recalibração ao fim do run vale só para o run seguinte
@@ -174,6 +187,9 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 
 (p-08)=
 ### P-08: 10, 11, 12, 16
+
+{bdg-info}`ESTADO VIGENTE` {ref}`P-08: estado, resolução e o que falta <estado-p-08>`
+
 
 {bdg-danger}`PENDENTE P-08` {bdg-danger}`ALTA`
 
@@ -186,6 +202,9 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 (p-09)=
 ### P-09: 10, 11, 12, 16 (e compostas com degrau no meio do ciclo)
 
+{bdg-info}`ESTADO VIGENTE` {ref}`P-09: estado, resolução e o que falta <estado-p-09>`
+
+
 {bdg-danger}`PENDENTE P-09` {bdg-secondary}`BAIXA`
 
 **Pendência.** Resta a média de cada ciclo (erro programada × modelo 0,24-0,33 pu): só recuperável por offset por passo (ACDC, que tem o déficit de P-17). Decisão: investigar depois da bancada?
@@ -196,6 +215,9 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 
 (p-10)=
 ### P-10: 05
+
+{bdg-info}`ESTADO VIGENTE` {ref}`P-10: estado, resolução e o que falta <estado-p-10>`
+
 
 {bdg-danger}`PENDENTE P-10` {bdg-warning}`MÉDIA`
 
@@ -208,6 +230,9 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 (p-11)=
 ### P-11: 10-16
 
+{bdg-info}`ESTADO VIGENTE` {ref}`P-11: estado, resolução e o que falta <estado-p-11>`
+
+
 {bdg-danger}`PENDENTE P-11` {bdg-warning}`MÉDIA`
 
 **Pendência.** Manter ou reverter as extensões das compostas (a)-(f) (sag em 11/12, swell em 13/14, faixas da `norma`, `fronteira` alternada, THD em 13/15/16). Reverter muda o dataset e exige regravar `gerar_sorteio_v1_15.json`. Sem `parametros_com_disturbio_reduzido` na 15 (metadata sem THD/profundidade efetivos quando reduzida)
@@ -218,6 +243,9 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 
 (p-12)=
 ### P-12: 06 (e 11, 15)
+
+{bdg-info}`ESTADO VIGENTE` {ref}`P-12: estado, resolução e o que falta <estado-p-12>`
+
 
 {bdg-danger}`PENDENTE P-12` {bdg-warning}`MÉDIA`
 
@@ -230,6 +258,9 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 (p-13)=
 ### P-13: GLOBAL
 
+{bdg-info}`ESTADO VIGENTE` {ref}`P-13: estado, resolução e o que falta <estado-p-13>`
+
+
 {bdg-danger}`PENDENTE P-13` {bdg-secondary}`BAIXA`
 
 **Pendência.** `sessao_io.recuperar_parcial` é função manual; ninguém a chama no início do `run`
@@ -240,6 +271,9 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 
 (p-14)=
 ### P-14: GLOBAL
+
+{bdg-info}`ESTADO VIGENTE` {ref}`P-14: estado, resolução e o que falta <estado-p-14>`
+
 
 {bdg-danger}`PENDENTE P-14` {bdg-secondary}`BAIXA`
 
@@ -252,6 +286,9 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 (p-15)=
 ### P-15: GLOBAL
 
+{bdg-info}`ESTADO VIGENTE` {ref}`P-15: estado, resolução e o que falta <estado-p-15>`
+
+
 {bdg-danger}`PENDENTE P-15` {bdg-secondary}`BAIXA`
 
 **Pendência.** `docs/operacao.md:122` e o relatório individual 22 dizem que o HTML do fim do run mostra só as 3 primeiras capturas por classe e perfil; no código ([sessao_io.py:771-776](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/sessao_io.py#L771-L776), [relatorio_html.py:310](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/relatorio_html.py#L310)) o limite de 3 vale só para o dataset simulado (formato 2) e para o formato 1 empilhado; numa sessão de bancada em formato 2 entram todas as capturas, o que pode aumentar o HTML além dos 20 MB. Decidir: corrigir o texto ou limitar também na bancada (não executado com sessão real: NÃO VERIFICADO)
@@ -261,6 +298,9 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 
 (p-16)=
 ### P-16: GLOBAL
+
+{bdg-info}`ESTADO VIGENTE` {ref}`P-16: estado, resolução e o que falta <estado-p-16>`
+
 
 {bdg-danger}`PENDENTE P-16` {bdg-warning}`MÉDIA`
 
@@ -273,6 +313,9 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 (p-17)=
 ### P-17: 19
 
+{bdg-info}`ESTADO VIGENTE` {ref}`P-17: estado, resolução e o que falta <estado-p-17>`
+
+
 {bdg-danger}`PENDENTE P-17` {bdg-warning}`MÉDIA`
 
 **Pendência.** Déficit de 5-6 % de CA em ACDC (0,938-0,951 pu); `diag_acdc_amplitude.py` pronto, nunca rodou; compensação `V/g` é proposta; 230 V no ACDC é escolha do dia
@@ -283,6 +326,9 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 
 (p-18)=
 ### P-18: 01-20 TRACe
+
+{bdg-info}`ESTADO VIGENTE` {ref}`P-18: estado, resolução e o que falta <estado-p-18>`
+
 
 {bdg-danger}`PENDENTE P-18` {bdg-warning}`MÉDIA`
 
@@ -295,6 +341,9 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 (p-19)=
 ### P-19: GLOBAL (TRACe)
 
+{bdg-info}`ESTADO VIGENTE` {ref}`P-19: estado, resolução e o que falta <estado-p-19>`
+
+
 {bdg-danger}`PENDENTE P-19` {bdg-warning}`MÉDIA`
 
 **Pendência.** A Rev. 5.53 aceita `TRACe:DATA? <nome>` e responde lista NRf separada por vírgula? O manual se contradiz (p. 126 "Query Syntax: none"; p. 147 "when queried... normalized"). Query nova numa fonte com histórico de travas
@@ -305,6 +354,9 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 
 (p-20)=
 ### P-20: GLOBAL
+
+{bdg-info}`ESTADO VIGENTE` {ref}`P-20: estado, resolução e o que falta <estado-p-20>`
+
 
 {bdg-danger}`PENDENTE P-20` {bdg-warning}`MÉDIA`
 
@@ -317,6 +369,9 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 (p-21)=
 ### P-21: GLOBAL
 
+{bdg-info}`ESTADO VIGENTE` {ref}`P-21: estado, resolução e o que falta <estado-p-21>`
+
+
 {bdg-danger}`PENDENTE P-21` {bdg-warning}`MÉDIA`
 
 **Pendência.** Condições sem tabela de extremos (220 V/60 Hz e outras) rodam com previsão conservadora (fator 1,475) e várias classes puladas; a 230 V/50 Hz a 03 fica de fora (416,4 V > 415,8 V). Calibrar a condição antes de coletar nela
@@ -327,6 +382,9 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 
 (p-22)=
 ### P-22: GLOBAL
+
+{bdg-info}`ESTADO VIGENTE` {ref}`P-22: estado, resolução e o que falta <estado-p-22>`
+
 
 {bdg-danger}`PENDENTE P-22` {bdg-secondary}`BAIXA`
 
@@ -339,6 +397,9 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 (p-23)=
 ### P-23: GLOBAL
 
+{bdg-info}`ESTADO VIGENTE` {ref}`P-23: estado, resolução e o que falta <estado-p-23>`
+
+
 {bdg-danger}`PENDENTE P-23` {bdg-warning}`MÉDIA`
 
 **Pendência.** Trava da fonte na ~280.ª gravação de TRACe por conexão (quirk A3; causa NÃO VERIFICADA). `README.md:26` e `AGENTS.md` ainda recomendam `run all` (468 gravações a 60 Hz; 1116 com `todos`); o roteiro usa listas (< 250 por conexão)
@@ -349,6 +410,9 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 
 (p-24)=
 ### P-24: GLOBAL
+
+{bdg-info}`ESTADO VIGENTE` {ref}`P-24: estado, resolução e o que falta <estado-p-24>`
+
 
 {bdg-danger}`PENDENTE P-24` {bdg-warning}`MÉDIA`
 
@@ -361,6 +425,9 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 (p-25)=
 ### P-25: GLOBAL
 
+{bdg-info}`ESTADO VIGENTE` {ref}`P-25: estado, resolução e o que falta <estado-p-25>`
+
+
 {bdg-danger}`PENDENTE P-25` {bdg-secondary}`BAIXA`
 
 **Pendência.** Decisões menores da tarefa 22: identificadores de tarefa no texto (8 ocorrências hoje fora dos CHANGELOG fechados); um termo de governança em `AGENTS.md` (9 ocorrências); um nome de variável local em [mestre.py:2398,2412](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/mestre.py#L2398); texto de `uso_limite_bancada` em `calibracao_extremos.json:81` (muda o SHA-256 do arquivo)
@@ -371,6 +438,9 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 
 (p-26)=
 ### P-26: GLOBAL
+
+{bdg-info}`ESTADO VIGENTE` {ref}`P-26: estado, resolução e o que falta <estado-p-26>`
+
 
 {bdg-danger}`PENDENTE P-26` {bdg-warning}`MÉDIA`
 
@@ -383,6 +453,9 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 (p-27)=
 ### P-27: GLOBAL
 
+{bdg-info}`ESTADO VIGENTE` {ref}`P-27: estado, resolução e o que falta <estado-p-27>`
+
+
 {bdg-danger}`PENDENTE P-27` {bdg-secondary}`BAIXA`
 
 **Pendência.** A faixa de referência da correlação do distúrbio (0,95-1,00; 0,75-0,94; 0,005 da 08) vem de `validacao_gerador_v1.14.md`, que não está no repositório: a coluna "bate?" de `docs/correlacao_disturbio.md:38-58` compara contra origem desconhecida
@@ -393,6 +466,9 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 
 (p-28)=
 ### P-28: GLOBAL
+
+{bdg-info}`ESTADO VIGENTE` {ref}`P-28: estado, resolução e o que falta <estado-p-28>`
+
 
 {bdg-danger}`PENDENTE P-28` {bdg-secondary}`BAIXA`
 
@@ -405,6 +481,9 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 (p-29)=
 ### P-29: GLOBAL
 
+{bdg-info}`ESTADO VIGENTE` {ref}`P-29: estado, resolução e o que falta <estado-p-29>`
+
+
 {bdg-danger}`PENDENTE P-29` {bdg-warning}`MÉDIA`
 
 **Pendência.** As transcrições SCPI reais (`scpi_transcricao.log`) das sessões de 07/10 existem só em `resultados/` desta máquina (gitignored; 3 arquivos, 6846 a 9675 linhas) e não estão em nenhum branch: o site precisa de exemplos reais por comando
@@ -416,6 +495,9 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 (p-30)=
 ### P-30: GLOBAL
 
+{bdg-info}`ESTADO VIGENTE` {ref}`P-30: estado, resolução e o que falta <estado-p-30>`
+
+
 {bdg-danger}`PENDENTE P-30` {bdg-secondary}`BAIXA`
 
 **Pendência.** Contagem de capturas de 07/10 incoerente: `AGENTS.md:125` e `CHANGELOG/v1.15.md:9` dizem 63; `docs/tres_versoes.md:59` diz 99; os arquivos têm 36 + 36 + 27 = 99 e `analisar_sessao.py` leu 99 capturas nas três sessões em 2026-10-15 (63 = só as duas sessões de 50 Hz, hipótese NÃO VERIFICADA)
@@ -426,6 +508,9 @@ Globais sem classe própria: {ref}`P-04 <p-04>`, {ref}`P-13 <p-13>`, {ref}`P-14 
 
 (p-31)=
 ### P-31: GLOBAL (correlação)
+
+{bdg-info}`ESTADO VIGENTE` {ref}`P-31: estado, resolução e o que falta <estado-p-31>`
+
 
 {bdg-danger}`PENDENTE P-31` {bdg-secondary}`BAIXA`
 
@@ -477,6 +562,4 @@ Cada item abaixo é uma escolha que só o responsável pelo projeto faz. A pági
 
 ## 6. Como esta página é mantida
 
-O "Estado vigente" não se edita aqui: muda-se `docs/estado_prontidao.json` (fluxo e formato em {doc}`../contribuir_docs`) e o build regenera a seção. As seções 1 a 5 são o inventário histórico; a regra a seguir descreve como ele era mantido.
-
-Uma pendência que fecha **sai** das seções 1 a 3, passa para a seção 5 com a evidência e o commit, e o selo `PENDENTE P-NN` sai das páginas que a citavam; o id **não é reaproveitado**. Uma afirmação que dependia da pendência volta a valer com o selo certo (VERIFICADO NA BANCADA com sessão e condição, ou OFFLINE com comando e saída), nunca por omissão.
+Esta página é histórica e não se edita para refletir o estado. O estado vive só em `docs/estado_prontidao.json` e é renderizado em {doc}`pendencias` (formato e fluxo em {doc}`../contribuir_docs`). Os ids `P-NN` não são reaproveitados. A regra de manutenção do inventário original (uma pendência que fechava saía das seções 1 a 3 e passava para a seção 5) deixou de valer: o fechamento é registrado no arquivo de estado, com evidência e commit.
