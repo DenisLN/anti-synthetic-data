@@ -1,6 +1,6 @@
 # Operação na bancada física
 
-Para quem vai energizar a fonte. Leia tudo antes de conectar qualquer cabo. Regras de segurança invioláveis: `AGENTS.md`. A revisão de pendências atual está em `docs/execucao_pendencias.md`; referências numéricas remanescentes são históricas e não devem ser usadas como prova do estado atual. Localize os símbolos citados no checkout identificado.
+Para quem vai energizar a fonte. Leia tudo antes de conectar qualquer cabo. Regras de segurança invioláveis: `AGENTS.md`. A revisão de pendências atual está em `docs/projeto/pendencias.md`; referências numéricas remanescentes são históricas e não devem ser usadas como prova do estado atual. Localize os símbolos citados no checkout identificado.
 
 ## 1. Ligação física obrigatória
 

@@ -147,7 +147,7 @@
       "decisao_dono": {
         "registrada": false,
         "situacao": "tomada-no-fork",
-        "texto": "Escolha (a) tomada no fork por 'autorização do usuário nesta sessão' (`execucao_pendencias.md`), não por resposta registrada: `docs/decisoes_pendentes.md` não tem seção para a P-04. A revisão independente de 20/10 confirmou o código, não a decisão.",
+        "texto": "Escolha (a) tomada no fork por 'autorização do usuário nesta sessão' (`docs/historico.md`), não por resposta registrada: `docs/decisoes_pendentes.md` não tem seção para a P-04. A revisão independente de 20/10 confirmou o código, não a decisão.",
         "pergunta": "Confirma que o ORM também recusa pico acima do limite (opção a)?",
         "opcoes": [
           "(a) recusar também no ORM (adotada no fork; endurece a validação)",
@@ -160,7 +160,7 @@
       ],
       "evidencias": [
         "evidencias/2026-10-17/validacao_software.json",
-        "execucao_pendencias.md"
+        "historico.md"
       ],
       "falta_por_tipo": {
         "decisao-dono": "Confirmar a opção (a) (ou pedir a (b), ver a ressalva em Pergunta ao dono)."
@@ -442,7 +442,7 @@
       ],
       "evidencias": [
         "evidencias/2026-10-17/validacao_software.json",
-        "execucao_pendencias.md"
+        "historico.md"
       ],
       "falta_por_tipo": {
         "decisao-dono": "Confirmar manter as extensões das compostas 10 a 16."
@@ -480,7 +480,7 @@
       ],
       "evidencias": [
         "evidencias/2026-10-17/validacao_software.json",
-        "execucao_pendencias.md",
+        "historico.md",
         "evidencias/2026-10-16/modelo_programado.json"
       ],
       "falta_por_tipo": {
@@ -520,7 +520,7 @@
       ],
       "evidencias": [
         "evidencias/2026-10-17/validacao_software.json",
-        "execucao_pendencias.md"
+        "historico.md"
       ],
       "falta_por_tipo": {
         "decisao-dono": "Confirmar a recuperação automática (opção a)."
@@ -558,7 +558,7 @@
       ],
       "evidencias": [
         "evidencias/2026-10-17/validacao_software.json",
-        "execucao_pendencias.md"
+        "historico.md"
       ],
       "falta_por_tipo": {
         "decisao-dono": "Confirmar recusar `run 01 02` ambíguo e aplicar `BATERIA_EXCLUIR` às listas."
@@ -596,7 +596,7 @@
       ],
       "evidencias": [
         "evidencias/2026-10-17/validacao_software.json",
-        "execucao_pendencias.md"
+        "historico.md"
       ],
       "falta_por_tipo": {
         "decisao-dono": "Confirmar limitar o HTML também na bancada (opção b)."
@@ -973,7 +973,7 @@
       ],
       "evidencias": [
         "evidencias/2026-10-17/validacao_software.json",
-        "execucao_pendencias.md"
+        "historico.md"
       ],
       "falta_por_tipo": {
         "codigo": "Conferir que o Read the Docs publica a `main` atual (fora do alcance deste checkout)."
@@ -1012,7 +1012,7 @@
         "9ce09b4"
       ],
       "evidencias": [
-        "execucao_pendencias.md"
+        "historico.md"
       ],
       "falta_por_tipo": {
         "decisao-dono": "Aceitar ou retirar, um a um: identificadores 'spec NN'; termo de governança em `AGENTS.md`; nome da variável local em `mestre.py`; texto de `uso_limite_bancada` (muda o SHA-256 do arquivo).",
@@ -1035,7 +1035,7 @@
         "R"
       ],
       "falta": "Decidida; fecha quando as sessões das cinco condições registrarem a configuração (só 127 V existe)",
-      "como_tratada": "Decidida pelo dono em 21/10 (`docs/decisoes_pendentes.md`, seção P-26): perfis `todos`; condições 127 V/60 Hz, 127 V/50 Hz, 230 V/50 Hz, 220 V/60 Hz e 33 V/60 Hz; ACDC só a 127 V; 1 captura por classe (padrão). O plano offline está em `plano_campanhas_5_condicoes.json` (230 V/50 Hz com 13 recusas por swells; 220 V/60 Hz sem calibração e 52 recusas; 33 V/60 Hz sem calibração; `execucao_pendencias.md`, 21/10). As sessões de 22/10 são só de 127 V (60 e 50 Hz): não há sessão de 230 V/50 Hz, 220 V/60 Hz nem 33 V/60 Hz.",
+      "como_tratada": "Decidida pelo dono em 21/10 (`docs/decisoes_pendentes.md`, seção P-26): perfis `todos`; condições 127 V/60 Hz, 127 V/50 Hz, 230 V/50 Hz, 220 V/60 Hz e 33 V/60 Hz; ACDC só a 127 V; 1 captura por classe (padrão). O plano offline está em `plano_campanhas_5_condicoes.json` (230 V/50 Hz com 13 recusas por swells; 220 V/60 Hz sem calibração e 52 recusas; 33 V/60 Hz sem calibração; `docs/historico.md`, 21/10). As sessões de 22/10 são só de 127 V (60 e 50 Hz): não há sessão de 230 V/50 Hz, 220 V/60 Hz nem 33 V/60 Hz.",
       "situacao_execucao": "Decidida, aguarda operador",
       "entrega": "Registrar antes da coleta perfil/frequência/tensão e escopo ACDC opcional 230 V; resolver essa exceção ao roteiro de 127 V antes de executá-la.",
       "decisao_dono": {
@@ -1089,7 +1089,7 @@
       ],
       "evidencias": [
         "evidencias/2026-10-17/validacao_software.json",
-        "execucao_pendencias.md"
+        "historico.md"
       ],
       "falta_por_tipo": {
         "decisao-dono": "Confirmar seguir sem o arquivo, ou fornecê-lo."
@@ -1199,7 +1199,7 @@
       "evidencias": [
         "decisoes_pendentes.md",
         "tres_versoes.md",
-        "execucao_pendencias.md"
+        "historico.md"
       ],
       "falta_por_tipo": {}
     },

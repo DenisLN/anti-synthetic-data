@@ -121,7 +121,6 @@ versionamento
 projeto/estado-validacao
 projeto/pendencias
 projeto/pendencias-inventario-2026-10-16
-execucao_pendencias
 PENDENCIAS_TRACKER
 bancada_pendencias
 decisoes_pendentes

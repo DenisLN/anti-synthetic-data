@@ -1,6 +1,6 @@
 # Visita à bancada: fechamento das pendências físicas
 
-Roteiro de **uma** visita que gera a evidência para P-01, P-02, P-03, P-05, P-06, P-07, P-08, P-10, P-16, P-17, P-18, P-19, P-21, P-22, P-23, P-28 e P-31, com P-26 como pré-condição a decidir antes de energizar. A sequência, os diagnósticos e os critérios são os de {doc}`roteiro-bancada` (arquivo `docs/roteiro-bancada.md` da raiz; "Bloco N" e "seção N" abaixo remetem a ele). Este documento não os reescreve: só os organiza por pendência. Estado e protocolo: {doc}`PENDENCIAS_TRACKER`. Critérios completos: {doc}`execucao_pendencias`. Operação da CLI: {doc}`operacao`.
+Roteiro de **uma** visita que gera a evidência para P-01, P-02, P-03, P-05, P-06, P-07, P-08, P-10, P-16, P-17, P-18, P-19, P-21, P-22, P-23, P-28 e P-31, com P-26 como pré-condição a decidir antes de energizar. A sequência, os diagnósticos e os critérios são os de {doc}`roteiro-bancada` (arquivo `docs/roteiro-bancada.md` da raiz; "Bloco N" e "seção N" abaixo remetem a ele). Este documento não os reescreve: só os organiza por pendência. Estado e protocolo: {doc}`PENDENCIAS_TRACKER`. Critérios completos: {doc}`historico`. Operação da CLI: {doc}`operacao`.
 
 :::{warning}
 Nenhum passo abaixo encerra pendência por si. A visita **gera evidência**; o fechamento é decidido pelo coordenador e pelo responsável com a evidência em mãos. Simulação não é medição. Diagnóstico vem antes da campanha: não mude a ordem dos Blocos 1 a 10.

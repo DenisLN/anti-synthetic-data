@@ -1,6 +1,6 @@
 # As 20 classes de distúrbio
 
-Especificação original: `experimentos.txt`. Referências revisadas por símbolos sobre a baseline `fa82f496`; mudanças em execução e seus limites estão em `docs/execucao_pendencias.md`. Os números físicos históricos abaixo não foram medidos novamente nesta revisão. Faixas por perfil: `docs/perfis.md`. Como criar uma classe: `docs/estender.md`.
+Especificação original: `experimentos.txt`. Referências revisadas por símbolos sobre a baseline `fa82f496`; mudanças em execução e seus limites estão em `docs/projeto/pendencias.md`. Os números físicos históricos abaixo não foram medidos novamente nesta revisão. Faixas por perfil: `docs/perfis.md`. Como criar uma classe: `docs/estender.md`.
 
 Todas geram 200 ms = 6000 amostras a 30 kSa/s, em pu, por `gerar(t, f0, capture_index, rng)` (`ExperimentoBase.gerar`, `logica/mestre.py`, `ExperimentoBase.gerar`). No **simulado** só `gerar()` importa. Na **bancada** a classe é **nativa** (a fonte produz o distúrbio com um recurso próprio) ou **waveform** (o Python calcula a forma, a fonte a toca por TRACe/LIST).
 

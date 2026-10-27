@@ -1,6 +1,6 @@
 # Decisões de projeto (registro)
 
-Decisões atualizadas para a execução P-01–P-31 estão em [`execucao_pendencias.md`](execucao_pendencias.md). Em particular, exclusões em listas (P-14), limite de três capturas no HTML físico (P-15) e direções P-09/P-11/P-12 prevalecem sobre escolhas anteriores conflitantes. A tabela abaixo preserva a motivação histórica e não é prova de nova validação física.
+Decisões atualizadas para a execução P-01–P-31 estão em [`projeto/pendencias.md`](projeto/pendencias.md). Em particular, exclusões em listas (P-14), limite de três capturas no HTML físico (P-15) e direções P-09/P-11/P-12 prevalecem sobre escolhas anteriores conflitantes. A tabela abaixo preserva a motivação histórica e não é prova de nova validação física.
 
 
 Por que o código é como é. Cada linha: decisão, motivo, onde está, fonte. As datas e versões são as do `CHANGELOG/`. Princípio geral do projeto: **validar (read-back, logs, testes) em vez de contornar** (sleeps maiores, retries, margens grandes) — ver `AGENTS.md`.

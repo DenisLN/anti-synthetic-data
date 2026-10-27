@@ -74,9 +74,9 @@
   "frentes": [],
   "evidencias": [
    "evidencias/2026-10-17/validacao_software.json",
-   "execucao_pendencias.md"
+   "historico.md"
   ],
-  "evidencias_txt": "`docs/evidencias/2026-10-17/validacao_software.json`, `docs/execucao_pendencias.md`"
+  "evidencias_txt": "`docs/evidencias/2026-10-17/validacao_software.json`, `docs/historico.md`"
  },
  {
   "id": "P-05",
@@ -212,9 +212,9 @@
   "frentes": [],
   "evidencias": [
    "evidencias/2026-10-17/validacao_software.json",
-   "execucao_pendencias.md"
+   "historico.md"
   ],
-  "evidencias_txt": "`docs/evidencias/2026-10-17/validacao_software.json`, `docs/execucao_pendencias.md`"
+  "evidencias_txt": "`docs/evidencias/2026-10-17/validacao_software.json`, `docs/historico.md`"
  },
  {
   "id": "P-12",
@@ -229,10 +229,10 @@
   "frentes": [],
   "evidencias": [
    "evidencias/2026-10-17/validacao_software.json",
-   "execucao_pendencias.md",
+   "historico.md",
    "evidencias/2026-10-16/modelo_programado.json"
   ],
-  "evidencias_txt": "`docs/evidencias/2026-10-17/validacao_software.json`, `docs/execucao_pendencias.md`, `docs/evidencias/2026-10-16/modelo_programado.json`"
+  "evidencias_txt": "`docs/evidencias/2026-10-17/validacao_software.json`, `docs/historico.md`, `docs/evidencias/2026-10-16/modelo_programado.json`"
  },
  {
   "id": "P-13",
@@ -247,9 +247,9 @@
   "frentes": [],
   "evidencias": [
    "evidencias/2026-10-17/validacao_software.json",
-   "execucao_pendencias.md"
+   "historico.md"
   ],
-  "evidencias_txt": "`docs/evidencias/2026-10-17/validacao_software.json`, `docs/execucao_pendencias.md`"
+  "evidencias_txt": "`docs/evidencias/2026-10-17/validacao_software.json`, `docs/historico.md`"
  },
  {
   "id": "P-14",
@@ -264,9 +264,9 @@
   "frentes": [],
   "evidencias": [
    "evidencias/2026-10-17/validacao_software.json",
-   "execucao_pendencias.md"
+   "historico.md"
   ],
-  "evidencias_txt": "`docs/evidencias/2026-10-17/validacao_software.json`, `docs/execucao_pendencias.md`"
+  "evidencias_txt": "`docs/evidencias/2026-10-17/validacao_software.json`, `docs/historico.md`"
  },
  {
   "id": "P-15",
@@ -281,9 +281,9 @@
   "frentes": [],
   "evidencias": [
    "evidencias/2026-10-17/validacao_software.json",
-   "execucao_pendencias.md"
+   "historico.md"
   ],
-  "evidencias_txt": "`docs/evidencias/2026-10-17/validacao_software.json`, `docs/execucao_pendencias.md`"
+  "evidencias_txt": "`docs/evidencias/2026-10-17/validacao_software.json`, `docs/historico.md`"
  },
  {
   "id": "P-16",
@@ -457,9 +457,9 @@
   "frentes": [],
   "evidencias": [
    "evidencias/2026-10-17/validacao_software.json",
-   "execucao_pendencias.md"
+   "historico.md"
   ],
-  "evidencias_txt": "`docs/evidencias/2026-10-17/validacao_software.json`, `docs/execucao_pendencias.md`"
+  "evidencias_txt": "`docs/evidencias/2026-10-17/validacao_software.json`, `docs/historico.md`"
  },
  {
   "id": "P-25",
@@ -473,9 +473,9 @@
   "falta": "O dono aceita ou retira os quatro itens, um a um; restam 'spec NN' em tests/test_offline.py e logica/",
   "frentes": [],
   "evidencias": [
-   "execucao_pendencias.md"
+   "historico.md"
   ],
-  "evidencias_txt": "`docs/execucao_pendencias.md`"
+  "evidencias_txt": "`docs/historico.md`"
  },
  {
   "id": "P-26",
@@ -510,9 +510,9 @@
   "frentes": [],
   "evidencias": [
    "evidencias/2026-10-17/validacao_software.json",
-   "execucao_pendencias.md"
+   "historico.md"
   ],
-  "evidencias_txt": "`docs/evidencias/2026-10-17/validacao_software.json`, `docs/execucao_pendencias.md`"
+  "evidencias_txt": "`docs/evidencias/2026-10-17/validacao_software.json`, `docs/historico.md`"
  },
  {
   "id": "P-28",
@@ -567,9 +567,9 @@
   "evidencias": [
    "decisoes_pendentes.md",
    "tres_versoes.md",
-   "execucao_pendencias.md"
+   "historico.md"
   ],
-  "evidencias_txt": "`docs/decisoes_pendentes.md`, `docs/tres_versoes.md`, `docs/execucao_pendencias.md`"
+  "evidencias_txt": "`docs/decisoes_pendentes.md`, `docs/tres_versoes.md`, `docs/historico.md`"
  },
  {
   "id": "P-31",

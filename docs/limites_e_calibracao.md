@@ -17,7 +17,7 @@ Quem não cabe é **pulada** com log (`PULADA ANTES de programar`); se nenhuma c
 
 Depois de cada captura física, `:MEASure:VMAX?/VMIN?` (taxa cheia do osciloscópio) são conferidos contra o mesmo teto; acima dele, `PicoFisicoExcedidoError` **depois** de gravar a captura, e a classe para sem retry (`logica/mestre.py`, `ExperimentoBase._conferir_extremos_fisicos`). A 08 exige essa medida (`exige_medida_de_pico`).
 
-A camada ORM também recusa `program_capture` antes de qualquer consulta/escrita ou alteração de cache: parâmetros/6000 amostras não finitos, tensão base acima do limite, pico da base/captura/TRACe reconstruída acima de `max_peak_v`, e RMS de qualquer passo fora de `0..max_voltage_rms`. A construção pura está em `AmetekMX30.montar_programacao`; as guardas de limite da instância estão em `AmetekMX30.program_capture`. Estado de integração/testes: `docs/execucao_pendencias.md` (P-04).
+A camada ORM também recusa `program_capture` antes de qualquer consulta/escrita ou alteração de cache: parâmetros/6000 amostras não finitos, tensão base acima do limite, pico da base/captura/TRACe reconstruída acima de `max_peak_v`, e RMS de qualquer passo fora de `0..max_voltage_rms`. A construção pura está em `AmetekMX30.montar_programacao`; as guardas de limite da instância estão em `AmetekMX30.program_capture`. Estado de integração/testes: `docs/projeto/pendencias.md` (P-04).
 
 ### 2.1 Capacidades da fonte conferidas antes de I/O (v1.15)
 
