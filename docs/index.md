@@ -126,7 +126,6 @@ PENDENCIAS_TRACKER
 bancada_pendencias
 decisoes_pendentes
 projeto/passo-final-sin
-projeto/analises-arquivadas
 historico
 sobre
 contribuir_docs
