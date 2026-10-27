@@ -274,6 +274,12 @@ são registro histórico: não se reescrevem.
   `run` da CLI. Commite tudo (inclusive arquivos novos e a calibração
   recalibrada). `versao_codigo` fica em cache no processo: reinicie a CLI
   depois de commitar.
-- Trabalho pendente de bancada fica em branch/PR e é documentado como
-  **pendente** (hoje: `feat/passo-final-sin`, PR #3), nunca como existente na
-  `main`.
+- Não há mais branch/PR de trabalho pendente (desde 2026-10-27 tudo está na
+  `main`; o PR #3 foi fechado e o passo final SINE entrou desligado por padrão,
+  `passo_final_sin=False` em `logica/ametek_orm.py`). Trabalho pendente de
+  bancada vive na página de pendências do site (`docs/execucao_pendencias.md`
+  e `docs/PENDENCIAS_TRACKER.md`, P-01 a P-31; o passo final SINE é a P-18) e
+  é documentado como **pendente**, nunca como validado.
+- Branches de trabalho antigos foram descontinuados em 2026-10-27 (SHAs finais
+  e estado da preservação em `CHANGELOG/v1.15.md`); `arquivo/analises`
+  continua sendo o branch de análises e specs.
