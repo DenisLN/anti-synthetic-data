@@ -6,7 +6,7 @@
 {bdg-info}`OFFLINE` Esta página é gerada no build a partir de `docs/estado_prontidao.json` (formato em {doc}`../contribuir_docs`): o que ela mostra é o que está commitado. Para cada uma das 31 pendências ela diz o que foi pedido, o estado verdadeiro, **como foi resolvida** (ou o que foi feito até agora, com commit e evidência), o que falta (separado em bancada, código e decisão do dono) e se a escolha feita no fork foi **confirmada pelo dono** ou está **tomada no fork, aguardando confirmação**.
 
 :::{important} O que esta página não faz
-Ela não decide nada pelo dono. Uma pendência marcada como concluída com a escolha "tomada no fork" foi resolvida por quem trabalhou no fork (`rmlinxic/anti-synthetic-data`, integrado à `main` em 27/10/2026), por "autorização do usuário nesta sessão" ({ref}`rodadas-17-22-10`); isso não é a resposta do dono no formulário de decisões abaixo. Simulação não é medição: nenhuma pendência física fica concluída sem evidência de bancada, e o fechamento de `scripts/fechar_pendencias.py` é evidência, não encerramento. Licença, autoria, citação e DOI (P-20) não existem e não são criados antes da resposta do dono.
+Ela não decide nada pelo dono. Uma pendência marcada como concluída com a escolha "tomada no fork" foi resolvida por quem trabalhou no fork (`rmlinxic/anti-synthetic-data`, integrado à `main` em 27/10/2026), por "autorização do usuário nesta sessão" ({ref}`rodadas-17-22-10`); isso não é a resposta do dono no formulário de decisões abaixo. Simulação não é medição: nenhuma pendência física fica concluída sem evidência de bancada, e o fechamento de `scripts/fechar_pendencias.py` é evidência, não encerramento. Licença, autoria e citação (P-20) estão decididas e preparadas em branch; o DOI só existe depois de emitido pelo Zenodo, e não há tag por decisão do dono.
 :::
 
 Os níveis de evidência vêm de `docs/evidencias/2026-10-16/` a `2026-10-22/`. As sessões físicas de 22/10 ficam no PC da bancada, fora do repositório: o que a página afirma sobre elas é o que `fechamento.json` registra (com SHA-256), e foi marcado **NÃO VERIFICADO** onde só a sessão original provaria.
@@ -80,9 +80,9 @@ Resposta (2026-10-27, dono, em conversa; substitui o "aguardar o Denis" de 21/10
 
 1. Licença do código: **MIT** (SPDX `MIT`).
 2. Licença do dataset e da documentação: **CC-BY 4.0**.
-3. Quem autoriza a licença: **não informado**; o dono decidiu as licenças acima, sem dizer se há anuência por escrito do outro autor.
-4. Autores, nesta ordem, só por ORCID: `https://orcid.org/0009-0002-5691-6774` e `https://orcid.org/0009-0001-3141-4498`; nome e afiliação vêm do registro público do ORCID (a confirmar pelo dono).
-5. Texto de citação preferido: **não informado**; vale o `CITATION.cff` gerado a partir dos itens acima.
+3. Quem autoriza a licença: **autorizada pelo dono** (em conversa, 2026-10-27).
+4. Autores, nesta ordem, só por ORCID: `https://orcid.org/0009-0002-5691-6774` e `https://orcid.org/0009-0001-3141-4498`; nome e afiliação vêm do registro público do ORCID, **confirmados pelo dono** (2026-10-27): Denis Natã Henden Loyola e Ricardo Marin Israel, Universidade Federal do Paraná; titular e ano da MIT confirmados (Denis Natã Henden Loyola, 2026).
+5. Texto de citação preferido: **sem texto informado**; vale o `CITATION.cff` gerado a partir dos itens acima.
 - Tag: **A** (só depois de P-01 e P-31; Zenodo depois da tag). Zenodo: **A** (licença e autoria já decididas), com um registro por versão do projeto, com DOI. Preparado em branch, sem tag, sem publicação e sem DOI: `LICENSE`, `CITATION.cff`, `.zenodo.json`, `scripts/empacotar_dataset.py` e o fluxo em `docs/versionamento.md` §9.
 
 ### P-23 Orçamento de 216 gravações TRACe por conexão
@@ -177,4 +177,4 @@ As 31 pendências devem ter evidência de conclusão. Depois do tratamento delas
 
 ## Pedido original e histórico
 
-O pedido original de cada pendência (classe afetada, fonte, opções e "o que fecha", como levantados em 16/10/2026) está no {doc}`inventário histórico <pendencias-inventario-2026-10-16>`; cada seção acima tem o link para o item correspondente. O registro de rodadas e das evidências offline de 16 e 17/10 está em {ref}`rodadas-17-22-10` (histórico), os critérios de fechamento na seção acima, o roteiro de fechamento na bancada em {doc}`../roteiro-bancada` e o formulário do dono na seção "Formulário de decisões do dono" acima.
+O pedido original de cada pendência (classe afetada, fonte, opções e "o que fecha", como levantados em 16/10/2026) estava em uma página de inventário que o dono mandou apagar em 2026-10-27; ela continua no histórico do Git (`git log --diff-filter=D -- docs/projeto/pendencias-inventario-2026-10-16.md` dá o commit que a removeu; o texto está no commit anterior a ele). O registro de rodadas e das evidências offline de 16 e 17/10 está em {ref}`rodadas-17-22-10` (histórico), os critérios de fechamento na seção acima, o roteiro de fechamento na bancada em {doc}`../roteiro-bancada` e o formulário do dono na seção "Formulário de decisões do dono" acima.

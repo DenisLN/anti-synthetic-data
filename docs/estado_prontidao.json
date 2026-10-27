@@ -766,7 +766,7 @@
       "prioridade": "media",
       "responsavel": "Coordenador + responsável",
       "acao": "preparar congelamento, licença, autoria, citação e Zenodo",
-      "dependencia": "P-01 (campanha com o código v1.15) e P-31 resolvidas; confirmação do dono sobre os dados lidos do ORCID",
+      "dependencia": "P-01 (campanha com o código v1.15) e P-31 resolvidas",
       "criterio": "Tag/release verificáveis, metadados aprovados, licença autorizada; DOI somente quando emitido",
       "quem_fecha": [
         "bancada",
@@ -775,21 +775,15 @@
       "frentes": [
         "D"
       ],
-      "falta": "Tag `v1.15` e publicação no Zenodo, só depois de P-01 e P-31; o dono confirmar nome e afiliação lidos do ORCID, a ordem dos autores, o titular da MIT, quem autoriza a licença e o texto de citação",
+      "falta": "Tag `v1.15` e publicação no Zenodo, só depois de P-01 e P-31 (o dono mandou, em 2026-10-27, não tagear por enquanto)",
       "como_tratada": "Licenças e autoria decididas pelo dono em 2026-10-27 (decisão em conversa; `docs/projeto/pendencias.md`, seção P-20): código MIT, dataset e documentação CC-BY 4.0, autores por ORCID `0009-0002-5691-6774` e `0009-0001-3141-4498`, nesta ordem. Preparado em branch `feat/publicacao-zenodo` (não mesclado, sem push): `LICENSE`, `CITATION.cff` e `.zenodo.json` (nome e afiliação do registro público do ORCID, sem `doi`), `scripts/empacotar_dataset.py` (pacote do dataset com SHA256SUMS, MANIFEST.json e zenodo_dataset.json; recusa sessão com `git_sujo`, salvo `--piloto`) e o fluxo em `docs/versionamento.md` §9. Teste a seco com `--piloto` sobre `sessao_2026-10-07_127V_50Hz` (fora do repositório) aprovado por `--verificar`. Não existe tag `v1.15`, nada foi publicado, nenhum DOI foi escrito; o upload no Zenodo Sandbox não foi exercitado.",
       "situacao_execucao": "Material de publicação preparado em branch; tag e publicação aguardam P-01 e P-31",
       "entrega": "Licença e autoria registradas, citação e metadados do Zenodo prontos; tag, release e publicação só após P-01 e P-31; DOI somente quando emitido.",
       "decisao_dono": {
         "registrada": true,
         "situacao": "confirmada",
-        "texto": "Decisão do dono em conversa (2026-10-27): licença do código MIT; licença do dataset e da documentação CC-BY 4.0; autores, nesta ordem, só por ORCID (`https://orcid.org/0009-0002-5691-6774`, `https://orcid.org/0009-0001-3141-4498`); tag `v1.15` e publicação no Zenodo só depois de P-01 e P-31 (opção A), um registro por versão. Não informados: quem autoriza a licença e o texto de citação. Fonte: decisão em conversa, registrada em `docs/projeto/pendencias.md`, seção P-20.",
-        "data": "2026-10-27",
-        "pergunta": "Confirma o nome e a afiliação lidos do registro público do ORCID (Denis Natã Henden Loyola; Ricardo Marin Israel, sem sobrenome separado no registro; ambos Universidade Federal do Paraná), a ordem dos autores e Denis Natã Henden Loyola como titular do copyright da MIT?",
-        "opcoes": [
-          "Confirmo como está",
-          "Corrigir (informar nome, afiliação, ordem ou titular)"
-        ],
-        "fonte_opcoes": "sem-opcoes-previas"
+        "texto": "Decisão do dono em conversa (2026-10-27): licença do código MIT; licença do dataset e da documentação CC-BY 4.0; autores, nesta ordem, só por ORCID (`https://orcid.org/0009-0002-5691-6774`, `https://orcid.org/0009-0001-3141-4498`); tag `v1.15` e publicação no Zenodo só depois de P-01 e P-31 (opção A), um registro por versão. Confirmados pelo dono em 2026-10-27, em conversa: nome e afiliação lidos do ORCID (Denis Natã Henden Loyola; Ricardo Marin Israel), a ordem dos autores, o titular e o ano da MIT (Denis Natã Henden Loyola, 2026) e a autorização da licença. Sem texto de citação preferido: vale o `CITATION.cff`. Sem tag por enquanto. Fonte: decisão em conversa, registrada em `docs/projeto/pendencias.md`, seção P-20.",
+        "data": "2026-10-27"
       },
       "commits": [
         "2101ab5",
@@ -803,7 +797,7 @@
       "direcao_vigente": "Não tagear nem publicar antes de P-01 e P-31. Não escrever DOI antes de emitido. Não inventar nome, afiliação nem licença; a MIT não cobre os manuais de fabricante.",
       "falta_por_tipo": {
         "bancada": "Campanha com o código v1.15 (P-01), para a tag poder sair de commit limpo e as sessões do dataset terem `git_sujo = false`.",
-        "decisao-dono": "Decidir P-31; confirmar os dados do ORCID, a ordem e o titular da MIT; informar quem autoriza a licença e o texto de citação; tagear `v1.15`, criar a release e publicar (Sandbox para ensaio, depois o real)."
+        "decisao-dono": "Decidir P-31; tagear `v1.15`, criar a release e publicar (Sandbox para ensaio, depois o real)."
       }
     },
     "P-21": {

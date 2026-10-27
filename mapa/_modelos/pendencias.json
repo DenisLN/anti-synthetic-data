@@ -371,9 +371,9 @@
   "prioridade": "media",
   "responsavel": "Coordenador + responsável",
   "acao": "preparar congelamento, licença, autoria, citação e Zenodo",
-  "dependencia": "P-01 (campanha com o código v1.15) e P-31 resolvidas; confirmação do dono sobre os dados lidos do ORCID",
+  "dependencia": "P-01 (campanha com o código v1.15) e P-31 resolvidas",
   "criterio": "Tag/release verificáveis, metadados aprovados, licença autorizada; DOI somente quando emitido",
-  "falta": "Tag `v1.15` e publicação no Zenodo, só depois de P-01 e P-31; o dono confirmar nome e afiliação lidos do ORCID, a ordem dos autores, o titular da MIT, quem autoriza a licença e o texto de citação",
+  "falta": "Tag `v1.15` e publicação no Zenodo, só depois de P-01 e P-31 (o dono mandou, em 2026-10-27, não tagear por enquanto)",
   "frentes": [
    "D"
   ],

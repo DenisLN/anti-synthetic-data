@@ -307,7 +307,7 @@ def gerar_markdown(dados):
         d = it["decisao_dono"]
         linhas += [f"(estado-{ident.lower()})=", f"#### {ident} — {it['titulo']}", "",
                    f"{_selo(it['estado'])} prioridade {it['prioridade']}; quem fecha: {_quem(it)}.", ""]
-        linhas.append(f"- **Pedido original:** {it['acao']} (inventário de 16/10: {{ref}}`{ident} <{ident.lower()}>`)")
+        linhas.append(f"- **Pedido original:** {it['acao']} (inventário de 16/10, removido do site)")
         linhas.append(f"- **Fecha quando:** {it['criterio']}")
         linhas.append(f"- **Depende de:** {it['dependencia']}")
         linhas.append(f"- **Como foi resolvida ou o que foi feito:** {it['como_tratada']}")
