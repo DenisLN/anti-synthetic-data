@@ -65,8 +65,8 @@ As confirmações, todas **case-sensitive** e digitadas pelo operador: `ENERGIZA
 
 ## 3. Armadilhas
 
-1. **Atualização P-14:** `run 01 02` e argumentos extras de `all` são recusados antes de qualquer execução; espaços junto a vírgulas e intervalos continuam aceitos.
-2. **Atualização P-14:** listas aplicam `BATERIA_EXCLUIR` na bancada, mostram as exclusões e não executam lista totalmente excluída; `run <NN>` isolado continua explícito.
+1. **Atualização P-14:** `run 01 02` e argumentos extras de `all` são recusados antes de qualquer execução (`logica/cli.py:823-836`); espaços junto a vírgulas e intervalos continuam aceitos.
+2. **Atualização P-14:** listas aplicam `BATERIA_EXCLUIR` na bancada (`logica/cli.py:848-854`), mostram as exclusões e não executam lista totalmente excluída; `run <NN>` isolado continua explícito.
 3. `_run_uma` chama `assegurar_tensao_base` porque `run 02` isolado mediu cerca de 0 V antes e depois do pulso (v1.7): `trigger_pulse` nunca eleva a tensão imediata.
 4. `run <NN>` usa `executar_classe_nos_perfis`: **sem as três tentativas** de `executar_bateria`; a primeira exceção propaga.
 5. A recalibração importa `scripts/recalibrar_extremos.py` por `sys.path.append`: acoplamento entre `logica/` e `scripts/` ([cli.py:888](https://github.com/DenisLN/anti-synthetic-data/blob/fa82f49600543456adf78e22485ab6de5dd032b9/logica/cli.py#L888)).

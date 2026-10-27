@@ -125,7 +125,7 @@ Os dois ganchos são OFF por padrão (`set html`, `set recalibracao`; `logica/cl
 - **O que gera:** (1) `<sessao>/sem_margem/`, a janela nominal de cada captura sem a folga de 20/50 ms (`logica/recortar_margem.py`, `PASTA_SAIDA_PADRAO`; os originais não são tocados); (2) `<sessao>/relatorio_<sessao>.html`, HTML autocontido com as figuras em base64 (`logica/relatorio_html.py:672`, `gerar_relatorio_recortado`). O hook não confere `BENCH_MODE`: gera também no simulado.
 - **Onde fica:** na pasta da sessão, `resultados\sessao_<timestamp>[_runNN]\relatorio_<sessao>.html`.
 - **Custo:** tempo (o próprio `set html` avisa que pode levar minutos numa bateria completa) e tamanho. Acima de 20 MB (`TAMANHO_EMAIL_MB`, `relatorio_html.py:76`) a CLI avisa que o arquivo pode não passar como anexo de e-mail. Para reduzir: `--classes`, `--max-capturas-por-classe` ou `--dpi 80`.
-- **Quantas capturas:** sem `--capturas` e sem `--max-capturas-por-classe`, o relatório mostra só as **3 primeiras** de cada classe e perfil (`logica/relatorio_html.py`, `ler_capturas`, com aviso; vale para formatos legado/atual e bancada/simulação, sem alterar os arquivos originais). Para outra quantidade, rodar à mão.
+- **Quantas capturas:** sem `--capturas` e sem `--max-capturas-por-classe`, o relatório mostra só as **3 primeiras** de cada classe e perfil (`logica/relatorio_html.py:75,288-316`, `ler_capturas`, com aviso; vale para formatos legado/atual e bancada/simulação, sem alterar os arquivos originais). Para outra quantidade, rodar à mão.
 - **Falha:** só avisa. Para refazer: `python logica\relatorio_html.py <sessao>`.
 
 ### Seleção do relatório à mão
