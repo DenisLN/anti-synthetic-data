@@ -96,3 +96,21 @@ O build no serviço depende de conta e importação feitas pelo responsável pel
 6. Opcional: ativar a pré-visualização de pull request.
 
 O repositório tem a transcrição dos manuais em texto (`docs/manuais_txt/`); os PDFs ficam só na máquina (`docs/*.pdf` no `.gitignore`). Nenhum dos dois entra no site (`exclude_patterns` em `docs/conf.py`); ver {doc}`sobre` sobre a licença e a visibilidade antes de publicar.
+
+## 7. Protocolo para agentes (economia de contexto)
+
+0. Entrada do mapa: `mapa/00 Início.md` (vault Obsidian; cartões de módulo, notas P-NN, `Pendencias.base`, `Mapa.canvas`). Após mudar estados em `docs/estado_prontidao.json`, rode `python scripts/gerar_mapa_pendencias.py`.
+1. Leia **só** o bloco da sua pendência em `docs/estado_prontidao.json` (ou a seção dela em `docs/projeto/pendencias.md`) e os arquivos citados na linha da sua pendência. Não leia `docs/roteiro-bancada.md` nem `AGENTS.md` inteiros; use `grep -n` para a seção necessária.
+2. Limites inegociáveis: `AGENTS.md` seção "Limites inegociáveis" (COM10/115200, limites RMS/pico/corrente, confirmação digitada para energizar, validações SCPI, `gerar()`/fixtures intocados).
+3. Escopo de arquivos por frente (abaixo). Não editar arquivos de outra frente; `docs/estado_prontidao.json` e `CHANGELOG/v1.15.md` são editados **só pelo coordenador**. Agentes devolvem um trecho de CHANGELOG pronto no relatório.
+4. Relatório final do agente: ≤25 linhas — arquivos alterados, comando de teste e resultado, P-NN afetados, o que NÃO foi verificado.
+5. Nenhum agente encerra pendência física. Simulação ≠ medição.
+
+### Frentes
+
+| Frente | Escopo de arquivos | Pendências |
+|---|---|---|
+| **K** kit de bancada | `scripts/fechar_pendencias.py`, `scripts/validar_pc_bancada.ps1`, `tests/test_pendencias_fechamento.py` | ferramentas para P-01–P-08, P-10, P-16–P-19, P-21–P-23, P-28, P-31 |
+| **R** roteiro de fechamento | `docs/roteiro-bancada.md` | sequência única de visita à bancada |
+| **D** decisões e fontes | `docs/projeto/pendencias.md` | P-09, P-18, P-20, P-23, P-26, P-29, P-30, P-31 |
+| **C** coordenador | `estado_prontidao.json`, CHANGELOG, commits | integração |

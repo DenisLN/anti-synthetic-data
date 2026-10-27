@@ -120,9 +120,13 @@ versionamento
 
 projeto/estado-validacao
 projeto/pendencias
-projeto/pendencias-inventario-2026-10-16
-PENDENCIAS_TRACKER
 historico
 sobre
+```
+
+```{toctree}
+:maxdepth: 2
+:caption: Contribuir
+
 contribuir_docs
 ```

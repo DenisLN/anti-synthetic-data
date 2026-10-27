@@ -96,7 +96,7 @@ As mudanças funcionais estão implementadas e verificadas na suíte integrada. 
 
 ### Registro de rodadas (uma linha por rodada, mais recente no topo)
 
-Migrado de `docs/PENDENCIAS_TRACKER.md` em 2026-10-27. É histórico datado: os estados citados valem na data de cada linha, não hoje.
+Migrado do antigo rastreador de pendências em 2026-10-27. É histórico datado: os estados citados valem na data de cada linha, não hoje.
 
 - 2026-10-22 — Visita à bancada (Inspiron, COM10): Blocos 1–9 e 8-A completos a 127 V/60 Hz, parada no braço A da P-09. Fechamento parcial (`evidencias/2026-10-22/fechamento.json`): **P-03 e P-10 concluídas**; P-05, P-07, P-17, P-22, P-28 e P-31 com evidência suficiente aguardando revisão; P-02 e P-08 reprovadas; P-09 sem suporte a offset por passo. Correções: recalibração 127 V/60 Hz, forma volta à senoide depois de classe waveform (THD de 18/19), visita (P-09, Bloco 7, 50 Hz). 759 OK.
 

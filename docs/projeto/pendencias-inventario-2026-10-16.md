@@ -1,3 +1,7 @@
+---
+orphan: true
+---
+
 # Inventário histórico das pendências (16/10/2026)
 
 :::{note} Revisão e procedência
