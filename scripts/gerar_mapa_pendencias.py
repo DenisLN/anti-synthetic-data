@@ -1,88 +1,118 @@
-"""Regenera mapa/pendencias/P-NN.md a partir do rastreador, do plano e do estado.
+"""Regenera mapa/pendencias/P-NN.md a partir do arquivo único de estado.
 
-Fontes: docs/PENDENCIAS_TRACKER.md (estado, o que falta, frentes),
-../entregas/Plano_de_acao_ASD.md (prioridade, ação, dependência, critério) e
-docs/estado_prontidao.json (evidências). Grava mapa/_modelos/pendencias.json e
-renderiza com Knap (skill oficial do Obsidian): requer Node.js 20+ (`npx knap`).
+Fonte: docs/estado_prontidao.json (formato em docs/contribuir_docs.md), validado
+antes de qualquer escrita. Grava mapa/_modelos/pendencias.json e renderiza as 31
+notas com o renderizador embutido, que reproduz o modelo mapa/_modelos/pendencia.knap.md
+sem Node.js nem rede. Com --knap, renderiza com o Knap (skill oficial do Obsidian;
+requer Node.js 20+ e `npx knap`) em vez do renderizador embutido.
 
-Uso: python scripts/gerar_mapa_pendencias.py [--plano CAMINHO] [--sem-render]
+Uso: python scripts/gerar_mapa_pendencias.py [--sem-render] [--knap]
 """
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
-import re
 import subprocess
 import sys
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[1]
-ESTADOS = {"✅": "concluida", "🔧→🏭": "aguarda-bancada", "❓": "aguarda-decisao", "⏳": "em-andamento"}
+ESTADO = RAIZ / "docs" / "estado_prontidao.json"
+MODELO_JSON = RAIZ / "mapa" / "_modelos" / "pendencias.json"
+MODELO_KNAP = RAIZ / "mapa" / "_modelos" / "pendencia.knap.md"
+SAIDA = RAIZ / "mapa" / "pendencias"
 
 
-def montar(plano_txt: str, tracker_txt: str, estado: dict) -> list[dict]:
+def _carregar_lib():
+    caminho = RAIZ / "docs" / "_ext" / "estado_pendencias.py"
+    spec = importlib.util.spec_from_file_location("estado_pendencias", caminho)
+    lib = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(lib)
+    return lib
+
+
+def montar(dados: dict) -> list[dict]:
+    """Itens do modelo do mapa (mesmas chaves do pendencias.json anterior)."""
     itens = []
-    for n in range(1, 32):
-        pid = f"P-{n:02d}"
-        m = re.search(rf"^\| {pid} (Alta|Média|Baixa) \| (.*?) \| (.*?) \| (.*?) \|$", plano_txt, re.M)
-        t = re.search(rf"^\| {pid} \| (\S+) \| (.*?) \| (.*?) \|$", tracker_txt, re.M)
-        if not m or not t:
-            raise SystemExit(f"{pid}: linha ausente no plano ou no rastreador")
-        prioridade, acao, dependencia, criterio = m.groups()
-        emoji, falta, frente = t.groups()
-        if emoji not in ESTADOS:
-            raise SystemExit(f"{pid}: estado desconhecido {emoji!r} no rastreador")
-        responsavel, _, acao_txt = acao.partition(":")
-        evid = estado["pendencias"][pid.replace("-", "")]["evidencias"]
+    for pid, it in dados["pendencias"].items():
+        # O texto de destaque da nota: para concluída, como foi tratada; senão, o que falta.
+        destaque = (it.get("como_tratada") or it["falta"]) if it["estado"] == "concluida" else it["falta"]
         itens.append({
             "id": pid,
-            "titulo": acao_txt.strip().split(";")[0][:110],
-            "status": ESTADOS[emoji],
-            "prioridade": prioridade.replace("é", "e").lower(),
-            "responsavel": responsavel.strip(),
-            "acao": acao_txt.strip(),
-            "dependencia": dependencia.strip(),
-            "criterio": criterio.strip(),
-            "falta": falta.strip(),
-            "frentes": [f.strip() for f in frente.split(",") if f.strip() not in ("—", "")],
-            "evidencias": evid,
-            "evidencias_txt": ", ".join(f"`docs/{e}`" for e in evid) or "—",
+            "titulo": it["titulo"],
+            "status": it["estado"],
+            "prioridade": it["prioridade"],
+            "responsavel": it["responsavel"],
+            "acao": it["acao"],
+            "dependencia": it["dependencia"],
+            "criterio": it["criterio"],
+            "falta": destaque,
+            "frentes": list(it["frentes"]),
+            "evidencias": list(it["evidencias"]),
+            "evidencias_txt": ", ".join(f"`docs/{e}`" for e in it["evidencias"]) or "—",
         })
     return itens
 
 
+def _yaml(chave: str, valor) -> str:
+    if isinstance(valor, list):
+        if not valor:
+            return f"{chave}: []"
+        return chave + ":\n" + "\n".join(f"  - {json.dumps(v, ensure_ascii=False)}" for v in valor)
+    return f"{chave}: {json.dumps(valor, ensure_ascii=False)}"
+
+
+def renderizar(it: dict) -> str:
+    """Nota Obsidian de uma pendência; espelha mapa/_modelos/pendencia.knap.md."""
+    st = it["status"]
+    cab = "\n".join(_yaml(c, it[c]) for c in
+                    ("id", "titulo", "status", "prioridade", "responsavel", "frentes", "evidencias"))
+    if st == "concluida":
+        callout = "> [!success] Concluída"
+    elif st == "aguarda-decisao":
+        callout = "> [!question] Aguarda decisão ou dado do responsável — ver [[docs/decisoes_pendentes]]"
+    else:
+        callout = "> [!todo] Software pronto; falta bancada — ver [[docs/bancada_pendencias]]"
+    corpo = [f"{callout}\n> {it['falta']}\n"]
+    linhas = []
+    if it["acao"] != it["titulo"]:
+        linhas.append(f"- **Ação:** {it['acao']}")
+    linhas += [f"- **Depende de:** {it['dependencia']}",
+               f"- **Fecha quando:** {it['criterio']}",
+               f"- **Evidências:** {it['evidencias_txt']}"]
+    corpo.append("\n".join(linhas) + "\n")
+    corpo.append("Estado geral: [[docs/projeto/pendencias|estado das pendências]] · "
+                 "[[mapa/Pendencias.base|painel]] · [[mapa/00 Início|início]]")
+    return (f"---\n{cab}\ntags:\n  - pendencia\n  - {st}\n---\n# {it['id']} — {it['titulo']}\n\n"
+            + "\n".join(corpo) + "\n")
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--plano", default=str(RAIZ.parent / "entregas" / "Plano_de_acao_ASD.md"))
-    ap.add_argument("--sem-render", action="store_true", help="só grava o JSON")
+    ap.add_argument("--sem-render", action="store_true", help="só grava o JSON do modelo")
+    ap.add_argument("--knap", action="store_true", help="renderiza com `npx knap` (Node.js 20+) em vez do embutido")
     a = ap.parse_args(argv)
-    plano = Path(a.plano)
-    dados = RAIZ / "mapa" / "_modelos" / "pendencias.json"
-    if plano.exists():
-        itens = montar(plano.read_text(encoding="utf-8"),
-                       (RAIZ / "docs" / "PENDENCIAS_TRACKER.md").read_text(encoding="utf-8"),
-                       json.loads((RAIZ / "docs" / "estado_prontidao.json").read_text(encoding="utf-8")))
-        dados.write_bytes((json.dumps(itens, ensure_ascii=False, indent=1) + "\n").encode("utf-8"))
-    elif not dados.exists():
-        raise SystemExit(f"Plano ausente ({plano}) e sem {dados} para reaproveitar")
-    else:
-        # Fora do Mac o plano (pasta entregas/) não existe: reaproveita o JSON
-        # versionado e atualiza só estado/falta/evidências a partir do repositório.
-        itens = json.loads(dados.read_text(encoding="utf-8"))
-        tracker = (RAIZ / "docs" / "PENDENCIAS_TRACKER.md").read_text(encoding="utf-8")
-        estado = json.loads((RAIZ / "docs" / "estado_prontidao.json").read_text(encoding="utf-8"))
-        for it in itens:
-            t = re.search(rf"^\| {it['id']} \| (\S+) \| (.*?) \| (.*?) \|$", tracker, re.M)
-            it["status"], it["falta"] = ESTADOS[t.group(1)], t.group(2).strip()
-            it["evidencias"] = estado["pendencias"][it["id"].replace("-", "")]["evidencias"]
-            it["evidencias_txt"] = ", ".join(f"`docs/{e}`" for e in it["evidencias"]) or "—"
-        dados.write_bytes((json.dumps(itens, ensure_ascii=False, indent=1) + "\n").encode("utf-8"))
+    lib = _carregar_lib()
+    try:
+        dados = lib.carregar(ESTADO)
+    except lib.EstadoInvalido as exc:
+        raise SystemExit(str(exc))
+    erros = lib.validar(dados, ESTADO.parent)
+    if erros:
+        raise SystemExit("docs/estado_prontidao.json inválido:\n  " + "\n  ".join(erros))
+    itens = montar(dados)
+    MODELO_JSON.write_bytes((json.dumps(itens, ensure_ascii=False, indent=1) + "\n").encode("utf-8"))
     if a.sem_render:
         return 0
-    npx = "npx.cmd" if sys.platform == "win32" else "npx"
-    return subprocess.call([npx, "--yes", "knap", "batch", str(RAIZ / "mapa" / "_modelos" / "pendencia.knap.md"),
-                            "--data", str(dados), "--output-dir", str(RAIZ / "mapa" / "pendencias"),
-                            "--filename", "{{ id | safe_name }}.md", "--overwrite"])
+    if a.knap:
+        npx = "npx.cmd" if sys.platform == "win32" else "npx"
+        return subprocess.call([npx, "--yes", "knap", "batch", str(MODELO_KNAP), "--data", str(MODELO_JSON),
+                                "--output-dir", str(SAIDA), "--filename", "{{ id | safe_name }}.md", "--overwrite"])
+    SAIDA.mkdir(parents=True, exist_ok=True)
+    for it in itens:
+        (SAIDA / f"{it['id']}.md").write_bytes(renderizar(it).encode("utf-8"))
+    return 0
 
 
 if __name__ == "__main__":

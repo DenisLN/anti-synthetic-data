@@ -22,7 +22,7 @@ TCC: a fonte **AMETEK MX30** gera distúrbios de qualidade de energia e o oscilo
 
 ## Estado
 
-- Placar e protocolo: [[docs/PENDENCIAS_TRACKER|rastreador]] (fonte única de estado)
+- Placar e matriz (gerados do arquivo único de estado): [[docs/projeto/pendencias|estado das pendências]] · protocolo para agentes: [[docs/PENDENCIAS_TRACKER|protocolo]]
 - Painel: [[mapa/Pendencias.base|Pendências (Base)]] · mapa visual: [[mapa/Mapa.canvas|canvas]]
 - Visita à bancada: [[docs/bancada_pendencias]] · decisões do responsável: [[docs/decisoes_pendentes]]
 
@@ -46,6 +46,6 @@ TCC: a fonte **AMETEK MX30** gera distúrbios de qualidade de energia e o oscilo
 
 ## Atualizar este mapa
 
-Quando uma pendência mudar de estado: edite a linha dela em [[docs/PENDENCIAS_TRACKER]] e `docs/estado_prontidao.json`, e rode `python scripts/gerar_mapa_pendencias.py` (Node.js 20+, usa Knap). Isso regenera `mapa/pendencias/`. Não edite as notas `P-NN` à mão.
+Quando uma pendência mudar de estado: edite o bloco dela em `docs/estado_prontidao.json` (arquivo único de estado) e rode `python scripts/gerar_mapa_pendencias.py` (sem Node.js; `--knap` usa o Knap). Isso regenera `mapa/pendencias/`; o site regenera o placar no build. Não edite as notas `P-NN` à mão.
 
 Documentação completa (site Sphinx): [[docs/index]] · [[docs/arquitetura]] · [[docs/codigo]] · [[docs/glossario]]

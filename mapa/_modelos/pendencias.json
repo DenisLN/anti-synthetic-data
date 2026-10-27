@@ -42,7 +42,7 @@
   "acao": "recapturar 08 a 127 V/50 Hz com evento em 90 ms",
   "dependencia": "Campanha e checagem de segurança",
   "criterio": "Desvio absoluto ≤10 amostras, pico ≤374,2 V, sobressinal ≤0,55 conforme critério documentado; acima disso registrar achado de segurança",
-  "falta": "— (2026-10-22: 3/3 capturas a 127 V/50 Hz com evento 90 ms, desvio 2 amostras, pico 339 V ≤ 374,2 V, sobressinal 0,295 pu ≤ 0,55; `evidencias/2026-10-22/fechamento.json`)",
+  "falta": "2026-10-22: 3/3 capturas a 127 V/50 Hz com evento 90 ms, desvio 2 amostras, pico 339 V ≤ 374,2 V, sobressinal 0,295 pu ≤ 0,55; `evidencias/2026-10-22/fechamento.json`",
   "frentes": [
    "K",
    "R"
@@ -61,7 +61,7 @@
   "acao": "conferir `program_capture`; propor recusa de pico excessivo nos caminhos completo e por ciclo",
   "dependencia": "Baseline e decisão de comportamento",
   "criterio": "Testes com instrumento falso provando recusa antes de escrita pertinente, fronteiras válidas aceitas e nenhum enfraquecimento de validações",
-  "falta": "— (software)",
+  "falta": "software",
   "frentes": [],
   "evidencias": [
    "evidencias/2026-10-17/validacao_software.json",
@@ -165,7 +165,7 @@
   "acao": "medir RMS/THD da 05 em CSIN 10/15/20%, norma 2% e TRACe 30%",
   "dependencia": "Campanha",
   "criterio": "Capturas reais por nível, modelo/rota identificados e comparação contra critérios de validação vigentes",
-  "falta": "— (2026-10-22: níveis 2/5/10/15/20/30 % com validação física ok; rota CSIN para 2–20 % e TRACe para 30 %; `evidencias/2026-10-22/fechamento.json`)",
+  "falta": "2026-10-22: níveis 2/5/10/15/20/30 % com validação física ok; rota CSIN para 2–20 % e TRACe para 30 %; `evidencias/2026-10-22/fechamento.json`",
   "frentes": [
    "K",
    "R"
@@ -269,7 +269,7 @@
   "acao": "rodar suíte offline no PC efetivo da bancada com calibração e checkout registrados",
   "dependencia": "Etapa 0 e acesso ao PC",
   "criterio": "Log completo, versões, SHA, status, resultado e skips. Resultado de outro Windows não fecha este item",
-  "falta": "— (suíte 680/0 falhas/0 skips no PC da bancada DESKTOP-FSEESJI, `21fb300`; `evidencias/2026-10-21/pc_bancada.json`; repetida em 2026-10-22 com 759/0, `evidencias/2026-10-22/pc_bancada.json`)",
+  "falta": "suíte 680/0 falhas/0 skips no PC da bancada DESKTOP-FSEESJI, `21fb300`; `evidencias/2026-10-21/pc_bancada.json`; repetida em 2026-10-22 com 759/0, `evidencias/2026-10-22/pc_bancada.json`",
   "frentes": [],
   "evidencias": [
    "evidencias/2026-10-21/pc_bancada.json",
@@ -507,7 +507,7 @@
   "acao": "definir escopo de “piloto” e reconciliar 63 vs 99",
   "dependencia": "Sessões originais e critério de inclusão",
   "criterio": "Tabela por sessão com 36+36+27, justificando subconjuntos; registrar retificação sem apagar histórico",
-  "falta": "— (retificação: 63/99 históricos não verificáveis; `tres_versoes.md`, `AGENTS.md`)",
+  "falta": "retificação: 63/99 históricos não verificáveis; `tres_versoes.md`, `AGENTS.md`",
   "frentes": [],
   "evidencias": [
    "decisoes_pendentes.md",

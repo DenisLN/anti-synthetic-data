@@ -22,4 +22,4 @@ tags:
 - **Fecha quando:** {{ criterio }}
 - **Evidências:** {{ evidencias_txt }}
 
-Estado geral: [[docs/PENDENCIAS_TRACKER|rastreador]] · [[mapa/Pendencias.base|painel]] · [[mapa/00 Início|início]]
+Estado geral: [[docs/projeto/pendencias|estado das pendências]] · [[mapa/Pendencias.base|painel]] · [[mapa/00 Início|início]]
