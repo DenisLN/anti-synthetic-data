@@ -12,7 +12,7 @@ Cadeia única: as specs mexem nos mesmos arquivos de `docs/`, e rodá-las em par
 |---|---|---|---|
 | 30 | ASD: Fork na Main e Branches Descontinuadas | nada | git (main, tags `arquivo/*`, branches remotos, PR #3), `AGENTS.md`, `CLAUDE.md`, `CHANGELOG/v1.15.md` |
 | 31 | ASD: Scripts de Diagnóstico em diag/ e Visita Rodando de Lá | 30 | `scripts/`, `diag/`, `logica/mestre.py:128`, `tests/`, referências em `docs/` |
-| 32 | ASD: Documentação Unificada no Read the Docs | 31 | `README.md`, `AGENTS.md`, `CLAUDE.md`, `ROTEIRO_BANCADA.md` → `docs/`, `mapa/` (sai), `docs/` (exceto classes e pendências) |
+| 32 | ASD: Documentação Unificada no Read the Docs | 31 | `README.md`, `AGENTS.md`, `CLAUDE.md`, `ROTEIRO_BANCADA.md` → `docs/`, links do `mapa/` (fica), `docs/` (exceto classes e pendências) |
 | 33 | ASD: Rastreador de Pendências Integrado ao Read the Docs | 32 | arquivo de estado único, `docs/_ext/`, `docs/projeto/pendencias.md`, `scripts/` de pendências, teste |
 | 34 | ASD: Página de Pendências com Estado e Resolução de P-01 a P-31 | 33 | arquivo de estado, `docs/projeto/`, `docs/index.md` |
 | 35 | ASD: Fichas das Classes Atualizadas com as Mudanças nos NN.py | 34 | `docs/classes/`, `docs/metadata.md`, `docs/classes.md`, `docs/codigo/classes_contrato.md` |
@@ -24,3 +24,22 @@ Cadeia única: as specs mexem nos mesmos arquivos de `docs/`, e rodá-las em par
 - Rodar a suíte no PC da bancada no HEAD novo (P-16).
 
 `arquivo/analises` continua existindo: é o arquivo histórico e guarda estas specs.
+
+Decisão do dono (2026-10-27, depois de escritas as specs): o `mapa/` é do Ricardo e fica na `main`, junto com o site. Specs 32 e 33 ajustadas.
+
+## Despacho (orquestrador, 2026-10-27)
+
+Painel `painel-conhecimento` indisponível nesta sessão: specs, plano, log (`log.md`) e relatórios ficam nesta pasta, como na rodada de 2026-10-15. Código-alvo: `main` de `DenisLN/anti-synthetic-data`, checkout `/home/user/anti-synthetic-data`. Cada executor commita localmente na `main` (uma mudança lógica por commit, `tipo: resumo`); o orquestrador confere e dá push depois do julgamento. A spec 30 dá o push do fast-forward e mexe nos branches remotos, como ela pede.
+
+Executores (regra do dono: haiku se fácil, sonnet se médio, nunca opus):
+
+| Onda | pri | Executor | Motivo |
+|---|---|---|---|
+| 1 | 30 | sonnet | julgar o que só existe nos branches apagados; ações remotas irreversíveis |
+| 2 | 31 | haiku | mover arquivos e trocar caminhos, com teste e grep objetivos |
+| 3 | 32 | sonnet | fusão de documentos e conferência de fatos no código |
+| 4 | 33 | sonnet | desenho do arquivo de estado e extensão Sphinx |
+| 5 | 34 | sonnet | revisão de 31 pendências contra evidências |
+| 6 | 35 | sonnet | diff dos NN.py e redação das fichas |
+
+Primeira spec: 30. Última: 35. Caminho crítico: a cadeia inteira. Nada em paralelo.

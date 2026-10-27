@@ -9,7 +9,7 @@ O fork trouxe um rastreador das 31 pendências (P-01 a P-31) que vive em quatro 
 - `docs/PENDENCIAS_TRACKER.md`: "fonte única de estado", tabela manual com placar e matriz (✅, 🔧→🏭, ❓, ⏳);
 - `docs/estado_prontidao.json`: "estado de máquina", mas binário (`concluida`/`aberta`), o que esconde os parciais (achados, seção 4.7) e marca P-09 como `aberta` com evidência;
 - `docs/execucao_pendencias.md` e `docs/decisoes_pendentes.md`: narrativa e decisões, cada um com a sua cópia de estados;
-- `mapa/pendencias/P-NN.md` e `mapa/_modelos/pendencias.json`, gerados por `scripts/gerar_mapa_pendencias.py` (o `mapa/` sai da `main` na spec da documentação unificada).
+- `mapa/pendencias/P-NN.md` e `mapa/_modelos/pendencias.json`, gerados por `scripts/gerar_mapa_pendencias.py` (**decisão do dono, 2026-10-27: o `mapa/` é do Ricardo e fica na `main`, junto com o site**).
 
 Ferramentas que produzem estado: `scripts/fechar_pendencias.py` (gera `docs/evidencias/<data>/fechamento.json` por pendência: `evidencia_suficiente`, `insuficiente`, `reprovado`, `sem_dados`, `requer_revisao_humana`, `criterio_nao_definido`) e `scripts/verificar_prontidao.py` (lê `estado_prontidao.json` e `manifesto_prontidao.json`). O site já tem extensões próprias em `docs/_ext/`.
 
@@ -28,7 +28,7 @@ O dono pediu: "aparentemente tem um rastreador de pendências, precisamos integr
 
 1. Definir um único arquivo de estado das pendências (pode ser o `docs/estado_prontidao.json` estendido) com, por P-NN: estado não binário (os quatro estados do rastreador mais "reprovada na bancada"), o que pede, como foi resolvida ou tratada (commits, evidência em `docs/evidencias/`), o que falta, quem fecha (bancada, decisão do dono, código) e decisão do dono registrada ou não; migrar para ele o conteúdo atual do rastreador sem mudar nenhum estado (a revisão dos estados é a spec seguinte).
 2. Fazer o site renderizar a partir desse arquivo, no build do Sphinx (extensão em `docs/_ext/` ou diretiva), o placar e a matriz das pendências dentro de `docs/projeto/pendencias.md`, com âncora por P-NN que as páginas de classe possam citar.
-3. Eliminar as cópias de estado: `docs/PENDENCIAS_TRACKER.md` deixa de existir ou vira só o protocolo para agentes, sem tabela; `docs/execucao_pendencias.md` e `docs/decisoes_pendentes.md` passam a referenciar a página gerada em vez de repetir estados; `scripts/gerar_mapa_pendencias.py` é removido ou passa a ler o arquivo único (decidir e justificar), e `scripts/verificar_prontidao.py` lê o novo formato.
+3. Eliminar as cópias de estado: `docs/PENDENCIAS_TRACKER.md` deixa de existir ou vira só o protocolo para agentes, sem tabela; `docs/execucao_pendencias.md` e `docs/decisoes_pendentes.md` passam a referenciar a página gerada em vez de repetir estados; `scripts/gerar_mapa_pendencias.py` passa a ler o arquivo único e regenera o `mapa/` (que fica na `main`) a partir dele, e `scripts/verificar_prontidao.py` lê o novo formato.
 4. Criar teste offline que falhe quando o arquivo de estado estiver inválido (P-NN faltando ou repetido, estado fora da lista, evidência citada que não existe em `docs/evidencias/`) e atualizar `CLAUDE.md`/`AGENTS.md` com o fluxo novo ("depois da coleta: `fechar_pendencias.py` → editar o arquivo único → build").
 5. Registrar em `CHANGELOG/v1.15.md` e documentar o formato do arquivo numa página do site (por exemplo `docs/contribuir_docs.md`).
 
@@ -52,4 +52,4 @@ O dono pediu: "aparentemente tem um rastreador de pendências, precisamos integr
 
 ## Critério de Parada
 
-A página `projeto/pendencias.html` gerada mostra as 31 pendências com o mesmo estado que o rastreador tinha antes da spec (tabela de conferência P-NN × estado antes × estado depois no relatório, 31 linhas iguais); `git grep -nE '^\| P-[0-9]{2} \|' -- docs ':!docs/evidencias'` só encontra tabelas geradas ou nenhuma; o teste novo falha com um arquivo de estado corrompido de propósito e passa com o real; build `-W` sem erro.
+`mapa/` continua na `main`, e `python scripts/gerar_mapa_pendencias.py` regenera `mapa/pendencias/P-NN.md` a partir do arquivo único sem diff de estado. A página `projeto/pendencias.html` gerada mostra as 31 pendências com o mesmo estado que o rastreador tinha antes da spec (tabela de conferência P-NN × estado antes × estado depois no relatório, 31 linhas iguais); `git grep -nE '^\| P-[0-9]{2} \|' -- docs ':!docs/evidencias'` só encontra tabelas geradas ou nenhuma; o teste novo falha com um arquivo de estado corrompido de propósito e passa com o real; build `-W` sem erro.
